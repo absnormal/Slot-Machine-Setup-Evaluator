@@ -31,7 +31,7 @@
         }
     </style>
 
-    <!-- 設置 Import Map (移除了 Firebase，只保留 React 核心與圖示) -->
+    <!-- 設置 Import Map -->
     <script type="importmap">
     {
       "imports": {
@@ -60,6 +60,9 @@
         // === 雲端資料庫設定 (Google Apps Script) ===
         // 💡 請將您部署的 Web App URL 貼在下方。這個網址公開在 GitHub 上是安全的。
         const GAS_URL = "https://script.google.com/macros/s/AKfycby1bfxQa5rGdVUrr_gXoZ3bBgin-c8bvVnohqPkdipicaG2m8vWxz9y7rubpgQ8avGbzg/exec";
+
+        // AI API Key (由執行環境動態提供)
+        const apiKey = "";
 
         // === 共用輔助函式 ===
         const toPx = (val, max) => (val / 100) * max;
@@ -228,6 +231,8 @@
             const [cloudTemplates, setCloudTemplates] = useState([]);
             const [showCloudModal, setShowCloudModal] = useState(false);
             const [isLoadingCloud, setIsLoadingCloud] = useState(false);
+            const [isBackgroundSyncing, setIsBackgroundSyncing] = useState(false); // 背景同步狀態
+            const [downloadingId, setDownloadingId] = useState(null);
             const [templateName, setTemplateName] = useState('');
             const [templateMessage, setTemplateMessage] = useState('');
             const [isSaving, setIsSaving] = useState(false);
@@ -267,6 +272,11 @@
                 if (!template) return;
                 const allSymbols = Object.keys(template.paytable);
                 setPanelGrid(generateRandomPanelGrid(template.rows, template.cols, allSymbols));
+            };
+
+            const handleClearPanel = () => {
+                if (!template) return;
+                setPanelGrid(Array.from({ length: template.rows }, () => Array(template.cols).fill('')));
             };
 
             const handlePaytableTextChange = (newText) => {
@@ -447,23 +457,35 @@
                 });
             };
 
-            // === Google Sheets 雲端存取邏輯 ===
+            // === Google Sheets 雲端存取邏輯 (快取優化版) ===
             const fetchCloudTemplates = useCallback(async () => {
                 if (!GAS_URL) return;
-                setIsLoadingCloud(true);
+
+                // 1. 嘗試從本地 SessionStorage 讀取舊資料，瞬間顯示
+                const cachedStr = sessionStorage.getItem('slot_templates_cache');
+                if (cachedStr) {
+                    try {
+                        setCloudTemplates(JSON.parse(cachedStr));
+                        setIsBackgroundSyncing(true); // 顯示背景正在更新的小圖示
+                    } catch (e) { }
+                } else {
+                    setIsLoadingCloud(true); // 只有第一次完全沒資料時才顯示大轉圈
+                }
+
                 try {
-                    // 使用 GET 請求撈取所有模板
-                    const res = await fetch(`${GAS_URL}?action=get`);
+                    const res = await fetch(`${GAS_URL}?action=list`);
                     const data = await res.json();
                     setCloudTemplates(data || []);
+                    // 2. 將最新資料存回本地快取
+                    sessionStorage.setItem('slot_templates_cache', JSON.stringify(data || []));
                 } catch (err) {
                     console.error("取得雲端資料失敗", err);
                 } finally {
                     setIsLoadingCloud(false);
+                    setIsBackgroundSyncing(false);
                 }
             }, []);
 
-            // 當雲端 Modal 開啟時，自動載入最新資料
             useEffect(() => {
                 if (showCloudModal) fetchCloudTemplates();
             }, [showCloudModal, fetchCloudTemplates]);
@@ -488,9 +510,9 @@
                         if (item.thumbUrl) symbolImages[item.name] = item.thumbUrl;
                     });
 
-                    // 打包模板資料，準備送給 GAS
+                    // 打包完整模板資料，準備送給 GAS 儲存
                     const newTemplate = {
-                        id: Date.now().toString() + Math.random().toString(36).substring(2, 7), // 產生唯一ID
+                        id: Date.now().toString() + Math.random().toString(36).substring(2, 7),
                         name,
                         platformName,
                         gameName,
@@ -499,11 +521,10 @@
                         extractResults,
                         paytableInput,
                         ptResultItems,
-                        creatorId: localUserId, // 用來辨別是否為作者
+                        creatorId: localUserId,
                         createdAt: new Date().toISOString()
                     };
 
-                    // 使用 text/plain 避免 CORS 預檢請求錯誤
                     await fetch(GAS_URL, {
                         method: 'POST',
                         body: JSON.stringify({ action: 'save', data: newTemplate }),
@@ -514,6 +535,9 @@
                     setTemplateError('');
                     setTemplateMessage('✅ 已成功儲存至 Google Sheets！');
                     setTimeout(() => setTemplateMessage(''), 3000);
+
+                    // 存檔後主動清空本地快取，確保下次打開能看到新資料
+                    sessionStorage.removeItem('slot_templates_cache');
                 } catch (e) {
                     setTemplateError('雲端儲存失敗：' + e.message);
                 }
@@ -524,15 +548,13 @@
                 if (!GAS_URL) return;
                 try {
                     setDeletingId(id);
-                    // 通知 GAS 刪除對應 ID 的列
                     await fetch(GAS_URL, {
                         method: 'POST',
                         body: JSON.stringify({ action: 'delete', id: id }),
                         headers: { 'Content-Type': 'text/plain;charset=utf-8' }
                     });
-
-                    // 在畫面上即時移除
                     setCloudTemplates(prev => prev.filter(t => t.id !== id));
+                    sessionStorage.removeItem('slot_templates_cache'); // 刪除後清空快取
                     setDeletingId(null);
                 } catch (err) {
                     console.error("刪除失敗", err);
@@ -541,30 +563,43 @@
                 }
             };
 
-            const loadCloudTemplate = (data) => {
-                if (data.platformName !== undefined) setPlatformName(data.platformName);
-                if (data.gameName !== undefined) setGameName(data.gameName);
+            // 💡 按需載入：點擊下載時才向後端請求完整 JSON 資料
+            const loadCloudTemplate = async (templateMeta) => {
+                setDownloadingId(templateMeta.id);
+                try {
+                    const res = await fetch(`${GAS_URL}?action=getTemplate&id=${templateMeta.id}`);
+                    const data = await res.json();
 
-                if (data.gridRows) setGridRows(data.gridRows);
-                if (data.gridCols) setGridCols(data.gridCols);
-                if (data.extractResults) setExtractResults(data.extractResults);
-                if (data.paytableInput) setPaytableInput(data.paytableInput);
+                    if (data.error) throw new Error(data.error);
 
-                if (data.ptResultItems) {
-                    setPtResultItems(data.ptResultItems);
-                    setPaytableMode('image');
-                } else {
-                    setPaytableMode('text');
+                    if (data.platformName !== undefined) setPlatformName(data.platformName);
+                    if (data.gameName !== undefined) setGameName(data.gameName);
+                    if (data.gridRows) setGridRows(data.gridRows);
+                    if (data.gridCols) setGridCols(data.gridCols);
+                    if (data.extractResults) setExtractResults(data.extractResults);
+                    if (data.paytableInput) setPaytableInput(data.paytableInput);
+
+                    if (data.ptResultItems) {
+                        setPtResultItems(data.ptResultItems);
+                        setPaytableMode('image');
+                    } else {
+                        setPaytableMode('text');
+                    }
+
+                    setLineImages([]);
+                    setActiveLineImageId(null);
+                    setShowCloudModal(false);
+
+                    setTemplateMessage('☁️ 雲端模板載入成功！已自動為您建構並進入結算畫面。');
+                    setTimeout(() => setTemplateMessage(''), 4000);
+
+                    performAutoBuild(data);
+                } catch (err) {
+                    console.error(err);
+                    setTemplateError("載入模板詳細資料失敗：" + err.message);
+                } finally {
+                    setDownloadingId(null);
                 }
-
-                setLineImages([]);
-                setActiveLineImageId(null);
-                setShowCloudModal(false);
-
-                setTemplateMessage('☁️ 雲端模板載入成功！已自動為您建構並進入結算畫面。');
-                setTimeout(() => setTemplateMessage(''), 4000);
-
-                performAutoBuild(data);
             };
 
             // ==========================================
@@ -981,34 +1016,36 @@
                     return;
                 }
 
-                const effectiveApiKey = customApiKey || apiKey;
-                if (!effectiveApiKey) {
-                    setTemplateError("請先於右上角「環境與金鑰設定」填入您的 Gemini API Key！");
-                    setShowSettingsModal(true);
-                    return;
-                }
+                // 智慧選擇模型：如果使用者有填金鑰就用正式版，沒填就用系統自動提供的預覽版
+                const effectiveApiKey = customApiKey.trim() || apiKey;
+                const modelName = customApiKey.trim() ? "gemini-2.5-flash" : "gemini-2.5-flash-preview-09-2025";
 
                 setIsPtProcessing(true);
                 setTemplateError("");
                 setTemplateMessage("AI 正在分析賠率表中...");
 
                 try {
-                    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${effectiveApiKey}`;
+                    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${effectiveApiKey}`;
                     const imageParts = ptImages.map(img => ({
                         inlineData: { mimeType: img.file.type, data: img.base64 }
                     }));
 
                     const promptText = `
-            請分析圖片中的老虎機賠率表。
-            圖片中包含多個符號及其對應的連線數量(5, 4, 3, 有時包含 2)與賠率數字。
-            請根據圖片內容辨識每個符號，並提取其對應的賠率。
-            常見的符號名稱包含：WILD(如搖錢樹), 孔雀, 金元寶, 沙漏, 琵琶, 令牌, A, K, Q, J, 10, 9。
-            * 如果符號上有寫 WILD 字樣，請將其名稱統一命名為 "WILD"。
-            * 除了 WILD, 10, 9, J, Q, K, A 這些通用字母與數字外，其餘圖案符號請「一律使用繁體中文」進行直觀命名（例如：金龍、紅寶石、太極等），請勿使用英文。
-            * 符號名稱 (name) 必須是連續的字串，絕對「不可以包含任何空白或特殊符號」。
-            * 如果某個連線數量(例如2連線)沒有標示賠率，請設定數值為 0。
-            * 1連線的賠率請固定設為 0。
-            請嚴格按照提供的 JSON Schema 格式回傳陣列，不要有任何 Markdown。
+            請仔細分析圖片中的「老虎機賠率表 (Paytable)」。
+            任務目標：辨識出圖片中【每一個】圖案符號，以及它對應的連線數量(通常為 5, 4, 3, 2連線)所獲得的「賠率分數」。
+
+            命名規則：
+            1. 若符號上有寫 "WILD"、"百搭"、或取代其他圖案的功能，請統一命名為 "WILD"。
+            2. 若為英文字母或數字，請直接使用：A, K, Q, J, 10, 9。
+            3. 若為一般圖案，請根據外觀用「繁體中文」直觀命名 (例如: 金龍, 西瓜, 皇冠)。
+            4. 符號名稱 (name) 必須是連續字串，不可包含空白或特殊符號。
+
+            數值規則：
+            1. 提取對應的賠率數字。
+            2. 如果某個連線數量(例如 2 連線)沒有標示數字，請補 0。
+            3. match1 (1連線) 的賠率請一律填寫 0。
+
+            請嚴格按照 JSON Schema 回傳陣列 (Array)，包含所有辨識到的符號，絕對不可回傳空陣列或忽略任何圖案！
           `;
 
                     const payload = {
@@ -1044,9 +1081,29 @@
 
                     let parsedData = JSON.parse(jsonText);
 
+                    // 防禦機制：有時 AI 可能會回傳 { "items": [...] } 而非直接的陣列
+                    if (parsedData && !Array.isArray(parsedData)) {
+                        const possibleArray = Object.values(parsedData).find(val => Array.isArray(val));
+                        if (possibleArray) {
+                            parsedData = possibleArray;
+                        } else {
+                            parsedData = [parsedData];
+                        }
+                    }
+
+                    // 檢查是否真的有抓到資料
+                    if (!parsedData || parsedData.length === 0) {
+                        throw new Error("AI 無法從圖片中辨識出賠率資料。請確認圖片清晰且包含完整的賠率數字。");
+                    }
+
                     parsedData = parsedData.map(item => ({
                         ...item,
-                        name: (item.name || '').replace(/\s+/g, '')
+                        name: String(item.name || '未命名').replace(/\s+/g, ''),
+                        match1: Number(item.match1) || 0,
+                        match2: Number(item.match2) || 0,
+                        match3: Number(item.match3) || 0,
+                        match4: Number(item.match4) || 0,
+                        match5: Number(item.match5) || 0
                     }));
 
                     const hasWild = parsedData.some(item => item.name.toUpperCase() === 'WILD');
@@ -1388,7 +1445,15 @@
                             {!isTemplateMinimized && (
                                 <div className="p-6 pt-0 border-t border-slate-100 mt-4 space-y-6">
 
-                                    {/* 新增：頂端操作列 (模板存取與雲端功能) */}
+                                    {/* Phase 1 錯誤訊息顯示區塊 */}
+                                    {templateError && (
+                                        <div className="mt-4 p-3 bg-rose-50 border border-rose-200 text-rose-600 rounded-lg text-sm font-bold flex items-center gap-2 animate-in fade-in zoom-in duration-200 shadow-sm">
+                                            <AlertCircle size={18} className="shrink-0" />
+                                            <span>{templateError}</span>
+                                        </div>
+                                    )}
+
+                                    {/* 頂端操作列 (模板存取與雲端功能) */}
                                     <div className="bg-indigo-50/70 p-4 rounded-xl border border-indigo-100 flex flex-col lg:flex-row justify-between gap-4 items-center">
                                         <div className="flex w-full lg:w-auto gap-2">
                                             <label className="flex-1 lg:flex-none py-2.5 px-4 bg-white hover:bg-slate-50 text-slate-700 font-bold rounded-lg text-sm flex items-center justify-center gap-1.5 cursor-pointer transition-colors shadow-sm border border-slate-200">
@@ -1438,7 +1503,7 @@
                                         </div>
                                     </div>
 
-                                    {/* Step 1: 連線矩陣設定 (雙模式) */}
+                                    {/* Step 1: 連線矩陣設定 */}
                                     <div className="bg-slate-50 p-5 rounded-xl border border-slate-200">
                                         <div className="flex items-center justify-between mb-4 border-b border-slate-200 pb-3">
                                             <label className="text-base font-bold text-slate-800">線獎資料設定</label>
@@ -1551,7 +1616,7 @@
                                                         </div>
                                                     )}
 
-                                                    {/* 畫布與上傳區 (修改為可垂直捲動、滿版寬度的自適應容器) */}
+                                                    {/* 畫布與上傳區 */}
                                                     <div className="flex-1 relative flex flex-col p-4 overflow-y-auto custom-scrollbar">
                                                         {!imageSrc ? (
                                                             <div className="m-auto text-center w-full max-w-md">
@@ -1568,7 +1633,7 @@
                                                                     或在上方點擊「瀏覽雲端模板庫」直接套用
                                                                 </p>
 
-                                                                {/* 新增：連線圖範例預覽 (40 Sparkling Crown Mock) */}
+                                                                {/* 連線圖範例預覽 */}
                                                                 <div className="mt-6 border border-slate-700/50 rounded-xl p-4 bg-slate-900/50 shadow-inner text-left">
                                                                     <span className="text-xs text-slate-400 font-bold mb-3 flex items-center justify-center gap-1.5"><ImageIcon size={14} /> 線獎圖上傳範例參考 (40 Sparkling Crown)</span>
                                                                     <div className="w-full bg-[#000000] rounded-lg border border-slate-700 p-4 grid grid-cols-3 sm:grid-cols-6 gap-3 opacity-90 select-none shadow-[0_0_15px_rgba(0,0,0,0.5)]">
@@ -1596,7 +1661,7 @@
                                                                         <h4 className="text-slate-200 font-bold">第一次使用？看不懂怎麼操作？</h4>
                                                                     </div>
                                                                     <p className="text-xs text-slate-400 mb-4 leading-relaxed">
-                                                                        點擊下方按鈕，我們將直接為您載入「40 Sparkling Crown」的連線與賠率範本資料 (將自動轉為純文字模式)，讓您無須上傳圖片也能快速體驗結算功能！
+                                                                        點擊下方按鈕，我們將直接為您載入「40 Sparkling Crown」的連線與賠率範本資料，讓您無須上傳圖片也能快速體驗結算功能！
                                                                     </p>
                                                                     <button onClick={loadDemoData} className="w-full py-2.5 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded-lg transition-colors text-sm flex items-center justify-center gap-2 shadow-sm border border-slate-600">
                                                                         載入 40 Sparkling Crown 範例
@@ -1752,7 +1817,7 @@
                                                             <p className="text-xs text-slate-500 font-medium">點擊或拖曳上傳賠率圖 (可多選)</p>
                                                         </label>
 
-                                                        {/* 賠率圖範例預覽 (40 Sparkling Crown Mock) */}
+                                                        {/* 賠率圖範例預覽 */}
                                                         {ptImages.length === 0 && (
                                                             <div className="mx-2 mb-2 p-3 bg-slate-50 border border-slate-200 rounded-lg shadow-inner">
                                                                 <span className="text-[10px] text-slate-500 font-bold mb-2 flex items-center justify-center gap-1"><ImageIcon size={12} /> 賠付表上傳範例參考</span>
@@ -1803,7 +1868,6 @@
                                                             </div>
                                                         )}
 
-                                                        {/* 將 onClick 改為打開 AI 確認視窗 */}
                                                         <button onClick={() => setShowAIConfirmModal(true)} disabled={isPtProcessing || ptImages.length === 0} className={`m-2 mt-0 py-2.5 rounded-lg font-bold flex justify-center items-center gap-1.5 shadow-sm transition-colors ${isPtProcessing || ptImages.length === 0 ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700 text-white'}`}>
                                                             {isPtProcessing ? <Loader2 size={16} className="animate-spin" /> : null}
                                                             {isPtProcessing ? '分析中...' : 'AI 分析賠率'}
@@ -1886,14 +1950,12 @@
                             )}
                         </div>
 
-                        {/* Phase 2: 盤面結算 & 預覽 (合併版) */}
-                        <div className={`grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch ${!template ? 'opacity-30 pointer-events-none' : ''}`}>
-                            <div className="flex flex-col min-h-0">
-                                {/* 合併後的盤面設定與即時預覽 */}
-                                <div className="bg-slate-900 p-5 sm:p-6 rounded-xl shadow-2xl border border-slate-800 flex flex-col h-full">
+                        {/* Phase 2: 盤面結算 & 預覽 */}
+                        <div className={`grid grid-cols-1 lg:grid-cols-2 gap-6 ${!template ? 'opacity-30 pointer-events-none' : ''}`}>
+                            <div className="flex flex-col h-full">
+                                <div className="bg-slate-900 p-5 sm:p-6 rounded-xl shadow-2xl border border-slate-800 flex flex-col flex-1">
                                     <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-3 border-b border-slate-700 pb-4 gap-3">
                                         <div className="flex items-center gap-2">
-                                            {/* 將 Phase 2 標題更新 */}
                                             <h2 className="text-xl font-semibold flex items-center gap-2 text-white"><Play className="text-indigo-400" size={20} />Phase 2: 盤面設定</h2>
                                         </div>
                                         <div className="flex items-center gap-2 sm:gap-3">
@@ -1936,17 +1998,27 @@
                                                         <button
                                                             onClick={() => setActiveBrush('')}
                                                             className={`relative w-[48px] h-[48px] sm:w-[52px] sm:h-[52px] rounded-lg border-2 flex items-center justify-center transition-all ${activeBrush === '' ? 'border-rose-400 bg-rose-500/20 shadow-[0_0_10px_rgba(244,63,94,0.3)] scale-105 z-10' : 'border-slate-600 bg-slate-800 hover:border-slate-500 hover:bg-slate-700'}`}
-                                                            title="橡皮擦 (清空)"
+                                                            title="橡皮擦 (點擊網格清空單格)"
                                                         >
                                                             <div className="w-5 h-5 border-2 border-rose-400 rounded-full flex items-center justify-center">
                                                                 <div className="w-3 h-0.5 bg-rose-400 rotate-45"></div>
                                                             </div>
                                                         </button>
+
+                                                        <div className="w-px h-10 bg-slate-700 mx-1 self-center"></div>
+
+                                                        <button
+                                                            onClick={handleClearPanel}
+                                                            className="relative px-3 h-[48px] sm:h-[52px] rounded-lg border-2 border-slate-600 bg-slate-800 hover:border-rose-400 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 flex flex-col items-center justify-center transition-all group shadow-sm"
+                                                            title="一鍵清除整個盤面"
+                                                        >
+                                                            <Trash2 size={18} className="group-active:scale-90 transition-transform mb-0.5" />
+                                                            <span className="text-[10px] font-bold leading-none">清除盤面</span>
+                                                        </button>
                                                     </div>
                                                 </div>
                                             )}
 
-                                            {/* 獨立出的連線預覽提示列 */}
                                             <div className="flex items-center h-8 mb-4">
                                                 {hoveredLineId ? (
                                                     <div className="flex items-center gap-2 text-indigo-300 text-sm font-bold bg-indigo-500/20 px-3 py-1.5 rounded-lg border border-indigo-500/30 animate-in fade-in slide-in-from-left-2 duration-200 shadow-sm">
@@ -1966,7 +2038,6 @@
                                                 )}
                                             </div>
 
-                                            {/* 視覺化智慧合併網格 (輸入 + 預覽) */}
                                             <div className="p-3 sm:p-5 bg-black/40 border border-slate-800/80 rounded-xl overflow-x-auto shadow-inner select-none custom-scrollbar">
                                                 <div className="flex flex-col gap-1.5 sm:gap-2 w-max mx-auto" onMouseLeave={() => setHoveredLineId(null)}>
                                                     {getSafeGrid().map((row, rIndex) => (
@@ -1984,7 +2055,6 @@
                                                                     }
                                                                 }
 
-                                                                // 依據狀態決定網格樣式
                                                                 let cellClasses = "relative w-16 h-16 sm:w-[88px] sm:h-[72px] flex items-center justify-center rounded-lg overflow-hidden transition-all duration-300 font-black text-xl ";
 
                                                                 if (hoveredLineId) {
@@ -2042,114 +2112,111 @@
                                 </div>
                             </div>
 
-                            <div className="flex flex-col min-h-0">
-                                <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col h-full min-h-0">
+                            {/* 右側結算清單區塊 */}
+                            <div className="relative flex flex-col h-full lg:block">
+                                <div className="static lg:absolute lg:inset-0 flex flex-col w-full h-full">
+                                    <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col flex-1 min-h-0">
 
-                                    {/* 從左側移至右側的押注設定區塊 */}
-                                    <div className="mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200 shrink-0">
-                                        <div className="flex-1 w-full">
-                                            <label className="block text-sm font-bold text-slate-700 mb-1.5">押注 (Total Bet)</label>
-                                            <div className="relative">
-                                                <Coins className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                                                <input type="number" value={betInput} onChange={(e) => setBetInput(e.target.value)} className="w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none font-black text-lg text-indigo-700 shadow-sm transition-shadow" />
-                                            </div>
-                                        </div>
-                                        <div className="px-4 py-2 bg-emerald-50 border border-emerald-200 text-emerald-700 font-bold rounded-lg flex items-center justify-center gap-2 shadow-sm pointer-events-none select-none shrink-0 self-end sm:self-auto h-[46px] mt-0 sm:mt-6 w-full sm:w-auto">
-                                            <Zap size={18} className="fill-emerald-500 text-emerald-500" /> 自動即時結算
-                                        </div>
-                                    </div>
-
-                                    {/* 計算發生錯誤時的 UI 顯示 */}
-                                    {calculateError && (
-                                        <div className="mb-6 p-3 bg-rose-50 border border-rose-200 text-rose-600 rounded-lg text-sm font-bold flex items-center gap-2 animate-in fade-in zoom-in duration-200 shadow-sm shrink-0">
-                                            <AlertCircle size={18} className="shrink-0" />
-                                            <span>{calculateError}</span>
-                                        </div>
-                                    )}
-
-                                    {calcResults && (
-                                        <div className="flex flex-col flex-1 min-h-0">
-                                            <div className="flex items-center justify-between mb-4 border-b border-slate-100 pb-4 shrink-0">
-                                                <div className="flex flex-col space-y-2">
-                                                    <h2 className="text-xl font-semibold flex items-center gap-2"><Trophy className="text-amber-500" size={24} />結算清單</h2>
-                                                    <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer bg-slate-50 px-3 py-1.5 rounded-lg border hover:bg-slate-100 transition-colors">
-                                                        <input type="checkbox" checked={showAllLines} onChange={(e) => setShowAllLines(e.target.checked)} className="rounded text-indigo-600 focus:ring-indigo-500" />
-                                                        <span className="font-medium">顯示所有連線 (含未中獎)</span>
-                                                    </label>
-                                                </div>
-                                                <div className="text-right bg-emerald-50 px-4 py-2 rounded-lg border border-emerald-100 transition-all duration-300">
-                                                    <p className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider mb-0.5">Total Win</p>
-                                                    <p className="text-3xl font-black text-emerald-600">{calcResults.totalWin.toLocaleString()}</p>
+                                        <div className="mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200 shrink-0">
+                                            <div className="flex-1 w-full">
+                                                <label className="block text-sm font-bold text-slate-700 mb-1.5">押注 (Total Bet)</label>
+                                                <div className="relative">
+                                                    <Coins className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                                                    <input type="number" value={betInput} onChange={(e) => setBetInput(e.target.value)} className="w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none font-black text-lg text-indigo-700 shadow-sm transition-shadow" />
                                                 </div>
                                             </div>
-                                            {/* 將最大高度精準鎖定在約 5 個項目的高度 (440px) */}
-                                            <div className="space-y-2 flex-1 overflow-y-auto pr-2 custom-scrollbar min-h-0 max-h-[440px]">
-                                                {calcResults.details.filter(d => showAllLines || d.winAmount > 0).length === 0 ? (
-                                                    <div className="text-center py-10 text-slate-500 bg-slate-50 rounded-lg border border-dashed border-slate-200 animate-in fade-in duration-300">
-                                                        <p className="text-lg">此盤面未達成任何連線中獎 😢</p>
+                                            <div className="px-4 py-2 bg-emerald-50 border border-emerald-200 text-emerald-700 font-bold rounded-lg flex items-center justify-center gap-2 shadow-sm pointer-events-none select-none shrink-0 self-end sm:self-auto h-[46px] mt-0 sm:mt-6 w-full sm:w-auto">
+                                                <Zap size={18} className="fill-emerald-500 text-emerald-500" /> 自動即時結算
+                                            </div>
+                                        </div>
+
+                                        {calculateError && (
+                                            <div className="mb-6 p-3 bg-rose-50 border border-rose-200 text-rose-600 rounded-lg text-sm font-bold flex items-center gap-2 animate-in fade-in zoom-in duration-200 shadow-sm shrink-0">
+                                                <AlertCircle size={18} className="shrink-0" />
+                                                <span>{calculateError}</span>
+                                            </div>
+                                        )}
+
+                                        {calcResults && (
+                                            <div className="flex flex-col flex-1 min-h-0">
+                                                <div className="flex items-center justify-between mb-4 border-b border-slate-100 pb-4 shrink-0">
+                                                    <div className="flex flex-col space-y-2">
+                                                        <h2 className="text-xl font-semibold flex items-center gap-2"><Trophy className="text-amber-500" size={24} />結算清單</h2>
+                                                        <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer bg-slate-50 px-3 py-1.5 rounded-lg border hover:bg-slate-100 transition-colors">
+                                                            <input type="checkbox" checked={showAllLines} onChange={(e) => setShowAllLines(e.target.checked)} className="rounded text-indigo-600 focus:ring-indigo-500" />
+                                                            <span className="font-medium">顯示所有連線 (含未中獎)</span>
+                                                        </label>
                                                     </div>
-                                                ) : (
-                                                    calcResults.details.filter(d => showAllLines || d.winAmount > 0).map((result, idx) => {
-                                                        const isWin = result.winAmount > 0;
-                                                        return (
-                                                            <div key={idx} className={`p-2 rounded-lg border flex items-center gap-3 transition-all duration-300 cursor-pointer animate-in fade-in slide-in-from-bottom-2 ${isWin ? 'bg-white border-indigo-100 shadow-sm hover:border-indigo-300 hover:shadow-md' : 'opacity-60 grayscale bg-slate-50'}`} onMouseEnter={() => setHoveredLineId(result.lineId)} onMouseLeave={() => setHoveredLineId(null)}>
-                                                                {/* 縮減後的垂直卡片 */}
-                                                                <div className={`w-12 h-16 shrink-0 flex flex-col justify-between rounded-md border shadow-sm overflow-hidden ${isWin ? 'bg-[#1a1c29] border-slate-500' : 'bg-slate-200 border-slate-300'}`}>
-                                                                    {/* 加入 min-h-0 讓圖片超出時能自動縮小 */}
-                                                                    <div className="flex-1 min-h-0 flex items-center justify-center px-1 pt-1 relative">
-                                                                        {template.symbolImages?.[result.symbol] ? (
-                                                                            <img src={template.symbolImages[result.symbol]} className="max-w-full max-h-full object-contain drop-shadow-md" alt={result.symbol} />
-                                                                        ) : (
-                                                                            <span className={`text-[10px] font-black leading-tight text-center ${isWin ? 'text-slate-300' : 'text-slate-500'}`}>{result.symbol}</span>
-                                                                        )}
-                                                                    </div>
-                                                                    {/* 加入 shrink-0 保證底部數字絕對不會被壓縮 */}
-                                                                    <div className={`shrink-0 pb-1 text-center text-sm font-black tracking-wider ${isWin ? 'text-white' : 'text-slate-500'}`}>
-                                                                        {result.lineId}
-                                                                    </div>
-                                                                </div>
-                                                                {/* 中間資訊 */}
-                                                                <div className="flex-1 min-w-0 flex flex-col justify-center">
-                                                                    <div className="flex items-center justify-between mb-1">
-                                                                        <div className="flex items-center gap-2">
-                                                                            <span className="font-bold text-sm truncate text-slate-800">{result.symbol} {result.count}連</span>
-                                                                            {isWin ? (
-                                                                                <span className="text-[10px] px-2 py-0.5 bg-indigo-50 text-indigo-700 font-bold rounded-full border border-indigo-200">
-                                                                                    賠率 {result.payoutMult}
-                                                                                </span>
+                                                    <div className="text-right bg-emerald-50 px-4 py-2 rounded-lg border border-emerald-100 transition-all duration-300">
+                                                        <p className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider mb-0.5">Total Win</p>
+                                                        <p className="text-3xl font-black text-emerald-600">{calcResults.totalWin.toLocaleString()}</p>
+                                                    </div>
+                                                </div>
+                                                <div className="space-y-2 flex-1 overflow-y-auto pr-2 custom-scrollbar min-h-0 max-h-[440px]">
+                                                    {calcResults.details.filter(d => showAllLines || d.winAmount > 0).length === 0 ? (
+                                                        <div className="text-center py-10 text-slate-500 bg-slate-50 rounded-lg border border-dashed border-slate-200 animate-in fade-in duration-300">
+                                                            <p className="text-lg">此盤面未達成任何連線中獎 😢</p>
+                                                        </div>
+                                                    ) : (
+                                                        calcResults.details.filter(d => showAllLines || d.winAmount > 0).map((result, idx) => {
+                                                            const isWin = result.winAmount > 0;
+                                                            return (
+                                                                <div key={idx} className={`p-2 rounded-lg border flex items-center gap-3 transition-all duration-300 cursor-pointer animate-in fade-in slide-in-from-bottom-2 ${isWin ? 'bg-white border-indigo-100 shadow-sm hover:border-indigo-300 hover:shadow-md' : 'opacity-60 grayscale bg-slate-50'}`} onMouseEnter={() => setHoveredLineId(result.lineId)} onMouseLeave={() => setHoveredLineId(null)}>
+                                                                    <div className={`w-12 h-16 shrink-0 flex flex-col justify-between rounded-md border shadow-sm overflow-hidden ${isWin ? 'bg-[#1a1c29] border-slate-500' : 'bg-slate-200 border-slate-300'}`}>
+                                                                        <div className="flex-1 min-h-0 flex items-center justify-center px-1 pt-1 relative">
+                                                                            {template.symbolImages?.[result.symbol] ? (
+                                                                                <img src={template.symbolImages[result.symbol]} className="max-w-full max-h-full object-contain drop-shadow-md" alt={result.symbol} />
                                                                             ) : (
-                                                                                <span className="text-[10px] px-2 py-0.5 bg-slate-200 text-slate-500 rounded-full font-medium">未中獎</span>
+                                                                                <span className={`text-[10px] font-black leading-tight text-center ${isWin ? 'text-slate-300' : 'text-slate-500'}`}>{result.symbol}</span>
                                                                             )}
                                                                         </div>
-                                                                        <span className={`font-black text-sm shrink-0 ${isWin ? 'text-emerald-600' : 'text-slate-400'}`}>
-                                                                            {isWin ? `+${result.winAmount.toLocaleString()}` : '-'}
-                                                                        </span>
+                                                                        <div className={`shrink-0 pb-1 text-center text-sm font-black tracking-wider ${isWin ? 'text-white' : 'text-slate-500'}`}>
+                                                                            {result.lineId}
+                                                                        </div>
                                                                     </div>
-                                                                    <div className="flex items-center">
-                                                                        <div className="text-[10px] text-slate-500 font-mono bg-slate-100/80 px-2 py-0.5 rounded border border-slate-200 flex items-center gap-1">
-                                                                            <span className="text-slate-400 font-bold">路線:</span>
-                                                                            {result.positions.map((pos, i) => (
-                                                                                <React.Fragment key={i}>
-                                                                                    <span className={i < result.count && isWin ? 'text-indigo-600 font-black' : ''}>{pos}</span>
-                                                                                    {i < result.positions.length - 1 && <span className="text-slate-300 mx-0.5">-</span>}
-                                                                                </React.Fragment>
-                                                                            ))}
+                                                                    <div className="flex-1 min-w-0 flex flex-col justify-center">
+                                                                        <div className="flex items-center justify-between mb-1">
+                                                                            <div className="flex items-center gap-2">
+                                                                                <span className="font-bold text-sm truncate text-slate-800">{result.symbol} {result.count}連</span>
+                                                                                {isWin ? (
+                                                                                    <span className="text-[10px] px-2 py-0.5 bg-indigo-50 text-indigo-700 font-bold rounded-full border border-indigo-200">
+                                                                                        賠率 {result.payoutMult}
+                                                                                    </span>
+                                                                                ) : (
+                                                                                    <span className="text-[10px] px-2 py-0.5 bg-slate-200 text-slate-500 rounded-full font-medium">未中獎</span>
+                                                                                )}
+                                                                            </div>
+                                                                            <span className={`font-black text-sm shrink-0 ${isWin ? 'text-emerald-600' : 'text-slate-400'}`}>
+                                                                                {isWin ? `+${result.winAmount.toLocaleString()}` : '-'}
+                                                                            </span>
+                                                                        </div>
+                                                                        <div className="flex items-center">
+                                                                            <div className="text-[10px] text-slate-500 font-mono bg-slate-100/80 px-2 py-0.5 rounded border border-slate-200 flex items-center gap-1">
+                                                                                <span className="text-slate-400 font-bold">路線:</span>
+                                                                                {result.positions.map((pos, i) => (
+                                                                                    <React.Fragment key={i}>
+                                                                                        <span className={i < result.count && isWin ? 'text-indigo-600 font-black' : ''}>{pos}</span>
+                                                                                        {i < result.positions.length - 1 && <span className="text-slate-300 mx-0.5">-</span>}
+                                                                                    </React.Fragment>
+                                                                                ))}
+                                                                            </div>
                                                                         </div>
                                                                     </div>
                                                                 </div>
-                                                            </div>
-                                                        );
-                                                    })
-                                                )}
+                                                            );
+                                                        })
+                                                    )}
+                                                </div>
                                             </div>
-                                        </div>
-                                    )}
+                                        )}
+                                    </div>
                                 </div>
                             </div>
+
                         </div>
                     </div>
 
-                    {/* 確認 Modal (改為 AI 分析前確認) */}
+                    {/* 確認 Modal */}
                     {showAIConfirmModal && (
                         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4" style={{ zIndex: 99999 }}>
                             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
@@ -2253,7 +2320,6 @@
                                             className="max-h-[70vh] max-w-full block cursor-crosshair shadow-2xl"
                                             onMouseDown={(e) => {
                                                 const r = e.target.getBoundingClientRect();
-                                                // 同時初始化 endX 與 endY，避免第一次點擊出現異常大框
                                                 setPtCropState(p => ({ ...p, startX: e.clientX - r.left, startY: e.clientY - r.top, endX: e.clientX - r.left, endY: e.clientY - r.top, isDragging: true }));
                                             }}
                                             onMouseMove={(e) => {
@@ -2262,9 +2328,8 @@
                                                 setPtCropState(p => ({ ...p, endX: e.clientX - r.left, endY: e.clientY - r.top }));
                                             }}
                                             onMouseUp={() => setPtCropState(p => ({ ...p, isDragging: false }))}
-                                            onMouseLeave={() => setPtCropState(p => ({ ...p, isDragging: false }))} // 滑出圖片範圍時停止拖曳
+                                            onMouseLeave={() => setPtCropState(p => ({ ...p, isDragging: false }))}
                                         />
-                                        {/* 移除僅在 isDragging 時顯示的限制，改為只要寬高大於 0 就顯示，同時加粗外框 (border-2) */}
                                         {(ptCropState.isDragging || (Math.abs(ptCropState.startX - ptCropState.endX) > 0 && Math.abs(ptCropState.startY - ptCropState.endY) > 0)) && (
                                             <div className="absolute border-2 border-indigo-500 bg-indigo-500/30 pointer-events-none" style={{ left: Math.min(ptCropState.startX, ptCropState.endX), top: Math.min(ptCropState.startY, ptCropState.endY), width: Math.abs(ptCropState.startX - ptCropState.endX), height: Math.abs(ptCropState.startY - ptCropState.endY) }} />
                                         )}
@@ -2298,7 +2363,17 @@
                         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4" style={{ zIndex: 99999 }}>
                             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200">
                                 <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                                    <h2 className="text-xl font-bold flex items-center space-x-2 text-slate-800"><Cloud className="text-indigo-500" /><span>Google Sheets 模板庫</span></h2>
+                                    <div className="flex items-center gap-3">
+                                        <h2 className="text-xl font-bold flex items-center space-x-2 text-slate-800">
+                                            <Cloud className="text-indigo-500" />
+                                            <span>Google Sheets 模板庫</span>
+                                        </h2>
+                                        {isBackgroundSyncing && (
+                                            <span className="flex items-center gap-1.5 text-[10px] bg-indigo-50 text-indigo-500 border border-indigo-100 px-2 py-1 rounded-full font-bold animate-pulse">
+                                                <RefreshCw size={10} className="animate-spin" /> 同步最新資料中...
+                                            </span>
+                                        )}
+                                    </div>
                                     <button onClick={() => setShowCloudModal(false)} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-full transition-colors"><X size={20} /></button>
                                 </div>
                                 <div className="p-4 overflow-y-auto flex-1 bg-slate-50/50 custom-scrollbar relative">
@@ -2311,7 +2386,7 @@
                                     ) : isLoadingCloud ? (
                                         <div className="text-center py-12 text-slate-500 flex flex-col items-center">
                                             <Loader2 className="animate-spin mb-3 text-indigo-500" size={32} />
-                                            <p>正在從試算表載入模板...</p>
+                                            <p>正在從試算表載入列表...</p>
                                         </div>
                                     ) : cloudTemplates.length === 0 ? (
                                         <div className="text-center py-12 text-slate-500"><Cloud className="mx-auto mb-3 opacity-20" size={48} /><p>您的試算表上還沒有任何共享模板喔！</p></div>
@@ -2324,10 +2399,10 @@
                                                         <div className="text-sm text-slate-500 mt-1 flex flex-wrap gap-x-4 gap-y-1">
                                                             {(t.platformName || t.gameName) && <span className="font-semibold text-indigo-600">{[t.platformName, t.gameName].filter(Boolean).join(' - ')}</span>}
                                                             <span className="flex items-center gap-1"><Settings size={14} /> {t.gridRows}x{t.gridCols} 盤面</span>
-                                                            <span className="flex items-center gap-1"><Trophy size={14} /> {t.extractResults?.length || 0} 條連線</span>
+                                                            <span className="flex items-center gap-1"><Trophy size={14} /> {t.linesCount !== undefined ? t.linesCount : (t.extractResults?.length || 0)} 條連線</span>
                                                         </div>
                                                     </div>
-                                                    <div className="flex gap-2">
+                                                    <div className="flex gap-2 items-center">
                                                         {t.creatorId === localUserId && (
                                                             deletingId === t.id ? (
                                                                 <div className="flex gap-1 bg-rose-50 p-1 rounded-lg border border-rose-100">
@@ -2335,10 +2410,18 @@
                                                                     <button onClick={() => setDeletingId(null)} className="px-3 py-2 bg-slate-200 text-slate-700 text-xs font-bold rounded">取消</button>
                                                                 </div>
                                                             ) : (
-                                                                <button onClick={() => setDeletingId(t.id)} className="p-2.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg"><Trash2 size={18} /></button>
+                                                                <button onClick={() => setDeletingId(t.id)} className="p-2.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg" disabled={downloadingId === t.id}><Trash2 size={18} /></button>
                                                             )
                                                         )}
-                                                        <button onClick={() => loadCloudTemplate(t)} className="px-5 py-2.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-600 hover:text-white font-bold rounded-lg flex items-center space-x-2 border border-indigo-200 hover:border-indigo-600"><Download size={18} /><span>套用此模板</span></button>
+                                                        <button
+                                                            onClick={() => loadCloudTemplate(t)}
+                                                            disabled={downloadingId === t.id}
+                                                            className={`px-5 py-2.5 bg-indigo-50 text-indigo-700 font-bold rounded-lg flex items-center space-x-2 border border-indigo-200 transition-colors
+                                ${downloadingId === t.id ? 'opacity-70 cursor-not-allowed' : 'hover:bg-indigo-600 hover:text-white hover:border-indigo-600'}`}
+                                                        >
+                                                            {downloadingId === t.id ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} />}
+                                                            <span>{downloadingId === t.id ? '載入中...' : '套用此模板'}</span>
+                                                        </button>
                                                     </div>
                                                 </div>
                                             ))}
