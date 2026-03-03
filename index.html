@@ -55,10 +55,9 @@
     <script type="text/babel" data-type="module">
         import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
         import { createRoot } from 'react-dom/client';
-        import { Play, Settings, AlertCircle, CheckCircle2, Trophy, Coins, ChevronDown, ChevronUp, Image as ImageIcon, Upload, Cloud, Download, X, Trash2, FileText, ImagePlus, Copy, Loader2, Crop, LayoutList, MousePointer2, LayoutGrid, Save, FolderOpen, RefreshCw, Plus, Paintbrush, Keyboard, Zap, Key, Database } from 'lucide-react';
+        import { Play, Settings, AlertCircle, CheckCircle2, Trophy, Coins, ChevronDown, ChevronUp, Image as ImageIcon, Upload, Cloud, Download, X, Trash2, FileText, ImagePlus, Copy, Loader2, Crop, LayoutList, MousePointer2, LayoutGrid, Save, FolderOpen, RefreshCw, Plus, Paintbrush, Keyboard, Zap, Key, Database, BrainCircuit } from 'lucide-react';
 
         // === 雲端資料庫設定 (Google Apps Script) ===
-        // 💡 請將您部署的 Web App URL 貼在下方。這個網址公開在 GitHub 上是安全的。
         const GAS_URL = "https://script.google.com/macros/s/AKfycby1bfxQa5rGdVUrr_gXoZ3bBgin-c8bvVnohqPkdipicaG2m8vWxz9y7rubpgQ8avGbzg/exec";
 
         // AI API Key (由執行環境動態提供)
@@ -101,7 +100,6 @@
             const [customApiKey, setCustomApiKey] = useState(() => localStorage.getItem('gemini_api_key') || '');
             const [showSettingsModal, setShowSettingsModal] = useState(false);
 
-            // 產生一個隨機 ID 存於本地，用以辨識「自己上傳的模板」(才能刪除)
             const [localUserId] = useState(() => {
                 let uid = localStorage.getItem('slot_local_uid');
                 if (!uid) { uid = Math.random().toString(36).substring(2, 15); localStorage.setItem('slot_local_uid', uid); }
@@ -112,7 +110,6 @@
             const [platformName, setPlatformName] = useState('');
             const [gameName, setGameName] = useState('');
 
-            // 連線擷取雙模式狀態
             const [linesMode, setLinesMode] = useState('image');
             const [linesTextInput, setLinesTextInput] = useState('');
 
@@ -121,7 +118,11 @@
             const [template, setTemplate] = useState(null);
             const [templateError, setTemplateError] = useState('');
             const [buildErrorMsg, setBuildErrorMsg] = useState('');
+
+            // Phase 展開/摺疊狀態
             const [isTemplateMinimized, setIsTemplateMinimized] = useState(false);
+            const [isPhase2Minimized, setIsPhase2Minimized] = useState(true);
+            const [isPhase3Minimized, setIsPhase3Minimized] = useState(true);
 
             // 1-1. 盤面連線影像辨識狀態
             const [lineImages, setLineImages] = useState([]);
@@ -214,7 +215,7 @@
                 lbDragRef.current = { ...lbDragRef.current, startX: e.clientX, startY: e.clientY, initW: lightboxState.w, initH: lightboxState.h };
             };
 
-            // --- 狀態管理: Phase 2 (結算) ---
+            // --- 狀態管理: Phase 2/3 (共享結算資訊) ---
             const [panelGrid, setPanelGrid] = useState(defaultPanelGrid);
             const [betInput, setBetInput] = useState(100);
             const [calcResults, setCalcResults] = useState(null);
@@ -222,8 +223,18 @@
             const [hoveredLineId, setHoveredLineId] = useState(null);
             const [showAllLines, setShowAllLines] = useState(false);
 
-            const [panelInputMode, setPanelInputMode] = useState('paint');
+            // Phase 2 手動模式切換
+            const [panelInputMode, setPanelInputMode] = useState('paint'); // 'paint' or 'text'
             const [activeBrush, setActiveBrush] = useState('');
+
+            // Phase 3 AI視覺辨識狀態
+            const [visionImageObj, setVisionImageObj] = useState(null);
+            const [visionImageSrc, setVisionImageSrc] = useState(null);
+            const [visionP1, setVisionP1] = useState({ x: 10, y: 10, w: 80, h: 80 });
+            const [isVisionProcessing, setIsVisionProcessing] = useState(false);
+            const [visionDragState, setVisionDragState] = useState(null);
+            const visionCanvasRef = useRef(null);
+            const visionContainerRef = useRef(null);
 
             const [showAIConfirmModal, setShowAIConfirmModal] = useState(false);
 
@@ -231,7 +242,7 @@
             const [cloudTemplates, setCloudTemplates] = useState([]);
             const [showCloudModal, setShowCloudModal] = useState(false);
             const [isLoadingCloud, setIsLoadingCloud] = useState(false);
-            const [isBackgroundSyncing, setIsBackgroundSyncing] = useState(false); // 背景同步狀態
+            const [isBackgroundSyncing, setIsBackgroundSyncing] = useState(false);
             const [downloadingId, setDownloadingId] = useState(null);
             const [templateName, setTemplateName] = useState('');
             const [templateMessage, setTemplateMessage] = useState('');
@@ -345,6 +356,8 @@
                     setPanelGrid(generateRandomPanelGrid(targetRows, targetCols, availableSyms));
 
                     setIsTemplateMinimized(true);
+                    setIsPhase2Minimized(false); // 預設展開手動設定 Phase 2
+                    setIsPhase3Minimized(true);
                     setCalcResults(null);
                     setTemplateError('');
                     setBuildErrorMsg('');
@@ -457,26 +470,24 @@
                 });
             };
 
-            // === Google Sheets 雲端存取邏輯 (快取優化版) ===
+            // === Google Sheets 雲端存取邏輯 ===
             const fetchCloudTemplates = useCallback(async () => {
                 if (!GAS_URL) return;
 
-                // 1. 嘗試從本地 SessionStorage 讀取舊資料，瞬間顯示
                 const cachedStr = sessionStorage.getItem('slot_templates_cache');
                 if (cachedStr) {
                     try {
                         setCloudTemplates(JSON.parse(cachedStr));
-                        setIsBackgroundSyncing(true); // 顯示背景正在更新的小圖示
+                        setIsBackgroundSyncing(true);
                     } catch (e) { }
                 } else {
-                    setIsLoadingCloud(true); // 只有第一次完全沒資料時才顯示大轉圈
+                    setIsLoadingCloud(true);
                 }
 
                 try {
                     const res = await fetch(`${GAS_URL}?action=list`);
                     const data = await res.json();
                     setCloudTemplates(data || []);
-                    // 2. 將最新資料存回本地快取
                     sessionStorage.setItem('slot_templates_cache', JSON.stringify(data || []));
                 } catch (err) {
                     console.error("取得雲端資料失敗", err);
@@ -510,7 +521,6 @@
                         if (item.thumbUrl) symbolImages[item.name] = item.thumbUrl;
                     });
 
-                    // 打包完整模板資料，準備送給 GAS 儲存
                     const newTemplate = {
                         id: Date.now().toString() + Math.random().toString(36).substring(2, 7),
                         name,
@@ -536,7 +546,6 @@
                     setTemplateMessage('✅ 已成功儲存至 Google Sheets！');
                     setTimeout(() => setTemplateMessage(''), 3000);
 
-                    // 存檔後主動清空本地快取，確保下次打開能看到新資料
                     sessionStorage.removeItem('slot_templates_cache');
                 } catch (e) {
                     setTemplateError('雲端儲存失敗：' + e.message);
@@ -554,7 +563,7 @@
                         headers: { 'Content-Type': 'text/plain;charset=utf-8' }
                     });
                     setCloudTemplates(prev => prev.filter(t => t.id !== id));
-                    sessionStorage.removeItem('slot_templates_cache'); // 刪除後清空快取
+                    sessionStorage.removeItem('slot_templates_cache');
                     setDeletingId(null);
                 } catch (err) {
                     console.error("刪除失敗", err);
@@ -563,7 +572,6 @@
                 }
             };
 
-            // 💡 按需載入：點擊下載時才向後端請求完整 JSON 資料
             const loadCloudTemplate = async (templateMeta) => {
                 setDownloadingId(templateMeta.id);
                 try {
@@ -602,9 +610,360 @@
                 }
             };
 
+            const handleExportLocalTemplate = () => {
+                setTemplateMessage('');
+                if (extractResults.length === 0 && !paytableInput) {
+                    setTemplateError('沒有可匯出的資料！');
+                    return;
+                }
+
+                const data = {
+                    version: "1.2",
+                    platformName,
+                    gameName,
+                    gridRows,
+                    gridCols,
+                    extractResults,
+                    paytableInput,
+                    ptResultItems
+                };
+
+                const jsonStr = JSON.stringify(data, null, 2);
+                const blob = new Blob([jsonStr], { type: "application/json" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+
+                const prefix = [platformName, gameName].filter(Boolean).join('-');
+                const safePrefix = prefix.replace(/[\/\\:*?"<>|]/g, '_');
+                a.download = safePrefix ? `${safePrefix}.json` : `slot_template_${gridRows}x${gridCols}_${extractResults.length}lines.json`;
+
+                a.click();
+                URL.revokeObjectURL(url);
+                setTemplateError('');
+                setTemplateMessage('✅ 本地模板已成功下載！');
+                setTimeout(() => setTemplateMessage(''), 3000);
+            };
+
+            const handleImportLocalTemplate = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                const reader = new FileReader();
+                reader.onload = (evt) => {
+                    try {
+                        const data = JSON.parse(evt.target.result);
+
+                        if (data.platformName !== undefined) setPlatformName(data.platformName);
+                        if (data.gameName !== undefined) setGameName(data.gameName);
+
+                        if (data.gridRows) setGridRows(data.gridRows);
+                        if (data.gridCols) setGridCols(data.gridCols);
+
+                        if (data.extractResults) {
+                            setExtractResults(data.extractResults);
+                            setLinesTextInput(data.extractResults.map(r => r.data.join(' ')).join('\n'));
+                        }
+
+                        if (data.paytableInput) setPaytableInput(data.paytableInput);
+                        if (data.ptResultItems) {
+                            setPtResultItems(data.ptResultItems);
+                            setPaytableMode('image');
+                        } else {
+                            setPaytableMode('text');
+                        }
+
+                        setLineImages([]);
+                        setActiveLineImageId(null);
+
+                        setTemplateMessage('✅ 本地模板載入成功！已自動為您建構並進入結算畫面。');
+                        setTimeout(() => setTemplateMessage(''), 4000);
+
+                        performAutoBuild(data);
+                    } catch (err) {
+                        setTemplateError("匯入失敗：檔案格式錯誤，請確定是有效的 JSON 模板檔案。");
+                    }
+                };
+                reader.readAsText(file);
+                e.target.value = '';
+            };
+
             // ==========================================
-            //  連線圖影像辨識 (Lines Extractor)
+            //  Phase 1: 連線圖影像辨識 Canvas 邏輯
             // ==========================================
+            const analyzeImage = () => {
+                if (!imageObj) return;
+                const offCanvas = document.createElement('canvas');
+                offCanvas.width = imageObj.width;
+                offCanvas.height = imageObj.height;
+                const ctx = offCanvas.getContext('2d');
+                ctx.drawImage(imageObj, 0, 0);
+                const imgData = ctx.getImageData(0, 0, imageObj.width, imageObj.height).data;
+
+                const x1 = (p1.x / 100) * imageObj.width, y1 = (p1.y / 100) * imageObj.height;
+                const w1 = (p1.w / 100) * imageObj.width, h1 = (p1.h / 100) * imageObj.height;
+                const x2 = (pEnd.x / 100) * imageObj.width, y2 = (pEnd.y / 100) * imageObj.height;
+                const w2 = (pEnd.w / 100) * imageObj.width, h2 = (pEnd.h / 100) * imageObj.height;
+
+                const stepX = patternCols > 1 ? (x2 - x1) / (patternCols - 1) : 0;
+                const stepY = patternRows > 1 ? (y2 - y1) / (patternRows - 1) : 0;
+                const stepW = patternCols > 1 ? (w2 - w1) / (patternCols - 1) : 0;
+                const stepH = patternRows > 1 ? (h2 - h1) / (patternRows - 1) : 0;
+
+                const newResults = [];
+
+                for (let r = 0; r < patternRows; r++) {
+                    for (let c = 0; c < patternCols; c++) {
+                        const patternIndex = r * patternCols + c + startIndex;
+                        const patX = x1 + c * stepX, patY = y1 + r * stepY;
+                        const patW = w1 + c * stepW, patH = h1 + r * stepH;
+
+                        const lineData = [];
+                        for (let gc = 0; gc < gridCols; gc++) {
+                            let maxScore = threshold;
+                            let bestRow = 0;
+                            for (let gr = 0; gr < gridRows; gr++) {
+                                const cellW = patW / gridCols;
+                                const cellH = patH / gridRows;
+                                const sampX = Math.floor(patX + gc * cellW + cellW / 2);
+                                const sampY = Math.floor(patY + gr * cellH + cellH / 2);
+                                if (sampX < 0 || sampX >= imageObj.width || sampY < 0 || sampY >= imageObj.height) continue;
+
+                                const idx = (sampY * imageObj.width + sampX) * 4;
+                                const R = imgData[idx], G = imgData[idx + 1], B = imgData[idx + 2];
+                                const yellowScore = (R + G) - B;
+
+                                if (yellowScore > maxScore) {
+                                    maxScore = yellowScore;
+                                    bestRow = gr + 1;
+                                }
+                            }
+                            lineData.push(bestRow);
+                        }
+                        newResults.push({ id: patternIndex, data: lineData });
+                    }
+                }
+
+                setExtractResults(prev => {
+                    const merged = [...prev];
+                    newResults.forEach(nr => {
+                        const existingIdx = merged.findIndex(r => r.id === nr.id);
+                        if (existingIdx >= 0) merged[existingIdx] = nr;
+                        else merged.push(nr);
+                    });
+                    merged.sort((a, b) => a.id - b.id);
+                    return merged;
+                });
+
+                setTemplateError('');
+                setTemplateMessage('✅ 當前圖片連線已成功合併提取！');
+                setTimeout(() => setTemplateMessage(''), 3000);
+            };
+
+            const handlePtFileChange = (e) => {
+                const files = Array.from(e.target.files);
+                processPtFiles(files);
+                e.target.value = '';
+            };
+
+            const handlePtDrop = (e) => {
+                e.preventDefault();
+                const files = Array.from(e.dataTransfer.files).filter(file => file.type.startsWith('image/'));
+                processPtFiles(files);
+            };
+
+            const processPtFiles = async (files) => {
+                setTemplateError("");
+                const newImages = [];
+                for (let file of files) {
+                    if (!file.type.startsWith('image/')) continue;
+                    try {
+                        const base64 = await ptFileToBase64(file);
+                        newImages.push({
+                            id: Math.random().toString(36).substring(7),
+                            file,
+                            previewUrl: URL.createObjectURL(file),
+                            base64: base64
+                        });
+                    } catch (err) {
+                        console.error("Error reading pt file:", err);
+                    }
+                }
+                setPtImages(prev => [...prev, ...newImages]);
+            };
+
+            const removePtImage = (id) => {
+                setPtImages(prev => {
+                    const filtered = prev.filter(img => img.id !== id);
+                    const removed = prev.find(img => img.id === id);
+                    if (removed) URL.revokeObjectURL(removed.previewUrl);
+                    return filtered;
+                });
+            };
+
+            const clearPtAll = () => {
+                ptImages.forEach(img => URL.revokeObjectURL(img.previewUrl));
+                setPtImages([]);
+                setPtResultItems([]);
+                setTemplateError("");
+            };
+
+            const handlePtTableChange = (index, field, value) => {
+                setPtResultItems(prev => {
+                    const newItems = [...prev];
+                    newItems[index] = { ...newItems[index], [field]: value };
+                    const formattedLines = newItems.map(item =>
+                        `${item.name} ${item.match1} ${item.match2} ${item.match3} ${item.match4} ${item.match5}`
+                    );
+                    setPaytableInput(formattedLines.join('\n'));
+                    return newItems;
+                });
+            };
+
+            const handlePtTableDelete = (index) => {
+                setPtResultItems(prev => {
+                    const newItems = prev.filter((_, i) => i !== index);
+                    const formattedLines = newItems.map(item =>
+                        `${item.name} ${item.match1} ${item.match2} ${item.match3} ${item.match4} ${item.match5}`
+                    );
+                    setPaytableInput(formattedLines.join('\n'));
+                    return newItems;
+                });
+            };
+
+            const handleAddPtRow = () => {
+                setPtResultItems(prev => {
+                    const newItems = [...prev, { name: '新符號', match1: 0, match2: 0, match3: 0, match4: 0, match5: 0, thumbUrl: null }];
+                    const formattedLines = newItems.map(item =>
+                        `${item.name} ${item.match1} ${item.match2} ${item.match3} ${item.match4} ${item.match5}`
+                    );
+                    setPaytableInput(formattedLines.join('\n'));
+                    return newItems;
+                });
+            };
+
+            const handlePtExtract = async () => {
+                if (ptImages.length === 0) {
+                    setTemplateError("請先上傳至少一張賠率表圖片");
+                    return;
+                }
+
+                const effectiveApiKey = customApiKey.trim() || apiKey;
+                const modelName = customApiKey.trim() ? "gemini-2.5-flash" : "gemini-2.5-flash-preview-09-2025";
+
+                setIsPtProcessing(true);
+                setTemplateError("");
+                setTemplateMessage("AI 正在分析賠率表中...");
+
+                try {
+                    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${effectiveApiKey}`;
+                    const imageParts = ptImages.map(img => ({
+                        inlineData: { mimeType: img.file.type, data: img.base64 }
+                    }));
+
+                    const promptText = `
+            請仔細分析圖片中的「老虎機賠率表 (Paytable)」。
+            任務目標：辨識出圖片中【每一個】圖案符號，以及它對應的連線數量(通常為 5, 4, 3, 2連線)所獲得的「賠率分數」。
+
+            命名規則：
+            1. 若符號上有寫 "WILD"、"百搭"、或取代其他圖案的功能，請統一命名為 "WILD"。
+            2. 若為英文字母或數字，請直接使用：A, K, Q, J, 10, 9。
+            3. 若為一般圖案，請根據外觀用「繁體中文」直觀命名 (例如: 金龍, 西瓜, 皇冠)。
+            4. 符號名稱 (name) 必須是連續字串，不可包含空白或特殊符號。
+
+            數值規則：
+            1. 提取對應的賠率數字。
+            2. 如果某個連線數量(例如 2 連線)沒有標示數字，請補 0。
+            3. match1 (1連線) 的賠率請一律填寫 0。
+
+            請嚴格按照 JSON Schema 回傳陣列 (Array)，包含所有辨識到的符號，絕對不可回傳空陣列或忽略任何圖案！
+          `;
+
+                    const payload = {
+                        contents: [{ role: "user", parts: [{ text: promptText }, ...imageParts] }],
+                        generationConfig: {
+                            responseMimeType: "application/json",
+                            responseSchema: {
+                                type: "ARRAY",
+                                items: {
+                                    type: "OBJECT",
+                                    properties: {
+                                        name: { type: "STRING", description: "符號名稱" },
+                                        match1: { type: "NUMBER", description: "1連線賠率" },
+                                        match2: { type: "NUMBER", description: "2連線賠率" },
+                                        match3: { type: "NUMBER", description: "3連線賠率" },
+                                        match4: { type: "NUMBER", description: "4連線賠率" },
+                                        match5: { type: "NUMBER", description: "5連線賠率" }
+                                    },
+                                    required: ["name", "match1", "match2", "match3", "match4", "match5"]
+                                }
+                            }
+                        }
+                    };
+
+                    const result = await fetchWithRetry(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    const jsonText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+                    if (!jsonText) throw new Error("無法從 AI 取得有效回應，請確認 API Key 是否正確。");
+
+                    let parsedData = JSON.parse(jsonText);
+
+                    if (parsedData && !Array.isArray(parsedData)) {
+                        const possibleArray = Object.values(parsedData).find(val => Array.isArray(val));
+                        if (possibleArray) {
+                            parsedData = possibleArray;
+                        } else {
+                            parsedData = [parsedData];
+                        }
+                    }
+
+                    if (!parsedData || parsedData.length === 0) {
+                        throw new Error("AI 無法從圖片中辨識出賠率資料。請確認圖片清晰且包含完整的賠率數字。");
+                    }
+
+                    parsedData = parsedData.map(item => ({
+                        ...item,
+                        name: String(item.name || '未命名').replace(/\s+/g, ''),
+                        match1: Number(item.match1) || 0,
+                        match2: Number(item.match2) || 0,
+                        match3: Number(item.match3) || 0,
+                        match4: Number(item.match4) || 0,
+                        match5: Number(item.match5) || 0
+                    }));
+
+                    const hasWild = parsedData.some(item => item.name.toUpperCase() === 'WILD');
+                    if (!hasWild) {
+                        parsedData.push({
+                            name: 'WILD',
+                            match1: 0,
+                            match2: 0,
+                            match3: 0,
+                            match4: 0,
+                            match5: 0
+                        });
+                    }
+
+                    setPtResultItems(parsedData.map(item => ({ ...item, thumbUrl: null })));
+
+                    const formattedLines = parsedData.map(item =>
+                        `${item.name} ${item.match1} ${item.match2} ${item.match3} ${item.match4} ${item.match5}`
+                    );
+                    setPaytableInput(formattedLines.join('\n'));
+                    setTemplateMessage("✅ 賠率表提取完成！可點擊清單手動擷取特徵縮圖。");
+
+                } catch (err) {
+                    console.error(err);
+                    setTemplateError(`賠率分析失敗：${err.message || '未知錯誤'}`);
+                    setTemplateMessage("");
+                } finally {
+                    setIsPtProcessing(false);
+                }
+            };
+
             useEffect(() => {
                 const updateHeight = () => {
                     if (!containerRef.current) return;
@@ -795,13 +1154,13 @@
                 if (!isTemplateMinimized && linesMode === 'image') requestAnimationFrame(draw);
             }, [imageObj, p1, pEnd, patternRows, patternCols, gridRows, gridCols, startIndex, isTemplateMinimized, linesMode]);
 
-            const getMousePos = (e, ref) => {
-                if (!ref.current || !imageObj) return { x: 0, y: 0 };
+            const getMousePos = (e, ref, activeImgObj) => {
+                if (!ref.current || !activeImgObj) return { x: 0, y: 0 };
                 const canvas = ref.current;
                 const rect = canvas.getBoundingClientRect();
 
-                const scaleX = imageObj.width / rect.width;
-                const scaleY = imageObj.height / rect.height;
+                const scaleX = activeImgObj.width / rect.width;
+                const scaleY = activeImgObj.height / rect.height;
 
                 return {
                     x: (e.clientX - rect.left) * scaleX,
@@ -811,7 +1170,7 @@
 
             const handleMouseDown = (e) => {
                 if (!imageObj || linesMode !== 'image') return;
-                const pos = getMousePos(e, canvasRef);
+                const pos = getMousePos(e, canvasRef, imageObj);
 
                 const getPxRect = (obj) => ({
                     x: toPx(obj.x, imageObj.width),
@@ -836,7 +1195,7 @@
 
             const handleMouseMove = (e) => {
                 if (!dragState || !imageObj || linesMode !== 'image') return;
-                const pos = getMousePos(e, canvasRef);
+                const pos = getMousePos(e, canvasRef, imageObj);
 
                 const dxPct = toPct(pos.x - dragState.startX, imageObj.width);
                 const dyPct = toPct(pos.y - dragState.startY, imageObj.height);
@@ -859,212 +1218,172 @@
 
             const handleMouseUp = () => setDragState(null);
 
-            const analyzeImage = () => {
-                if (!imageObj) return;
-                const offCanvas = document.createElement('canvas');
-                offCanvas.width = imageObj.width;
-                offCanvas.height = imageObj.height;
-                const ctx = offCanvas.getContext('2d');
-                ctx.drawImage(imageObj, 0, 0);
-                const imgData = ctx.getImageData(0, 0, imageObj.width, imageObj.height).data;
+            // ==========================================
+            //  Phase 3: AI 視覺辨識的 Canvas 交互邏輯
+            // ==========================================
+            useEffect(() => {
+                if (visionImageObj && visionCanvasRef.current && !isPhase3Minimized) {
+                    const canvas = visionCanvasRef.current;
+                    const ctx = canvas.getContext('2d');
+                    canvas.width = visionImageObj.width;
+                    canvas.height = visionImageObj.height;
 
-                const x1 = (p1.x / 100) * imageObj.width, y1 = (p1.y / 100) * imageObj.height;
-                const w1 = (p1.w / 100) * imageObj.width, h1 = (p1.h / 100) * imageObj.height;
-                const x2 = (pEnd.x / 100) * imageObj.width, y2 = (pEnd.y / 100) * imageObj.height;
-                const w2 = (pEnd.w / 100) * imageObj.width, h2 = (pEnd.h / 100) * imageObj.height;
+                    ctx.drawImage(visionImageObj, 0, 0);
 
-                const stepX = patternCols > 1 ? (x2 - x1) / (patternCols - 1) : 0;
-                const stepY = patternRows > 1 ? (y2 - y1) / (patternRows - 1) : 0;
-                const stepW = patternCols > 1 ? (w2 - w1) / (patternCols - 1) : 0;
-                const stepH = patternRows > 1 ? (h2 - h1) / (patternRows - 1) : 0;
+                    const getRect = (obj) => ({
+                        x: toPx(obj.x, visionImageObj.width),
+                        y: toPx(obj.y, visionImageObj.height),
+                        w: toPx(obj.w, visionImageObj.width),
+                        h: toPx(obj.h, visionImageObj.height)
+                    });
+                    const rect = getRect(visionP1);
+                    const baseThickness = Math.max(2, Math.floor(visionImageObj.width / 400));
+                    const handleSize = Math.max(12, Math.floor(visionImageObj.width / 60));
 
-                const newResults = [];
+                    ctx.lineWidth = baseThickness;
+                    ctx.strokeStyle = '#10b981';
+                    ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
 
-                for (let r = 0; r < patternRows; r++) {
-                    for (let c = 0; c < patternCols; c++) {
-                        const patternIndex = r * patternCols + c + startIndex;
-                        const patX = x1 + c * stepX, patY = y1 + r * stepY;
-                        const patW = w1 + c * stepW, patH = h1 + r * stepH;
+                    ctx.fillStyle = '#10b981';
+                    ctx.fillRect(rect.x + rect.w - handleSize, rect.y + rect.h - handleSize, handleSize, handleSize);
 
-                        const lineData = [];
-                        for (let gc = 0; gc < gridCols; gc++) {
-                            let maxScore = threshold;
-                            let bestRow = 0;
-                            for (let gr = 0; gr < gridRows; gr++) {
-                                const cellW = patW / gridCols;
-                                const cellH = patH / gridRows;
-                                const sampX = Math.floor(patX + gc * cellW + cellW / 2);
-                                const sampY = Math.floor(patY + gr * cellH + cellH / 2);
-                                if (sampX < 0 || sampX >= imageObj.width || sampY < 0 || sampY >= imageObj.height) continue;
+                    if (template && template.rows > 0 && template.cols > 0) {
+                        ctx.beginPath();
+                        ctx.strokeStyle = 'rgba(16, 185, 129, 0.5)';
+                        const cellW = rect.w / template.cols;
+                        const cellH = rect.h / template.rows;
 
-                                const idx = (sampY * imageObj.width + sampX) * 4;
-                                const R = imgData[idx], G = imgData[idx + 1], B = imgData[idx + 2];
-                                const yellowScore = (R + G) - B;
-
-                                if (yellowScore > maxScore) {
-                                    maxScore = yellowScore;
-                                    bestRow = gr + 1;
-                                }
-                            }
-                            lineData.push(bestRow);
+                        for (let c = 1; c < template.cols; c++) {
+                            const lx = rect.x + c * cellW;
+                            ctx.moveTo(lx, rect.y);
+                            ctx.lineTo(lx, rect.y + rect.h);
                         }
-                        newResults.push({ id: patternIndex, data: lineData });
+                        for (let r = 1; r < template.rows; r++) {
+                            const ly = rect.y + r * cellH;
+                            ctx.moveTo(rect.x, ly);
+                            ctx.lineTo(rect.x + rect.w, ly);
+                        }
+                        ctx.stroke();
                     }
                 }
+            }, [visionImageObj, visionP1, template, isPhase3Minimized]);
 
-                setExtractResults(prev => {
-                    const merged = [...prev];
-                    newResults.forEach(nr => {
-                        const existingIdx = merged.findIndex(r => r.id === nr.id);
-                        if (existingIdx >= 0) merged[existingIdx] = nr;
-                        else merged.push(nr);
-                    });
-                    merged.sort((a, b) => a.id - b.id);
-                    return merged;
+            const handleVisionMouseDown = (e) => {
+                if (!visionImageObj) return;
+                const pos = getMousePos(e, visionCanvasRef, visionImageObj);
+
+                const getPxRect = (obj) => ({
+                    x: toPx(obj.x, visionImageObj.width),
+                    y: toPx(obj.y, visionImageObj.height),
+                    w: toPx(obj.w, visionImageObj.width),
+                    h: toPx(obj.h, visionImageObj.height)
                 });
+                const rect = getPxRect(visionP1);
+                const handleSizePx = Math.max(12, Math.floor(visionImageObj.width / 60));
 
-                setTemplateError('');
-                setTemplateMessage('✅ 當前圖片連線已成功合併提取！');
-                setTimeout(() => setTemplateMessage(''), 3000);
+                const isOverHandle = (x, y, r) => x >= r.x + r.w - handleSizePx * 1.5 && x <= r.x + r.w + handleSizePx * 1.5 && y >= r.y + r.h - handleSizePx * 1.5 && y <= r.y + r.h + handleSizePx * 1.5;
+                const isOverRect = (x, y, r) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
+
+                if (isOverHandle(pos.x, pos.y, rect)) {
+                    setVisionDragState({ action: 'resize', startX: pos.x, startY: pos.y, initObj: { ...visionP1 } });
+                } else if (isOverRect(pos.x, pos.y, rect)) {
+                    setVisionDragState({ action: 'move', startX: pos.x, startY: pos.y, initObj: { ...visionP1 } });
+                }
             };
 
-            const handlePtFileChange = (e) => {
-                const files = Array.from(e.target.files);
-                processPtFiles(files);
+            const handleVisionMouseMove = (e) => {
+                if (!visionDragState || !visionImageObj) return;
+                const pos = getMousePos(e, visionCanvasRef, visionImageObj);
+                const dxPct = toPct(pos.x - visionDragState.startX, visionImageObj.width);
+                const dyPct = toPct(pos.y - visionDragState.startY, visionImageObj.height);
+
+                if (visionDragState.action === 'move') {
+                    setVisionP1({ ...visionDragState.initObj, x: Math.max(0, Math.min(100 - visionDragState.initObj.w, visionDragState.initObj.x + dxPct)), y: Math.max(0, Math.min(100 - visionDragState.initObj.h, visionDragState.initObj.y + dyPct)) });
+                } else if (visionDragState.action === 'resize') {
+                    setVisionP1({ ...visionDragState.initObj, w: Math.max(5, Math.min(100 - visionDragState.initObj.x, visionDragState.initObj.w + dxPct)), h: Math.max(5, Math.min(100 - visionDragState.initObj.y, visionDragState.initObj.h + dyPct)) });
+                }
+            };
+
+            const handleVisionMouseUp = () => setVisionDragState(null);
+
+            const handleVisionImageUpload = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (evt) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        setVisionImageObj(img);
+                        setVisionImageSrc(evt.target.result);
+                    };
+                    img.src = evt.target.result;
+                };
+                reader.readAsDataURL(file);
                 e.target.value = '';
             };
 
-            const handlePtDrop = (e) => {
-                e.preventDefault();
-                const files = Array.from(e.dataTransfer.files).filter(file => file.type.startsWith('image/'));
-                processPtFiles(files);
-            };
-
-            const processPtFiles = async (files) => {
-                setTemplateError("");
-                const newImages = [];
-                for (let file of files) {
-                    if (!file.type.startsWith('image/')) continue;
-                    try {
-                        const base64 = await ptFileToBase64(file);
-                        newImages.push({
-                            id: Math.random().toString(36).substring(7),
-                            file,
-                            previewUrl: URL.createObjectURL(file),
-                            base64: base64
-                        });
-                    } catch (err) {
-                        console.error("Error reading pt file:", err);
-                    }
-                }
-                setPtImages(prev => [...prev, ...newImages]);
-            };
-
-            const removePtImage = (id) => {
-                setPtImages(prev => {
-                    const filtered = prev.filter(img => img.id !== id);
-                    const removed = prev.find(img => img.id === id);
-                    if (removed) URL.revokeObjectURL(removed.previewUrl);
-                    return filtered;
-                });
-            };
-
-            const clearPtAll = () => {
-                ptImages.forEach(img => URL.revokeObjectURL(img.previewUrl));
-                setPtImages([]);
-                setPtResultItems([]);
-                setTemplateError("");
-            };
-
-            const handlePtTableChange = (index, field, value) => {
-                setPtResultItems(prev => {
-                    const newItems = [...prev];
-                    newItems[index] = { ...newItems[index], [field]: value };
-                    const formattedLines = newItems.map(item =>
-                        `${item.name} ${item.match1} ${item.match2} ${item.match3} ${item.match4} ${item.match5}`
-                    );
-                    setPaytableInput(formattedLines.join('\n'));
-                    return newItems;
-                });
-            };
-
-            const handlePtTableDelete = (index) => {
-                setPtResultItems(prev => {
-                    const newItems = prev.filter((_, i) => i !== index);
-                    const formattedLines = newItems.map(item =>
-                        `${item.name} ${item.match1} ${item.match2} ${item.match3} ${item.match4} ${item.match5}`
-                    );
-                    setPaytableInput(formattedLines.join('\n'));
-                    return newItems;
-                });
-            };
-
-            const handleAddPtRow = () => {
-                setPtResultItems(prev => {
-                    const newItems = [...prev, { name: '新符號', match1: 0, match2: 0, match3: 0, match4: 0, match5: 0, thumbUrl: null }];
-                    const formattedLines = newItems.map(item =>
-                        `${item.name} ${item.match1} ${item.match2} ${item.match3} ${item.match4} ${item.match5}`
-                    );
-                    setPaytableInput(formattedLines.join('\n'));
-                    return newItems;
-                });
-            };
-
-            const handlePtExtract = async () => {
-                if (ptImages.length === 0) {
-                    setTemplateError("請先上傳至少一張賠率表圖片");
+            // === 核心：呼叫 Gemini API 進行語意辨識 (Phase 3) ===
+            const performAIVisionMatching = async () => {
+                if (!visionImageObj || !template) {
+                    setCalculateError("請先上傳截圖，並確保已經完成 Phase 1 模板設定！");
                     return;
                 }
 
-                // 智慧選擇模型：如果使用者有填金鑰就用正式版，沒填就用系統自動提供的預覽版
                 const effectiveApiKey = customApiKey.trim() || apiKey;
                 const modelName = customApiKey.trim() ? "gemini-2.5-flash" : "gemini-2.5-flash-preview-09-2025";
 
-                setIsPtProcessing(true);
-                setTemplateError("");
-                setTemplateMessage("AI 正在分析賠率表中...");
+                setIsVisionProcessing(true);
+                setCalculateError('');
+                setTemplateMessage('AI 正在視覺辨識盤面中 (此過程可能需要幾秒鐘)...');
 
                 try {
+                    const offCanvas = document.createElement('canvas');
+                    const rx = (visionP1.x / 100) * visionImageObj.width;
+                    const ry = (visionP1.y / 100) * visionImageObj.height;
+                    const rw = (visionP1.w / 100) * visionImageObj.width;
+                    const rh = (visionP1.h / 100) * visionImageObj.height;
+
+                    offCanvas.width = rw;
+                    offCanvas.height = rh;
+                    const ctx = offCanvas.getContext('2d');
+                    ctx.drawImage(visionImageObj, rx, ry, rw, rh, 0, 0, rw, rh);
+
+                    const base64Image = offCanvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+
                     const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${effectiveApiKey}`;
-                    const imageParts = ptImages.map(img => ({
-                        inlineData: { mimeType: img.file.type, data: img.base64 }
-                    }));
 
                     const promptText = `
-            請仔細分析圖片中的「老虎機賠率表 (Paytable)」。
-            任務目標：辨識出圖片中【每一個】圖案符號，以及它對應的連線數量(通常為 5, 4, 3, 2連線)所獲得的「賠率分數」。
-
-            命名規則：
-            1. 若符號上有寫 "WILD"、"百搭"、或取代其他圖案的功能，請統一命名為 "WILD"。
-            2. 若為英文字母或數字，請直接使用：A, K, Q, J, 10, 9。
-            3. 若為一般圖案，請根據外觀用「繁體中文」直觀命名 (例如: 金龍, 西瓜, 皇冠)。
-            4. 符號名稱 (name) 必須是連續字串，不可包含空白或特殊符號。
-
-            數值規則：
-            1. 提取對應的賠率數字。
-            2. 如果某個連線數量(例如 2 連線)沒有標示數字，請補 0。
-            3. match1 (1連線) 的賠率請一律填寫 0。
-
-            請嚴格按照 JSON Schema 回傳陣列 (Array)，包含所有辨識到的符號，絕對不可回傳空陣列或忽略任何圖案！
-          `;
+                    這是一張老虎機遊戲盤面的截圖（已為你裁切好只保留盤面網格區域）。
+                    請幫我辨識出網格中「每一個位置」的符號。
+                    網格的大小為：${template.rows} 列 (Rows) x ${template.cols} 欄 (Cols)。
+                    
+                    【重要規則】
+                    1. 你只能從以下「可用符號清單」中選擇最接近的符號填入，絕對不能自己發明新名稱：
+                       [${availableSymbols.join(', ')}]
+                    2. 如果某個格子看起來被變暗、變灰（通常是未中獎狀態），請忽略顏色，依然根據它的「形狀和特徵」辨識出它是哪個符號。
+                    3. 如果某個格子真的完全被特效遮擋無法辨識，或是空的，請填入空字串 ""。
+                    `;
 
                     const payload = {
-                        contents: [{ role: "user", parts: [{ text: promptText }, ...imageParts] }],
+                        contents: [{
+                            role: "user",
+                            parts: [
+                                { text: promptText },
+                                { inlineData: { mimeType: "image/jpeg", data: base64Image } }
+                            ]
+                        }],
                         generationConfig: {
                             responseMimeType: "application/json",
                             responseSchema: {
                                 type: "ARRAY",
+                                description: `盤面二維陣列，共 ${template.rows} 列。`,
                                 items: {
-                                    type: "OBJECT",
-                                    properties: {
-                                        name: { type: "STRING", description: "符號名稱" },
-                                        match1: { type: "NUMBER", description: "1連線賠率" },
-                                        match2: { type: "NUMBER", description: "2連線賠率" },
-                                        match3: { type: "NUMBER", description: "3連線賠率" },
-                                        match4: { type: "NUMBER", description: "4連線賠率" },
-                                        match5: { type: "NUMBER", description: "5連線賠率" }
-                                    },
-                                    required: ["name", "match1", "match2", "match3", "match4", "match5"]
+                                    type: "ARRAY",
+                                    description: `每一列包含 ${template.cols} 個符號。`,
+                                    items: {
+                                        type: "STRING",
+                                        description: "符號名稱"
+                                    }
                                 }
                             }
                         }
@@ -1079,138 +1398,38 @@
                     const jsonText = result.candidates?.[0]?.content?.parts?.[0]?.text;
                     if (!jsonText) throw new Error("無法從 AI 取得有效回應，請確認 API Key 是否正確。");
 
-                    let parsedData = JSON.parse(jsonText);
+                    let parsedGrid = JSON.parse(jsonText);
 
-                    // 防禦機制：有時 AI 可能會回傳 { "items": [...] } 而非直接的陣列
-                    if (parsedData && !Array.isArray(parsedData)) {
-                        const possibleArray = Object.values(parsedData).find(val => Array.isArray(val));
-                        if (possibleArray) {
-                            parsedData = possibleArray;
-                        } else {
-                            parsedData = [parsedData];
+                    if (!Array.isArray(parsedGrid) || parsedGrid.length === 0 || !Array.isArray(parsedGrid[0])) {
+                        const possibleGrid = Object.values(parsedGrid).find(val => Array.isArray(val) && Array.isArray(val[0]));
+                        if (possibleGrid) parsedGrid = possibleGrid;
+                        else throw new Error("AI 回傳的格式不正確，無法解析為二維盤面陣列。");
+                    }
+
+                    const safeGrid = [];
+                    for (let r = 0; r < template.rows; r++) {
+                        const rowArr = [];
+                        for (let c = 0; c < template.cols; c++) {
+                            let sym = parsedGrid[r]?.[c] || '';
+                            if (sym && !availableSymbols.includes(sym)) {
+                                console.warn(`AI 幻覺過濾：移除了未知的符號 [${sym}]`);
+                                sym = '';
+                            }
+                            rowArr.push(sym);
                         }
+                        safeGrid.push(rowArr);
                     }
 
-                    // 檢查是否真的有抓到資料
-                    if (!parsedData || parsedData.length === 0) {
-                        throw new Error("AI 無法從圖片中辨識出賠率資料。請確認圖片清晰且包含完整的賠率數字。");
-                    }
-
-                    parsedData = parsedData.map(item => ({
-                        ...item,
-                        name: String(item.name || '未命名').replace(/\s+/g, ''),
-                        match1: Number(item.match1) || 0,
-                        match2: Number(item.match2) || 0,
-                        match3: Number(item.match3) || 0,
-                        match4: Number(item.match4) || 0,
-                        match5: Number(item.match5) || 0
-                    }));
-
-                    const hasWild = parsedData.some(item => item.name.toUpperCase() === 'WILD');
-                    if (!hasWild) {
-                        parsedData.push({
-                            name: 'WILD',
-                            match1: 0,
-                            match2: 0,
-                            match3: 0,
-                            match4: 0,
-                            match5: 0
-                        });
-                    }
-
-                    setPtResultItems(parsedData.map(item => ({ ...item, thumbUrl: null })));
-
-                    const formattedLines = parsedData.map(item =>
-                        `${item.name} ${item.match1} ${item.match2} ${item.match3} ${item.match4} ${item.match5}`
-                    );
-                    setPaytableInput(formattedLines.join('\n'));
-                    setTemplateMessage("✅ 賠率表提取完成！可點擊清單手動擷取特徵縮圖。");
+                    setPanelGrid(safeGrid);
+                    setTemplateMessage('✅ AI 語意辨識完成！連線結果已更新。');
+                    setTimeout(() => setTemplateMessage(''), 4000);
 
                 } catch (err) {
                     console.error(err);
-                    setTemplateError(`賠率分析失敗：${err.message || '未知錯誤'}`);
-                    setTemplateMessage("");
+                    setCalculateError("AI 辨識發生錯誤：" + err.message);
                 } finally {
-                    setIsPtProcessing(false);
+                    setIsVisionProcessing(false);
                 }
-            };
-
-            const handleExportLocalTemplate = () => {
-                setTemplateMessage('');
-                if (extractResults.length === 0 && !paytableInput) {
-                    setTemplateError('沒有可匯出的資料！');
-                    return;
-                }
-
-                const data = {
-                    version: "1.2",
-                    platformName,
-                    gameName,
-                    gridRows,
-                    gridCols,
-                    extractResults,
-                    paytableInput,
-                    ptResultItems
-                };
-
-                const jsonStr = JSON.stringify(data, null, 2);
-                const blob = new Blob([jsonStr], { type: "application/json" });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-
-                const prefix = [platformName, gameName].filter(Boolean).join('-');
-                const safePrefix = prefix.replace(/[\/\\:*?"<>|]/g, '_');
-                a.download = safePrefix ? `${safePrefix}.json` : `slot_template_${gridRows}x${gridCols}_${extractResults.length}lines.json`;
-
-                a.click();
-                URL.revokeObjectURL(url);
-                setTemplateError('');
-                setTemplateMessage('✅ 本地模板已成功下載！');
-                setTimeout(() => setTemplateMessage(''), 3000);
-            };
-
-            const handleImportLocalTemplate = (e) => {
-                const file = e.target.files[0];
-                if (!file) return;
-
-                const reader = new FileReader();
-                reader.onload = (evt) => {
-                    try {
-                        const data = JSON.parse(evt.target.result);
-
-                        if (data.platformName !== undefined) setPlatformName(data.platformName);
-                        if (data.gameName !== undefined) setGameName(data.gameName);
-
-                        if (data.gridRows) setGridRows(data.gridRows);
-                        if (data.gridCols) setGridCols(data.gridCols);
-
-                        if (data.extractResults) {
-                            setExtractResults(data.extractResults);
-                            setLinesTextInput(data.extractResults.map(r => r.data.join(' ')).join('\n'));
-                        }
-
-                        if (data.paytableInput) setPaytableInput(data.paytableInput);
-                        if (data.ptResultItems) {
-                            setPtResultItems(data.ptResultItems);
-                            setPaytableMode('image');
-                        } else {
-                            setPaytableMode('text');
-                        }
-
-                        setLineImages([]);
-                        setActiveLineImageId(null);
-
-                        setTemplateMessage('✅ 本地模板載入成功！已自動為您建構並進入結算畫面。');
-                        setTimeout(() => setTemplateMessage(''), 4000);
-
-                        performAutoBuild(data);
-                    } catch (err) {
-                        setTemplateError("匯入失敗：檔案格式錯誤，請確定是有效的 JSON 模板檔案。");
-                    }
-                };
-                reader.readAsText(file);
-                e.target.value = '';
             };
 
             const handleBuildTemplate = () => {
@@ -1268,6 +1487,8 @@
                     setPanelGrid(generateRandomPanelGrid(gridRows, gridCols, availableSyms));
 
                     setIsTemplateMinimized(true);
+                    setIsPhase2Minimized(false); // 預設打開手動模式
+                    setIsPhase3Minimized(true);
                 } catch (err) {
                     setTemplateError(err.message);
                     setBuildErrorMsg(err.message);
@@ -1392,6 +1613,109 @@
                 }
             }, [calculateResults, template]);
 
+            // --- 共用的右側結算清單元件 ---
+            const renderResultView = () => (
+                <div className="relative flex flex-col h-full lg:block w-full">
+                    <div className="static lg:absolute lg:inset-0 flex flex-col w-full h-full">
+                        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col flex-1 min-h-0">
+
+                            <div className="mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200 shrink-0">
+                                <div className="flex-1 w-full">
+                                    <label className="block text-sm font-bold text-slate-700 mb-1.5">押注 (Total Bet)</label>
+                                    <div className="relative">
+                                        <Coins className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                                        <input type="number" value={betInput} onChange={(e) => setBetInput(e.target.value)} className="w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none font-black text-lg text-indigo-700 shadow-sm transition-shadow" />
+                                    </div>
+                                </div>
+                                <div className="px-4 py-2 bg-emerald-50 border border-emerald-200 text-emerald-700 font-bold rounded-lg flex items-center justify-center gap-2 shadow-sm pointer-events-none select-none shrink-0 self-end sm:self-auto h-[46px] mt-0 sm:mt-6 w-full sm:w-auto">
+                                    <Zap size={18} className="fill-emerald-500 text-emerald-500" /> 即時結算結果
+                                </div>
+                            </div>
+
+                            {calculateError && (
+                                <div className="mb-6 p-3 bg-rose-50 border border-rose-200 text-rose-600 rounded-lg text-sm font-bold flex items-center gap-2 animate-in fade-in zoom-in duration-200 shadow-sm shrink-0">
+                                    <AlertCircle size={18} className="shrink-0" />
+                                    <span>{calculateError}</span>
+                                </div>
+                            )}
+
+                            {calcResults && (
+                                <div className="flex flex-col flex-1 min-h-0">
+                                    <div className="flex items-center justify-between mb-4 border-b border-slate-100 pb-4 shrink-0">
+                                        <div className="flex flex-col space-y-2">
+                                            <h2 className="text-xl font-semibold flex items-center gap-2"><Trophy className="text-amber-500" size={24} />結算清單</h2>
+                                            <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer bg-slate-50 px-3 py-1.5 rounded-lg border hover:bg-slate-100 transition-colors">
+                                                <input type="checkbox" checked={showAllLines} onChange={(e) => setShowAllLines(e.target.checked)} className="rounded text-indigo-600 focus:ring-indigo-500" />
+                                                <span className="font-medium">顯示所有連線 (含未中獎)</span>
+                                            </label>
+                                        </div>
+                                        <div className="text-right bg-emerald-50 px-4 py-2 rounded-lg border border-emerald-100 transition-all duration-300">
+                                            <p className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider mb-0.5">Total Win</p>
+                                            <p className="text-3xl font-black text-emerald-600">{calcResults.totalWin.toLocaleString()}</p>
+                                        </div>
+                                    </div>
+                                    <div className="space-y-2 flex-1 overflow-y-auto pr-2 custom-scrollbar min-h-0 max-h-[440px]">
+                                        {calcResults.details.filter(d => showAllLines || d.winAmount > 0).length === 0 ? (
+                                            <div className="text-center py-10 text-slate-500 bg-slate-50 rounded-lg border border-dashed border-slate-200 animate-in fade-in duration-300">
+                                                <p className="text-lg">此盤面未達成任何連線中獎 😢</p>
+                                            </div>
+                                        ) : (
+                                            calcResults.details.filter(d => showAllLines || d.winAmount > 0).map((result, idx) => {
+                                                const isWin = result.winAmount > 0;
+                                                return (
+                                                    <div key={idx} className={`p-2 rounded-lg border flex items-center gap-3 transition-all duration-300 cursor-pointer animate-in fade-in slide-in-from-bottom-2 ${isWin ? 'bg-white border-indigo-100 shadow-sm hover:border-indigo-300 hover:shadow-md' : 'opacity-60 grayscale bg-slate-50'}`} onMouseEnter={() => setHoveredLineId(result.lineId)} onMouseLeave={() => setHoveredLineId(null)}>
+                                                        <div className={`w-12 h-16 shrink-0 flex flex-col justify-between rounded-md border shadow-sm overflow-hidden ${isWin ? 'bg-[#1a1c29] border-slate-500' : 'bg-slate-200 border-slate-300'}`}>
+                                                            <div className="flex-1 min-h-0 flex items-center justify-center px-1 pt-1 relative">
+                                                                {template.symbolImages?.[result.symbol] ? (
+                                                                    <img src={template.symbolImages[result.symbol]} className="max-w-full max-h-full object-contain drop-shadow-md" alt={result.symbol} />
+                                                                ) : (
+                                                                    <span className={`text-[10px] font-black leading-tight text-center ${isWin ? 'text-slate-300' : 'text-slate-500'}`}>{result.symbol}</span>
+                                                                )}
+                                                            </div>
+                                                            <div className={`shrink-0 pb-1 text-center text-sm font-black tracking-wider ${isWin ? 'text-white' : 'text-slate-500'}`}>
+                                                                {result.lineId}
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex-1 min-w-0 flex flex-col justify-center">
+                                                            <div className="flex items-center justify-between mb-1">
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="font-bold text-sm truncate text-slate-800">{result.symbol} {result.count}連</span>
+                                                                    {isWin ? (
+                                                                        <span className="text-[10px] px-2 py-0.5 bg-indigo-50 text-indigo-700 font-bold rounded-full border border-indigo-200">
+                                                                            賠率 {result.payoutMult}
+                                                                        </span>
+                                                                    ) : (
+                                                                        <span className="text-[10px] px-2 py-0.5 bg-slate-200 text-slate-500 rounded-full font-medium">未中獎</span>
+                                                                    )}
+                                                                </div>
+                                                                <span className={`font-black text-sm shrink-0 ${isWin ? 'text-emerald-600' : 'text-slate-400'}`}>
+                                                                    {isWin ? `+${result.winAmount.toLocaleString()}` : '-'}
+                                                                </span>
+                                                            </div>
+                                                            <div className="flex items-center">
+                                                                <div className="text-[10px] text-slate-500 font-mono bg-slate-100/80 px-2 py-0.5 rounded border border-slate-200 flex items-center gap-1">
+                                                                    <span className="text-slate-400 font-bold">路線:</span>
+                                                                    {result.positions.map((pos, i) => (
+                                                                        <React.Fragment key={i}>
+                                                                            <span className={i < result.count && isWin ? 'text-indigo-600 font-black' : ''}>{pos}</span>
+                                                                            {i < result.positions.length - 1 && <span className="text-slate-300 mx-0.5">-</span>}
+                                                                        </React.Fragment>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+
             return (
                 <div className="min-h-screen bg-slate-50 text-slate-800 p-6 font-sans relative">
 
@@ -1421,7 +1745,9 @@
                             </button>
                         </header>
 
-                        {/* Phase 1: 模板設定 */}
+                        {/* ========================================================================= */}
+                        {/* Phase 1: 模板設定 (影像提取)                                               */}
+                        {/* ========================================================================= */}
                         <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden transition-all duration-300">
                             <div
                                 className="flex items-center justify-between p-5 cursor-pointer hover:bg-slate-50 transition-colors"
@@ -1429,7 +1755,7 @@
                             >
                                 <div className="flex items-center space-x-2">
                                     <Settings className="text-indigo-500" size={20} />
-                                    <h2 className="text-xl font-semibold">Phase 1: 模板設定 (影像提取)</h2>
+                                    <h2 className="text-xl font-semibold">Phase 1: 模板設定 (影像提取與參數)</h2>
                                 </div>
                                 <div className="flex items-center space-x-4">
                                     {template && isTemplateMinimized && (
@@ -1444,16 +1770,13 @@
 
                             {!isTemplateMinimized && (
                                 <div className="p-6 pt-0 border-t border-slate-100 mt-4 space-y-6">
-
-                                    {/* Phase 1 錯誤訊息顯示區塊 */}
                                     {templateError && (
                                         <div className="mt-4 p-3 bg-rose-50 border border-rose-200 text-rose-600 rounded-lg text-sm font-bold flex items-center gap-2 animate-in fade-in zoom-in duration-200 shadow-sm">
                                             <AlertCircle size={18} className="shrink-0" />
                                             <span>{templateError}</span>
                                         </div>
                                     )}
-
-                                    {/* 頂端操作列 (模板存取與雲端功能) */}
+                                    {/* 頂端操作列 */}
                                     <div className="bg-indigo-50/70 p-4 rounded-xl border border-indigo-100 flex flex-col lg:flex-row justify-between gap-4 items-center">
                                         <div className="flex w-full lg:w-auto gap-2">
                                             <label className="flex-1 lg:flex-none py-2.5 px-4 bg-white hover:bg-slate-50 text-slate-700 font-bold rounded-lg text-sm flex items-center justify-center gap-1.5 cursor-pointer transition-colors shadow-sm border border-slate-200">
@@ -1477,7 +1800,7 @@
                                         </div>
                                     </div>
 
-                                    {/* 平台名稱與遊戲名稱輸入區 */}
+                                    {/* 平台與遊戲名稱 */}
                                     <div className="bg-slate-50 p-5 rounded-xl border border-slate-200">
                                         <div className="flex flex-col sm:flex-row gap-4">
                                             <div className="flex-1">
@@ -1503,7 +1826,7 @@
                                         </div>
                                     </div>
 
-                                    {/* Step 1: 連線矩陣設定 */}
+                                    {/* 連線矩陣設定 */}
                                     <div className="bg-slate-50 p-5 rounded-xl border border-slate-200">
                                         <div className="flex items-center justify-between mb-4 border-b border-slate-200 pb-3">
                                             <label className="text-base font-bold text-slate-800">線獎資料設定</label>
@@ -1589,10 +1912,8 @@
                                                 className="bg-slate-950 rounded-xl overflow-hidden border border-slate-800 shadow-inner flex flex-col xl:flex-row transition-all duration-300"
                                                 style={{ height: layoutStyle.wrapperHeight }}
                                             >
-                                                {/* 左側主畫布區 (包含縮圖列) */}
+                                                {/* 左側主畫布區 */}
                                                 <div className="flex-1 relative flex flex-col bg-slate-900 transition-all duration-300 min-h-[400px]">
-
-                                                    {/* 多圖縮圖列 */}
                                                     {lineImages.length > 0 && (
                                                         <div className="flex gap-2 overflow-x-auto p-3 bg-slate-950 border-b border-slate-800 shrink-0 custom-scrollbar z-20">
                                                             {lineImages.map(img => (
@@ -1616,7 +1937,6 @@
                                                         </div>
                                                     )}
 
-                                                    {/* 畫布與上傳區 */}
                                                     <div className="flex-1 relative flex flex-col p-4 overflow-y-auto custom-scrollbar">
                                                         {!imageSrc ? (
                                                             <div className="m-auto text-center w-full max-w-md">
@@ -1633,7 +1953,6 @@
                                                                     或在上方點擊「瀏覽雲端模板庫」直接套用
                                                                 </p>
 
-                                                                {/* 連線圖範例預覽 */}
                                                                 <div className="mt-6 border border-slate-700/50 rounded-xl p-4 bg-slate-900/50 shadow-inner text-left">
                                                                     <span className="text-xs text-slate-400 font-bold mb-3 flex items-center justify-center gap-1.5"><ImageIcon size={14} /> 線獎圖上傳範例參考 (40 Sparkling Crown)</span>
                                                                     <div className="w-full bg-[#000000] rounded-lg border border-slate-700 p-4 grid grid-cols-3 sm:grid-cols-6 gap-3 opacity-90 select-none shadow-[0_0_15px_rgba(0,0,0,0.5)]">
@@ -1654,7 +1973,6 @@
                                                                     </div>
                                                                 </div>
 
-                                                                {/* 教學範本區塊 */}
                                                                 <div className="mt-6 p-5 bg-slate-800/40 rounded-xl border border-slate-700/50 text-left">
                                                                     <div className="flex items-center gap-2 mb-2">
                                                                         <div className="p-1.5 bg-indigo-500/20 text-indigo-400 rounded-lg"><Zap size={18} /></div>
@@ -1950,270 +2268,326 @@
                             )}
                         </div>
 
-                        {/* Phase 2: 盤面結算 & 預覽 */}
-                        <div className={`grid grid-cols-1 lg:grid-cols-2 gap-6 ${!template ? 'opacity-30 pointer-events-none' : ''}`}>
-                            <div className="flex flex-col h-full">
-                                <div className="bg-slate-900 p-5 sm:p-6 rounded-xl shadow-2xl border border-slate-800 flex flex-col flex-1">
-                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-3 border-b border-slate-700 pb-4 gap-3">
-                                        <div className="flex items-center gap-2">
-                                            <h2 className="text-xl font-semibold flex items-center gap-2 text-white"><Play className="text-indigo-400" size={20} />Phase 2: 盤面設定</h2>
-                                        </div>
-                                        <div className="flex items-center gap-2 sm:gap-3">
-                                            {template && (
-                                                <button onClick={handleRandomizePanel} className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 text-indigo-400 hover:bg-slate-700 hover:text-indigo-300 rounded-lg text-sm font-bold transition-colors border border-slate-700 shadow-sm shrink-0">
-                                                    <RefreshCw size={14} />隨機盤面
-                                                </button>
-                                            )}
-                                            <div className="flex bg-slate-800 p-1 rounded-lg border border-slate-700 shrink-0">
-                                                <button onClick={() => setPanelInputMode('paint')} className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-md transition-all ${panelInputMode === 'paint' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}>
-                                                    <Paintbrush size={14} /> 畫筆
-                                                </button>
-                                                <button onClick={() => setPanelInputMode('text')} className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-md transition-all ${panelInputMode === 'text' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}>
-                                                    <Keyboard size={14} /> 鍵盤
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
+                        {/* ========================================================================= */}
+                        {/* Phase 2: 手動盤面設定與結算                                                */}
+                        {/* ========================================================================= */}
+                        <div className={`bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden transition-all duration-300 ${!template ? 'opacity-30 pointer-events-none' : ''}`}>
+                            <div
+                                className="flex items-center justify-between p-5 cursor-pointer hover:bg-slate-50 transition-colors"
+                                onClick={() => template && setIsPhase2Minimized(!isPhase2Minimized)}
+                            >
+                                <div className="flex items-center space-x-2">
+                                    <LayoutGrid className="text-indigo-500" size={20} />
+                                    <h2 className="text-xl font-semibold text-slate-800">Phase 2: 手動盤面設定與結算 <span className="text-sm font-normal text-slate-400 ml-2">(透過畫筆或鍵盤微調盤面)</span></h2>
+                                </div>
+                                <div className="flex items-center space-x-4">
+                                    {isPhase2Minimized ? <ChevronDown className="text-slate-400" /> : <ChevronUp className="text-slate-400" />}
+                                </div>
+                            </div>
 
-                                    <div className="space-y-5">
-                                        <div>
-                                            {panelInputMode === 'paint' && (
-                                                <div className="mb-4 bg-slate-800/80 border border-slate-700 rounded-lg p-3">
-                                                    <span className="block text-[10px] font-bold text-slate-400 mb-2 uppercase tracking-wider">選擇畫筆 (點擊或拖曳下方網格填色)</span>
-                                                    <div className="flex flex-wrap gap-2">
-                                                        {availableSymbols.map(sym => (
-                                                            <button
-                                                                key={sym}
-                                                                onClick={() => setActiveBrush(sym)}
-                                                                className={`relative w-[48px] h-[48px] sm:w-[52px] sm:h-[52px] rounded-lg border-2 flex items-center justify-center transition-all ${activeBrush === sym ? 'border-indigo-400 bg-indigo-500/20 shadow-[0_0_10px_rgba(99,102,241,0.3)] scale-105 z-10' : 'border-slate-600 bg-slate-800 hover:border-slate-500 hover:bg-slate-700'}`}
-                                                                title={sym}
-                                                            >
-                                                                {template?.symbolImages?.[sym] ? (
-                                                                    <img src={template.symbolImages[sym]} className="max-w-full max-h-full object-contain p-1" alt={sym} />
-                                                                ) : (
-                                                                    <span className="text-[10px] sm:text-xs font-black leading-tight text-center px-1 text-slate-200">{sym}</span>
-                                                                )}
+                            {!isPhase2Minimized && (
+                                <div className="p-6 pt-0 border-t border-slate-100 mt-4 bg-slate-50">
+                                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                        <div className="flex flex-col h-full">
+                                            <div className="bg-slate-900 p-5 sm:p-6 rounded-xl shadow-2xl border border-slate-800 flex flex-col flex-1">
+                                                <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-3 border-b border-slate-700 pb-4 gap-3">
+                                                    <div className="flex items-center gap-2">
+                                                        <h2 className="text-xl font-semibold flex items-center gap-2 text-white"><MousePointer2 className="text-indigo-400" size={20} />盤面設定</h2>
+                                                    </div>
+                                                    <div className="flex items-center gap-2 sm:gap-3">
+                                                        {template && (
+                                                            <button onClick={handleRandomizePanel} className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 text-indigo-400 hover:bg-slate-700 hover:text-indigo-300 rounded-lg text-sm font-bold transition-colors border border-slate-700 shadow-sm shrink-0">
+                                                                <RefreshCw size={14} />隨機盤面
                                                             </button>
-                                                        ))}
-                                                        <button
-                                                            onClick={() => setActiveBrush('')}
-                                                            className={`relative w-[48px] h-[48px] sm:w-[52px] sm:h-[52px] rounded-lg border-2 flex items-center justify-center transition-all ${activeBrush === '' ? 'border-rose-400 bg-rose-500/20 shadow-[0_0_10px_rgba(244,63,94,0.3)] scale-105 z-10' : 'border-slate-600 bg-slate-800 hover:border-slate-500 hover:bg-slate-700'}`}
-                                                            title="橡皮擦 (點擊網格清空單格)"
-                                                        >
-                                                            <div className="w-5 h-5 border-2 border-rose-400 rounded-full flex items-center justify-center">
-                                                                <div className="w-3 h-0.5 bg-rose-400 rotate-45"></div>
-                                                            </div>
-                                                        </button>
-
-                                                        <div className="w-px h-10 bg-slate-700 mx-1 self-center"></div>
-
-                                                        <button
-                                                            onClick={handleClearPanel}
-                                                            className="relative px-3 h-[48px] sm:h-[52px] rounded-lg border-2 border-slate-600 bg-slate-800 hover:border-rose-400 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 flex flex-col items-center justify-center transition-all group shadow-sm"
-                                                            title="一鍵清除整個盤面"
-                                                        >
-                                                            <Trash2 size={18} className="group-active:scale-90 transition-transform mb-0.5" />
-                                                            <span className="text-[10px] font-bold leading-none">清除盤面</span>
-                                                        </button>
+                                                        )}
+                                                        <div className="flex bg-slate-800 p-1 rounded-lg border border-slate-700 shrink-0">
+                                                            <button onClick={() => setPanelInputMode('paint')} className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-md transition-all ${panelInputMode === 'paint' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}>
+                                                                <Paintbrush size={14} /> 畫筆
+                                                            </button>
+                                                            <button onClick={() => setPanelInputMode('text')} className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-md transition-all ${panelInputMode === 'text' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}>
+                                                                <Keyboard size={14} /> 鍵盤
+                                                            </button>
+                                                        </div>
                                                     </div>
                                                 </div>
-                                            )}
 
-                                            <div className="flex items-center h-8 mb-4">
-                                                {hoveredLineId ? (
-                                                    <div className="flex items-center gap-2 text-indigo-300 text-sm font-bold bg-indigo-500/20 px-3 py-1.5 rounded-lg border border-indigo-500/30 animate-in fade-in slide-in-from-left-2 duration-200 shadow-sm">
-                                                        <Zap size={14} className="fill-indigo-400" />
-                                                        <span>正在查看第 <span className="text-white text-base mx-0.5">{hoveredLineId}</span> 條連線軌跡</span>
-                                                        {calcResults?.details?.find(d => d.lineId === hoveredLineId)?.winAmount > 0 && (
-                                                            <span className="text-emerald-400 bg-emerald-500/20 border border-emerald-500/30 px-2 py-0.5 rounded ml-1 flex items-center gap-1">
-                                                                <Trophy size={12} /> +{calcResults.details.find(d => d.lineId === hoveredLineId).winAmount.toLocaleString()}
-                                                            </span>
+                                                <div className="space-y-5">
+                                                    <div>
+                                                        {panelInputMode === 'paint' && (
+                                                            <div className="mb-4 bg-slate-800/80 border border-slate-700 rounded-lg p-3">
+                                                                <span className="block text-[10px] font-bold text-slate-400 mb-2 uppercase tracking-wider">選擇畫筆 (點擊或拖曳下方網格填色)</span>
+                                                                <div className="flex flex-wrap gap-2">
+                                                                    {availableSymbols.map(sym => (
+                                                                        <button
+                                                                            key={sym}
+                                                                            onClick={() => setActiveBrush(sym)}
+                                                                            className={`relative w-[48px] h-[48px] sm:w-[52px] sm:h-[52px] rounded-lg border-2 flex items-center justify-center transition-all ${activeBrush === sym ? 'border-indigo-400 bg-indigo-500/20 shadow-[0_0_10px_rgba(99,102,241,0.3)] scale-105 z-10' : 'border-slate-600 bg-slate-800 hover:border-slate-500 hover:bg-slate-700'}`}
+                                                                            title={sym}
+                                                                        >
+                                                                            {template?.symbolImages?.[sym] ? (
+                                                                                <img src={template.symbolImages[sym]} className="max-w-full max-h-full object-contain p-1" alt={sym} />
+                                                                            ) : (
+                                                                                <span className="text-[10px] sm:text-xs font-black leading-tight text-center px-1 text-slate-200">{sym}</span>
+                                                                            )}
+                                                                        </button>
+                                                                    ))}
+                                                                    <button
+                                                                        onClick={() => setActiveBrush('')}
+                                                                        className={`relative w-[48px] h-[48px] sm:w-[52px] sm:h-[52px] rounded-lg border-2 flex items-center justify-center transition-all ${activeBrush === '' ? 'border-rose-400 bg-rose-500/20 shadow-[0_0_10px_rgba(244,63,94,0.3)] scale-105 z-10' : 'border-slate-600 bg-slate-800 hover:border-slate-500 hover:bg-slate-700'}`}
+                                                                        title="橡皮擦 (點擊網格清空單格)"
+                                                                    >
+                                                                        <div className="w-5 h-5 border-2 border-rose-400 rounded-full flex items-center justify-center">
+                                                                            <div className="w-3 h-0.5 bg-rose-400 rotate-45"></div>
+                                                                        </div>
+                                                                    </button>
+
+                                                                    <div className="w-px h-10 bg-slate-700 mx-1 self-center"></div>
+
+                                                                    <button
+                                                                        onClick={handleClearPanel}
+                                                                        className="relative px-3 h-[48px] sm:h-[52px] rounded-lg border-2 border-slate-600 bg-slate-800 hover:border-rose-400 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 flex flex-col items-center justify-center transition-all group shadow-sm"
+                                                                        title="一鍵清除整個盤面"
+                                                                    >
+                                                                        <Trash2 size={18} className="group-active:scale-90 transition-transform mb-0.5" />
+                                                                        <span className="text-[10px] font-bold leading-none">清除盤面</span>
+                                                                    </button>
+                                                                </div>
+                                                            </div>
                                                         )}
+
+                                                        <div className="flex items-center h-8 mb-4">
+                                                            {hoveredLineId ? (
+                                                                <div className="flex items-center gap-2 text-indigo-300 text-sm font-bold bg-indigo-500/20 px-3 py-1.5 rounded-lg border border-indigo-500/30 animate-in fade-in slide-in-from-left-2 duration-200 shadow-sm">
+                                                                    <Zap size={14} className="fill-indigo-400" />
+                                                                    <span>正在查看第 <span className="text-white text-base mx-0.5">{hoveredLineId}</span> 條連線軌跡</span>
+                                                                    {calcResults?.details?.find(d => d.lineId === hoveredLineId)?.winAmount > 0 && (
+                                                                        <span className="text-emerald-400 bg-emerald-500/20 border border-emerald-500/30 px-2 py-0.5 rounded ml-1 flex items-center gap-1">
+                                                                            <Trophy size={12} /> +{calcResults.details.find(d => d.lineId === hoveredLineId).winAmount.toLocaleString()}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            ) : (
+                                                                <div className="text-slate-500 text-xs flex items-center gap-1.5 opacity-80">
+                                                                    <MousePointer2 size={14} />
+                                                                    <span>將滑鼠移至右側結算清單，即可在此預覽連線軌跡</span>
+                                                                </div>
+                                                            )}
+                                                        </div>
+
+                                                        <div className="p-3 sm:p-5 bg-black/40 border border-slate-800/80 rounded-xl overflow-x-auto shadow-inner select-none custom-scrollbar">
+                                                            <div className="flex flex-col gap-1.5 sm:gap-2 w-max mx-auto" onMouseLeave={() => setHoveredLineId(null)}>
+                                                                {getSafeGrid().map((row, rIndex) => (
+                                                                    <div key={rIndex} className="flex gap-1.5 sm:gap-2">
+                                                                        {row.map((symbol, cIndex) => {
+                                                                            let isWinSymbol = false;
+                                                                            let isOnLine = false;
+                                                                            if (calcResults) {
+                                                                                if (hoveredLineId) {
+                                                                                    const hoveredResult = calcResults.details.find(d => d.lineId === hoveredLineId);
+                                                                                    isOnLine = template.lines[hoveredLineId]?.[cIndex] - 1 === rIndex;
+                                                                                    isWinSymbol = hoveredResult?.winCoords.some(c => c.row === rIndex && c.col === cIndex);
+                                                                                } else {
+                                                                                    isWinSymbol = calcResults.details.some(d => d.winCoords.some(c => c.row === rIndex && c.col === cIndex));
+                                                                                }
+                                                                            }
+
+                                                                            let cellClasses = "relative w-16 h-16 sm:w-[88px] sm:h-[72px] flex items-center justify-center rounded-lg overflow-hidden transition-all duration-300 font-black text-xl ";
+
+                                                                            if (hoveredLineId) {
+                                                                                if (isWinSymbol) cellClasses += "opacity-100 bg-gradient-to-br from-indigo-500 to-indigo-700 shadow-[0_0_20px_rgba(99,102,241,0.6)] z-10 scale-105 border-2 border-indigo-300 text-white";
+                                                                                else if (isOnLine) cellClasses += "opacity-40 grayscale scale-95 bg-slate-800 border border-slate-600 text-slate-300";
+                                                                                else cellClasses += "opacity-10 grayscale scale-90 bg-slate-900 border border-slate-800 text-slate-500";
+                                                                            } else {
+                                                                                if (isWinSymbol) cellClasses += "opacity-100 bg-gradient-to-br from-indigo-400 to-indigo-600 shadow-[0_0_15px_rgba(99,102,241,0.4)] z-10 scale-[1.02] border-2 border-indigo-300 text-white";
+                                                                                else cellClasses += "opacity-100 bg-slate-800 border border-slate-700 hover:bg-slate-700 hover:border-slate-500 text-white shadow-inner";
+                                                                            }
+
+                                                                            return (
+                                                                                <div
+                                                                                    key={cIndex}
+                                                                                    className={`${cellClasses} ${panelInputMode === 'paint' ? 'cursor-pointer' : ''}`}
+                                                                                    onMouseDown={(e) => { if (panelInputMode === 'paint') { e.preventDefault(); handleCellChange(rIndex, cIndex, activeBrush); } }}
+                                                                                    onMouseEnter={(e) => { if (panelInputMode === 'paint' && e.buttons === 1) handleCellChange(rIndex, cIndex, activeBrush); }}
+                                                                                >
+                                                                                    {panelInputMode === 'text' ? (
+                                                                                        <input
+                                                                                            id={`cell-${rIndex}-${cIndex}`}
+                                                                                            value={symbol}
+                                                                                            placeholder="空"
+                                                                                            onFocus={(e) => e.target.select()}
+                                                                                            onChange={(e) => handleCellChange(rIndex, cIndex, e.target.value)}
+                                                                                            onKeyDown={(e) => {
+                                                                                                if (e.key === 'ArrowUp') { e.preventDefault(); document.getElementById(`cell-${rIndex - 1}-${cIndex}`)?.focus(); }
+                                                                                                else if (e.key === 'ArrowDown' || e.key === 'Enter') { e.preventDefault(); document.getElementById(`cell-${rIndex + 1}-${cIndex}`)?.focus(); }
+                                                                                                else if (e.key === 'ArrowRight' && e.target.selectionStart === e.target.value.length) document.getElementById(`cell-${rIndex}-${cIndex + 1}`)?.focus();
+                                                                                                else if (e.key === 'ArrowLeft' && e.target.selectionStart === 0) document.getElementById(`cell-${rIndex}-${cIndex - 1}`)?.focus();
+                                                                                            }}
+                                                                                            onPaste={(e) => handleGridPaste(e, rIndex, cIndex)}
+                                                                                            className={`w-full h-full text-center font-black text-base sm:text-lg bg-transparent outline-none placeholder:text-slate-600 placeholder:font-normal ${isWinSymbol ? 'text-white' : 'text-slate-100'}`}
+                                                                                        />
+                                                                                    ) : (
+                                                                                        symbol ? (
+                                                                                            template?.symbolImages?.[symbol] ? (
+                                                                                                <img src={template.symbolImages[symbol]} className="max-w-full max-h-full object-contain p-1.5 drop-shadow-md pointer-events-none select-none" draggable={false} alt={symbol} />
+                                                                                            ) : (
+                                                                                                <span className="z-10 pointer-events-none select-none drop-shadow-md text-sm sm:text-xl">{symbol}</span>
+                                                                                            )
+                                                                                        ) : (
+                                                                                            <div className="w-2 h-2 rounded-full bg-slate-600/50 pointer-events-none"></div>
+                                                                                        )
+                                                                                    )}
+                                                                                </div>
+                                                                            );
+                                                                        })}
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* 共用結算 UI */}
+                                        {renderResultView()}
+
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* ========================================================================= */}
+                        {/* Phase 3: AI 實機截圖辨識與結算                                              */}
+                        {/* ========================================================================= */}
+                        <div className={`bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden transition-all duration-300 ${!template ? 'opacity-50 pointer-events-none hidden' : ''}`}>
+                            <div
+                                className="flex items-center justify-between p-5 cursor-pointer hover:bg-slate-50 transition-colors"
+                                onClick={() => template && setIsPhase3Minimized(!isPhase3Minimized)}
+                            >
+                                <div className="flex items-center space-x-2">
+                                    <BrainCircuit className="text-indigo-500" size={20} />
+                                    <h2 className="text-xl font-semibold text-slate-800">Phase 3: AI 實機截圖辨識 <span className="text-sm font-normal text-slate-500 ml-2">(自動讀圖並直接結算)</span></h2>
+                                </div>
+                                <div className="flex items-center space-x-4">
+                                    {isPhase3Minimized ? <ChevronDown className="text-slate-400" /> : <ChevronUp className="text-slate-400" />}
+                                </div>
+                            </div>
+
+                            {!isPhase3Minimized && (
+                                <div className="p-6 pt-0 border-t border-slate-100 mt-4 bg-slate-50">
+                                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                        <div className="flex flex-col h-full">
+                                            <div className="bg-slate-900 rounded-xl overflow-hidden border border-slate-800 shadow-inner flex flex-col h-full">
+                                                {!visionImageSrc ? (
+                                                    <div className="p-8 text-center flex flex-col items-center justify-center min-h-[300px] h-full">
+                                                        <div className="w-20 h-20 bg-slate-800 rounded-full flex items-center justify-center mb-6 border border-slate-700 shadow-inner">
+                                                            <ImageIcon size={32} className="text-indigo-400" />
+                                                        </div>
+                                                        <label className="cursor-pointer bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-3 rounded-lg font-bold transition shadow-lg flex items-center gap-2">
+                                                            <Upload size={20} /> 上傳遊戲畫面截圖
+                                                            <input type="file" accept="image/*" className="hidden" onChange={handleVisionImageUpload} />
+                                                        </label>
+                                                        <p className="mt-4 text-sm text-slate-400 max-w-sm leading-relaxed">
+                                                            上傳實機截圖，由 AI 自動幫您辨識盤面並產出右側結算結果。<br />
+                                                            <span className="text-emerald-400 font-bold inline-block mt-1">優勢：不受灰階、變暗或些微特效干擾，容錯率極高！</span>
+                                                        </p>
                                                     </div>
                                                 ) : (
-                                                    <div className="text-slate-500 text-xs flex items-center gap-1.5 opacity-80">
-                                                        <MousePointer2 size={14} />
-                                                        <span>將滑鼠移至右側結算清單，即可在此預覽連線軌跡</span>
+                                                    <div className="flex flex-col flex-1">
+                                                        <div className="p-3 border-b border-slate-800 bg-slate-950 flex justify-between items-center shrink-0">
+                                                            <div className="flex items-center gap-2 px-2 text-sm text-slate-300">
+                                                                <div className="w-3 h-3 bg-emerald-500 border border-slate-400 rounded-sm shrink-0"></div>
+                                                                <span>請將綠色框線對齊「整個遊戲盤面」的範圍</span>
+                                                            </div>
+                                                            <button onClick={() => { setVisionImageSrc(null); setVisionImageObj(null); }} className="text-xs font-bold text-rose-400 hover:text-rose-300 px-3 py-1.5 rounded bg-rose-500/10 hover:bg-rose-500/20 transition-colors">
+                                                                移除圖片
+                                                            </button>
+                                                        </div>
+                                                        <div className="flex-1 relative overflow-hidden bg-black flex items-center justify-center min-h-[300px]" ref={visionContainerRef}>
+                                                            {/* 視覺辨識用 Canvas (供使用者框選範圍) */}
+                                                            <canvas
+                                                                ref={visionCanvasRef}
+                                                                className="max-w-full max-h-full object-contain cursor-crosshair"
+                                                                onMouseDown={handleVisionMouseDown}
+                                                                onMouseMove={handleVisionMouseMove}
+                                                                onMouseUp={handleVisionMouseUp}
+                                                                onMouseLeave={handleVisionMouseUp}
+                                                            />
+                                                        </div>
+                                                        <div className="p-4 border-t border-slate-800 bg-slate-950 shrink-0">
+                                                            <button
+                                                                onClick={performAIVisionMatching}
+                                                                disabled={isVisionProcessing}
+                                                                className={`w-full py-3 rounded-lg text-lg font-bold flex items-center justify-center gap-2 transition-all shadow-md ${isVisionProcessing ? 'bg-indigo-600/50 cursor-not-allowed text-white/50' : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-500/20'}`}
+                                                            >
+                                                                {isVisionProcessing ? <Loader2 size={20} className="animate-spin" /> : <BrainCircuit size={20} />}
+                                                                {isVisionProcessing ? 'AI 視覺辨識中...' : '送出截圖，讓 AI 辨識盤面'}
+                                                            </button>
+                                                        </div>
+
+                                                        {/* AI 辨識後的唯讀小盤面預覽 */}
+                                                        {visionImageSrc && !isVisionProcessing && calcResults && (
+                                                            <div className="p-4 bg-black/60 border-t border-slate-800">
+                                                                <span className="text-xs text-slate-400 mb-3 block font-bold text-center">目前盤面狀態 (唯讀預覽)</span>
+                                                                <div className="flex flex-col gap-1 w-max mx-auto pointer-events-none">
+                                                                    {getSafeGrid().map((row, rIndex) => (
+                                                                        <div key={rIndex} className="flex gap-1">
+                                                                            {row.map((symbol, cIndex) => {
+                                                                                let isWinSymbol = false;
+                                                                                let isOnLine = false;
+                                                                                if (calcResults) {
+                                                                                    if (hoveredLineId) {
+                                                                                        const hoveredResult = calcResults.details.find(d => d.lineId === hoveredLineId);
+                                                                                        isOnLine = template.lines[hoveredLineId]?.[cIndex] - 1 === rIndex;
+                                                                                        isWinSymbol = hoveredResult?.winCoords.some(c => c.row === rIndex && c.col === cIndex);
+                                                                                    } else {
+                                                                                        isWinSymbol = calcResults.details.some(d => d.winCoords.some(c => c.row === rIndex && c.col === cIndex));
+                                                                                    }
+                                                                                }
+
+                                                                                let cellClass = "w-10 h-10 flex items-center justify-center rounded border transition-all duration-300 text-[10px] font-bold text-center ";
+                                                                                if (hoveredLineId) {
+                                                                                    if (isWinSymbol) cellClass += "bg-indigo-600 border-indigo-400 shadow-[0_0_10px_rgba(99,102,241,0.5)] z-10 scale-105 text-white";
+                                                                                    else if (isOnLine) cellClass += "bg-slate-700 border-slate-500 text-slate-300 opacity-60";
+                                                                                    else cellClass += "bg-slate-900 border-slate-800 text-slate-600 opacity-30";
+                                                                                } else {
+                                                                                    if (isWinSymbol) cellClass += "bg-indigo-500 border-indigo-400 shadow-[0_0_8px_rgba(99,102,241,0.4)] z-10 scale-105 text-white";
+                                                                                    else cellClass += "bg-slate-800 border-slate-700 text-slate-300";
+                                                                                }
+
+                                                                                return (
+                                                                                    <div key={cIndex} className={cellClass}>
+                                                                                        {symbol ? (
+                                                                                            template?.symbolImages?.[symbol] ? (
+                                                                                                <img src={template.symbolImages[symbol]} className="max-w-full max-h-full object-contain p-1 drop-shadow-md" alt={symbol} />
+                                                                                            ) : (
+                                                                                                <span>{symbol}</span>
+                                                                                            )
+                                                                                        ) : null}
+                                                                                    </div>
+                                                                                );
+                                                                            })}
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                                <div className="text-center mt-3">
+                                                                    <span className="text-[10px] text-slate-500">若發現 AI 辨識有誤，請至上方 Phase 2 手動微調盤面</span>
+                                                                </div>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 )}
                                             </div>
-
-                                            <div className="p-3 sm:p-5 bg-black/40 border border-slate-800/80 rounded-xl overflow-x-auto shadow-inner select-none custom-scrollbar">
-                                                <div className="flex flex-col gap-1.5 sm:gap-2 w-max mx-auto" onMouseLeave={() => setHoveredLineId(null)}>
-                                                    {getSafeGrid().map((row, rIndex) => (
-                                                        <div key={rIndex} className="flex gap-1.5 sm:gap-2">
-                                                            {row.map((symbol, cIndex) => {
-                                                                let isWinSymbol = false;
-                                                                let isOnLine = false;
-                                                                if (calcResults) {
-                                                                    if (hoveredLineId) {
-                                                                        const hoveredResult = calcResults.details.find(d => d.lineId === hoveredLineId);
-                                                                        isOnLine = template.lines[hoveredLineId]?.[cIndex] - 1 === rIndex;
-                                                                        isWinSymbol = hoveredResult?.winCoords.some(c => c.row === rIndex && c.col === cIndex);
-                                                                    } else {
-                                                                        isWinSymbol = calcResults.details.some(d => d.winCoords.some(c => c.row === rIndex && c.col === cIndex));
-                                                                    }
-                                                                }
-
-                                                                let cellClasses = "relative w-16 h-16 sm:w-[88px] sm:h-[72px] flex items-center justify-center rounded-lg overflow-hidden transition-all duration-300 font-black text-xl ";
-
-                                                                if (hoveredLineId) {
-                                                                    if (isWinSymbol) cellClasses += "opacity-100 bg-gradient-to-br from-indigo-500 to-indigo-700 shadow-[0_0_20px_rgba(99,102,241,0.6)] z-10 scale-105 border-2 border-indigo-300 text-white";
-                                                                    else if (isOnLine) cellClasses += "opacity-40 grayscale scale-95 bg-slate-800 border border-slate-600 text-slate-300";
-                                                                    else cellClasses += "opacity-10 grayscale scale-90 bg-slate-900 border border-slate-800 text-slate-500";
-                                                                } else {
-                                                                    if (isWinSymbol) cellClasses += "opacity-100 bg-gradient-to-br from-indigo-400 to-indigo-600 shadow-[0_0_15px_rgba(99,102,241,0.4)] z-10 scale-[1.02] border-2 border-indigo-300 text-white";
-                                                                    else cellClasses += "opacity-100 bg-slate-800 border border-slate-700 hover:bg-slate-700 hover:border-slate-500 text-white shadow-inner";
-                                                                }
-
-                                                                return (
-                                                                    <div
-                                                                        key={cIndex}
-                                                                        className={`${cellClasses} ${panelInputMode === 'paint' ? 'cursor-pointer' : ''}`}
-                                                                        onMouseDown={(e) => { if (panelInputMode === 'paint') { e.preventDefault(); handleCellChange(rIndex, cIndex, activeBrush); } }}
-                                                                        onMouseEnter={(e) => { if (panelInputMode === 'paint' && e.buttons === 1) handleCellChange(rIndex, cIndex, activeBrush); }}
-                                                                    >
-                                                                        {panelInputMode === 'text' ? (
-                                                                            <input
-                                                                                id={`cell-${rIndex}-${cIndex}`}
-                                                                                value={symbol}
-                                                                                placeholder="空"
-                                                                                onFocus={(e) => e.target.select()}
-                                                                                onChange={(e) => handleCellChange(rIndex, cIndex, e.target.value)}
-                                                                                onKeyDown={(e) => {
-                                                                                    if (e.key === 'ArrowUp') { e.preventDefault(); document.getElementById(`cell-${rIndex - 1}-${cIndex}`)?.focus(); }
-                                                                                    else if (e.key === 'ArrowDown' || e.key === 'Enter') { e.preventDefault(); document.getElementById(`cell-${rIndex + 1}-${cIndex}`)?.focus(); }
-                                                                                    else if (e.key === 'ArrowRight' && e.target.selectionStart === e.target.value.length) document.getElementById(`cell-${rIndex}-${cIndex + 1}`)?.focus();
-                                                                                    else if (e.key === 'ArrowLeft' && e.target.selectionStart === 0) document.getElementById(`cell-${rIndex}-${cIndex - 1}`)?.focus();
-                                                                                }}
-                                                                                onPaste={(e) => handleGridPaste(e, rIndex, cIndex)}
-                                                                                className={`w-full h-full text-center font-black text-base sm:text-lg bg-transparent outline-none placeholder:text-slate-600 placeholder:font-normal ${isWinSymbol ? 'text-white' : 'text-slate-100'}`}
-                                                                            />
-                                                                        ) : (
-                                                                            symbol ? (
-                                                                                template?.symbolImages?.[symbol] ? (
-                                                                                    <img src={template.symbolImages[symbol]} className="max-w-full max-h-full object-contain p-1.5 drop-shadow-md pointer-events-none select-none" draggable={false} alt={symbol} />
-                                                                                ) : (
-                                                                                    <span className="z-10 pointer-events-none select-none drop-shadow-md text-sm sm:text-xl">{symbol}</span>
-                                                                                )
-                                                                            ) : (
-                                                                                <div className="w-2 h-2 rounded-full bg-slate-600/50 pointer-events-none"></div>
-                                                                            )
-                                                                        )}
-                                                                    </div>
-                                                                );
-                                                            })}
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* 右側結算清單區塊 */}
-                            <div className="relative flex flex-col h-full lg:block">
-                                <div className="static lg:absolute lg:inset-0 flex flex-col w-full h-full">
-                                    <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col flex-1 min-h-0">
-
-                                        <div className="mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200 shrink-0">
-                                            <div className="flex-1 w-full">
-                                                <label className="block text-sm font-bold text-slate-700 mb-1.5">押注 (Total Bet)</label>
-                                                <div className="relative">
-                                                    <Coins className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                                                    <input type="number" value={betInput} onChange={(e) => setBetInput(e.target.value)} className="w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none font-black text-lg text-indigo-700 shadow-sm transition-shadow" />
-                                                </div>
-                                            </div>
-                                            <div className="px-4 py-2 bg-emerald-50 border border-emerald-200 text-emerald-700 font-bold rounded-lg flex items-center justify-center gap-2 shadow-sm pointer-events-none select-none shrink-0 self-end sm:self-auto h-[46px] mt-0 sm:mt-6 w-full sm:w-auto">
-                                                <Zap size={18} className="fill-emerald-500 text-emerald-500" /> 自動即時結算
-                                            </div>
                                         </div>
 
-                                        {calculateError && (
-                                            <div className="mb-6 p-3 bg-rose-50 border border-rose-200 text-rose-600 rounded-lg text-sm font-bold flex items-center gap-2 animate-in fade-in zoom-in duration-200 shadow-sm shrink-0">
-                                                <AlertCircle size={18} className="shrink-0" />
-                                                <span>{calculateError}</span>
-                                            </div>
-                                        )}
+                                        {/* 共用結算 UI */}
+                                        {renderResultView()}
 
-                                        {calcResults && (
-                                            <div className="flex flex-col flex-1 min-h-0">
-                                                <div className="flex items-center justify-between mb-4 border-b border-slate-100 pb-4 shrink-0">
-                                                    <div className="flex flex-col space-y-2">
-                                                        <h2 className="text-xl font-semibold flex items-center gap-2"><Trophy className="text-amber-500" size={24} />結算清單</h2>
-                                                        <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer bg-slate-50 px-3 py-1.5 rounded-lg border hover:bg-slate-100 transition-colors">
-                                                            <input type="checkbox" checked={showAllLines} onChange={(e) => setShowAllLines(e.target.checked)} className="rounded text-indigo-600 focus:ring-indigo-500" />
-                                                            <span className="font-medium">顯示所有連線 (含未中獎)</span>
-                                                        </label>
-                                                    </div>
-                                                    <div className="text-right bg-emerald-50 px-4 py-2 rounded-lg border border-emerald-100 transition-all duration-300">
-                                                        <p className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider mb-0.5">Total Win</p>
-                                                        <p className="text-3xl font-black text-emerald-600">{calcResults.totalWin.toLocaleString()}</p>
-                                                    </div>
-                                                </div>
-                                                <div className="space-y-2 flex-1 overflow-y-auto pr-2 custom-scrollbar min-h-0 max-h-[440px]">
-                                                    {calcResults.details.filter(d => showAllLines || d.winAmount > 0).length === 0 ? (
-                                                        <div className="text-center py-10 text-slate-500 bg-slate-50 rounded-lg border border-dashed border-slate-200 animate-in fade-in duration-300">
-                                                            <p className="text-lg">此盤面未達成任何連線中獎 😢</p>
-                                                        </div>
-                                                    ) : (
-                                                        calcResults.details.filter(d => showAllLines || d.winAmount > 0).map((result, idx) => {
-                                                            const isWin = result.winAmount > 0;
-                                                            return (
-                                                                <div key={idx} className={`p-2 rounded-lg border flex items-center gap-3 transition-all duration-300 cursor-pointer animate-in fade-in slide-in-from-bottom-2 ${isWin ? 'bg-white border-indigo-100 shadow-sm hover:border-indigo-300 hover:shadow-md' : 'opacity-60 grayscale bg-slate-50'}`} onMouseEnter={() => setHoveredLineId(result.lineId)} onMouseLeave={() => setHoveredLineId(null)}>
-                                                                    <div className={`w-12 h-16 shrink-0 flex flex-col justify-between rounded-md border shadow-sm overflow-hidden ${isWin ? 'bg-[#1a1c29] border-slate-500' : 'bg-slate-200 border-slate-300'}`}>
-                                                                        <div className="flex-1 min-h-0 flex items-center justify-center px-1 pt-1 relative">
-                                                                            {template.symbolImages?.[result.symbol] ? (
-                                                                                <img src={template.symbolImages[result.symbol]} className="max-w-full max-h-full object-contain drop-shadow-md" alt={result.symbol} />
-                                                                            ) : (
-                                                                                <span className={`text-[10px] font-black leading-tight text-center ${isWin ? 'text-slate-300' : 'text-slate-500'}`}>{result.symbol}</span>
-                                                                            )}
-                                                                        </div>
-                                                                        <div className={`shrink-0 pb-1 text-center text-sm font-black tracking-wider ${isWin ? 'text-white' : 'text-slate-500'}`}>
-                                                                            {result.lineId}
-                                                                        </div>
-                                                                    </div>
-                                                                    <div className="flex-1 min-w-0 flex flex-col justify-center">
-                                                                        <div className="flex items-center justify-between mb-1">
-                                                                            <div className="flex items-center gap-2">
-                                                                                <span className="font-bold text-sm truncate text-slate-800">{result.symbol} {result.count}連</span>
-                                                                                {isWin ? (
-                                                                                    <span className="text-[10px] px-2 py-0.5 bg-indigo-50 text-indigo-700 font-bold rounded-full border border-indigo-200">
-                                                                                        賠率 {result.payoutMult}
-                                                                                    </span>
-                                                                                ) : (
-                                                                                    <span className="text-[10px] px-2 py-0.5 bg-slate-200 text-slate-500 rounded-full font-medium">未中獎</span>
-                                                                                )}
-                                                                            </div>
-                                                                            <span className={`font-black text-sm shrink-0 ${isWin ? 'text-emerald-600' : 'text-slate-400'}`}>
-                                                                                {isWin ? `+${result.winAmount.toLocaleString()}` : '-'}
-                                                                            </span>
-                                                                        </div>
-                                                                        <div className="flex items-center">
-                                                                            <div className="text-[10px] text-slate-500 font-mono bg-slate-100/80 px-2 py-0.5 rounded border border-slate-200 flex items-center gap-1">
-                                                                                <span className="text-slate-400 font-bold">路線:</span>
-                                                                                {result.positions.map((pos, i) => (
-                                                                                    <React.Fragment key={i}>
-                                                                                        <span className={i < result.count && isWin ? 'text-indigo-600 font-black' : ''}>{pos}</span>
-                                                                                        {i < result.positions.length - 1 && <span className="text-slate-300 mx-0.5">-</span>}
-                                                                                    </React.Fragment>
-                                                                                ))}
-                                                                            </div>
-                                                                        </div>
-                                                                    </div>
-                                                                </div>
-                                                            );
-                                                        })
-                                                    )}
-                                                </div>
-                                            </div>
-                                        )}
                                     </div>
                                 </div>
-                            </div>
-
+                            )}
                         </div>
+
                     </div>
 
                     {/* 確認 Modal */}
@@ -2276,7 +2650,6 @@
                                                 const cW = Math.abs(ptCropState.startX - ptCropState.endX) * sX;
                                                 const cH = Math.abs(ptCropState.startY - ptCropState.endY) * sY;
 
-                                                // 防呆：如果只有點一下沒有拖曳寬高，則不進行擷取
                                                 if (cW <= 0 || cH <= 0) {
                                                     setPtCropState(p => ({ ...p, active: false }));
                                                     return;
@@ -2292,7 +2665,6 @@
                                         </div>
                                     </div>
 
-                                    {/* 新增：多圖切換區塊 (只有在上傳大於1張圖時才顯示) */}
                                     {ptImages.length > 1 && (
                                         <div className="flex gap-2 px-4 pb-3 overflow-x-auto custom-scrollbar">
                                             {ptImages.map((img, idx) => (
@@ -2310,7 +2682,6 @@
                                     )}
                                 </div>
 
-                                {/* 移除 items-center justify-center，改為在內層使用 m-auto，防止頂部被切斷 */}
                                 <div className="flex-1 bg-black overflow-auto flex p-4">
                                     <div className="relative inline-block m-auto shrink-0">
                                         <img
