@@ -55,7 +55,7 @@
     <script type="text/babel" data-type="module">
         import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
         import { createRoot } from 'react-dom/client';
-        import { Play, Settings, AlertCircle, CheckCircle2, Trophy, Coins, ChevronDown, ChevronUp, Image as ImageIcon, Upload, Cloud, Download, X, Trash2, FileText, ImagePlus, Copy, Loader2, Crop, LayoutList, MousePointer2, LayoutGrid, Save, FolderOpen, RefreshCw, Plus, Paintbrush, Keyboard, Zap, Key, Database, BrainCircuit } from 'lucide-react';
+        import { Play, Settings, AlertCircle, CheckCircle2, Trophy, Coins, ChevronDown, ChevronUp, Image as ImageIcon, Upload, Cloud, Download, X, Trash2, FileText, ImagePlus, Copy, Loader2, Crop, LayoutList, MousePointer2, LayoutGrid, Save, FolderOpen, RefreshCw, Plus, Paintbrush, Keyboard, Zap, Key, Database, BrainCircuit, ListChecks } from 'lucide-react';
 
         // === 雲端資料庫設定 (Google Apps Script) ===
         const GAS_URL = "https://script.google.com/macros/s/AKfycby1bfxQa5rGdVUrr_gXoZ3bBgin-c8bvVnohqPkdipicaG2m8vWxz9y7rubpgQ8avGbzg/exec";
@@ -215,28 +215,43 @@
                 lbDragRef.current = { ...lbDragRef.current, startX: e.clientX, startY: e.clientY, initW: lightboxState.w, initH: lightboxState.h };
             };
 
-            // --- 狀態管理: Phase 2/3 (共享結算資訊) ---
-            const [panelGrid, setPanelGrid] = useState(defaultPanelGrid);
+            // --- 全局共用狀態 ---
             const [betInput, setBetInput] = useState(100);
+            const [showAIConfirmModal, setShowAIConfirmModal] = useState(false);
+
+            // --- 狀態管理: Phase 2 (手動結算) ---
+            const [panelGrid, setPanelGrid] = useState(defaultPanelGrid);
             const [calcResults, setCalcResults] = useState(null);
             const [calculateError, setCalculateError] = useState('');
             const [hoveredLineId, setHoveredLineId] = useState(null);
             const [showAllLines, setShowAllLines] = useState(false);
 
-            // Phase 2 手動模式切換
             const [panelInputMode, setPanelInputMode] = useState('paint'); // 'paint' or 'text'
             const [activeBrush, setActiveBrush] = useState('');
 
-            // Phase 3 AI視覺辨識狀態
-            const [visionImageObj, setVisionImageObj] = useState(null);
-            const [visionImageSrc, setVisionImageSrc] = useState(null);
-            const [visionP1, setVisionP1] = useState({ x: 10, y: 10, w: 80, h: 80 });
+            // --- 狀態管理: Phase 3 (AI 視覺批次辨識結算) ---
+            const [visionImages, setVisionImages] = useState([]); // 存放多張圖片與其獨立的辨識結果
+            const [activeVisionId, setActiveVisionId] = useState(null); // 目前查看的圖片 ID
+
+            const [visionP1, setVisionP1] = useState({ x: 10, y: 10, w: 80, h: 80 }); // 共用的裁切框
             const [isVisionProcessing, setIsVisionProcessing] = useState(false);
+            const [visionBatchProgress, setVisionBatchProgress] = useState({ current: 0, total: 0 }); // 批次處理進度
             const [visionDragState, setVisionDragState] = useState(null);
+
+            const [visionHoveredLineId, setVisionHoveredLineId] = useState(null);
+            const [visionShowAllLines, setVisionShowAllLines] = useState(false);
+            const [visionCalculateError, setVisionCalculateError] = useState('');
+            const [visionCalcResults, setVisionCalcResults] = useState(null); // 動態計算當前 Active 圖片的結果
+
             const visionCanvasRef = useRef(null);
             const visionContainerRef = useRef(null);
 
-            const [showAIConfirmModal, setShowAIConfirmModal] = useState(false);
+            // 取得目前作用中的 AI 圖片物件
+            const activeVisionImg = visionImages.find(img => img.id === activeVisionId) || null;
+            const visionImageObj = activeVisionImg?.obj || null;
+            const visionImageSrc = activeVisionImg?.previewUrl || null;
+            const visionGrid = activeVisionImg?.grid || null;
+            const visionError = activeVisionImg?.error || null;
 
             // --- Google Sheets 雲端狀態管理 ---
             const [cloudTemplates, setCloudTemplates] = useState([]);
@@ -359,6 +374,12 @@
                     setIsPhase2Minimized(false); // 預設展開手動設定 Phase 2
                     setIsPhase3Minimized(true);
                     setCalcResults(null);
+
+                    // 重置 Phase 3 狀態
+                    setVisionImages([]);
+                    setActiveVisionId(null);
+                    setVisionCalcResults(null);
+
                     setTemplateError('');
                     setBuildErrorMsg('');
                 } catch (err) {
@@ -413,18 +434,18 @@
                 });
             };
 
-            const getSafeGrid = useCallback(() => {
-                if (!template) return [];
+            const getSafeGrid = useCallback((sourceGrid) => {
+                if (!template || !sourceGrid) return [];
                 const grid = [];
                 for (let r = 0; r < template.rows; r++) {
                     const rowArr = [];
                     for (let c = 0; c < template.cols; c++) {
-                        rowArr.push(panelGrid[r]?.[c] || '');
+                        rowArr.push(sourceGrid[r]?.[c] || '');
                     }
                     grid.push(rowArr);
                 }
                 return grid;
-            }, [template, panelGrid]);
+            }, [template]);
 
             const handleGridPaste = (e, startRow, startCol) => {
                 const pasteData = e.clipboardData.getData('Text');
@@ -1307,134 +1328,191 @@
             const handleVisionMouseUp = () => setVisionDragState(null);
 
             const handleVisionImageUpload = (e) => {
-                const file = e.target.files[0];
-                if (!file) return;
-                const reader = new FileReader();
-                reader.onload = (evt) => {
-                    const img = new Image();
-                    img.onload = () => {
-                        setVisionImageObj(img);
-                        setVisionImageSrc(evt.target.result);
+                const files = Array.from(e.target.files);
+                if (files.length === 0) return;
+
+                let loadedCount = 0;
+                const newImgs = [];
+
+                files.forEach(file => {
+                    const reader = new FileReader();
+                    reader.onload = (evt) => {
+                        const img = new Image();
+                        img.onload = () => {
+                            newImgs.push({
+                                id: Math.random().toString(36).substring(7),
+                                file,
+                                previewUrl: evt.target.result,
+                                obj: img,
+                                grid: null,
+                                error: ''
+                            });
+                            loadedCount++;
+                            if (loadedCount === files.length) {
+                                setVisionImages(prev => {
+                                    const updated = [...prev, ...newImgs];
+                                    if (!activeVisionId && updated.length > 0) {
+                                        setActiveVisionId(updated[0].id);
+                                    }
+                                    return updated;
+                                });
+                            }
+                        };
+                        img.src = evt.target.result;
                     };
-                    img.src = evt.target.result;
-                };
-                reader.readAsDataURL(file);
+                    reader.readAsDataURL(file);
+                });
                 e.target.value = '';
             };
 
-            // === 核心：呼叫 Gemini API 進行語意辨識 (Phase 3) ===
-            const performAIVisionMatching = async () => {
-                if (!visionImageObj || !template) {
-                    setCalculateError("請先上傳截圖，並確保已經完成 Phase 1 模板設定！");
+            const removeVisionImage = (id) => {
+                setVisionImages(prev => {
+                    const filtered = prev.filter(img => img.id !== id);
+                    if (activeVisionId === id) {
+                        setActiveVisionId(filtered.length > 0 ? filtered[0].id : null);
+                    }
+                    return filtered;
+                });
+            };
+
+            // === 核心：呼叫 Gemini API 進行語意辨識 (Phase 3 批次版) ===
+            const performAIVisionBatchMatching = async () => {
+                if (visionImages.length === 0 || !template) {
+                    setTemplateError("請先上傳截圖，並確保已經完成 Phase 1 模板設定！");
                     return;
                 }
 
                 const effectiveApiKey = customApiKey.trim() || apiKey;
                 const modelName = customApiKey.trim() ? "gemini-2.5-flash" : "gemini-2.5-flash-preview-09-2025";
 
+                // 篩選出需要辨識的圖片（只針對未辨識過、或是按了「重新辨識」的全部圖片）
+                let toProcess = visionImages.filter(img => !img.grid);
+                if (toProcess.length === 0) {
+                    toProcess = visionImages; // 如果全部都有 grid，代表使用者想重新辨識全部
+                }
+
                 setIsVisionProcessing(true);
-                setCalculateError('');
-                setTemplateMessage('AI 正在視覺辨識盤面中 (此過程可能需要幾秒鐘)...');
+                setVisionBatchProgress({ current: 0, total: toProcess.length });
+                setTemplateMessage(`AI 準備批次處理 ${toProcess.length} 張盤面中...`);
 
-                try {
-                    const offCanvas = document.createElement('canvas');
-                    const rx = (visionP1.x / 100) * visionImageObj.width;
-                    const ry = (visionP1.y / 100) * visionImageObj.height;
-                    const rw = (visionP1.w / 100) * visionImageObj.width;
-                    const rh = (visionP1.h / 100) * visionImageObj.height;
+                let currentVisionImages = [...visionImages];
 
-                    offCanvas.width = rw;
-                    offCanvas.height = rh;
-                    const ctx = offCanvas.getContext('2d');
-                    ctx.drawImage(visionImageObj, rx, ry, rw, rh, 0, 0, rw, rh);
+                for (let i = 0; i < toProcess.length; i++) {
+                    const targetImg = toProcess[i];
+                    const imgIndex = currentVisionImages.findIndex(img => img.id === targetImg.id);
 
-                    const base64Image = offCanvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+                    // 自動將視角切換到正在處理的圖片
+                    setActiveVisionId(targetImg.id);
+                    setVisionBatchProgress({ current: i + 1, total: toProcess.length });
 
-                    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${effectiveApiKey}`;
+                    try {
+                        const offCanvas = document.createElement('canvas');
+                        const rx = (visionP1.x / 100) * targetImg.obj.width;
+                        const ry = (visionP1.y / 100) * targetImg.obj.height;
+                        const rw = (visionP1.w / 100) * targetImg.obj.width;
+                        const rh = (visionP1.h / 100) * targetImg.obj.height;
 
-                    const promptText = `
-                    這是一張老虎機遊戲盤面的截圖（已為你裁切好只保留盤面網格區域）。
-                    請幫我辨識出網格中「每一個位置」的符號。
-                    網格的大小為：${template.rows} 列 (Rows) x ${template.cols} 欄 (Cols)。
-                    
-                    【重要規則】
-                    1. 你只能從以下「可用符號清單」中選擇最接近的符號填入，絕對不能自己發明新名稱：
-                       [${availableSymbols.join(', ')}]
-                    2. 如果某個格子看起來被變暗、變灰（通常是未中獎狀態），請忽略顏色，依然根據它的「形狀和特徵」辨識出它是哪個符號。
-                    3. 如果某個格子真的完全被特效遮擋無法辨識，或是空的，請填入空字串 ""。
-                    `;
+                        offCanvas.width = rw;
+                        offCanvas.height = rh;
+                        const ctx = offCanvas.getContext('2d');
+                        ctx.drawImage(targetImg.obj, rx, ry, rw, rh, 0, 0, rw, rh);
 
-                    const payload = {
-                        contents: [{
-                            role: "user",
-                            parts: [
-                                { text: promptText },
-                                { inlineData: { mimeType: "image/jpeg", data: base64Image } }
-                            ]
-                        }],
-                        generationConfig: {
-                            responseMimeType: "application/json",
-                            responseSchema: {
-                                type: "ARRAY",
-                                description: `盤面二維陣列，共 ${template.rows} 列。`,
-                                items: {
+                        const base64Image = offCanvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+
+                        const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${effectiveApiKey}`;
+
+                        const promptText = `
+                        這是一張老虎機遊戲盤面的截圖（已為你裁切好只保留盤面網格區域）。
+                        請幫我辨識出網格中「每一個位置」的符號。
+                        網格的大小為：${template.rows} 列 (Rows) x ${template.cols} 欄 (Cols)。
+                        
+                        【重要規則】
+                        1. 你只能從以下「可用符號清單」中選擇最接近的符號填入，絕對不能自己發明新名稱：
+                           [${availableSymbols.join(', ')}]
+                        2. 如果某個格子看起來被變暗、變灰（通常是未中獎狀態），請忽略顏色，依然根據它的「形狀和特徵」辨識出它是哪個符號。
+                        3. 如果某個格子真的完全被特效遮擋無法辨識，或是空的，請填入空字串 ""。
+                        `;
+
+                        const payload = {
+                            contents: [{
+                                role: "user",
+                                parts: [
+                                    { text: promptText },
+                                    { inlineData: { mimeType: "image/jpeg", data: base64Image } }
+                                ]
+                            }],
+                            generationConfig: {
+                                responseMimeType: "application/json",
+                                responseSchema: {
                                     type: "ARRAY",
-                                    description: `每一列包含 ${template.cols} 個符號。`,
+                                    description: `盤面二維陣列，共 ${template.rows} 列。`,
                                     items: {
-                                        type: "STRING",
-                                        description: "符號名稱"
+                                        type: "ARRAY",
+                                        description: `每一列包含 ${template.cols} 個符號。`,
+                                        items: {
+                                            type: "STRING",
+                                            description: "符號名稱"
+                                        }
                                     }
                                 }
                             }
+                        };
+
+                        const result = await fetchWithRetry(url, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        });
+
+                        const jsonText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+                        if (!jsonText) throw new Error("無法從 AI 取得有效回應，請確認 API Key 是否正確。");
+
+                        let parsedGrid = JSON.parse(jsonText);
+
+                        if (!Array.isArray(parsedGrid) || parsedGrid.length === 0 || !Array.isArray(parsedGrid[0])) {
+                            const possibleGrid = Object.values(parsedGrid).find(val => Array.isArray(val) && Array.isArray(val[0]));
+                            if (possibleGrid) parsedGrid = possibleGrid;
+                            else throw new Error("AI 回傳的格式不正確，無法解析為二維盤面陣列。");
                         }
-                    };
 
-                    const result = await fetchWithRetry(url, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload)
-                    });
-
-                    const jsonText = result.candidates?.[0]?.content?.parts?.[0]?.text;
-                    if (!jsonText) throw new Error("無法從 AI 取得有效回應，請確認 API Key 是否正確。");
-
-                    let parsedGrid = JSON.parse(jsonText);
-
-                    if (!Array.isArray(parsedGrid) || parsedGrid.length === 0 || !Array.isArray(parsedGrid[0])) {
-                        const possibleGrid = Object.values(parsedGrid).find(val => Array.isArray(val) && Array.isArray(val[0]));
-                        if (possibleGrid) parsedGrid = possibleGrid;
-                        else throw new Error("AI 回傳的格式不正確，無法解析為二維盤面陣列。");
-                    }
-
-                    const safeGrid = [];
-                    for (let r = 0; r < template.rows; r++) {
-                        const rowArr = [];
-                        for (let c = 0; c < template.cols; c++) {
-                            let sym = parsedGrid[r]?.[c] || '';
-                            if (sym && !availableSymbols.includes(sym)) {
-                                console.warn(`AI 幻覺過濾：移除了未知的符號 [${sym}]`);
-                                sym = '';
+                        const safeGrid = [];
+                        for (let r = 0; r < template.rows; r++) {
+                            const rowArr = [];
+                            for (let c = 0; c < template.cols; c++) {
+                                let sym = parsedGrid[r]?.[c] || '';
+                                if (sym && !availableSymbols.includes(sym)) {
+                                    sym = '';
+                                }
+                                rowArr.push(sym);
                             }
-                            rowArr.push(sym);
+                            safeGrid.push(rowArr);
                         }
-                        safeGrid.push(rowArr);
+
+                        currentVisionImages[imgIndex] = { ...currentVisionImages[imgIndex], grid: safeGrid, error: '' };
+                        setVisionImages([...currentVisionImages]);
+
+                    } catch (err) {
+                        console.error("AI 辨識錯誤:", err);
+                        currentVisionImages[imgIndex] = { ...currentVisionImages[imgIndex], error: "辨識失敗：" + err.message };
+                        setVisionImages([...currentVisionImages]);
                     }
 
-                    setPanelGrid(safeGrid);
-                    setTemplateMessage('✅ AI 語意辨識完成！連線結果已更新。');
-                    setTimeout(() => setTemplateMessage(''), 4000);
-
-                } catch (err) {
-                    console.error(err);
-                    setCalculateError("AI 辨識發生錯誤：" + err.message);
-                } finally {
-                    setIsVisionProcessing(false);
+                    // 批次處理時，稍微延遲以避免撞到免費方案的 Rate Limit
+                    if (i < toProcess.length - 1) {
+                        await new Promise(res => setTimeout(res, 1500));
+                    }
                 }
+
+                setIsVisionProcessing(false);
+                setVisionBatchProgress({ current: 0, total: 0 });
+                setTemplateMessage(`✅ 批次辨識完成！共處理 ${toProcess.length} 張圖片。`);
+                setTimeout(() => setTemplateMessage(''), 5000);
             };
 
             const handleBuildTemplate = () => {
                 setTemplateError('');
                 setCalcResults(null);
+                setVisionCalcResults(null);
                 try {
                     if (extractResults.length === 0) {
                         throw new Error('請先設定「線獎資料」（可透過純文字輸入、圖片提取，或從雲端模板庫載入）。');
@@ -1487,7 +1565,7 @@
                     setPanelGrid(generateRandomPanelGrid(gridRows, gridCols, availableSyms));
 
                     setIsTemplateMinimized(true);
-                    setIsPhase2Minimized(false); // 預設打開手動模式
+                    setIsPhase2Minimized(false);
                     setIsPhase3Minimized(true);
                 } catch (err) {
                     setTemplateError(err.message);
@@ -1496,18 +1574,15 @@
                 }
             };
 
-            // --- 自動即時結算核心邏輯 ---
-            const calculateResults = useCallback(() => {
-                setCalculateError('');
-                if (!template) {
-                    setCalcResults(null);
-                    return;
+            // --- 獨立重構：支援不同盤面的共用結算邏輯 ---
+            const computeGridResults = useCallback((targetGrid, betAmount) => {
+                if (!template || !targetGrid) {
+                    return { results: null, error: '' };
                 }
 
                 try {
-                    const panelRows = getSafeGrid();
-
-                    const parsedBet = parseFloat(betInput);
+                    const safeGrid = getSafeGrid(targetGrid);
+                    const parsedBet = parseFloat(betAmount);
                     if (isNaN(parsedBet) || parsedBet <= 0) throw new Error('押注金額必須為大於 0 的有效數字。');
 
                     const calculatedResults = [];
@@ -1518,10 +1593,10 @@
 
                         const symbolsOnLine = positions.map((row, colIndex) => {
                             const rIndex = row - 1;
-                            if (rIndex < 0 || rIndex >= template.rows || !panelRows[rIndex]) {
+                            if (rIndex < 0 || rIndex >= template.rows || !safeGrid[rIndex]) {
                                 throw new Error(`結算錯誤：線獎編號 ${lineId} 包含無效列數「${row}」，但盤面最大只有 ${template.rows} 列。請至 Phase 1 修正。`);
                             }
-                            return panelRows[rIndex][colIndex];
+                            return safeGrid[rIndex][colIndex];
                         });
 
                         let bestPayout = 0;
@@ -1595,26 +1670,38 @@
 
                     calculatedResults.sort((a, b) => a.lineId - b.lineId);
 
-                    setCalcResults({
-                        details: calculatedResults,
-                        totalWin,
-                        panel: panelRows
-                    });
+                    return {
+                        results: { details: calculatedResults, totalWin, panel: safeGrid },
+                        error: ''
+                    };
 
                 } catch (err) {
-                    setCalculateError(err.message);
-                    setCalcResults(null);
+                    return { results: null, error: err.message };
                 }
-            }, [template, getSafeGrid, betInput]);
+            }, [template, getSafeGrid]);
 
+            // 觸發 Phase 2 的結算
             useEffect(() => {
-                if (template) {
-                    calculateResults();
+                const { results, error } = computeGridResults(panelGrid, betInput);
+                setCalcResults(results);
+                setCalculateError(error);
+            }, [panelGrid, betInput, computeGridResults]);
+
+            // 觸發 Phase 3 的結算 (依據當前選取的圖片)
+            useEffect(() => {
+                if (!visionGrid) {
+                    setVisionCalcResults(null);
+                    setVisionCalculateError('');
+                    return;
                 }
-            }, [calculateResults, template]);
+                const { results, error } = computeGridResults(visionGrid, betInput);
+                setVisionCalcResults(results);
+                setVisionCalculateError(error);
+            }, [visionGrid, betInput, computeGridResults]);
+
 
             // --- 共用的右側結算清單元件 ---
-            const renderResultView = () => (
+            const renderResultView = (calcData, calcErr, hoveredId, setHoveredId, showAll, setShowAll) => (
                 <div className="relative flex flex-col h-full lg:block w-full">
                     <div className="static lg:absolute lg:inset-0 flex flex-col w-full h-full">
                         <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col flex-1 min-h-0">
@@ -1632,38 +1719,38 @@
                                 </div>
                             </div>
 
-                            {calculateError && (
+                            {calcErr && (
                                 <div className="mb-6 p-3 bg-rose-50 border border-rose-200 text-rose-600 rounded-lg text-sm font-bold flex items-center gap-2 animate-in fade-in zoom-in duration-200 shadow-sm shrink-0">
                                     <AlertCircle size={18} className="shrink-0" />
-                                    <span>{calculateError}</span>
+                                    <span>{calcErr}</span>
                                 </div>
                             )}
 
-                            {calcResults && (
+                            {calcData ? (
                                 <div className="flex flex-col flex-1 min-h-0">
                                     <div className="flex items-center justify-between mb-4 border-b border-slate-100 pb-4 shrink-0">
                                         <div className="flex flex-col space-y-2">
                                             <h2 className="text-xl font-semibold flex items-center gap-2"><Trophy className="text-amber-500" size={24} />結算清單</h2>
                                             <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer bg-slate-50 px-3 py-1.5 rounded-lg border hover:bg-slate-100 transition-colors">
-                                                <input type="checkbox" checked={showAllLines} onChange={(e) => setShowAllLines(e.target.checked)} className="rounded text-indigo-600 focus:ring-indigo-500" />
+                                                <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} className="rounded text-indigo-600 focus:ring-indigo-500" />
                                                 <span className="font-medium">顯示所有連線 (含未中獎)</span>
                                             </label>
                                         </div>
                                         <div className="text-right bg-emerald-50 px-4 py-2 rounded-lg border border-emerald-100 transition-all duration-300">
                                             <p className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider mb-0.5">Total Win</p>
-                                            <p className="text-3xl font-black text-emerald-600">{calcResults.totalWin.toLocaleString()}</p>
+                                            <p className="text-3xl font-black text-emerald-600">{calcData.totalWin.toLocaleString()}</p>
                                         </div>
                                     </div>
                                     <div className="space-y-2 flex-1 overflow-y-auto pr-2 custom-scrollbar min-h-0 max-h-[440px]">
-                                        {calcResults.details.filter(d => showAllLines || d.winAmount > 0).length === 0 ? (
+                                        {calcData.details.filter(d => showAll || d.winAmount > 0).length === 0 ? (
                                             <div className="text-center py-10 text-slate-500 bg-slate-50 rounded-lg border border-dashed border-slate-200 animate-in fade-in duration-300">
                                                 <p className="text-lg">此盤面未達成任何連線中獎 😢</p>
                                             </div>
                                         ) : (
-                                            calcResults.details.filter(d => showAllLines || d.winAmount > 0).map((result, idx) => {
+                                            calcData.details.filter(d => showAll || d.winAmount > 0).map((result, idx) => {
                                                 const isWin = result.winAmount > 0;
                                                 return (
-                                                    <div key={idx} className={`p-2 rounded-lg border flex items-center gap-3 transition-all duration-300 cursor-pointer animate-in fade-in slide-in-from-bottom-2 ${isWin ? 'bg-white border-indigo-100 shadow-sm hover:border-indigo-300 hover:shadow-md' : 'opacity-60 grayscale bg-slate-50'}`} onMouseEnter={() => setHoveredLineId(result.lineId)} onMouseLeave={() => setHoveredLineId(null)}>
+                                                    <div key={idx} className={`p-2 rounded-lg border flex items-center gap-3 transition-all duration-300 cursor-pointer animate-in fade-in slide-in-from-bottom-2 ${isWin ? 'bg-white border-indigo-100 shadow-sm hover:border-indigo-300 hover:shadow-md' : 'opacity-60 grayscale bg-slate-50'}`} onMouseEnter={() => setHoveredId(result.lineId)} onMouseLeave={() => setHoveredId(null)}>
                                                         <div className={`w-12 h-16 shrink-0 flex flex-col justify-between rounded-md border shadow-sm overflow-hidden ${isWin ? 'bg-[#1a1c29] border-slate-500' : 'bg-slate-200 border-slate-300'}`}>
                                                             <div className="flex-1 min-h-0 flex items-center justify-center px-1 pt-1 relative">
                                                                 {template.symbolImages?.[result.symbol] ? (
@@ -1709,6 +1796,11 @@
                                             })
                                         )}
                                     </div>
+                                </div>
+                            ) : (
+                                <div className="flex-1 flex flex-col items-center justify-center text-slate-400 opacity-50">
+                                    <Trophy size={48} className="mb-2" />
+                                    <p>等待盤面與結算資料...</p>
                                 </div>
                             )}
                         </div>
@@ -2376,7 +2468,7 @@
 
                                                         <div className="p-3 sm:p-5 bg-black/40 border border-slate-800/80 rounded-xl overflow-x-auto shadow-inner select-none custom-scrollbar">
                                                             <div className="flex flex-col gap-1.5 sm:gap-2 w-max mx-auto" onMouseLeave={() => setHoveredLineId(null)}>
-                                                                {getSafeGrid().map((row, rIndex) => (
+                                                                {getSafeGrid(panelGrid).map((row, rIndex) => (
                                                                     <div key={rIndex} className="flex gap-1.5 sm:gap-2">
                                                                         {row.map((symbol, cIndex) => {
                                                                             let isWinSymbol = false;
@@ -2448,8 +2540,8 @@
                                             </div>
                                         </div>
 
-                                        {/* 共用結算 UI */}
-                                        {renderResultView()}
+                                        {/* Phase 2 專屬結算 UI */}
+                                        {renderResultView(calcResults, calculateError, hoveredLineId, setHoveredLineId, showAllLines, setShowAllLines)}
 
                                     </div>
                                 </div>
@@ -2457,7 +2549,7 @@
                         </div>
 
                         {/* ========================================================================= */}
-                        {/* Phase 3: AI 實機截圖辨識與結算                                              */}
+                        {/* Phase 3: AI 實機截圖辨識與結算 (支援多圖批次處理)                             */}
                         {/* ========================================================================= */}
                         <div className={`bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden transition-all duration-300 ${!template ? 'opacity-50 pointer-events-none hidden' : ''}`}>
                             <div
@@ -2466,7 +2558,7 @@
                             >
                                 <div className="flex items-center space-x-2">
                                     <BrainCircuit className="text-indigo-500" size={20} />
-                                    <h2 className="text-xl font-semibold text-slate-800">Phase 3: AI 實機截圖辨識 <span className="text-sm font-normal text-slate-500 ml-2">(自動讀圖並直接結算)</span></h2>
+                                    <h2 className="text-xl font-semibold text-slate-800">Phase 3: AI 實機截圖辨識 <span className="text-sm font-normal text-slate-500 ml-2">(支援多圖批次自動結算)</span></h2>
                                 </div>
                                 <div className="flex items-center space-x-4">
                                     {isPhase3Minimized ? <ChevronDown className="text-slate-400" /> : <ChevronUp className="text-slate-400" />}
@@ -2478,18 +2570,48 @@
                                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                                         <div className="flex flex-col h-full">
                                             <div className="bg-slate-900 rounded-xl overflow-hidden border border-slate-800 shadow-inner flex flex-col h-full">
-                                                {!visionImageSrc ? (
-                                                    <div className="p-8 text-center flex flex-col items-center justify-center min-h-[300px] h-full">
+
+                                                {/* Phase 3 頂部：多圖縮圖列與上傳 */}
+                                                {visionImages.length > 0 && (
+                                                    <div className="flex gap-2 overflow-x-auto p-3 bg-slate-950 border-b border-slate-800 shrink-0 custom-scrollbar z-20">
+                                                        {visionImages.map((img, idx) => (
+                                                            <div
+                                                                key={img.id}
+                                                                onClick={() => setActiveVisionId(img.id)}
+                                                                className={`relative w-16 h-16 shrink-0 rounded-lg overflow-hidden border-2 cursor-pointer transition-all
+                                                                ${activeVisionId === img.id ? 'border-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.5)] scale-105' : 'border-transparent opacity-60 hover:opacity-100'}
+                                                                ${img.grid ? 'ring-2 ring-emerald-500 ring-offset-1 ring-offset-slate-950' : ''}`}
+                                                            >
+                                                                <img src={img.previewUrl} className="w-full h-full object-cover" />
+                                                                {/* 狀態標籤 */}
+                                                                {img.grid && <div className="absolute top-0 left-0 bg-emerald-500 text-white text-[8px] px-1 font-bold rounded-br z-10">已辨識</div>}
+                                                                {img.error && <div className="absolute top-0 left-0 bg-rose-500 text-white text-[8px] px-1 font-bold rounded-br z-10">失敗</div>}
+                                                                <button onClick={(e) => { e.stopPropagation(); removeVisionImage(img.id); }} className="absolute top-0 right-0 bg-rose-500 text-white p-0.5 rounded-bl-lg hover:bg-rose-600 transition-colors z-10">
+                                                                    <X size={12} />
+                                                                </button>
+                                                                <div className="absolute bottom-0 right-0 bg-black/80 text-white text-[10px] px-1.5 font-bold rounded-tl-md z-10">{idx + 1}</div>
+                                                            </div>
+                                                        ))}
+                                                        <label className="w-16 h-16 shrink-0 rounded-lg border-2 border-dashed border-slate-700 flex flex-col items-center justify-center cursor-pointer hover:bg-slate-800 hover:border-slate-500 text-slate-400 transition-colors" title="上傳更多圖片">
+                                                            <Upload size={20} className="mb-1" />
+                                                            <span className="text-[10px]">新增</span>
+                                                            <input type="file" multiple accept="image/*" className="hidden" onChange={handleVisionImageUpload} />
+                                                        </label>
+                                                    </div>
+                                                )}
+
+                                                {!activeVisionImg ? (
+                                                    <div className="p-8 text-center flex flex-col items-center justify-center flex-1 min-h-[300px]">
                                                         <div className="w-20 h-20 bg-slate-800 rounded-full flex items-center justify-center mb-6 border border-slate-700 shadow-inner">
                                                             <ImageIcon size={32} className="text-indigo-400" />
                                                         </div>
                                                         <label className="cursor-pointer bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-3 rounded-lg font-bold transition shadow-lg flex items-center gap-2">
-                                                            <Upload size={20} /> 上傳遊戲畫面截圖
-                                                            <input type="file" accept="image/*" className="hidden" onChange={handleVisionImageUpload} />
+                                                            <Upload size={20} /> 批次上傳實機截圖 (可多選)
+                                                            <input type="file" multiple accept="image/*" className="hidden" onChange={handleVisionImageUpload} />
                                                         </label>
-                                                        <p className="mt-4 text-sm text-slate-400 max-w-sm leading-relaxed">
-                                                            上傳實機截圖，由 AI 自動幫您辨識盤面並產出右側結算結果。<br />
-                                                            <span className="text-emerald-400 font-bold inline-block mt-1">優勢：不受灰階、變暗或些微特效干擾，容錯率極高！</span>
+                                                        <p className="mt-4 text-sm text-slate-400 max-w-md leading-relaxed">
+                                                            上傳多張截圖，共用一個裁切範圍，由 AI 自動為您「批次辨識盤面」並產出結算結果。<br />
+                                                            <span className="text-emerald-400 font-bold inline-block mt-1">大幅節省時間，不再需要每張圖重新設定！</span>
                                                         </p>
                                                     </div>
                                                 ) : (
@@ -2497,10 +2619,10 @@
                                                         <div className="p-3 border-b border-slate-800 bg-slate-950 flex justify-between items-center shrink-0">
                                                             <div className="flex items-center gap-2 px-2 text-sm text-slate-300">
                                                                 <div className="w-3 h-3 bg-emerald-500 border border-slate-400 rounded-sm shrink-0"></div>
-                                                                <span>請將綠色框線對齊「整個遊戲盤面」的範圍</span>
+                                                                <span>請調整綠色框線對齊遊戲盤面 (將套用至所有圖片)</span>
                                                             </div>
-                                                            <button onClick={() => { setVisionImageSrc(null); setVisionImageObj(null); }} className="text-xs font-bold text-rose-400 hover:text-rose-300 px-3 py-1.5 rounded bg-rose-500/10 hover:bg-rose-500/20 transition-colors">
-                                                                移除圖片
+                                                            <button onClick={() => { setVisionImages([]); setActiveVisionId(null); setVisionCalcResults(null); }} className="text-xs font-bold text-rose-400 hover:text-rose-300 px-3 py-1.5 rounded bg-rose-500/10 hover:bg-rose-500/20 transition-colors flex items-center gap-1">
+                                                                <Trash2 size={14} /> 清空全部截圖
                                                             </button>
                                                         </div>
                                                         <div className="flex-1 relative overflow-hidden bg-black flex items-center justify-center min-h-[300px]" ref={visionContainerRef}>
@@ -2514,39 +2636,53 @@
                                                                 onMouseLeave={handleVisionMouseUp}
                                                             />
                                                         </div>
+
+                                                        {/* Phase 3 執行按鈕與進度 */}
                                                         <div className="p-4 border-t border-slate-800 bg-slate-950 shrink-0">
                                                             <button
-                                                                onClick={performAIVisionMatching}
+                                                                onClick={performAIVisionBatchMatching}
                                                                 disabled={isVisionProcessing}
                                                                 className={`w-full py-3 rounded-lg text-lg font-bold flex items-center justify-center gap-2 transition-all shadow-md ${isVisionProcessing ? 'bg-indigo-600/50 cursor-not-allowed text-white/50' : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-500/20'}`}
                                                             >
-                                                                {isVisionProcessing ? <Loader2 size={20} className="animate-spin" /> : <BrainCircuit size={20} />}
-                                                                {isVisionProcessing ? 'AI 視覺辨識中...' : '送出截圖，讓 AI 辨識盤面'}
+                                                                {isVisionProcessing ? <Loader2 size={20} className="animate-spin" /> : <ListChecks size={20} />}
+                                                                {isVisionProcessing
+                                                                    ? `AI 批次辨識中 (${visionBatchProgress.current}/${visionBatchProgress.total})...`
+                                                                    : (visionImages.filter(img => !img.grid).length > 0
+                                                                        ? `批次辨識未處理圖片 (${visionImages.filter(img => !img.grid).length} 張)`
+                                                                        : '重新辨識全部圖片')}
                                                             </button>
                                                         </div>
 
+                                                        {/* 錯誤顯示區塊 */}
+                                                        {visionError && (
+                                                            <div className="p-3 bg-rose-950/50 border-t border-rose-900 text-rose-400 text-sm font-bold flex items-center justify-center gap-2">
+                                                                <AlertCircle size={18} className="shrink-0" />
+                                                                <span>{visionError}</span>
+                                                            </div>
+                                                        )}
+
                                                         {/* AI 辨識後的唯讀小盤面預覽 */}
-                                                        {visionImageSrc && !isVisionProcessing && calcResults && (
+                                                        {!isVisionProcessing && visionGrid && visionCalcResults && (
                                                             <div className="p-4 bg-black/60 border-t border-slate-800">
-                                                                <span className="text-xs text-slate-400 mb-3 block font-bold text-center">目前盤面狀態 (唯讀預覽)</span>
+                                                                <span className="text-xs text-slate-400 mb-3 block font-bold text-center">目前 AI 辨識盤面狀態 (唯讀預覽)</span>
                                                                 <div className="flex flex-col gap-1 w-max mx-auto pointer-events-none">
-                                                                    {getSafeGrid().map((row, rIndex) => (
+                                                                    {getSafeGrid(visionGrid).map((row, rIndex) => (
                                                                         <div key={rIndex} className="flex gap-1">
                                                                             {row.map((symbol, cIndex) => {
                                                                                 let isWinSymbol = false;
                                                                                 let isOnLine = false;
-                                                                                if (calcResults) {
-                                                                                    if (hoveredLineId) {
-                                                                                        const hoveredResult = calcResults.details.find(d => d.lineId === hoveredLineId);
-                                                                                        isOnLine = template.lines[hoveredLineId]?.[cIndex] - 1 === rIndex;
+                                                                                if (visionCalcResults) {
+                                                                                    if (visionHoveredLineId) {
+                                                                                        const hoveredResult = visionCalcResults.details.find(d => d.lineId === visionHoveredLineId);
+                                                                                        isOnLine = template.lines[visionHoveredLineId]?.[cIndex] - 1 === rIndex;
                                                                                         isWinSymbol = hoveredResult?.winCoords.some(c => c.row === rIndex && c.col === cIndex);
                                                                                     } else {
-                                                                                        isWinSymbol = calcResults.details.some(d => d.winCoords.some(c => c.row === rIndex && c.col === cIndex));
+                                                                                        isWinSymbol = visionCalcResults.details.some(d => d.winCoords.some(c => c.row === rIndex && c.col === cIndex));
                                                                                     }
                                                                                 }
 
                                                                                 let cellClass = "w-10 h-10 flex items-center justify-center rounded border transition-all duration-300 text-[10px] font-bold text-center ";
-                                                                                if (hoveredLineId) {
+                                                                                if (visionHoveredLineId) {
                                                                                     if (isWinSymbol) cellClass += "bg-indigo-600 border-indigo-400 shadow-[0_0_10px_rgba(99,102,241,0.5)] z-10 scale-105 text-white";
                                                                                     else if (isOnLine) cellClass += "bg-slate-700 border-slate-500 text-slate-300 opacity-60";
                                                                                     else cellClass += "bg-slate-900 border-slate-800 text-slate-600 opacity-30";
@@ -2571,7 +2707,7 @@
                                                                     ))}
                                                                 </div>
                                                                 <div className="text-center mt-3">
-                                                                    <span className="text-[10px] text-slate-500">若發現 AI 辨識有誤，請至上方 Phase 2 手動微調盤面</span>
+                                                                    <span className="text-[10px] text-slate-500">若發現 AI 辨識有誤，這只是輔助功能，請至上方 Phase 2 手動微調盤面</span>
                                                                 </div>
                                                             </div>
                                                         )}
@@ -2580,8 +2716,20 @@
                                             </div>
                                         </div>
 
-                                        {/* 共用結算 UI */}
-                                        {renderResultView()}
+                                        {/* Phase 3 專屬獨立結算 UI */}
+                                        {activeVisionImg && visionGrid ? (
+                                            renderResultView(visionCalcResults, visionCalculateError, visionHoveredLineId, setVisionHoveredLineId, visionShowAllLines, setVisionShowAllLines)
+                                        ) : (
+                                            <div className="relative flex flex-col h-full lg:block w-full">
+                                                <div className="static lg:absolute lg:inset-0 flex flex-col w-full h-full">
+                                                    <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col items-center justify-center flex-1 min-h-0 text-slate-400 opacity-60 border-dashed">
+                                                        <Trophy size={48} className="mb-3 opacity-50" />
+                                                        <p className="font-bold text-lg">等待 AI 批次辨識結果...</p>
+                                                        <p className="text-sm mt-1">結果將在此獨立呈現，不影響 Phase 2</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
 
                                     </div>
                                 </div>
@@ -2650,6 +2798,7 @@
                                                 const cW = Math.abs(ptCropState.startX - ptCropState.endX) * sX;
                                                 const cH = Math.abs(ptCropState.startY - ptCropState.endY) * sY;
 
+                                                // 防呆：如果只有點一下沒有拖曳寬高，則不進行擷取
                                                 if (cW <= 0 || cH <= 0) {
                                                     setPtCropState(p => ({ ...p, active: false }));
                                                     return;
@@ -2665,6 +2814,7 @@
                                         </div>
                                     </div>
 
+                                    {/* 新增：多圖切換區塊 (只有在上傳大於1張圖時才顯示) */}
                                     {ptImages.length > 1 && (
                                         <div className="flex gap-2 px-4 pb-3 overflow-x-auto custom-scrollbar">
                                             {ptImages.map((img, idx) => (
@@ -2682,6 +2832,7 @@
                                     )}
                                 </div>
 
+                                {/* 移除 items-center justify-center，改為在內層使用 m-auto，防止頂部被切斷 */}
                                 <div className="flex-1 bg-black overflow-auto flex p-4">
                                     <div className="relative inline-block m-auto shrink-0">
                                         <img
