@@ -39,7 +39,7 @@ export function computeGridResults(template, targetGrid, betAmount) {
 
             for (const targetSymbol of allPaySymbols) {
                 if (isScatterSymbol(targetSymbol)) continue;
-                if (isCashSymbol(targetSymbol)) continue;
+                if (isCashSymbol(targetSymbol, template.jpConfig)) continue;
                 if (isCollectSymbol(targetSymbol) && !isWildSymbol(targetSymbol)) continue;
 
                 let currentCount = 0;
@@ -78,7 +78,7 @@ export function computeGridResults(template, targetGrid, betAmount) {
                 bestCount = 0;
                 for (let i = 0; i < symbolsOnLine.length; i++) {
                     if (!symbolsOnLine[i]) break;
-                    if (isScatterSymbol(symbolsOnLine[i]) || isCashSymbol(symbolsOnLine[i]) || (isCollectSymbol(symbolsOnLine[i]) && !isWildSymbol(symbolsOnLine[i]))) break;
+                    if (isScatterSymbol(symbolsOnLine[i]) || isCashSymbol(symbolsOnLine[i], template.jpConfig) || (isCollectSymbol(symbolsOnLine[i]) && !isWildSymbol(symbolsOnLine[i]))) break;
 
                     if (symbolsOnLine[i] === bestSymbol || isWildSymbol(symbolsOnLine[i])) bestCount++;
                     else break;
@@ -92,7 +92,7 @@ export function computeGridResults(template, targetGrid, betAmount) {
                 }
             }
 
-            if (!isScatterSymbol(bestSymbol) && !isCashSymbol(bestSymbol)) {
+            if (!isScatterSymbol(bestSymbol) && !isCashSymbol(bestSymbol, template.jpConfig)) {
                 calculatedResults.push({
                     lineId,
                     symbol: bestSymbol,
@@ -156,8 +156,8 @@ export function computeGridResults(template, targetGrid, betAmount) {
                     collectCount++;
                     collectCoords.push({ row: r, col: c });
                 }
-                if (isCashSymbol(sym)) {
-                    const val = getCashValue(sym);
+                if (isCashSymbol(sym, template.jpConfig)) {
+                    const val = getCashValue(sym, template.jpConfig);
                     if (val > 0) {
                         totalCashValue += val;
                         cashCoords.push({ row: r, col: c });
@@ -168,7 +168,7 @@ export function computeGridResults(template, targetGrid, betAmount) {
 
         if (collectCount > 0 && totalCashValue > 0) {
             const totalPayout = totalCashValue * collectCount;
-            const payout = parseFloat((totalPayout).toFixed(8));
+            const payout = parseFloat((totalPayout * parsedBet).toFixed(8)); // CASH value is multiplier of Bet
 
             calculatedResults.push({
                 lineId: `COLLECT_FEATURE`,
@@ -176,7 +176,7 @@ export function computeGridResults(template, targetGrid, betAmount) {
                 count: cashCoords.length,
                 payoutMult: totalCashValue,
                 winAmount: payout,
-                symbolsOnLine: Array(collectCount).fill('COLLECT').concat(Array(cashCoords.length).fill('CASH')),
+                symbolsOnLine: Array(collectCount).fill('COLLECT').concat(cashCoords.map(coord => safeGrid[coord.row][coord.col])),
                 positions: [`收集 x${collectCount}`],
                 winCoords: [...collectCoords, ...cashCoords]
             });

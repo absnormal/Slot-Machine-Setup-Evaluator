@@ -4,7 +4,7 @@ import { Play, Settings, AlertCircle, CheckCircle2, Trophy, Coins, ChevronDown, 
 // === 模組匯入 ===
 import { GAS_URL, apiKey } from './utils/constants';
 import { toPx, toPct, fetchWithRetry, ptFileToBase64 } from './utils/helpers';
-import { isScatterSymbol, isCollectSymbol, isWildSymbol, isCashSymbol, getCashValue, getBaseSymbol } from './utils/symbolUtils';
+import { isScatterSymbol, isCollectSymbol, isWildSymbol, isCashSymbol, isJpSymbol, getCashValue, getBaseSymbol } from './utils/symbolUtils';
 import { computeGridResults } from './engine/computeGridResults';
 import { useLightbox } from './hooks/useLightbox';
 import { useCanvasDrag } from './hooks/useCanvasDrag';
@@ -18,6 +18,7 @@ function App() {
     // --- 預設資料清空 ---
     const defaultPaytable = "";
     const defaultPanelGrid = Array.from({ length: 3 }, () => Array(5).fill(''));
+    const defaultJpConfig = { "MINI": "", "MINOR": "", "MAJOR": "", "GRAND": "" };
 
     // --- 本機金鑰設定 ---
     const [customApiKey, setCustomApiKey] = useState(() => localStorage.getItem('gemini_api_key') || '');
@@ -41,6 +42,7 @@ function App() {
     const [template, setTemplate] = useState(null);
     const [templateError, setTemplateError] = useState('');
     const [buildErrorMsg, setBuildErrorMsg] = useState('');
+    const [jpConfig, setJpConfig] = useState(defaultJpConfig);
 
     const [isTemplateMinimized, setIsTemplateMinimized] = useState(false);
     const [isPhase2Minimized, setIsPhase2Minimized] = useState(true);
@@ -132,6 +134,11 @@ function App() {
     const availableSymbols = useMemo(() => {
         if (!template) return [];
         const symbols = new Set(Object.keys(template.paytable));
+        if (template.jpConfig) {
+            Object.keys(template.jpConfig).forEach(jp => {
+                if (jp.trim() !== '') symbols.add(jp.toUpperCase());
+            });
+        }
         if (!symbols.has('WILD') && !Array.from(symbols).some(s => isWildSymbol(s))) symbols.add('WILD');
         return Array.from(symbols);
     }, [template]);
@@ -239,7 +246,8 @@ function App() {
                 lines,
                 paytable,
                 symbolImages,
-                symbolImagesAll
+                symbolImagesAll,
+                jpConfig: { ...defaultJpConfig, ...(data.jpConfig || jpConfig) }
             });
 
             const availableSyms = Object.keys(paytable);
@@ -304,7 +312,8 @@ function App() {
             gridCols: demoCols,
             extractResults: parsedLines,
             paytableInput: demoPaytable,
-            ptResultItems: newPtItems
+            ptResultItems: newPtItems,
+            jpConfig: { "MINI": "10", "MINOR": "20", "MAJOR": "50", "GRAND": "1000" }
         });
     };
 
@@ -449,6 +458,7 @@ function App() {
                 extractResults,
                 paytableInput,
                 ptResultItems,
+                jpConfig,
                 creatorId: localUserId,
                 createdAt: new Date().toISOString()
             };
@@ -504,6 +514,8 @@ function App() {
             if (data.gridCols) setGridCols(data.gridCols);
             if (data.extractResults) setExtractResults(data.extractResults);
             if (data.paytableInput) setPaytableInput(data.paytableInput);
+            if (data.jpConfig) setJpConfig(data.jpConfig);
+            else setJpConfig(defaultJpConfig);
 
             if (data.ptResultItems) {
                 const processedItems = data.ptResultItems.map(item => ({
@@ -547,7 +559,8 @@ function App() {
             gridCols,
             extractResults,
             paytableInput,
-            ptResultItems
+            ptResultItems,
+            jpConfig
         };
 
         const jsonStr = JSON.stringify(data, null, 2);
@@ -586,6 +599,9 @@ function App() {
                     setExtractResults(data.extractResults);
                     setLinesTextInput(data.extractResults.map(r => r.data.join(' ')).join('\n'));
                 }
+
+                if (data.jpConfig) setJpConfig(data.jpConfig);
+                else setJpConfig(defaultJpConfig);
 
                 if (data.paytableInput) setPaytableInput(data.paytableInput);
                 if (data.ptResultItems) {
@@ -954,7 +970,8 @@ function App() {
                 lines,
                 paytable,
                 symbolImages,
-                symbolImagesAll
+                symbolImagesAll,
+                jpConfig
             });
 
             const availableSyms = Object.keys(paytable);
@@ -1449,7 +1466,7 @@ function App() {
                         1. 你只能從以下「可用符號清單」中選擇最接近的符號填入，絕對不能自己發明新名稱：
                            [${availableSymbols.join(', ')}]
                         2. 若符號為收集符號，請填入 "COLLECT" 或 "WILD_COLLECT"。
-                        3. 若為帶有倍數或數值的現金符號(Cash)，請務必讀出上面的數字，並以 "CASH_數字" 格式填入 (例如: CASH_0.5, CASH_10)。
+                        3. 若為帶有倍數或數值的現金符號(Cash)，請務必讀出上面的數字，並以 "CASH_數字" 格式填入 (例如: CASH_0.5, CASH_10)。如果是 JP 符號 (如 MINI, GRAND)，請直接填入該清單中的名稱。
                         4. 如果某個格子看起來被變暗、變灰（通常是未中獎狀態），請忽略顏色，依然根據它的「形狀和特徵」辨識出它是哪個符號。
                         5. 如果某個格子真的完全被特效遮擋無法辨識，或是空的，請填入空字串 ""。
                         `;
@@ -1503,7 +1520,7 @@ function App() {
                     const rowArr = [];
                     for (let c = 0; c < template.cols; c++) {
                         let sym = parsedGrid[r]?.[c] || '';
-                        if (sym && !availableSymbols.includes(sym) && !isCashSymbol(sym)) {
+                        if (sym && !availableSymbols.includes(sym) && !isCashSymbol(sym, template?.jpConfig)) {
                             sym = '';
                         }
                         rowArr.push(sym);
@@ -2024,7 +2041,7 @@ function App() {
                                                                     {ptResultItems.map((item, idx) => (
                                                                         <tr key={idx} className="border-b border-slate-50 hover:bg-slate-50 transition-colors group">
                                                                             <td className="p-1.5">
-                                                                                <div className="flex flex-wrap gap-1 items-center justify-center max-w-[120px]">
+                                                                                <div className="flex flex-row flex-nowrap gap-1 items-center overflow-x-auto max-w-[120px]">
                                                                                     {item.thumbUrls && item.thumbUrls.map((url, tIdx) => (
                                                                                         <div key={tIdx} className="relative w-7 h-7 bg-slate-800 rounded border border-slate-300 shadow-sm group/thumb">
                                                                                             <img src={url} className="w-full h-full object-contain" />
@@ -2085,8 +2102,73 @@ function App() {
                                 </div>
                             </div>
 
+                            {/* Step 3: Jackpot (JP) 倍率設定 */}
+                            <div className="bg-slate-50 p-5 rounded-xl border border-slate-200 mt-6">
+                                <div className="flex flex-col">
+                                    <div className="flex items-center justify-between mb-4 border-b border-slate-200 pb-3">
+                                        <label className="text-base font-bold text-slate-800 flex items-center gap-2"><Trophy size={20} className="text-amber-500" /> Jackpot 倍率設定</label>
+                                    </div>
+                                    <p className="text-xs text-slate-500 mb-4">設定各級別 JP (如 MINI, GRAND) 觸發收集時的面額倍率。可自行新增自訂大獎名稱，留空表示未使用。<br /><span className="text-indigo-500 font-bold">💡 若需要讓 Phase 3 AI 辨識 JP 符號，請在上方「賠付表資料設定 (圖片提取)」中新增對應名稱的符號行，並裁切該 JP 的特徵圖即可。</span></p>
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                                        {Object.entries(jpConfig).map(([jpName, jpMult], idx) => (
+                                            <div key={idx} className="flex flex-col bg-white border border-slate-200 rounded-lg p-3 hover:border-indigo-300 transition-colors shadow-sm relative group">
+                                                <input
+                                                    type="text"
+                                                    value={jpName}
+                                                    onChange={(e) => {
+                                                        const newName = e.target.value.toUpperCase();
+                                                        setJpConfig(prev => {
+                                                            const newConfig = {};
+                                                            Object.keys(prev).forEach(k => {
+                                                                if (k === jpName) newConfig[newName] = prev[k];
+                                                                else newConfig[k] = prev[k];
+                                                            });
+                                                            return newConfig;
+                                                        });
+                                                    }}
+                                                    className="w-full text-sm font-bold text-slate-700 outline-none uppercase border-b border-transparent hover:border-slate-200 focus:border-indigo-300 mb-2 placeholder:font-normal placeholder:lowercase placeholder:text-slate-300 pb-1"
+                                                    placeholder="JP分類"
+                                                />
+                                                <input
+                                                    type="number"
+                                                    step="any"
+                                                    value={jpMult}
+                                                    onChange={(e) => {
+                                                        setJpConfig(prev => ({ ...prev, [jpName]: e.target.value }));
+                                                    }}
+                                                    className="w-full text-lg font-black text-amber-600 outline-none bg-amber-50 hover:bg-amber-100 px-2 py-1.5 rounded focus:ring-1 focus:ring-amber-300 transition-colors"
+                                                    placeholder="倍率"
+                                                />
+                                                <button
+                                                    onClick={() => {
+                                                        setJpConfig(prev => {
+                                                            const newConfig = { ...prev };
+                                                            delete newConfig[jpName];
+                                                            return newConfig;
+                                                        });
+                                                    }}
+                                                    className="absolute -top-2 -right-2 bg-rose-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity shadow-md hover:bg-rose-600 focus:outline-none"
+                                                    disabled={Object.keys(jpConfig).length <= 1}
+                                                >
+                                                    <X size={12} />
+                                                </button>
+                                            </div>
+                                        ))}
+                                        <button
+                                            onClick={() => {
+                                                setJpConfig(prev => ({ ...prev, [`CUSTOM_${Object.keys(prev).length + 1}`]: "" }));
+                                            }}
+                                            className="flex flex-col items-center justify-center bg-transparent border-2 border-dashed border-slate-300 rounded-lg p-3 hover:bg-slate-100 hover:border-slate-400 hover:text-indigo-600 transition-colors text-slate-400 min-h-[95px] w-full"
+                                        >
+                                            <Plus size={24} className="mb-1" />
+                                            <span className="text-xs font-bold">新增 JP</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
                             {/* 建構結算模板大按鈕 */}
-                            <button onClick={handleBuildTemplate} className="w-full py-4 bg-slate-800 hover:bg-slate-900 text-white text-lg font-bold rounded-xl shadow-xl flex items-center justify-center gap-2 transition-all active:scale-[0.99]">
+                            <button onClick={handleBuildTemplate} className="w-full mt-6 py-4 bg-slate-800 hover:bg-slate-900 text-white text-lg font-bold rounded-xl shadow-xl flex items-center justify-center gap-2 transition-all active:scale-[0.99]">
                                 <CheckCircle2 size={24} />
                                 完成設定，建構結算模板
                             </button>
@@ -2144,15 +2226,15 @@ function App() {
                                                         <span className="block text-[10px] font-bold text-slate-400 mb-2 uppercase tracking-wider">選擇畫筆 (點擊或拖曳下方網格填色)</span>
                                                         <div className="flex flex-wrap gap-2">
                                                             {availableSymbols.map(sym => {
-                                                                const isCash = isCashSymbol(sym);
-                                                                const baseSym = getBaseSymbol(sym);
-                                                                const isActive = getBaseSymbol(activeBrush) === baseSym;
+                                                                const isCash = isCashSymbol(sym, template?.jpConfig);
+                                                                const baseSym = getBaseSymbol(sym, template?.jpConfig);
+                                                                const isActive = getBaseSymbol(activeBrush, template?.jpConfig) === baseSym;
 
                                                                 return (
                                                                     <button
                                                                         key={sym}
                                                                         onClick={() => {
-                                                                            if (isCash) {
+                                                                            if (isCash && !isJpSymbol(sym, template?.jpConfig)) {
                                                                                 if (!isActive) {
                                                                                     setActiveBrush(`CASH_1`);
                                                                                 }
@@ -2166,15 +2248,15 @@ function App() {
                                                                         {template?.symbolImages?.[baseSym] ? (
                                                                             <React.Fragment>
                                                                                 <img src={template.symbolImages[baseSym]} className="max-w-full max-h-full object-contain p-1" alt={baseSym} />
-                                                                                {isActive && isCash && getCashValue(activeBrush) > 0 && (
+                                                                                {isActive && isCash && getCashValue(activeBrush, template?.jpConfig) > 0 && (
                                                                                     <div className="absolute inset-0 flex items-center justify-center font-black text-white drop-shadow-[0_2px_3px_rgba(0,0,0,1)] text-[10px] z-20 pointer-events-none">
-                                                                                        {getCashValue(activeBrush)}
+                                                                                        {getCashValue(activeBrush, template?.jpConfig)}
                                                                                     </div>
                                                                                 )}
                                                                             </React.Fragment>
                                                                         ) : (
                                                                             <span className="text-[10px] sm:text-xs font-black leading-tight text-center px-1 text-slate-200">
-                                                                                {isCash ? (isActive && getCashValue(activeBrush) > 0 ? `💰${getCashValue(activeBrush)}` : '💰設定') : sym}
+                                                                                {isCash ? (isActive && getCashValue(activeBrush, template?.jpConfig) > 0 ? `💰${getCashValue(activeBrush, template?.jpConfig)}` : '💰設定') : sym}
                                                                             </span>
                                                                         )}
                                                                     </button>
@@ -2202,7 +2284,7 @@ function App() {
                                                             </button>
 
                                                             {/* 新增：當選擇 CASH 畫筆時，動態顯示的面額輸入框 */}
-                                                            {getBaseSymbol(activeBrush) === 'CASH' && (
+                                                            {getBaseSymbol(activeBrush, template?.jpConfig) === 'CASH' && (
                                                                 <React.Fragment>
                                                                     <div className="w-px h-10 bg-slate-700 mx-1 self-center"></div>
                                                                     <div className="flex flex-col justify-center bg-indigo-500/20 border border-indigo-400/50 rounded-lg px-3 h-[48px] sm:h-[52px] animate-in fade-in slide-in-from-left-2 duration-200">
@@ -2210,7 +2292,7 @@ function App() {
                                                                         <input
                                                                             type="number"
                                                                             step="any"
-                                                                            value={getCashValue(activeBrush) || ''}
+                                                                            value={getCashValue(activeBrush, template?.jpConfig) || ''}
                                                                             onChange={(e) => setActiveBrush(`CASH_${e.target.value}`)}
                                                                             className="w-16 px-1.5 py-0.5 text-xs font-black text-indigo-900 bg-indigo-50 hover:bg-white focus:bg-white rounded outline-none text-center focus:ring-2 focus:ring-indigo-400 transition-all shadow-inner"
                                                                             placeholder="數值"
@@ -2272,8 +2354,8 @@ function App() {
                                                                         else cellClasses += "opacity-100 bg-slate-800 border border-slate-700 hover:bg-slate-700 hover:border-slate-500 text-white shadow-inner";
                                                                     }
 
-                                                                    const baseSym = getBaseSymbol(symbol);
-                                                                    const cashVal = getCashValue(symbol);
+                                                                    const baseSym = getBaseSymbol(symbol, template?.jpConfig);
+                                                                    const cashVal = getCashValue(symbol, template?.jpConfig);
 
                                                                     return (
                                                                         <div
@@ -2302,12 +2384,12 @@ function App() {
                                                                                 symbol ? (
                                                                                     template?.symbolImages?.[baseSym] ? (
                                                                                         <React.Fragment>
-                                                                                            <img src={template.symbolImages[baseSym]} className={`max-w-full max-h-full object-contain p-1.5 drop-shadow-md pointer-events-none select-none ${isCashSymbol(symbol) ? 'opacity-80' : ''}`} draggable={false} alt={baseSym} />
+                                                                                            <img src={template.symbolImages[baseSym]} className={`max-w-full max-h-full object-contain p-1.5 drop-shadow-md pointer-events-none select-none ${isCashSymbol(symbol, template?.jpConfig) ? 'opacity-80' : ''}`} draggable={false} alt={baseSym} />
                                                                                             {cashVal > 0 && <div className="absolute inset-0 flex items-center justify-center font-black text-white drop-shadow-[0_2px_3px_rgba(0,0,0,1)] text-sm sm:text-base z-20 pointer-events-none">{cashVal}</div>}
                                                                                         </React.Fragment>
                                                                                     ) : (
                                                                                         <span className="z-10 pointer-events-none select-none drop-shadow-md text-sm sm:text-xl">
-                                                                                            {isCashSymbol(symbol) && cashVal > 0 ? `💰${cashVal}` : baseSym}
+                                                                                            {isCashSymbol(symbol, template?.jpConfig) && cashVal > 0 ? `💰${cashVal}` : baseSym}
                                                                                         </span>
                                                                                     )
                                                                                 ) : (
@@ -2479,19 +2561,19 @@ function App() {
                                                                             else cellClass += "bg-slate-800 border-slate-700 text-slate-300";
                                                                         }
 
-                                                                        const baseSym = getBaseSymbol(symbol);
-                                                                        const cashVal = getCashValue(symbol);
+                                                                        const baseSym = getBaseSymbol(symbol, template?.jpConfig);
+                                                                        const cashVal = getCashValue(symbol, template?.jpConfig);
 
                                                                         return (
                                                                             <div key={cIndex} className={cellClass}>
                                                                                 {symbol ? (
                                                                                     template?.symbolImages?.[baseSym] ? (
                                                                                         <React.Fragment>
-                                                                                            <img src={template.symbolImages[baseSym]} className={`max-w-full max-h-full object-contain p-1 drop-shadow-md ${isCashSymbol(symbol) ? 'opacity-80' : ''}`} alt={baseSym} />
+                                                                                            <img src={template.symbolImages[baseSym]} className={`max-w-full max-h-full object-contain p-1 drop-shadow-md ${isCashSymbol(symbol, template?.jpConfig) ? 'opacity-80' : ''}`} alt={baseSym} />
                                                                                             {cashVal > 0 && <div className="absolute inset-0 flex items-center justify-center font-black text-white drop-shadow-[0_1px_2px_rgba(0,0,0,1)] text-[10px] z-20 pointer-events-none">{cashVal}</div>}
                                                                                         </React.Fragment>
                                                                                     ) : (
-                                                                                        <span>{isCashSymbol(symbol) && cashVal > 0 ? `💰${cashVal}` : baseSym}</span>
+                                                                                        <span>{isCashSymbol(symbol, template?.jpConfig) && cashVal > 0 ? `💰${cashVal}` : baseSym}</span>
                                                                                     )
                                                                                 ) : null}
                                                                             </div>

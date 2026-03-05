@@ -1,6 +1,6 @@
 import React from 'react';
 import { Trophy, AlertCircle, Zap, Coins } from 'lucide-react';
-import { getBaseSymbol } from '../utils/symbolUtils';
+import { getBaseSymbol, isJpSymbol } from '../utils/symbolUtils';
 
 export default function ResultView({ template, calcData, calcErr, hoveredId, setHoveredId, showAll, setShowAll, betInput, setBetInput }) {
     return (
@@ -77,14 +77,18 @@ export default function ResultView({ template, calcData, calcErr, hoveredId, set
                                             }
                                         }
 
+                                        const collectedJps = isCollectWin && template?.jpConfig
+                                            ? [...new Set(result.symbolsOnLine.filter(sym => typeof sym === 'string' && isJpSymbol(sym, template.jpConfig)))]
+                                            : [];
+
                                         return (
                                             <div key={idx} className={`p-2 rounded-lg border flex items-center gap-3 transition-all duration-300 cursor-pointer animate-in fade-in slide-in-from-bottom-2 ${rowBgClass}`} onMouseEnter={() => setHoveredId(result.lineId)} onMouseLeave={() => setHoveredId(null)}>
                                                 <div className={`w-12 h-16 shrink-0 flex flex-col justify-between rounded-md border shadow-sm overflow-hidden ${idBgClass}`}>
                                                     <div className="flex-1 min-h-0 flex items-center justify-center px-1 pt-1 relative">
-                                                        {template?.symbolImages?.[getBaseSymbol(result.symbol)] ? (
-                                                            <img src={template.symbolImages[getBaseSymbol(result.symbol)]} className="max-w-full max-h-full object-contain drop-shadow-md" alt={result.symbol} />
+                                                        {template?.symbolImages?.[getBaseSymbol(result.symbol, template.jpConfig)] ? (
+                                                            <img src={template.symbolImages[getBaseSymbol(result.symbol, template.jpConfig)]} className="max-w-full max-h-full object-contain drop-shadow-md" alt={result.symbol} />
                                                         ) : (
-                                                            <span className={`text-[10px] font-black leading-tight text-center ${isWin ? 'text-slate-300' : 'text-slate-500'}`}>{getBaseSymbol(result.symbol)}</span>
+                                                            <span className={`text-[10px] font-black leading-tight text-center ${isWin ? 'text-slate-300' : 'text-slate-500'}`}>{getBaseSymbol(result.symbol, template.jpConfig)}</span>
                                                         )}
                                                     </div>
                                                     <div className={`shrink-0 pb-1 text-center text-sm font-black tracking-wider ${idTextClass}`}>
@@ -93,19 +97,26 @@ export default function ResultView({ template, calcData, calcErr, hoveredId, set
                                                 </div>
                                                 <div className="flex-1 min-w-0 flex flex-col justify-center">
                                                     <div className="flex items-center justify-between mb-1">
-                                                        <div className="flex items-center gap-2">
+                                                        <div className="flex items-center gap-2 flex-wrap">
                                                             <span className={`font-bold text-sm truncate ${isScatterWin ? 'text-amber-700' : isCollectWin ? 'text-emerald-700' : 'text-slate-800'}`}>
                                                                 {isCollectWin ? '金幣收集成功' : `${result.symbol} ${result.count} ${isScatterWin ? '個' : '連'}`}
                                                             </span>
                                                             {isWin ? (
-                                                                <span className={`text-[10px] px-2 py-0.5 font-bold rounded-full border ${isScatterWin ? 'bg-amber-100 text-amber-700 border-amber-300' : isCollectWin ? 'bg-emerald-100 text-emerald-700 border-emerald-300' : 'bg-indigo-50 text-indigo-700 border-indigo-200'}`}>
-                                                                    {isCollectWin ? `總面額 ${result.payoutMult}` : `倍率 ${result.payoutMult}x`}
-                                                                </span>
+                                                                <div className="flex items-center gap-1">
+                                                                    {collectedJps.map((jp, i) => (
+                                                                        <span key={i} className="text-[10px] px-2 py-0.5 font-black rounded-full bg-amber-500 text-white shadow-sm border border-amber-600 animate-pulse whitespace-nowrap">
+                                                                            🏆 {jp.toUpperCase()} {template.jpConfig[jp.toUpperCase()]}x
+                                                                        </span>
+                                                                    ))}
+                                                                    <span className={`text-[10px] px-2 py-0.5 font-bold rounded-full border whitespace-nowrap ${isScatterWin ? 'bg-amber-100 text-amber-700 border-amber-300' : isCollectWin ? 'bg-emerald-100 text-emerald-700 border-emerald-300' : 'bg-indigo-50 text-indigo-700 border-indigo-200'}`}>
+                                                                        {isCollectWin ? `總面額 ${result.payoutMult}` : `倍率 ${result.payoutMult}x`}
+                                                                    </span>
+                                                                </div>
                                                             ) : (
-                                                                <span className="text-[10px] px-2 py-0.5 bg-slate-200 text-slate-500 rounded-full font-medium">未中獎</span>
+                                                                <span className="text-[10px] px-2 py-0.5 bg-slate-200 text-slate-500 rounded-full font-medium whitespace-nowrap">未中獎</span>
                                                             )}
                                                         </div>
-                                                        <span className={`font-black text-sm shrink-0 ${isWin ? (isScatterWin ? 'text-amber-600' : 'text-emerald-600') : 'text-slate-400'}`}>
+                                                        <span className={`font-black text-sm shrink-0 ml-2 ${isWin ? (isScatterWin ? 'text-amber-600' : 'text-emerald-600') : 'text-slate-400'}`}>
                                                             {isWin ? `+${result.winAmount.toLocaleString()}` : '-'}
                                                         </span>
                                                     </div>
