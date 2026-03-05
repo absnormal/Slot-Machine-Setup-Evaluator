@@ -1258,14 +1258,15 @@ function App() {
                 const rw = toPx(visionP1.w, visionImageObj.width);
                 const rh = toPx(visionP1.h, visionImageObj.height);
 
-                // 加上 5% 的 Padding 以免太緊貼
+                // 加上 5% 的 Padding 以免太緊貼，下方額外加上 50px 區域保留贏分和 BET 資訊
                 const paddingX = rw * 0.05;
                 const paddingY = rh * 0.05;
+                const bottomPadding = paddingY + 150;
 
                 const cropX = Math.max(0, rx - paddingX);
                 const cropY = Math.max(0, ry - paddingY);
                 const cropW = Math.min(visionImageObj.width - cropX, rw + paddingX * 2);
-                const cropH = Math.min(visionImageObj.height - cropY, rh + paddingY * 2);
+                const cropH = Math.min(visionImageObj.height - cropY, rh + paddingY + bottomPadding);
 
                 canvas.width = cropW;
                 canvas.height = cropH;
