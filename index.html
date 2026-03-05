@@ -60,7 +60,7 @@
         // === 雲端資料庫設定 (Google Apps Script) ===
         const GAS_URL = "https://script.google.com/macros/s/AKfycby1bfxQa5rGdVUrr_gXoZ3bBgin-c8bvVnohqPkdipicaG2m8vWxz9y7rubpgQ8avGbzg/exec";
 
-        // AI API Key (由執行環境動態提供)
+        // AI API Key
         const apiKey = "";
 
         // === 共用輔助函式 ===
@@ -91,6 +91,21 @@
             reader.onerror = error => reject(error);
         });
 
+        // === 特殊符號判定輔助函式 ===
+        const isScatterSymbol = (sym) => sym && sym.toUpperCase().includes('SCATTER');
+        const isCollectSymbol = (sym) => sym && sym.toUpperCase().includes('COLLECT');
+        const isWildSymbol = (sym) => sym && sym.toUpperCase().includes('WILD');
+        const isCashSymbol = (sym) => sym && sym.toUpperCase().startsWith('CASH');
+        const getCashValue = (sym) => {
+            if (!isCashSymbol(sym)) return 0;
+            const parts = sym.split('_');
+            return parts.length > 1 ? parseFloat(parts[1]) || 0 : 0;
+        };
+        const getBaseSymbol = (sym) => {
+            if (isCashSymbol(sym)) return 'CASH';
+            return sym;
+        };
+
         function App() {
             // --- 預設資料清空 ---
             const defaultPaytable = "";
@@ -119,7 +134,6 @@
             const [templateError, setTemplateError] = useState('');
             const [buildErrorMsg, setBuildErrorMsg] = useState('');
 
-            // Phase 展開/摺疊狀態
             const [isTemplateMinimized, setIsTemplateMinimized] = useState(false);
             const [isPhase2Minimized, setIsPhase2Minimized] = useState(true);
             const [isPhase3Minimized, setIsPhase3Minimized] = useState(true);
@@ -215,38 +229,36 @@
                 lbDragRef.current = { ...lbDragRef.current, startX: e.clientX, startY: e.clientY, initW: lightboxState.w, initH: lightboxState.h };
             };
 
-            // --- 全局共用狀態 ---
-            const [betInput, setBetInput] = useState(100);
-            const [showAIConfirmModal, setShowAIConfirmModal] = useState(false);
-
-            // --- 狀態管理: Phase 2 (手動結算) ---
+            // --- 狀態管理: Phase 2 (結算) ---
             const [panelGrid, setPanelGrid] = useState(defaultPanelGrid);
+            const [betInput, setBetInput] = useState(100);
             const [calcResults, setCalcResults] = useState(null);
             const [calculateError, setCalculateError] = useState('');
             const [hoveredLineId, setHoveredLineId] = useState(null);
             const [showAllLines, setShowAllLines] = useState(false);
 
-            const [panelInputMode, setPanelInputMode] = useState('paint'); // 'paint' or 'text'
+            const [panelInputMode, setPanelInputMode] = useState('paint');
             const [activeBrush, setActiveBrush] = useState('');
 
-            // --- 狀態管理: Phase 3 (AI 視覺批次辨識結算) ---
-            const [visionImages, setVisionImages] = useState([]); // 存放多張圖片與其獨立的辨識結果
-            const [activeVisionId, setActiveVisionId] = useState(null); // 目前查看的圖片 ID
+            const [showAIConfirmModal, setShowAIConfirmModal] = useState(false);
 
-            const [visionP1, setVisionP1] = useState({ x: 10, y: 10, w: 80, h: 80 }); // 共用的裁切框
+            // --- 狀態管理: Phase 3 (AI 視覺批次辨識結算) ---
+            const [visionImages, setVisionImages] = useState([]);
+            const [activeVisionId, setActiveVisionId] = useState(null);
+
+            const [visionP1, setVisionP1] = useState({ x: 10, y: 10, w: 80, h: 80 });
             const [isVisionProcessing, setIsVisionProcessing] = useState(false);
-            const [visionBatchProgress, setVisionBatchProgress] = useState({ current: 0, total: 0 }); // 批次處理進度
+            const [visionBatchProgress, setVisionBatchProgress] = useState({ current: 0, total: 0 });
             const [visionDragState, setVisionDragState] = useState(null);
 
             const [visionHoveredLineId, setVisionHoveredLineId] = useState(null);
             const [visionShowAllLines, setVisionShowAllLines] = useState(false);
             const [visionCalculateError, setVisionCalculateError] = useState('');
-            const [visionCalcResults, setVisionCalcResults] = useState(null); // 動態計算當前 Active 圖片的結果
+            const [visionCalcResults, setVisionCalcResults] = useState(null);
 
             const visionCanvasRef = useRef(null);
             const visionContainerRef = useRef(null);
 
-            // 取得目前作用中的 AI 圖片物件
             const activeVisionImg = visionImages.find(img => img.id === activeVisionId) || null;
             const visionImageObj = activeVisionImg?.obj || null;
             const visionImageSrc = activeVisionImg?.previewUrl || null;
@@ -269,13 +281,13 @@
             const availableSymbols = useMemo(() => {
                 if (!template) return [];
                 const symbols = new Set(Object.keys(template.paytable));
-                symbols.add('WILD');
+                if (!symbols.has('WILD') && !Array.from(symbols).some(s => isWildSymbol(s))) symbols.add('WILD');
                 return Array.from(symbols);
             }, [template]);
 
             useEffect(() => {
                 if (template && availableSymbols.length > 0) {
-                    if (!activeBrush || !availableSymbols.includes(activeBrush)) {
+                    if (!activeBrush || (!availableSymbols.includes(activeBrush) && !isCashSymbol(activeBrush))) {
                         setActiveBrush(availableSymbols.includes('WILD') ? 'WILD' : availableSymbols[0]);
                     }
                 }
@@ -287,7 +299,11 @@
                 for (let r = 0; r < rows; r++) {
                     const rowArr = [];
                     for (let c = 0; c < cols; c++) {
-                        rowArr.push(symbols[Math.floor(Math.random() * symbols.length)]);
+                        let sym = symbols[Math.floor(Math.random() * symbols.length)];
+                        if (sym === 'CASH') {
+                            sym = `CASH_${[0.5, 1, 2, 5, 10][Math.floor(Math.random() * 5)]}`;
+                        }
+                        rowArr.push(sym);
                     }
                     grid.push(rowArr);
                 }
@@ -319,15 +335,15 @@
                         const m4 = parts.length > 4 ? parseFloat(parts[4]) || 0 : 0;
                         const m5 = parts.length > 5 ? parseFloat(parts[5]) || 0 : 0;
 
-                        let thumbUrl = null;
+                        let thumbUrls = [];
                         const existingByName = prevItems.find(p => p.name === name);
-                        if (existingByName && existingByName.thumbUrl) {
-                            thumbUrl = existingByName.thumbUrl;
-                        } else if (prevItems[index] && prevItems[index].thumbUrl) {
-                            thumbUrl = prevItems[index].thumbUrl;
+                        if (existingByName && existingByName.thumbUrls && existingByName.thumbUrls.length > 0) {
+                            thumbUrls = existingByName.thumbUrls;
+                        } else if (prevItems[index] && prevItems[index].thumbUrls && prevItems[index].thumbUrls.length > 0) {
+                            thumbUrls = prevItems[index].thumbUrls;
                         }
 
-                        return { name, match1: m1, match2: m2, match3: m3, match4: m4, match5: m5, thumbUrl };
+                        return { name, match1: m1, match2: m2, match3: m3, match4: m4, match5: m5, thumbUrls };
                     });
                 });
             };
@@ -351,8 +367,15 @@
                     });
 
                     const symbolImages = {};
+                    const symbolImagesAll = {};
                     (data.ptResultItems || []).forEach(item => {
-                        if (item.thumbUrl) symbolImages[item.name] = item.thumbUrl;
+                        if (item.thumbUrls && item.thumbUrls.length > 0) {
+                            symbolImages[item.name] = item.thumbUrls[0];
+                            symbolImagesAll[item.name] = item.thumbUrls;
+                        } else if (item.thumbUrl) {
+                            symbolImages[item.name] = item.thumbUrl;
+                            symbolImagesAll[item.name] = [item.thumbUrl];
+                        }
                     });
 
                     const targetRows = data.gridRows || gridRows;
@@ -364,18 +387,18 @@
                         linesCount: data.extractResults?.length || 0,
                         lines,
                         paytable,
-                        symbolImages
+                        symbolImages,
+                        symbolImagesAll
                     });
 
                     const availableSyms = Object.keys(paytable);
                     setPanelGrid(generateRandomPanelGrid(targetRows, targetCols, availableSyms));
 
                     setIsTemplateMinimized(true);
-                    setIsPhase2Minimized(false); // 預設展開手動設定 Phase 2
+                    setIsPhase2Minimized(false);
                     setIsPhase3Minimized(true);
                     setCalcResults(null);
 
-                    // 重置 Phase 3 狀態
                     setVisionImages([]);
                     setActiveVisionId(null);
                     setVisionCalcResults(null);
@@ -383,7 +406,7 @@
                     setTemplateError('');
                     setBuildErrorMsg('');
                 } catch (err) {
-                    console.error("Auto build failed", err);
+                    console.warn("Auto build failed", err);
                     setTemplateError('自動建構失敗：' + err.message);
                 }
             };
@@ -403,7 +426,7 @@
                 setExtractResults(parsedLines);
                 setLinesMode('text');
 
-                const demoPaytable = `數字7 0 0.25 1.25 6.25 125\n西瓜 0 0 1 3 17.5\n葡萄 0 0 1 3 17.5\n鈴鐺 0 0 0.5 1 5\nWILD 0 0 0 0 0`;
+                const demoPaytable = `數字7 0 0.25 1.25 6.25 125\n西瓜 0 0 1 3 17.5\n葡萄 0 0 1 3 17.5\n鈴鐺 0 0 0.5 1 5\n星星SCATTER 0 0 2 10 50\nWILD_COLLECT 0 0 0 0 0\nCASH 0 0 0 0 0`;
                 setPaytableInput(demoPaytable);
 
                 const validLines = demoPaytable.split('\n').filter(l => l.trim() !== '');
@@ -416,13 +439,13 @@
                         match3: parseFloat(parts[3]) || 0,
                         match4: parseFloat(parts[4]) || 0,
                         match5: parseFloat(parts[5]) || 0,
-                        thumbUrl: null
+                        thumbUrls: []
                     };
                 });
                 setPtResultItems(newPtItems);
                 setPaytableMode('text');
 
-                setTemplateMessage('✅ 已為您載入 40 Sparkling Crown 示範資料，並自動進入結算畫面！');
+                setTemplateMessage('✅ 已為您載入包含收集機制的示範資料！');
                 setTimeout(() => setTemplateMessage(''), 5000);
 
                 performAutoBuild({
@@ -435,17 +458,18 @@
             };
 
             const getSafeGrid = useCallback((sourceGrid) => {
-                if (!template || !sourceGrid) return [];
+                if (!template || (!sourceGrid && !panelGrid)) return [];
+                const gridData = sourceGrid || panelGrid;
                 const grid = [];
                 for (let r = 0; r < template.rows; r++) {
                     const rowArr = [];
                     for (let c = 0; c < template.cols; c++) {
-                        rowArr.push(sourceGrid[r]?.[c] || '');
+                        rowArr.push(gridData[r]?.[c] || '');
                     }
                     grid.push(rowArr);
                 }
                 return grid;
-            }, [template]);
+            }, [template, panelGrid]);
 
             const handleGridPaste = (e, startRow, startCol) => {
                 const pasteData = e.clipboardData.getData('Text');
@@ -491,7 +515,6 @@
                 });
             };
 
-            // === Google Sheets 雲端存取邏輯 ===
             const fetchCloudTemplates = useCallback(async () => {
                 if (!GAS_URL) return;
 
@@ -511,12 +534,31 @@
                     setCloudTemplates(data || []);
                     sessionStorage.setItem('slot_templates_cache', JSON.stringify(data || []));
                 } catch (err) {
-                    console.error("取得雲端資料失敗", err);
+                    console.warn("取得雲端資料失敗", err);
                 } finally {
                     setIsLoadingCloud(false);
                     setIsBackgroundSyncing(false);
                 }
             }, []);
+
+            const handleForceRefreshCloud = async () => {
+                if (!GAS_URL) return;
+                setIsLoadingCloud(true);
+                sessionStorage.removeItem('slot_templates_cache');
+                try {
+                    const res = await fetch(`${GAS_URL}?action=list&nocache=true&t=${Date.now()}`);
+                    const data = await res.json();
+                    setCloudTemplates(data || []);
+                    sessionStorage.setItem('slot_templates_cache', JSON.stringify(data || []));
+                    setTemplateMessage('✅ 雲端資料已強制更新！');
+                    setTimeout(() => setTemplateMessage(''), 3000);
+                } catch (err) {
+                    console.error("強制更新失敗", err);
+                    setTemplateError("強制更新失敗：" + err.message);
+                } finally {
+                    setIsLoadingCloud(false);
+                }
+            };
 
             useEffect(() => {
                 if (showCloudModal) fetchCloudTemplates();
@@ -539,7 +581,11 @@
 
                     const symbolImages = {};
                     ptResultItems.forEach(item => {
-                        if (item.thumbUrl) symbolImages[item.name] = item.thumbUrl;
+                        if (item.thumbUrls && item.thumbUrls.length > 0) {
+                            symbolImages[item.name] = item.thumbUrls[0];
+                        } else if (item.thumbUrl) {
+                            symbolImages[item.name] = item.thumbUrl;
+                        }
                     });
 
                     const newTemplate = {
@@ -587,7 +633,7 @@
                     sessionStorage.removeItem('slot_templates_cache');
                     setDeletingId(null);
                 } catch (err) {
-                    console.error("刪除失敗", err);
+                    console.warn("刪除失敗", err);
                     setTemplateError('刪除失敗：' + err.message);
                     setDeletingId(null);
                 }
@@ -596,7 +642,7 @@
             const loadCloudTemplate = async (templateMeta) => {
                 setDownloadingId(templateMeta.id);
                 try {
-                    const res = await fetch(`${GAS_URL}?action=getTemplate&id=${templateMeta.id}`);
+                    const res = await fetch(`${GAS_URL}?action=getTemplate&id=${templateMeta.id}&nocache=true&t=${Date.now()}`);
                     const data = await res.json();
 
                     if (data.error) throw new Error(data.error);
@@ -609,7 +655,11 @@
                     if (data.paytableInput) setPaytableInput(data.paytableInput);
 
                     if (data.ptResultItems) {
-                        setPtResultItems(data.ptResultItems);
+                        const processedItems = data.ptResultItems.map(item => ({
+                            ...item,
+                            thumbUrls: item.thumbUrls || (item.thumbUrl ? [item.thumbUrl] : [])
+                        }));
+                        setPtResultItems(processedItems);
                         setPaytableMode('image');
                     } else {
                         setPaytableMode('text');
@@ -624,7 +674,7 @@
 
                     performAutoBuild(data);
                 } catch (err) {
-                    console.error(err);
+                    console.warn(err);
                     setTemplateError("載入模板詳細資料失敗：" + err.message);
                 } finally {
                     setDownloadingId(null);
@@ -688,7 +738,11 @@
 
                         if (data.paytableInput) setPaytableInput(data.paytableInput);
                         if (data.ptResultItems) {
-                            setPtResultItems(data.ptResultItems);
+                            const processedItems = data.ptResultItems.map(item => ({
+                                ...item,
+                                thumbUrls: item.thumbUrls || (item.thumbUrl ? [item.thumbUrl] : [])
+                            }));
+                            setPtResultItems(processedItems);
                             setPaytableMode('image');
                         } else {
                             setPaytableMode('text');
@@ -709,9 +763,6 @@
                 e.target.value = '';
             };
 
-            // ==========================================
-            //  Phase 1: 連線圖影像辨識 Canvas 邏輯
-            // ==========================================
             const analyzeImage = () => {
                 if (!imageObj) return;
                 const offCanvas = document.createElement('canvas');
@@ -807,7 +858,7 @@
                             base64: base64
                         });
                     } catch (err) {
-                        console.error("Error reading pt file:", err);
+                        console.warn("Error reading pt file:", err);
                     }
                 }
                 setPtImages(prev => [...prev, ...newImages]);
@@ -854,7 +905,7 @@
 
             const handleAddPtRow = () => {
                 setPtResultItems(prev => {
-                    const newItems = [...prev, { name: '新符號', match1: 0, match2: 0, match3: 0, match4: 0, match5: 0, thumbUrl: null }];
+                    const newItems = [...prev, { name: '新符號', match1: 0, match2: 0, match3: 0, match4: 0, match5: 0, thumbUrls: [] }];
                     const formattedLines = newItems.map(item =>
                         `${item.name} ${item.match1} ${item.match2} ${item.match3} ${item.match4} ${item.match5}`
                     );
@@ -888,14 +939,16 @@
 
             命名規則：
             1. 若符號上有寫 "WILD"、"百搭"、或取代其他圖案的功能，請統一命名為 "WILD"。
-            2. 若為英文字母或數字，請直接使用：A, K, Q, J, 10, 9。
-            3. 若為一般圖案，請根據外觀用「繁體中文」直觀命名 (例如: 金龍, 西瓜, 皇冠)。
-            4. 符號名稱 (name) 必須是連續字串，不可包含空白或特殊符號。
+            2. 若符號上有寫 "SCATTER"、"分散"、"奪寶"、"免費遊戲" (Free Spins) 等字樣，請統一在名稱中包含 "SCATTER" (例如: 星星SCATTER)。
+            3. 若符號有「收集」其他符號分數的功能(如漁夫)，請在名稱中包含 "COLLECT" (若同時也是百搭，請命名為 WILD_COLLECT)。
+            4. 若符號是帶有數字的現金/金幣，請統一命名為 "CASH" (不用加上數字，這裡是賠率表提取)。
+            5. 若為英文字母或數字，請直接使用：A, K, Q, J, 10, 9。
+            6. 若為一般圖案，請根據外觀用「繁體中文」直觀命名 (例如: 金龍, 西瓜, 皇冠)。
+            7. 符號名稱 (name) 必須是連續字串，不可包含空白或特殊符號。
 
             數值規則：
-            1. 提取對應的賠率數字。
-            2. 如果某個連線數量(例如 2 連線)沒有標示數字，請補 0。
-            3. match1 (1連線) 的賠率請一律填寫 0。
+            1. 提取對應的賠率數字。如果某個連線數量(例如 2 連線)沒有標示數字，請補 0。
+            2. match1 (1連線) 的賠率請一律填寫 0。
 
             請嚴格按照 JSON Schema 回傳陣列 (Array)，包含所有辨識到的符號，絕對不可回傳空陣列或忽略任何圖案！
           `;
@@ -956,7 +1009,7 @@
                         match5: Number(item.match5) || 0
                     }));
 
-                    const hasWild = parsedData.some(item => item.name.toUpperCase() === 'WILD');
+                    const hasWild = parsedData.some(item => isWildSymbol(item.name));
                     if (!hasWild) {
                         parsedData.push({
                             name: 'WILD',
@@ -968,7 +1021,7 @@
                         });
                     }
 
-                    setPtResultItems(parsedData.map(item => ({ ...item, thumbUrl: null })));
+                    setPtResultItems(parsedData.map(item => ({ ...item, thumbUrls: [] })));
 
                     const formattedLines = parsedData.map(item =>
                         `${item.name} ${item.match1} ${item.match2} ${item.match3} ${item.match4} ${item.match5}`
@@ -977,11 +1030,92 @@
                     setTemplateMessage("✅ 賠率表提取完成！可點擊清單手動擷取特徵縮圖。");
 
                 } catch (err) {
-                    console.error(err);
+                    console.warn(err);
                     setTemplateError(`賠率分析失敗：${err.message || '未知錯誤'}`);
                     setTemplateMessage("");
                 } finally {
                     setIsPtProcessing(false);
+                }
+            };
+
+            const handleRemoveThumb = (itemIndex, thumbIndex) => {
+                setPtResultItems(prev => {
+                    const newItems = [...prev];
+                    newItems[itemIndex].thumbUrls.splice(thumbIndex, 1);
+                    return newItems;
+                });
+            };
+
+            const handleBuildTemplate = () => {
+                setTemplateError('');
+                setCalcResults(null);
+                setVisionCalcResults(null);
+                try {
+                    if (extractResults.length === 0) {
+                        throw new Error('請先設定「線獎資料」（可透過純文字輸入、圖片提取，或從雲端模板庫載入）。');
+                    }
+
+                    const hasMissingData = extractResults.some(res => res.data.includes(0));
+                    if (hasMissingData) {
+                        throw new Error('線獎資料中包含 0 (未辨識到線段的格子)。請嘗試調整圖片提取框，或切換至純文字模式手動修正。');
+                    }
+
+                    const isOutOfBounds = extractResults.some(res => res.data.some(r => r < 1 || r > gridRows));
+                    if (isOutOfBounds) {
+                        throw new Error(`「線獎資料」中包含了無效的列數 (必須介於 1 到 ${gridRows} 之間)。請修正您的純文字內容。`);
+                    }
+
+                    const lines = {};
+                    extractResults.forEach(r => {
+                        lines[r.id] = r.data;
+                    });
+
+                    const ptLines = paytableInput.trim().split('\n').map(l => l.trim()).filter(l => l);
+                    if (ptLines.length === 0) throw new Error('「賠付表資料」不能為空，請先設定賠率。');
+
+                    const paytable = {};
+                    ptLines.forEach((line, index) => {
+                        const parts = line.split(/\s+/);
+                        if (parts.length < 2) throw new Error(`賠付表第 ${index + 1} 行格式錯誤：資料不足`);
+
+                        const symbol = parts[0];
+                        const pays = parts.slice(1).map(Number);
+                        if (pays.some(isNaN)) throw new Error(`賠付表第 ${index + 1} 行 (${symbol}) 格式錯誤：賠率必須為數字`);
+                        paytable[symbol] = pays;
+                    });
+
+                    const symbolImages = {};
+                    const symbolImagesAll = {};
+                    ptResultItems.forEach(item => {
+                        if (item.thumbUrls && item.thumbUrls.length > 0) {
+                            symbolImages[item.name] = item.thumbUrls[0];
+                            symbolImagesAll[item.name] = item.thumbUrls;
+                        } else if (item.thumbUrl) {
+                            symbolImages[item.name] = item.thumbUrl;
+                            symbolImagesAll[item.name] = [item.thumbUrl];
+                        }
+                    });
+
+                    setTemplate({
+                        rows: gridRows,
+                        cols: gridCols,
+                        linesCount: extractResults.length,
+                        lines,
+                        paytable,
+                        symbolImages,
+                        symbolImagesAll
+                    });
+
+                    const availableSyms = Object.keys(paytable);
+                    setPanelGrid(generateRandomPanelGrid(gridRows, gridCols, availableSyms));
+
+                    setIsTemplateMinimized(true);
+                    setIsPhase2Minimized(false);
+                    setIsPhase3Minimized(true);
+                } catch (err) {
+                    setTemplateError(err.message);
+                    setBuildErrorMsg(err.message);
+                    setTemplate(null);
                 }
             };
 
@@ -1175,13 +1309,13 @@
                 if (!isTemplateMinimized && linesMode === 'image') requestAnimationFrame(draw);
             }, [imageObj, p1, pEnd, patternRows, patternCols, gridRows, gridCols, startIndex, isTemplateMinimized, linesMode]);
 
-            const getMousePos = (e, ref, activeImgObj) => {
-                if (!ref.current || !activeImgObj) return { x: 0, y: 0 };
+            const getMousePos = (e, ref) => {
+                if (!ref.current || !imageObj) return { x: 0, y: 0 };
                 const canvas = ref.current;
                 const rect = canvas.getBoundingClientRect();
 
-                const scaleX = activeImgObj.width / rect.width;
-                const scaleY = activeImgObj.height / rect.height;
+                const scaleX = imageObj.width / rect.width;
+                const scaleY = imageObj.height / rect.height;
 
                 return {
                     x: (e.clientX - rect.left) * scaleX,
@@ -1191,7 +1325,7 @@
 
             const handleMouseDown = (e) => {
                 if (!imageObj || linesMode !== 'image') return;
-                const pos = getMousePos(e, canvasRef, imageObj);
+                const pos = getMousePos(e, canvasRef);
 
                 const getPxRect = (obj) => ({
                     x: toPx(obj.x, imageObj.width),
@@ -1216,7 +1350,7 @@
 
             const handleMouseMove = (e) => {
                 if (!dragState || !imageObj || linesMode !== 'image') return;
-                const pos = getMousePos(e, canvasRef, imageObj);
+                const pos = getMousePos(e, canvasRef);
 
                 const dxPct = toPct(pos.x - dragState.startX, imageObj.width);
                 const dyPct = toPct(pos.y - dragState.startY, imageObj.height);
@@ -1289,9 +1423,23 @@
                 }
             }, [visionImageObj, visionP1, template, isPhase3Minimized]);
 
+            const getVisionMousePos = (e, ref, activeImgObj) => {
+                if (!ref.current || !activeImgObj) return { x: 0, y: 0 };
+                const canvas = ref.current;
+                const rect = canvas.getBoundingClientRect();
+
+                const scaleX = activeImgObj.width / rect.width;
+                const scaleY = activeImgObj.height / rect.height;
+
+                return {
+                    x: (e.clientX - rect.left) * scaleX,
+                    y: (e.clientY - rect.top) * scaleY
+                };
+            };
+
             const handleVisionMouseDown = (e) => {
                 if (!visionImageObj) return;
-                const pos = getMousePos(e, visionCanvasRef, visionImageObj);
+                const pos = getVisionMousePos(e, visionCanvasRef, visionImageObj);
 
                 const getPxRect = (obj) => ({
                     x: toPx(obj.x, visionImageObj.width),
@@ -1314,7 +1462,7 @@
 
             const handleVisionMouseMove = (e) => {
                 if (!visionDragState || !visionImageObj) return;
-                const pos = getMousePos(e, visionCanvasRef, visionImageObj);
+                const pos = getVisionMousePos(e, visionCanvasRef, visionImageObj);
                 const dxPct = toPct(pos.x - visionDragState.startX, visionImageObj.width);
                 const dyPct = toPct(pos.y - visionDragState.startY, visionImageObj.height);
 
@@ -1385,10 +1533,9 @@
                 const effectiveApiKey = customApiKey.trim() || apiKey;
                 const modelName = customApiKey.trim() ? "gemini-2.5-flash" : "gemini-2.5-flash-preview-09-2025";
 
-                // 篩選出需要辨識的圖片（只針對未辨識過、或是按了「重新辨識」的全部圖片）
                 let toProcess = visionImages.filter(img => !img.grid);
                 if (toProcess.length === 0) {
-                    toProcess = visionImages; // 如果全部都有 grid，代表使用者想重新辨識全部
+                    toProcess = visionImages;
                 }
 
                 setIsVisionProcessing(true);
@@ -1397,11 +1544,30 @@
 
                 let currentVisionImages = [...visionImages];
 
+                const referenceImages = [];
+                let referenceText = "【以下是本遊戲的符號參考圖，同一個符號可能有多種外觀：】\n";
+                let partIndex = 1;
+
+                for (const symbol in template.symbolImagesAll) {
+                    const urls = template.symbolImagesAll[symbol];
+                    if (urls && urls.length > 0) {
+                        referenceText += `- ${symbol}: 參考圖 ${urls.map((_, i) => partIndex + i).join(', ')}\n`;
+                        urls.forEach(url => {
+                            const b64 = url.split(',')[1];
+                            if (b64) {
+                                referenceImages.push({
+                                    inlineData: { mimeType: "image/png", data: b64 }
+                                });
+                                partIndex++;
+                            }
+                        });
+                    }
+                }
+
                 for (let i = 0; i < toProcess.length; i++) {
                     const targetImg = toProcess[i];
                     const imgIndex = currentVisionImages.findIndex(img => img.id === targetImg.id);
 
-                    // 自動將視角切換到正在處理的圖片
                     setActiveVisionId(targetImg.id);
                     setVisionBatchProgress({ current: i + 1, total: toProcess.length });
 
@@ -1426,11 +1592,15 @@
                         請幫我辨識出網格中「每一個位置」的符號。
                         網格的大小為：${template.rows} 列 (Rows) x ${template.cols} 欄 (Cols)。
                         
+                        ${referenceText}
+
                         【重要規則】
                         1. 你只能從以下「可用符號清單」中選擇最接近的符號填入，絕對不能自己發明新名稱：
                            [${availableSymbols.join(', ')}]
-                        2. 如果某個格子看起來被變暗、變灰（通常是未中獎狀態），請忽略顏色，依然根據它的「形狀和特徵」辨識出它是哪個符號。
-                        3. 如果某個格子真的完全被特效遮擋無法辨識，或是空的，請填入空字串 ""。
+                        2. 若符號為收集符號，請填入 "COLLECT" 或 "WILD_COLLECT"。
+                        3. 若為帶有倍數或數值的現金符號(Cash)，請務必讀出上面的數字，並以 "CASH_數字" 格式填入 (例如: CASH_0.5, CASH_10)。
+                        4. 如果某個格子看起來被變暗、變灰（通常是未中獎狀態），請忽略顏色，依然根據它的「形狀和特徵」辨識出它是哪個符號。
+                        5. 如果某個格子真的完全被特效遮擋無法辨識，或是空的，請填入空字串 ""。
                         `;
 
                         const payload = {
@@ -1438,6 +1608,8 @@
                                 role: "user",
                                 parts: [
                                     { text: promptText },
+                                    ...referenceImages,
+                                    { text: "【請分析以下盤面截圖：】" },
                                     { inlineData: { mimeType: "image/jpeg", data: base64Image } }
                                 ]
                             }],
@@ -1480,7 +1652,7 @@
                             const rowArr = [];
                             for (let c = 0; c < template.cols; c++) {
                                 let sym = parsedGrid[r]?.[c] || '';
-                                if (sym && !availableSymbols.includes(sym)) {
+                                if (sym && !availableSymbols.includes(sym) && !isCashSymbol(sym)) {
                                     sym = '';
                                 }
                                 rowArr.push(sym);
@@ -1492,12 +1664,11 @@
                         setVisionImages([...currentVisionImages]);
 
                     } catch (err) {
-                        console.error("AI 辨識錯誤:", err);
+                        console.warn("AI 辨識錯誤:", err);
                         currentVisionImages[imgIndex] = { ...currentVisionImages[imgIndex], error: "辨識失敗：" + err.message };
                         setVisionImages([...currentVisionImages]);
                     }
 
-                    // 批次處理時，稍微延遲以避免撞到免費方案的 Rate Limit
                     if (i < toProcess.length - 1) {
                         await new Promise(res => setTimeout(res, 1500));
                     }
@@ -1509,84 +1680,19 @@
                 setTimeout(() => setTemplateMessage(''), 5000);
             };
 
-            const handleBuildTemplate = () => {
-                setTemplateError('');
-                setCalcResults(null);
-                setVisionCalcResults(null);
-                try {
-                    if (extractResults.length === 0) {
-                        throw new Error('請先設定「線獎資料」（可透過純文字輸入、圖片提取，或從雲端模板庫載入）。');
-                    }
-
-                    const hasMissingData = extractResults.some(res => res.data.includes(0));
-                    if (hasMissingData) {
-                        throw new Error('線獎資料中包含 0 (未辨識到線段的格子)。請嘗試調整圖片提取框，或切換至純文字模式手動修正。');
-                    }
-
-                    const isOutOfBounds = extractResults.some(res => res.data.some(r => r < 1 || r > gridRows));
-                    if (isOutOfBounds) {
-                        throw new Error(`「線獎資料」中包含了無效的列數 (必須介於 1 到 ${gridRows} 之間)。請修正您的純文字內容。`);
-                    }
-
-                    const lines = {};
-                    extractResults.forEach(r => {
-                        lines[r.id] = r.data;
-                    });
-
-                    const ptLines = paytableInput.trim().split('\n').map(l => l.trim()).filter(l => l);
-                    if (ptLines.length === 0) throw new Error('「賠付表資料」不能為空，請先設定賠率。');
-
-                    const paytable = {};
-                    ptLines.forEach((line, index) => {
-                        const parts = line.split(/\s+/);
-                        if (parts.length < 2) throw new Error(`賠付表第 ${index + 1} 行格式錯誤：資料不足`);
-
-                        const symbol = parts[0];
-                        const pays = parts.slice(1).map(Number);
-                        if (pays.some(isNaN)) throw new Error(`賠付表第 ${index + 1} 行 (${symbol}) 格式錯誤：賠率必須為數字`);
-                        paytable[symbol] = pays;
-                    });
-
-                    const symbolImages = {};
-                    ptResultItems.forEach(item => {
-                        if (item.thumbUrl) symbolImages[item.name] = item.thumbUrl;
-                    });
-
-                    setTemplate({
-                        rows: gridRows,
-                        cols: gridCols,
-                        linesCount: extractResults.length,
-                        lines,
-                        paytable,
-                        symbolImages
-                    });
-
-                    const availableSyms = Object.keys(paytable);
-                    setPanelGrid(generateRandomPanelGrid(gridRows, gridCols, availableSyms));
-
-                    setIsTemplateMinimized(true);
-                    setIsPhase2Minimized(false);
-                    setIsPhase3Minimized(true);
-                } catch (err) {
-                    setTemplateError(err.message);
-                    setBuildErrorMsg(err.message);
-                    setTemplate(null);
-                }
-            };
-
-            // --- 獨立重構：支援不同盤面的共用結算邏輯 ---
             const computeGridResults = useCallback((targetGrid, betAmount) => {
                 if (!template || !targetGrid) {
                     return { results: null, error: '' };
                 }
 
                 try {
-                    const safeGrid = getSafeGrid(targetGrid);
+                    const safeGrid = targetGrid;
                     const parsedBet = parseFloat(betAmount);
                     if (isNaN(parsedBet) || parsedBet <= 0) throw new Error('押注金額必須為大於 0 的有效數字。');
 
                     const calculatedResults = [];
                     let totalWin = 0;
+                    const allPaySymbols = Object.keys(template.paytable);
 
                     Object.entries(template.lines).forEach(([lineIdStr, positions]) => {
                         const lineId = parseInt(lineIdStr);
@@ -1603,9 +1709,11 @@
                         let bestSymbol = null;
                         let bestCount = 0;
 
-                        const allPaySymbols = Object.keys(template.paytable);
-
                         for (const targetSymbol of allPaySymbols) {
+                            if (isScatterSymbol(targetSymbol)) continue;
+                            if (isCashSymbol(targetSymbol)) continue;
+                            if (isCollectSymbol(targetSymbol) && !isWildSymbol(targetSymbol)) continue;
+
                             let currentCount = 0;
                             let hasTargetSymbol = false;
 
@@ -1615,14 +1723,14 @@
                                 if (symbolsOnLine[i] === targetSymbol) {
                                     currentCount++;
                                     hasTargetSymbol = true;
-                                } else if (symbolsOnLine[i] === 'WILD') {
+                                } else if (isWildSymbol(symbolsOnLine[i])) {
                                     currentCount++;
                                 } else {
                                     break;
                                 }
                             }
 
-                            if (currentCount > 0 && (targetSymbol === 'WILD' || hasTargetSymbol)) {
+                            if (currentCount > 0 && (isWildSymbol(targetSymbol) || hasTargetSymbol)) {
                                 const payoutMult = template.paytable[targetSymbol][currentCount - 1] || 0;
                                 const payout = parseFloat((payoutMult * parsedBet).toFixed(8));
 
@@ -1636,13 +1744,15 @@
 
                         if (bestPayout === 0) {
                             bestSymbol = symbolsOnLine[0] || '空';
-                            if (bestSymbol === 'WILD') {
-                                bestSymbol = symbolsOnLine.find(s => s !== 'WILD' && s !== '') || 'WILD';
+                            if (isWildSymbol(bestSymbol)) {
+                                bestSymbol = symbolsOnLine.find(s => !isWildSymbol(s) && s !== '') || bestSymbol;
                             }
                             bestCount = 0;
                             for (let i = 0; i < symbolsOnLine.length; i++) {
                                 if (!symbolsOnLine[i]) break;
-                                if (symbolsOnLine[i] === bestSymbol || symbolsOnLine[i] === 'WILD') bestCount++;
+                                if (isScatterSymbol(symbolsOnLine[i]) || isCashSymbol(symbolsOnLine[i]) || (isCollectSymbol(symbolsOnLine[i]) && !isWildSymbol(symbolsOnLine[i]))) break;
+
+                                if (symbolsOnLine[i] === bestSymbol || isWildSymbol(symbolsOnLine[i])) bestCount++;
                                 else break;
                             }
                         }
@@ -1654,21 +1764,103 @@
                             }
                         }
 
-                        calculatedResults.push({
-                            lineId,
-                            symbol: bestSymbol,
-                            count: bestCount,
-                            payoutMult: bestPayout > 0 ? template.paytable[bestSymbol][bestCount - 1] : 0,
-                            winAmount: bestPayout,
-                            symbolsOnLine,
-                            positions,
-                            winCoords
-                        });
-
-                        totalWin = parseFloat((totalWin + bestPayout).toFixed(8));
+                        if (!isScatterSymbol(bestSymbol) && !isCashSymbol(bestSymbol)) {
+                            calculatedResults.push({
+                                lineId,
+                                symbol: bestSymbol,
+                                count: bestCount,
+                                payoutMult: bestPayout > 0 ? template.paytable[bestSymbol][bestCount - 1] : 0,
+                                winAmount: bestPayout,
+                                symbolsOnLine,
+                                positions,
+                                winCoords
+                            });
+                            totalWin = parseFloat((totalWin + bestPayout).toFixed(8));
+                        }
                     });
 
-                    calculatedResults.sort((a, b) => a.lineId - b.lineId);
+                    const scatterSymbols = allPaySymbols.filter(isScatterSymbol);
+                    for (const scatterSymbol of scatterSymbols) {
+                        let scatterCount = 0;
+                        const scatterCoords = [];
+
+                        for (let r = 0; r < template.rows; r++) {
+                            for (let c = 0; c < template.cols; c++) {
+                                if (safeGrid[r][c] === scatterSymbol) {
+                                    scatterCount++;
+                                    scatterCoords.push({ row: r, col: c });
+                                }
+                            }
+                        }
+
+                        if (scatterCount > 0) {
+                            const payArray = template.paytable[scatterSymbol];
+                            const payIndex = Math.min(scatterCount - 1, payArray.length - 1);
+                            const payoutMult = payIndex >= 0 ? payArray[payIndex] : 0;
+                            const payout = parseFloat((payoutMult * parsedBet).toFixed(8));
+
+                            calculatedResults.push({
+                                lineId: `SCATTER_${scatterSymbol}`,
+                                symbol: scatterSymbol,
+                                count: scatterCount,
+                                payoutMult: payoutMult,
+                                winAmount: payout,
+                                symbolsOnLine: Array(scatterCount).fill(scatterSymbol),
+                                positions: ['Anywhere'],
+                                winCoords: scatterCoords
+                            });
+
+                            totalWin = parseFloat((totalWin + payout).toFixed(8));
+                        }
+                    }
+
+                    let collectCount = 0;
+                    const collectCoords = [];
+                    const cashCoords = [];
+                    let totalCashValue = 0;
+
+                    for (let r = 0; r < template.rows; r++) {
+                        for (let c = 0; c < template.cols; c++) {
+                            const sym = safeGrid[r][c];
+                            if (isCollectSymbol(sym)) {
+                                collectCount++;
+                                collectCoords.push({ row: r, col: c });
+                            }
+                            if (isCashSymbol(sym)) {
+                                const val = getCashValue(sym);
+                                if (val > 0) {
+                                    totalCashValue += val;
+                                    cashCoords.push({ row: r, col: c });
+                                }
+                            }
+                        }
+                    }
+
+                    if (collectCount > 0 && totalCashValue > 0) {
+                        const totalPayout = totalCashValue * collectCount;
+                        const payout = parseFloat((totalPayout).toFixed(8));
+
+                        calculatedResults.push({
+                            lineId: `COLLECT_FEATURE`,
+                            symbol: `CASH`,
+                            count: cashCoords.length,
+                            payoutMult: totalCashValue,
+                            winAmount: payout,
+                            symbolsOnLine: Array(collectCount).fill('COLLECT').concat(Array(cashCoords.length).fill('CASH')),
+                            positions: [`收集 x${collectCount}`],
+                            winCoords: [...collectCoords, ...cashCoords]
+                        });
+                        totalWin = parseFloat((totalWin + payout).toFixed(8));
+                    }
+
+                    calculatedResults.sort((a, b) => {
+                        const aIsFeature = String(a.lineId).startsWith('SCATTER') || String(a.lineId).startsWith('COLLECT');
+                        const bIsFeature = String(b.lineId).startsWith('SCATTER') || String(b.lineId).startsWith('COLLECT');
+                        if (aIsFeature && !bIsFeature) return -1;
+                        if (!aIsFeature && bIsFeature) return 1;
+                        if (aIsFeature && bIsFeature) return String(a.lineId).localeCompare(String(b.lineId));
+                        return a.lineId - b.lineId;
+                    });
 
                     return {
                         results: { details: calculatedResults, totalWin, panel: safeGrid },
@@ -1680,14 +1872,12 @@
                 }
             }, [template, getSafeGrid]);
 
-            // 觸發 Phase 2 的結算
             useEffect(() => {
                 const { results, error } = computeGridResults(panelGrid, betInput);
                 setCalcResults(results);
                 setCalculateError(error);
             }, [panelGrid, betInput, computeGridResults]);
 
-            // 觸發 Phase 3 的結算 (依據當前選取的圖片)
             useEffect(() => {
                 if (!visionGrid) {
                     setVisionCalcResults(null);
@@ -1699,119 +1889,154 @@
                 setVisionCalculateError(error);
             }, [visionGrid, betInput, computeGridResults]);
 
+            const renderResultView = (calcData, calcErr, hoveredId, setHoveredId, showAll, setShowAll) => {
+                return (
+                    <div className="relative flex flex-col h-full lg:block w-full">
+                        <div className="static lg:absolute lg:inset-0 flex flex-col w-full h-full">
+                            <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col flex-1 min-h-0">
 
-            // --- 共用的右側結算清單元件 ---
-            const renderResultView = (calcData, calcErr, hoveredId, setHoveredId, showAll, setShowAll) => (
-                <div className="relative flex flex-col h-full lg:block w-full">
-                    <div className="static lg:absolute lg:inset-0 flex flex-col w-full h-full">
-                        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col flex-1 min-h-0">
-
-                            <div className="mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200 shrink-0">
-                                <div className="flex-1 w-full">
-                                    <label className="block text-sm font-bold text-slate-700 mb-1.5">押注 (Total Bet)</label>
-                                    <div className="relative">
-                                        <Coins className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                                        <input type="number" value={betInput} onChange={(e) => setBetInput(e.target.value)} className="w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none font-black text-lg text-indigo-700 shadow-sm transition-shadow" />
-                                    </div>
-                                </div>
-                                <div className="px-4 py-2 bg-emerald-50 border border-emerald-200 text-emerald-700 font-bold rounded-lg flex items-center justify-center gap-2 shadow-sm pointer-events-none select-none shrink-0 self-end sm:self-auto h-[46px] mt-0 sm:mt-6 w-full sm:w-auto">
-                                    <Zap size={18} className="fill-emerald-500 text-emerald-500" /> 即時結算結果
-                                </div>
-                            </div>
-
-                            {calcErr && (
-                                <div className="mb-6 p-3 bg-rose-50 border border-rose-200 text-rose-600 rounded-lg text-sm font-bold flex items-center gap-2 animate-in fade-in zoom-in duration-200 shadow-sm shrink-0">
-                                    <AlertCircle size={18} className="shrink-0" />
-                                    <span>{calcErr}</span>
-                                </div>
-                            )}
-
-                            {calcData ? (
-                                <div className="flex flex-col flex-1 min-h-0">
-                                    <div className="flex items-center justify-between mb-4 border-b border-slate-100 pb-4 shrink-0">
-                                        <div className="flex flex-col space-y-2">
-                                            <h2 className="text-xl font-semibold flex items-center gap-2"><Trophy className="text-amber-500" size={24} />結算清單</h2>
-                                            <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer bg-slate-50 px-3 py-1.5 rounded-lg border hover:bg-slate-100 transition-colors">
-                                                <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} className="rounded text-indigo-600 focus:ring-indigo-500" />
-                                                <span className="font-medium">顯示所有連線 (含未中獎)</span>
-                                            </label>
-                                        </div>
-                                        <div className="text-right bg-emerald-50 px-4 py-2 rounded-lg border border-emerald-100 transition-all duration-300">
-                                            <p className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider mb-0.5">Total Win</p>
-                                            <p className="text-3xl font-black text-emerald-600">{calcData.totalWin.toLocaleString()}</p>
+                                <div className="mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200 shrink-0">
+                                    <div className="flex-1 w-full">
+                                        <label className="block text-sm font-bold text-slate-700 mb-1.5">押注 (Total Bet)</label>
+                                        <div className="relative">
+                                            <Coins className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                                            <input type="number" value={betInput} onChange={(e) => setBetInput(e.target.value)} className="w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none font-black text-lg text-indigo-700 shadow-sm transition-shadow" />
                                         </div>
                                     </div>
-                                    <div className="space-y-2 flex-1 overflow-y-auto pr-2 custom-scrollbar min-h-0 max-h-[440px]">
-                                        {calcData.details.filter(d => showAll || d.winAmount > 0).length === 0 ? (
-                                            <div className="text-center py-10 text-slate-500 bg-slate-50 rounded-lg border border-dashed border-slate-200 animate-in fade-in duration-300">
-                                                <p className="text-lg">此盤面未達成任何連線中獎 😢</p>
+                                    <div className="px-4 py-2 bg-emerald-50 border border-emerald-200 text-emerald-700 font-bold rounded-lg flex items-center justify-center gap-2 shadow-sm pointer-events-none select-none shrink-0 self-end sm:self-auto h-[46px] mt-0 sm:mt-6 w-full sm:w-auto">
+                                        <Zap size={18} className="fill-emerald-500 text-emerald-500" /> 自動即時結算
+                                    </div>
+                                </div>
+
+                                {calcErr && (
+                                    <div className="mb-6 p-3 bg-rose-50 border border-rose-200 text-rose-600 rounded-lg text-sm font-bold flex items-center gap-2 animate-in fade-in zoom-in duration-200 shadow-sm shrink-0">
+                                        <AlertCircle size={18} className="shrink-0" />
+                                        <span>{calcErr}</span>
+                                    </div>
+                                )}
+
+                                {calcData ? (
+                                    <div className="flex flex-col flex-1 min-h-0">
+                                        <div className="flex items-center justify-between mb-4 border-b border-slate-100 pb-4 shrink-0">
+                                            <div className="flex flex-col space-y-2">
+                                                <h2 className="text-xl font-semibold flex items-center gap-2"><Trophy className="text-amber-500" size={24} />結算清單</h2>
+                                                <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer bg-slate-50 px-3 py-1.5 rounded-lg border hover:bg-slate-100 transition-colors">
+                                                    <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} className="rounded text-indigo-600 focus:ring-indigo-500" />
+                                                    <span className="font-medium">顯示所有連線 (含未中獎)</span>
+                                                </label>
                                             </div>
-                                        ) : (
-                                            calcData.details.filter(d => showAll || d.winAmount > 0).map((result, idx) => {
-                                                const isWin = result.winAmount > 0;
-                                                return (
-                                                    <div key={idx} className={`p-2 rounded-lg border flex items-center gap-3 transition-all duration-300 cursor-pointer animate-in fade-in slide-in-from-bottom-2 ${isWin ? 'bg-white border-indigo-100 shadow-sm hover:border-indigo-300 hover:shadow-md' : 'opacity-60 grayscale bg-slate-50'}`} onMouseEnter={() => setHoveredId(result.lineId)} onMouseLeave={() => setHoveredId(null)}>
-                                                        <div className={`w-12 h-16 shrink-0 flex flex-col justify-between rounded-md border shadow-sm overflow-hidden ${isWin ? 'bg-[#1a1c29] border-slate-500' : 'bg-slate-200 border-slate-300'}`}>
-                                                            <div className="flex-1 min-h-0 flex items-center justify-center px-1 pt-1 relative">
-                                                                {template.symbolImages?.[result.symbol] ? (
-                                                                    <img src={template.symbolImages[result.symbol]} className="max-w-full max-h-full object-contain drop-shadow-md" alt={result.symbol} />
-                                                                ) : (
-                                                                    <span className={`text-[10px] font-black leading-tight text-center ${isWin ? 'text-slate-300' : 'text-slate-500'}`}>{result.symbol}</span>
-                                                                )}
-                                                            </div>
-                                                            <div className={`shrink-0 pb-1 text-center text-sm font-black tracking-wider ${isWin ? 'text-white' : 'text-slate-500'}`}>
-                                                                {result.lineId}
-                                                            </div>
-                                                        </div>
-                                                        <div className="flex-1 min-w-0 flex flex-col justify-center">
-                                                            <div className="flex items-center justify-between mb-1">
-                                                                <div className="flex items-center gap-2">
-                                                                    <span className="font-bold text-sm truncate text-slate-800">{result.symbol} {result.count}連</span>
-                                                                    {isWin ? (
-                                                                        <span className="text-[10px] px-2 py-0.5 bg-indigo-50 text-indigo-700 font-bold rounded-full border border-indigo-200">
-                                                                            賠率 {result.payoutMult}
-                                                                        </span>
+                                            <div className="text-right bg-emerald-50 px-4 py-2 rounded-lg border border-emerald-100 transition-all duration-300">
+                                                <p className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider mb-0.5">Total Win</p>
+                                                <p className="text-3xl font-black text-emerald-600">{calcData.totalWin.toLocaleString()}</p>
+                                            </div>
+                                        </div>
+                                        <div className="space-y-2 flex-1 overflow-y-auto pr-2 custom-scrollbar min-h-0 max-h-[440px]">
+                                            {calcData.details.filter(d => showAll || d.winAmount > 0).length === 0 ? (
+                                                <div className="text-center py-10 text-slate-500 bg-slate-50 rounded-lg border border-dashed border-slate-200 animate-in fade-in duration-300">
+                                                    <p className="text-lg">此盤面未達成任何連線中獎 😢</p>
+                                                </div>
+                                            ) : (
+                                                calcData.details.filter(d => showAll || d.winAmount > 0).map((result, idx) => {
+                                                    const isWin = result.winAmount > 0;
+                                                    const isScatterWin = String(result.lineId).startsWith('SCATTER');
+                                                    const isCollectWin = String(result.lineId).startsWith('COLLECT');
+
+                                                    let rowBgClass = 'opacity-60 grayscale bg-slate-50';
+                                                    let idBgClass = 'bg-slate-200 border-slate-300';
+                                                    let idTextClass = 'text-slate-500';
+                                                    let idLabel = result.lineId;
+
+                                                    if (isWin) {
+                                                        if (isScatterWin) {
+                                                            rowBgClass = 'bg-amber-50 border-amber-200 shadow-sm hover:border-amber-400 hover:shadow-md';
+                                                            idBgClass = 'bg-[#291a1a] border-amber-500';
+                                                            idTextClass = 'text-amber-400';
+                                                            idLabel = 'SC';
+                                                        } else if (isCollectWin) {
+                                                            rowBgClass = 'bg-emerald-50 border-emerald-200 shadow-sm hover:border-emerald-400 hover:shadow-md';
+                                                            idBgClass = 'bg-[#1a2923] border-emerald-500';
+                                                            idTextClass = 'text-emerald-400';
+                                                            idLabel = '💰';
+                                                        } else {
+                                                            rowBgClass = 'bg-white border-indigo-100 shadow-sm hover:border-indigo-300 hover:shadow-md';
+                                                            idBgClass = 'bg-[#1a1c29] border-slate-500';
+                                                            idTextClass = 'text-white';
+                                                        }
+                                                    }
+
+                                                    return (
+                                                        <div key={idx} className={`p-2 rounded-lg border flex items-center gap-3 transition-all duration-300 cursor-pointer animate-in fade-in slide-in-from-bottom-2 ${rowBgClass}`} onMouseEnter={() => setHoveredId(result.lineId)} onMouseLeave={() => setHoveredId(null)}>
+                                                            <div className={`w-12 h-16 shrink-0 flex flex-col justify-between rounded-md border shadow-sm overflow-hidden ${idBgClass}`}>
+                                                                <div className="flex-1 min-h-0 flex items-center justify-center px-1 pt-1 relative">
+                                                                    {template?.symbolImages?.[getBaseSymbol(result.symbol)] ? (
+                                                                        <img src={template.symbolImages[getBaseSymbol(result.symbol)]} className="max-w-full max-h-full object-contain drop-shadow-md" alt={result.symbol} />
                                                                     ) : (
-                                                                        <span className="text-[10px] px-2 py-0.5 bg-slate-200 text-slate-500 rounded-full font-medium">未中獎</span>
+                                                                        <span className={`text-[10px] font-black leading-tight text-center ${isWin ? 'text-slate-300' : 'text-slate-500'}`}>{getBaseSymbol(result.symbol)}</span>
                                                                     )}
                                                                 </div>
-                                                                <span className={`font-black text-sm shrink-0 ${isWin ? 'text-emerald-600' : 'text-slate-400'}`}>
-                                                                    {isWin ? `+${result.winAmount.toLocaleString()}` : '-'}
-                                                                </span>
+                                                                <div className={`shrink-0 pb-1 text-center text-sm font-black tracking-wider ${idTextClass}`}>
+                                                                    {idLabel}
+                                                                </div>
                                                             </div>
-                                                            <div className="flex items-center">
-                                                                <div className="text-[10px] text-slate-500 font-mono bg-slate-100/80 px-2 py-0.5 rounded border border-slate-200 flex items-center gap-1">
-                                                                    <span className="text-slate-400 font-bold">路線:</span>
-                                                                    {result.positions.map((pos, i) => (
-                                                                        <React.Fragment key={i}>
-                                                                            <span className={i < result.count && isWin ? 'text-indigo-600 font-black' : ''}>{pos}</span>
-                                                                            {i < result.positions.length - 1 && <span className="text-slate-300 mx-0.5">-</span>}
-                                                                        </React.Fragment>
-                                                                    ))}
+                                                            <div className="flex-1 min-w-0 flex flex-col justify-center">
+                                                                <div className="flex items-center justify-between mb-1">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className={`font-bold text-sm truncate ${isScatterWin ? 'text-amber-700' : isCollectWin ? 'text-emerald-700' : 'text-slate-800'}`}>
+                                                                            {isCollectWin ? '金幣收集成功' : `${result.symbol} ${result.count} ${isScatterWin ? '個' : '連'}`}
+                                                                        </span>
+                                                                        {isWin ? (
+                                                                            <span className={`text-[10px] px-2 py-0.5 font-bold rounded-full border ${isScatterWin ? 'bg-amber-100 text-amber-700 border-amber-300' : isCollectWin ? 'bg-emerald-100 text-emerald-700 border-emerald-300' : 'bg-indigo-50 text-indigo-700 border-indigo-200'}`}>
+                                                                                {isCollectWin ? `總面額 ${result.payoutMult}` : `倍率 ${result.payoutMult}x`}
+                                                                            </span>
+                                                                        ) : (
+                                                                            <span className="text-[10px] px-2 py-0.5 bg-slate-200 text-slate-500 rounded-full font-medium">未中獎</span>
+                                                                        )}
+                                                                    </div>
+                                                                    <span className={`font-black text-sm shrink-0 ${isWin ? (isScatterWin ? 'text-amber-600' : 'text-emerald-600') : 'text-slate-400'}`}>
+                                                                        {isWin ? `+${result.winAmount.toLocaleString()}` : '-'}
+                                                                    </span>
+                                                                </div>
+                                                                <div className="flex items-center">
+                                                                    <div className="text-[10px] text-slate-500 font-mono bg-slate-100/80 px-2 py-0.5 rounded border border-slate-200 flex items-center gap-1">
+                                                                        <span className="text-slate-400 font-bold">路線:</span>
+                                                                        {isScatterWin ? (
+                                                                            <span className="text-amber-600 font-black px-1">全盤散佈 (Anywhere)</span>
+                                                                        ) : isCollectWin ? (
+                                                                            <span className="text-emerald-600 font-black px-1">{result.positions[0]}</span>
+                                                                        ) : (
+                                                                            <React.Fragment>
+                                                                                {result.positions.map((pos, i) => (
+                                                                                    <React.Fragment key={i}>
+                                                                                        <span className={i < result.count && isWin ? 'text-indigo-600 font-black' : ''}>{pos}</span>
+                                                                                        {i < result.positions.length - 1 && <span className="text-slate-300 mx-0.5">-</span>}
+                                                                                    </React.Fragment>
+                                                                                ))}
+                                                                            </React.Fragment>
+                                                                        )}
+                                                                    </div>
                                                                 </div>
                                                             </div>
                                                         </div>
-                                                    </div>
-                                                );
-                                            })
-                                        )}
+                                                    );
+                                                })
+                                            )}
+                                        </div>
                                     </div>
-                                </div>
-                            ) : (
-                                <div className="flex-1 flex flex-col items-center justify-center text-slate-400 opacity-50">
-                                    <Trophy size={48} className="mb-2" />
-                                    <p>等待盤面與結算資料...</p>
-                                </div>
-                            )}
+                                ) : (
+                                    <div className="flex-1 flex flex-col items-center justify-center text-slate-400 opacity-50">
+                                        <Trophy size={48} className="mb-2" />
+                                        <p>等待盤面與結算資料...</p>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
-                </div>
-            );
+                );
+            };
 
             return (
                 <div className="min-h-screen bg-slate-50 text-slate-800 p-6 font-sans relative">
 
-                    {/* 全局 Toast 訊息顯示 */}
                     {templateMessage && (
                         <div className="fixed bottom-6 right-6 bg-slate-900 text-emerald-400 px-5 py-3.5 rounded-xl shadow-[0_10px_40px_rgba(0,0,0,0.3)] font-bold flex items-center gap-3 animate-in slide-in-from-bottom-5 z-[99999] border border-slate-700">
                             <CheckCircle2 size={20} />
@@ -1837,9 +2062,7 @@
                             </button>
                         </header>
 
-                        {/* ========================================================================= */}
-                        {/* Phase 1: 模板設定 (影像提取)                                               */}
-                        {/* ========================================================================= */}
+                        {/* Phase 1 */}
                         <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden transition-all duration-300">
                             <div
                                 className="flex items-center justify-between p-5 cursor-pointer hover:bg-slate-50 transition-colors"
@@ -1847,7 +2070,7 @@
                             >
                                 <div className="flex items-center space-x-2">
                                     <Settings className="text-indigo-500" size={20} />
-                                    <h2 className="text-xl font-semibold">Phase 1: 模板設定 (影像提取與參數)</h2>
+                                    <h2 className="text-xl font-semibold">Phase 1: 模板設定 (影像提取)</h2>
                                 </div>
                                 <div className="flex items-center space-x-4">
                                     {template && isTemplateMinimized && (
@@ -1862,13 +2085,14 @@
 
                             {!isTemplateMinimized && (
                                 <div className="p-6 pt-0 border-t border-slate-100 mt-4 space-y-6">
+
                                     {templateError && (
                                         <div className="mt-4 p-3 bg-rose-50 border border-rose-200 text-rose-600 rounded-lg text-sm font-bold flex items-center gap-2 animate-in fade-in zoom-in duration-200 shadow-sm">
                                             <AlertCircle size={18} className="shrink-0" />
                                             <span>{templateError}</span>
                                         </div>
                                     )}
-                                    {/* 頂端操作列 */}
+
                                     <div className="bg-indigo-50/70 p-4 rounded-xl border border-indigo-100 flex flex-col lg:flex-row justify-between gap-4 items-center">
                                         <div className="flex w-full lg:w-auto gap-2">
                                             <label className="flex-1 lg:flex-none py-2.5 px-4 bg-white hover:bg-slate-50 text-slate-700 font-bold rounded-lg text-sm flex items-center justify-center gap-1.5 cursor-pointer transition-colors shadow-sm border border-slate-200">
@@ -1892,7 +2116,6 @@
                                         </div>
                                     </div>
 
-                                    {/* 平台與遊戲名稱 */}
                                     <div className="bg-slate-50 p-5 rounded-xl border border-slate-200">
                                         <div className="flex flex-col sm:flex-row gap-4">
                                             <div className="flex-1">
@@ -1918,7 +2141,6 @@
                                         </div>
                                     </div>
 
-                                    {/* 連線矩陣設定 */}
                                     <div className="bg-slate-50 p-5 rounded-xl border border-slate-200">
                                         <div className="flex items-center justify-between mb-4 border-b border-slate-200 pb-3">
                                             <label className="text-base font-bold text-slate-800">線獎資料設定</label>
@@ -2004,8 +2226,8 @@
                                                 className="bg-slate-950 rounded-xl overflow-hidden border border-slate-800 shadow-inner flex flex-col xl:flex-row transition-all duration-300"
                                                 style={{ height: layoutStyle.wrapperHeight }}
                                             >
-                                                {/* 左側主畫布區 */}
                                                 <div className="flex-1 relative flex flex-col bg-slate-900 transition-all duration-300 min-h-[400px]">
+
                                                     {lineImages.length > 0 && (
                                                         <div className="flex gap-2 overflow-x-auto p-3 bg-slate-950 border-b border-slate-800 shrink-0 custom-scrollbar z-20">
                                                             {lineImages.map(img => (
@@ -2094,7 +2316,6 @@
                                                     </div>
                                                 </div>
 
-                                                {/* 右側設定區 */}
                                                 <div className="w-full xl:w-80 bg-slate-800 border-t xl:border-t-0 xl:border-l border-slate-700 flex flex-col xl:h-auto shrink-0">
                                                     <div className="p-4 border-b border-slate-700 flex-shrink-0">
                                                         <div className="flex justify-between items-center mb-3">
@@ -2290,7 +2511,7 @@
                                                                     <table className="w-full text-left border-collapse text-xs">
                                                                         <thead>
                                                                             <tr className="bg-slate-100 text-slate-600 sticky top-0 shadow-sm z-10">
-                                                                                <th className="p-2 border-b font-medium w-12 text-center">縮圖</th>
+                                                                                <th className="p-2 border-b font-medium w-16 text-center">縮圖集</th>
                                                                                 <th className="p-2 border-b font-medium">名稱</th>
                                                                                 <th className="p-2 border-b font-medium text-center w-12">2連</th>
                                                                                 <th className="p-2 border-b font-medium text-center w-12">3連</th>
@@ -2302,11 +2523,24 @@
                                                                         <tbody>
                                                                             {ptResultItems.map((item, idx) => (
                                                                                 <tr key={idx} className="border-b border-slate-50 hover:bg-slate-50 transition-colors group">
-                                                                                    <td className="p-2 flex justify-center">
-                                                                                        <button onClick={() => setPtCropState({ active: true, itemIndex: idx, selectedImageId: ptImages[0]?.id, startX: 0, startY: 0, endX: 0, endY: 0, isDragging: false })} className="relative group/crop w-8 h-8 bg-slate-100 rounded flex items-center justify-center border border-slate-200 overflow-hidden shrink-0">
-                                                                                            {item.thumbUrl ? <img src={item.thumbUrl} className="w-full h-full object-contain bg-slate-800" /> : <Crop size={12} className="text-slate-400 group-hover/crop:text-indigo-500" />}
-                                                                                            {item.thumbUrl && <div className="absolute inset-0 bg-black/60 opacity-0 group-hover/crop:opacity-100 flex items-center justify-center text-white transition-opacity"><Crop size={12} /></div>}
-                                                                                        </button>
+                                                                                    <td className="p-1.5">
+                                                                                        <div className="flex flex-wrap gap-1 items-center justify-center max-w-[120px]">
+                                                                                            {item.thumbUrls && item.thumbUrls.map((url, tIdx) => (
+                                                                                                <div key={tIdx} className="relative w-7 h-7 bg-slate-800 rounded border border-slate-300 shadow-sm group/thumb">
+                                                                                                    <img src={url} className="w-full h-full object-contain" />
+                                                                                                    <button onClick={() => handleRemoveThumb(idx, tIdx)} className="absolute -top-1 -right-1 bg-rose-500 text-white rounded-full p-0.5 opacity-0 group-hover/thumb:opacity-100 transition-opacity">
+                                                                                                        <X size={8} />
+                                                                                                    </button>
+                                                                                                </div>
+                                                                                            ))}
+                                                                                            <button
+                                                                                                onClick={() => setPtCropState({ active: true, itemIndex: idx, selectedImageId: ptImages[0]?.id, startX: 0, startY: 0, endX: 0, endY: 0, isDragging: false })}
+                                                                                                className="w-7 h-7 bg-slate-100 hover:bg-indigo-50 hover:border-indigo-300 rounded flex items-center justify-center border border-slate-200 border-dashed text-slate-400 hover:text-indigo-500 transition-colors"
+                                                                                                title="新增此符號的另一張特徵圖"
+                                                                                            >
+                                                                                                <Plus size={12} />
+                                                                                            </button>
+                                                                                        </div>
                                                                                     </td>
                                                                                     <td className="p-1">
                                                                                         <input type="text" value={item.name} onChange={(e) => handlePtTableChange(idx, 'name', e.target.value)} className="w-full font-bold text-slate-700 bg-transparent border border-transparent hover:border-slate-300 focus:border-indigo-500 focus:bg-white rounded px-1.5 py-1 outline-none transition-all" />
@@ -2409,20 +2643,43 @@
                                                             <div className="mb-4 bg-slate-800/80 border border-slate-700 rounded-lg p-3">
                                                                 <span className="block text-[10px] font-bold text-slate-400 mb-2 uppercase tracking-wider">選擇畫筆 (點擊或拖曳下方網格填色)</span>
                                                                 <div className="flex flex-wrap gap-2">
-                                                                    {availableSymbols.map(sym => (
-                                                                        <button
-                                                                            key={sym}
-                                                                            onClick={() => setActiveBrush(sym)}
-                                                                            className={`relative w-[48px] h-[48px] sm:w-[52px] sm:h-[52px] rounded-lg border-2 flex items-center justify-center transition-all ${activeBrush === sym ? 'border-indigo-400 bg-indigo-500/20 shadow-[0_0_10px_rgba(99,102,241,0.3)] scale-105 z-10' : 'border-slate-600 bg-slate-800 hover:border-slate-500 hover:bg-slate-700'}`}
-                                                                            title={sym}
-                                                                        >
-                                                                            {template?.symbolImages?.[sym] ? (
-                                                                                <img src={template.symbolImages[sym]} className="max-w-full max-h-full object-contain p-1" alt={sym} />
-                                                                            ) : (
-                                                                                <span className="text-[10px] sm:text-xs font-black leading-tight text-center px-1 text-slate-200">{sym}</span>
-                                                                            )}
-                                                                        </button>
-                                                                    ))}
+                                                                    {availableSymbols.map(sym => {
+                                                                        const isCash = isCashSymbol(sym);
+                                                                        const baseSym = getBaseSymbol(sym);
+                                                                        const isActive = getBaseSymbol(activeBrush) === baseSym;
+
+                                                                        return (
+                                                                            <button
+                                                                                key={sym}
+                                                                                onClick={() => {
+                                                                                    if (isCash) {
+                                                                                        if (!isActive) {
+                                                                                            setActiveBrush(`CASH_1`);
+                                                                                        }
+                                                                                    } else {
+                                                                                        setActiveBrush(sym);
+                                                                                    }
+                                                                                }}
+                                                                                className={`relative w-[48px] h-[48px] sm:w-[52px] sm:h-[52px] rounded-lg border-2 flex items-center justify-center transition-all ${isActive ? 'border-indigo-400 bg-indigo-500/20 shadow-[0_0_10px_rgba(99,102,241,0.3)] scale-105 z-10' : 'border-slate-600 bg-slate-800 hover:border-slate-500 hover:bg-slate-700'}`}
+                                                                                title={isCash ? "點擊選擇金幣畫筆" : sym}
+                                                                            >
+                                                                                {template?.symbolImages?.[baseSym] ? (
+                                                                                    <React.Fragment>
+                                                                                        <img src={template.symbolImages[baseSym]} className="max-w-full max-h-full object-contain p-1" alt={baseSym} />
+                                                                                        {isActive && isCash && getCashValue(activeBrush) > 0 && (
+                                                                                            <div className="absolute inset-0 flex items-center justify-center font-black text-white drop-shadow-[0_2px_3px_rgba(0,0,0,1)] text-[10px] z-20 pointer-events-none">
+                                                                                                {getCashValue(activeBrush)}
+                                                                                            </div>
+                                                                                        )}
+                                                                                    </React.Fragment>
+                                                                                ) : (
+                                                                                    <span className="text-[10px] sm:text-xs font-black leading-tight text-center px-1 text-slate-200">
+                                                                                        {isCash ? (isActive && getCashValue(activeBrush) > 0 ? `💰${getCashValue(activeBrush)}` : '💰設定') : sym}
+                                                                                    </span>
+                                                                                )}
+                                                                            </button>
+                                                                        )
+                                                                    })}
                                                                     <button
                                                                         onClick={() => setActiveBrush('')}
                                                                         className={`relative w-[48px] h-[48px] sm:w-[52px] sm:h-[52px] rounded-lg border-2 flex items-center justify-center transition-all ${activeBrush === '' ? 'border-rose-400 bg-rose-500/20 shadow-[0_0_10px_rgba(244,63,94,0.3)] scale-105 z-10' : 'border-slate-600 bg-slate-800 hover:border-slate-500 hover:bg-slate-700'}`}
@@ -2443,6 +2700,24 @@
                                                                         <Trash2 size={18} className="group-active:scale-90 transition-transform mb-0.5" />
                                                                         <span className="text-[10px] font-bold leading-none">清除盤面</span>
                                                                     </button>
+
+                                                                    {/* 新增：當選擇 CASH 畫筆時，動態顯示的面額輸入框 */}
+                                                                    {getBaseSymbol(activeBrush) === 'CASH' && (
+                                                                        <React.Fragment>
+                                                                            <div className="w-px h-10 bg-slate-700 mx-1 self-center"></div>
+                                                                            <div className="flex flex-col justify-center bg-indigo-500/20 border border-indigo-400/50 rounded-lg px-3 h-[48px] sm:h-[52px] animate-in fade-in slide-in-from-left-2 duration-200">
+                                                                                <label className="text-[9px] font-bold text-indigo-300 mb-0.5 flex items-center gap-1">設定 CASH 面額</label>
+                                                                                <input
+                                                                                    type="number"
+                                                                                    step="any"
+                                                                                    value={getCashValue(activeBrush) || ''}
+                                                                                    onChange={(e) => setActiveBrush(`CASH_${e.target.value}`)}
+                                                                                    className="w-16 px-1.5 py-0.5 text-xs font-black text-indigo-900 bg-indigo-50 hover:bg-white focus:bg-white rounded outline-none text-center focus:ring-2 focus:ring-indigo-400 transition-all shadow-inner"
+                                                                                    placeholder="數值"
+                                                                                />
+                                                                            </div>
+                                                                        </React.Fragment>
+                                                                    )}
                                                                 </div>
                                                             </div>
                                                         )}
@@ -2476,7 +2751,10 @@
                                                                             if (calcResults) {
                                                                                 if (hoveredLineId) {
                                                                                     const hoveredResult = calcResults.details.find(d => d.lineId === hoveredLineId);
-                                                                                    isOnLine = template.lines[hoveredLineId]?.[cIndex] - 1 === rIndex;
+                                                                                    const isFeatureWin = String(hoveredResult.lineId).startsWith('SCATTER') || String(hoveredResult.lineId).startsWith('COLLECT');
+                                                                                    if (!isFeatureWin) {
+                                                                                        isOnLine = template.lines[hoveredLineId]?.[cIndex] - 1 === rIndex;
+                                                                                    }
                                                                                     isWinSymbol = hoveredResult?.winCoords.some(c => c.row === rIndex && c.col === cIndex);
                                                                                 } else {
                                                                                     isWinSymbol = calcResults.details.some(d => d.winCoords.some(c => c.row === rIndex && c.col === cIndex));
@@ -2493,6 +2771,9 @@
                                                                                 if (isWinSymbol) cellClasses += "opacity-100 bg-gradient-to-br from-indigo-400 to-indigo-600 shadow-[0_0_15px_rgba(99,102,241,0.4)] z-10 scale-[1.02] border-2 border-indigo-300 text-white";
                                                                                 else cellClasses += "opacity-100 bg-slate-800 border border-slate-700 hover:bg-slate-700 hover:border-slate-500 text-white shadow-inner";
                                                                             }
+
+                                                                            const baseSym = getBaseSymbol(symbol);
+                                                                            const cashVal = getCashValue(symbol);
 
                                                                             return (
                                                                                 <div
@@ -2519,10 +2800,15 @@
                                                                                         />
                                                                                     ) : (
                                                                                         symbol ? (
-                                                                                            template?.symbolImages?.[symbol] ? (
-                                                                                                <img src={template.symbolImages[symbol]} className="max-w-full max-h-full object-contain p-1.5 drop-shadow-md pointer-events-none select-none" draggable={false} alt={symbol} />
+                                                                                            template?.symbolImages?.[baseSym] ? (
+                                                                                                <React.Fragment>
+                                                                                                    <img src={template.symbolImages[baseSym]} className={`max-w-full max-h-full object-contain p-1.5 drop-shadow-md pointer-events-none select-none ${isCashSymbol(symbol) ? 'opacity-80' : ''}`} draggable={false} alt={baseSym} />
+                                                                                                    {cashVal > 0 && <div className="absolute inset-0 flex items-center justify-center font-black text-white drop-shadow-[0_2px_3px_rgba(0,0,0,1)] text-sm sm:text-base z-20 pointer-events-none">{cashVal}</div>}
+                                                                                                </React.Fragment>
                                                                                             ) : (
-                                                                                                <span className="z-10 pointer-events-none select-none drop-shadow-md text-sm sm:text-xl">{symbol}</span>
+                                                                                                <span className="z-10 pointer-events-none select-none drop-shadow-md text-sm sm:text-xl">
+                                                                                                    {isCashSymbol(symbol) && cashVal > 0 ? `💰${cashVal}` : baseSym}
+                                                                                                </span>
                                                                                             )
                                                                                         ) : (
                                                                                             <div className="w-2 h-2 rounded-full bg-slate-600/50 pointer-events-none"></div>
@@ -2542,7 +2828,6 @@
 
                                         {/* Phase 2 專屬結算 UI */}
                                         {renderResultView(calcResults, calculateError, hoveredLineId, setHoveredLineId, showAllLines, setShowAllLines)}
-
                                     </div>
                                 </div>
                             )}
@@ -2611,7 +2896,7 @@
                                                         </label>
                                                         <p className="mt-4 text-sm text-slate-400 max-w-md leading-relaxed">
                                                             上傳多張截圖，共用一個裁切範圍，由 AI 自動為您「批次辨識盤面」並產出結算結果。<br />
-                                                            <span className="text-emerald-400 font-bold inline-block mt-1">大幅節省時間，不再需要每張圖重新設定！</span>
+                                                            <span className="text-emerald-400 font-bold inline-block mt-1">優勢：不受灰階、變暗或些微特效干擾，容錯率極高！</span>
                                                         </p>
                                                     </div>
                                                 ) : (
@@ -2674,14 +2959,17 @@
                                                                                 if (visionCalcResults) {
                                                                                     if (visionHoveredLineId) {
                                                                                         const hoveredResult = visionCalcResults.details.find(d => d.lineId === visionHoveredLineId);
-                                                                                        isOnLine = template.lines[visionHoveredLineId]?.[cIndex] - 1 === rIndex;
+                                                                                        const isFeatureWin = String(hoveredResult.lineId).startsWith('SCATTER') || String(hoveredResult.lineId).startsWith('COLLECT');
+                                                                                        if (!isFeatureWin) {
+                                                                                            isOnLine = template.lines[visionHoveredLineId]?.[cIndex] - 1 === rIndex;
+                                                                                        }
                                                                                         isWinSymbol = hoveredResult?.winCoords.some(c => c.row === rIndex && c.col === cIndex);
                                                                                     } else {
                                                                                         isWinSymbol = visionCalcResults.details.some(d => d.winCoords.some(c => c.row === rIndex && c.col === cIndex));
                                                                                     }
                                                                                 }
 
-                                                                                let cellClass = "w-10 h-10 flex items-center justify-center rounded border transition-all duration-300 text-[10px] font-bold text-center ";
+                                                                                let cellClass = "relative w-10 h-10 flex items-center justify-center rounded border transition-all duration-300 text-[10px] font-bold text-center overflow-hidden ";
                                                                                 if (visionHoveredLineId) {
                                                                                     if (isWinSymbol) cellClass += "bg-indigo-600 border-indigo-400 shadow-[0_0_10px_rgba(99,102,241,0.5)] z-10 scale-105 text-white";
                                                                                     else if (isOnLine) cellClass += "bg-slate-700 border-slate-500 text-slate-300 opacity-60";
@@ -2691,13 +2979,19 @@
                                                                                     else cellClass += "bg-slate-800 border-slate-700 text-slate-300";
                                                                                 }
 
+                                                                                const baseSym = getBaseSymbol(symbol);
+                                                                                const cashVal = getCashValue(symbol);
+
                                                                                 return (
                                                                                     <div key={cIndex} className={cellClass}>
                                                                                         {symbol ? (
-                                                                                            template?.symbolImages?.[symbol] ? (
-                                                                                                <img src={template.symbolImages[symbol]} className="max-w-full max-h-full object-contain p-1 drop-shadow-md" alt={symbol} />
+                                                                                            template?.symbolImages?.[baseSym] ? (
+                                                                                                <React.Fragment>
+                                                                                                    <img src={template.symbolImages[baseSym]} className={`max-w-full max-h-full object-contain p-1 drop-shadow-md ${isCashSymbol(symbol) ? 'opacity-80' : ''}`} alt={baseSym} />
+                                                                                                    {cashVal > 0 && <div className="absolute inset-0 flex items-center justify-center font-black text-white drop-shadow-[0_1px_2px_rgba(0,0,0,1)] text-[10px] z-20 pointer-events-none">{cashVal}</div>}
+                                                                                                </React.Fragment>
                                                                                             ) : (
-                                                                                                <span>{symbol}</span>
+                                                                                                <span>{isCashSymbol(symbol) && cashVal > 0 ? `💰${cashVal}` : baseSym}</span>
                                                                                             )
                                                                                         ) : null}
                                                                                     </div>
@@ -2807,14 +3101,25 @@
                                                 const canvas = document.createElement('canvas');
                                                 canvas.width = cW; canvas.height = cH;
                                                 canvas.getContext('2d').drawImage(img, startX * sX, startY * sY, cW, cH, 0, 0, cW, cH);
-                                                setPtResultItems(prev => { const arr = [...prev]; arr[ptCropState.itemIndex].thumbUrl = canvas.toDataURL(); return arr; });
+
+                                                // 修改：將擷取到的圖片推入 thumbUrls 陣列中
+                                                setPtResultItems(prev => {
+                                                    const arr = [...prev];
+                                                    if (!arr[ptCropState.itemIndex].thumbUrls) {
+                                                        arr[ptCropState.itemIndex].thumbUrls = [];
+                                                    }
+                                                    arr[ptCropState.itemIndex].thumbUrls.push(canvas.toDataURL());
+                                                    return arr;
+                                                });
                                                 setPtCropState(p => ({ ...p, active: false }));
-                                            }} className="bg-indigo-600 hover:bg-indigo-500 transition-colors text-white px-4 py-1.5 rounded font-bold shadow-md">確認</button>
-                                            <button onClick={() => setPtCropState(p => ({ ...p, active: false }))} className="text-slate-400 hover:text-white p-1 transition-colors"><X /></button>
+                                            }} className="bg-indigo-600 hover:bg-indigo-500 transition-colors text-white px-4 py-1.5 rounded font-bold shadow-md flex items-center gap-1">
+                                                <Plus size={16} /> 增加特徵圖
+                                            </button>
+                                            <button onClick={() => setPtCropState(p => ({ ...p, active: false }))} className="text-slate-400 hover:text-white p-1 transition-colors ml-2"><X /></button>
                                         </div>
                                     </div>
 
-                                    {/* 新增：多圖切換區塊 (只有在上傳大於1張圖時才顯示) */}
+                                    {/* 多圖切換區塊 */}
                                     {ptImages.length > 1 && (
                                         <div className="flex gap-2 px-4 pb-3 overflow-x-auto custom-scrollbar">
                                             {ptImages.map((img, idx) => (
@@ -2890,10 +3195,14 @@
                                             <Cloud className="text-indigo-500" />
                                             <span>Google Sheets 模板庫</span>
                                         </h2>
-                                        {isBackgroundSyncing && (
+                                        {isBackgroundSyncing ? (
                                             <span className="flex items-center gap-1.5 text-[10px] bg-indigo-50 text-indigo-500 border border-indigo-100 px-2 py-1 rounded-full font-bold animate-pulse">
                                                 <RefreshCw size={10} className="animate-spin" /> 同步最新資料中...
                                             </span>
+                                        ) : (
+                                            <button onClick={handleForceRefreshCloud} className="flex items-center gap-1 text-[10px] bg-slate-100 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 border border-slate-200 px-2 py-1 rounded-full font-bold transition-colors" title="強制繞過快取重新整理">
+                                                <RefreshCw size={10} /> 重新整理
+                                            </button>
                                         )}
                                     </div>
                                     <button onClick={() => setShowCloudModal(false)} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-full transition-colors"><X size={20} /></button>
