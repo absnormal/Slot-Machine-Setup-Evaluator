@@ -1248,48 +1248,97 @@ function App() {
         if (visionImageObj && visionCanvasRef.current && !isPhase3Minimized) {
             const canvas = visionCanvasRef.current;
             const ctx = canvas.getContext('2d');
-            canvas.width = visionImageObj.width;
-            canvas.height = visionImageObj.height;
 
-            ctx.drawImage(visionImageObj, 0, 0);
+            const activeVisionImg = visionImages.find(img => img.id === activeVisionId);
 
-            const getRect = (obj) => ({
-                x: toPx(obj.x, visionImageObj.width),
-                y: toPx(obj.y, visionImageObj.height),
-                w: toPx(obj.w, visionImageObj.width),
-                h: toPx(obj.h, visionImageObj.height)
-            });
-            const rect = getRect(visionP1);
-            const baseThickness = Math.max(2, Math.floor(visionImageObj.width / 400));
-            const handleSize = Math.max(12, Math.floor(visionImageObj.width / 60));
+            if (activeVisionImg?.grid) {
+                // 已辨識完成：僅顯示框選範圍 (裁切)
+                const rx = toPx(visionP1.x, visionImageObj.width);
+                const ry = toPx(visionP1.y, visionImageObj.height);
+                const rw = toPx(visionP1.w, visionImageObj.width);
+                const rh = toPx(visionP1.h, visionImageObj.height);
 
-            ctx.lineWidth = baseThickness;
-            ctx.strokeStyle = '#10b981';
-            ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
+                // 加上 5% 的 Padding 以免太緊貼
+                const paddingX = rw * 0.05;
+                const paddingY = rh * 0.05;
 
-            ctx.fillStyle = '#10b981';
-            ctx.fillRect(rect.x + rect.w - handleSize, rect.y + rect.h - handleSize, handleSize, handleSize);
+                const cropX = Math.max(0, rx - paddingX);
+                const cropY = Math.max(0, ry - paddingY);
+                const cropW = Math.min(visionImageObj.width - cropX, rw + paddingX * 2);
+                const cropH = Math.min(visionImageObj.height - cropY, rh + paddingY * 2);
 
-            if (template && template.rows > 0 && template.cols > 0) {
-                ctx.beginPath();
-                ctx.strokeStyle = 'rgba(16, 185, 129, 0.5)';
-                const cellW = rect.w / template.cols;
-                const cellH = rect.h / template.rows;
+                canvas.width = cropW;
+                canvas.height = cropH;
+                ctx.drawImage(visionImageObj, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
 
-                for (let c = 1; c < template.cols; c++) {
-                    const lx = rect.x + c * cellW;
-                    ctx.moveTo(lx, rect.y);
-                    ctx.lineTo(lx, rect.y + rect.h);
+                // 畫框線 (在此要相對位移)
+                const relativeRx = rx - cropX;
+                const relativeRy = ry - cropY;
+
+                if (template && template.rows > 0 && template.cols > 0) {
+                    ctx.beginPath();
+                    ctx.strokeStyle = 'rgba(16, 185, 129, 0.5)';
+                    const cellW = rw / template.cols;
+                    const cellH = rh / template.rows;
+
+                    for (let c = 1; c < template.cols; c++) {
+                        const lx = relativeRx + c * cellW;
+                        ctx.moveTo(lx, relativeRy);
+                        ctx.lineTo(lx, relativeRy + rh);
+                    }
+                    for (let r = 1; r < template.rows; r++) {
+                        const ly = relativeRy + r * cellH;
+                        ctx.moveTo(relativeRx, ly);
+                        ctx.lineTo(relativeRx + rw, ly);
+                    }
+                    ctx.stroke();
                 }
-                for (let r = 1; r < template.rows; r++) {
-                    const ly = rect.y + r * cellH;
-                    ctx.moveTo(rect.x, ly);
-                    ctx.lineTo(rect.x + rect.w, ly);
+
+            } else {
+                // 尚未辨識：顯示全圖與操控框
+                canvas.width = visionImageObj.width;
+                canvas.height = visionImageObj.height;
+
+                ctx.drawImage(visionImageObj, 0, 0);
+
+                const getRect = (obj) => ({
+                    x: toPx(obj.x, visionImageObj.width),
+                    y: toPx(obj.y, visionImageObj.height),
+                    w: toPx(obj.w, visionImageObj.width),
+                    h: toPx(obj.h, visionImageObj.height)
+                });
+                const rect = getRect(visionP1);
+                const baseThickness = Math.max(2, Math.floor(visionImageObj.width / 400));
+                const handleSize = Math.max(12, Math.floor(visionImageObj.width / 60));
+
+                ctx.lineWidth = baseThickness;
+                ctx.strokeStyle = '#10b981';
+                ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
+
+                ctx.fillStyle = '#10b981';
+                ctx.fillRect(rect.x + rect.w - handleSize, rect.y + rect.h - handleSize, handleSize, handleSize);
+
+                if (template && template.rows > 0 && template.cols > 0) {
+                    ctx.beginPath();
+                    ctx.strokeStyle = 'rgba(16, 185, 129, 0.5)';
+                    const cellW = rect.w / template.cols;
+                    const cellH = rect.h / template.rows;
+
+                    for (let c = 1; c < template.cols; c++) {
+                        const lx = rect.x + c * cellW;
+                        ctx.moveTo(lx, rect.y);
+                        ctx.lineTo(lx, rect.y + rect.h);
+                    }
+                    for (let r = 1; r < template.rows; r++) {
+                        const ly = rect.y + r * cellH;
+                        ctx.moveTo(rect.x, ly);
+                        ctx.lineTo(rect.x + rect.w, ly);
+                    }
+                    ctx.stroke();
                 }
-                ctx.stroke();
             }
         }
-    }, [visionImageObj, visionP1, template, isPhase3Minimized]);
+    }, [visionImageObj, visionP1, template, isPhase3Minimized, visionImages, activeVisionId]);
 
     const getVisionMousePos = (e, ref, activeImgObj) => {
         if (!ref.current || !activeImgObj) return { x: 0, y: 0 };
@@ -2493,15 +2542,16 @@ function App() {
                                                     </button>
                                                 </div>
                                                 <div className="flex-1 relative overflow-hidden bg-black flex items-center justify-center min-h-[300px]" ref={visionContainerRef}>
-                                                    {/* 視覺辨識用 Canvas (供使用者框選範圍) */}
-                                                    <canvas
-                                                        ref={visionCanvasRef}
-                                                        className="max-w-full max-h-full object-contain cursor-crosshair"
-                                                        onMouseDown={handleVisionMouseDown}
-                                                        onMouseMove={handleVisionMouseMove}
-                                                        onMouseUp={handleVisionMouseUp}
-                                                        onMouseLeave={handleVisionMouseUp}
-                                                    />
+                                                    <div className={`relative w-full flex items-center justify-center overflow-hidden ${activeVisionImg?.grid ? 'h-auto py-4' : 'h-full'}`}>
+                                                        <canvas
+                                                            ref={visionCanvasRef}
+                                                            className={`max-w-full max-h-full object-contain ${activeVisionImg?.grid ? 'cursor-default pointer-events-none drop-shadow-lg' : 'cursor-crosshair'}`}
+                                                            onMouseDown={!activeVisionImg?.grid ? handleVisionMouseDown : undefined}
+                                                            onMouseMove={!activeVisionImg?.grid ? handleVisionMouseMove : undefined}
+                                                            onMouseUp={!activeVisionImg?.grid ? handleVisionMouseUp : undefined}
+                                                            onMouseLeave={!activeVisionImg?.grid ? handleVisionMouseUp : undefined}
+                                                        />
+                                                    </div>
                                                 </div>
 
                                                 {/* Phase 3 執行按鈕與進度 */}
@@ -2615,157 +2665,165 @@ function App() {
             </div>
 
             {/* 確認 Modal */}
-            {showAIConfirmModal && (
-                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4" style={{ zIndex: 99999 }}>
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
-                        <div className="p-5 border-b flex items-center gap-2 bg-slate-50"><AlertCircle className="text-amber-500" /><h2 className="text-xl font-bold">AI 分析前確認事項</h2></div>
-                        <div className="p-6 text-sm text-slate-700 space-y-4">
-                            <ol className="list-decimal pl-5 space-y-2">
-                                <li>確認賠率圖<strong className="text-rose-600">預設BET為 1</strong>。</li>
-                                <li>AI 分析可能有誤，完成後請<strong className="text-indigo-600">人工比對表格</strong>並修正。<br /><span className="text-slate-500 text-xs mt-1 inline-block">【點開上傳圖片ICON可以方便人工比對表格】</span></li>
-                                <li>(可選) 手動擷取縮圖供動畫預覽使用。</li>
-                            </ol>
-                        </div>
-                        <div className="p-4 border-t bg-slate-50 flex justify-end gap-3">
-                            <button onClick={() => setShowAIConfirmModal(false)} className="px-4 py-2 text-slate-600">取消</button>
-                            <button onClick={() => { setShowAIConfirmModal(false); handlePtExtract(); }} className="px-6 py-2 bg-indigo-600 text-white font-bold rounded-lg shadow-md">確認並分析</button>
+            {
+                showAIConfirmModal && (
+                    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4" style={{ zIndex: 99999 }}>
+                        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+                            <div className="p-5 border-b flex items-center gap-2 bg-slate-50"><AlertCircle className="text-amber-500" /><h2 className="text-xl font-bold">AI 分析前確認事項</h2></div>
+                            <div className="p-6 text-sm text-slate-700 space-y-4">
+                                <ol className="list-decimal pl-5 space-y-2">
+                                    <li>確認賠率圖<strong className="text-rose-600">預設BET為 1</strong>。</li>
+                                    <li>AI 分析可能有誤，完成後請<strong className="text-indigo-600">人工比對表格</strong>並修正。<br /><span className="text-slate-500 text-xs mt-1 inline-block">【點開上傳圖片ICON可以方便人工比對表格】</span></li>
+                                    <li>(可選) 手動擷取縮圖供動畫預覽使用。</li>
+                                </ol>
+                            </div>
+                            <div className="p-4 border-t bg-slate-50 flex justify-end gap-3">
+                                <button onClick={() => setShowAIConfirmModal(false)} className="px-4 py-2 text-slate-600">取消</button>
+                                <button onClick={() => { setShowAIConfirmModal(false); handlePtExtract(); }} className="px-6 py-2 bg-indigo-600 text-white font-bold rounded-lg shadow-md">確認並分析</button>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
+                )
+            }
 
             {/* 新增：建構資料不足/錯誤 提示 Modal */}
-            {buildErrorMsg && (
-                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4" style={{ zIndex: 99999 }}>
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in duration-200">
-                        <div className="p-5 border-b flex items-center gap-2 bg-rose-50">
-                            <AlertCircle className="text-rose-500" size={24} />
-                            <h2 className="text-xl font-bold text-slate-800">資料不足或格式錯誤</h2>
-                        </div>
-                        <div className="p-6 text-slate-700 leading-relaxed font-medium">
-                            {buildErrorMsg}
-                        </div>
-                        <div className="p-4 border-t bg-slate-50 flex justify-end">
-                            <button onClick={() => setBuildErrorMsg('')} className="px-6 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-lg shadow-md transition-colors">
-                                我知道了
-                            </button>
+            {
+                buildErrorMsg && (
+                    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4" style={{ zIndex: 99999 }}>
+                        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in duration-200">
+                            <div className="p-5 border-b flex items-center gap-2 bg-rose-50">
+                                <AlertCircle className="text-rose-500" size={24} />
+                                <h2 className="text-xl font-bold text-slate-800">資料不足或格式錯誤</h2>
+                            </div>
+                            <div className="p-6 text-slate-700 leading-relaxed font-medium">
+                                {buildErrorMsg}
+                            </div>
+                            <div className="p-4 border-t bg-slate-50 flex justify-end">
+                                <button onClick={() => setBuildErrorMsg('')} className="px-6 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-lg shadow-md transition-colors">
+                                    我知道了
+                                </button>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
+                )
+            }
 
             {/* 擷取 Modal */}
-            {ptCropState.active && (
-                <div className="fixed inset-0 flex items-center justify-center bg-black/90 backdrop-blur-sm p-4" style={{ zIndex: 99999 }}>
-                    <div className="bg-slate-900 rounded-xl shadow-2xl w-full max-w-4xl flex flex-col border border-slate-700 h-[80vh]">
-                        <div className="flex flex-col border-b border-slate-700 shrink-0">
-                            <div className="flex items-center justify-between p-4">
-                                <h3 className="text-white font-bold flex items-center gap-2">
-                                    手動擷取: <span className="text-indigo-400">{ptResultItems[ptCropState.itemIndex]?.name}</span>
-                                </h3>
-                                <div className="flex gap-2">
-                                    <button onClick={() => {
-                                        const img = ptCropImageRef.current;
-                                        const rect = img.getBoundingClientRect();
-                                        const sX = img.naturalWidth / rect.width, sY = img.naturalHeight / rect.height;
+            {
+                ptCropState.active && (
+                    <div className="fixed inset-0 flex items-center justify-center bg-black/90 backdrop-blur-sm p-4" style={{ zIndex: 99999 }}>
+                        <div className="bg-slate-900 rounded-xl shadow-2xl w-full max-w-4xl flex flex-col border border-slate-700 h-[80vh]">
+                            <div className="flex flex-col border-b border-slate-700 shrink-0">
+                                <div className="flex items-center justify-between p-4">
+                                    <h3 className="text-white font-bold flex items-center gap-2">
+                                        手動擷取: <span className="text-indigo-400">{ptResultItems[ptCropState.itemIndex]?.name}</span>
+                                    </h3>
+                                    <div className="flex gap-2">
+                                        <button onClick={() => {
+                                            const img = ptCropImageRef.current;
+                                            const rect = img.getBoundingClientRect();
+                                            const sX = img.naturalWidth / rect.width, sY = img.naturalHeight / rect.height;
 
-                                        const startX = Math.min(ptCropState.startX, ptCropState.endX);
-                                        const startY = Math.min(ptCropState.startY, ptCropState.endY);
-                                        const cW = Math.abs(ptCropState.startX - ptCropState.endX) * sX;
-                                        const cH = Math.abs(ptCropState.startY - ptCropState.endY) * sY;
+                                            const startX = Math.min(ptCropState.startX, ptCropState.endX);
+                                            const startY = Math.min(ptCropState.startY, ptCropState.endY);
+                                            const cW = Math.abs(ptCropState.startX - ptCropState.endX) * sX;
+                                            const cH = Math.abs(ptCropState.startY - ptCropState.endY) * sY;
 
-                                        // 防呆：如果只有點一下沒有拖曳寬高，則不進行擷取
-                                        if (cW <= 0 || cH <= 0) {
-                                            setPtCropState(p => ({ ...p, active: false }));
-                                            return;
-                                        }
-
-                                        const canvas = document.createElement('canvas');
-                                        canvas.width = cW; canvas.height = cH;
-                                        canvas.getContext('2d').drawImage(img, startX * sX, startY * sY, cW, cH, 0, 0, cW, cH);
-
-                                        // 修改：將擷取到的圖片推入 thumbUrls 陣列中
-                                        setPtResultItems(prev => {
-                                            const arr = [...prev];
-                                            if (!arr[ptCropState.itemIndex].thumbUrls) {
-                                                arr[ptCropState.itemIndex].thumbUrls = [];
+                                            // 防呆：如果只有點一下沒有拖曳寬高，則不進行擷取
+                                            if (cW <= 0 || cH <= 0) {
+                                                setPtCropState(p => ({ ...p, active: false }));
+                                                return;
                                             }
-                                            arr[ptCropState.itemIndex].thumbUrls.push(canvas.toDataURL());
-                                            return arr;
-                                        });
-                                        setPtCropState(p => ({ ...p, active: false }));
-                                    }} className="bg-indigo-600 hover:bg-indigo-500 transition-colors text-white px-4 py-1.5 rounded font-bold shadow-md flex items-center gap-1">
-                                        <Plus size={16} /> 增加特徵圖
-                                    </button>
-                                    <button onClick={() => setPtCropState(p => ({ ...p, active: false }))} className="text-slate-400 hover:text-white p-1 transition-colors ml-2"><X /></button>
-                                </div>
-                            </div>
 
-                            {/* 多圖切換區塊 */}
-                            {ptImages.length > 1 && (
-                                <div className="flex gap-2 px-4 pb-3 overflow-x-auto custom-scrollbar">
-                                    {ptImages.map((img, idx) => (
-                                        <button
-                                            key={img.id}
-                                            onClick={() => setPtCropState(p => ({ ...p, selectedImageId: img.id, startX: 0, startY: 0, endX: 0, endY: 0, isDragging: false }))}
-                                            className={`relative w-14 h-14 shrink-0 rounded-lg border-2 overflow-hidden transition-all ${ptCropState.selectedImageId === img.id ? 'border-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.5)]' : 'border-slate-700 opacity-50 hover:opacity-100 hover:border-slate-500'}`}
-                                            title={`切換至圖片 ${idx + 1}`}
-                                        >
-                                            <img src={img.previewUrl} className="w-full h-full object-cover" />
-                                            <span className="absolute bottom-0 right-0 bg-black/80 text-white text-[10px] px-1.5 font-bold rounded-tl-md">{idx + 1}</span>
+                                            const canvas = document.createElement('canvas');
+                                            canvas.width = cW; canvas.height = cH;
+                                            canvas.getContext('2d').drawImage(img, startX * sX, startY * sY, cW, cH, 0, 0, cW, cH);
+
+                                            // 修改：將擷取到的圖片推入 thumbUrls 陣列中
+                                            setPtResultItems(prev => {
+                                                const arr = [...prev];
+                                                if (!arr[ptCropState.itemIndex].thumbUrls) {
+                                                    arr[ptCropState.itemIndex].thumbUrls = [];
+                                                }
+                                                arr[ptCropState.itemIndex].thumbUrls.push(canvas.toDataURL());
+                                                return arr;
+                                            });
+                                            setPtCropState(p => ({ ...p, active: false }));
+                                        }} className="bg-indigo-600 hover:bg-indigo-500 transition-colors text-white px-4 py-1.5 rounded font-bold shadow-md flex items-center gap-1">
+                                            <Plus size={16} /> 增加特徵圖
                                         </button>
-                                    ))}
+                                        <button onClick={() => setPtCropState(p => ({ ...p, active: false }))} className="text-slate-400 hover:text-white p-1 transition-colors ml-2"><X /></button>
+                                    </div>
                                 </div>
-                            )}
-                        </div>
 
-                        {/* 移除 items-center justify-center，改為在內層使用 m-auto，防止頂部被切斷 */}
-                        <div className="flex-1 bg-black overflow-auto flex p-4">
-                            <div className="relative inline-block m-auto shrink-0">
-                                <img
-                                    ref={ptCropImageRef}
-                                    src={ptImages.find(img => img.id === ptCropState.selectedImageId)?.previewUrl}
-                                    draggable={false}
-                                    className="max-h-[70vh] max-w-full block cursor-crosshair shadow-2xl"
-                                    onMouseDown={(e) => {
-                                        const r = e.target.getBoundingClientRect();
-                                        setPtCropState(p => ({ ...p, startX: e.clientX - r.left, startY: e.clientY - r.top, endX: e.clientX - r.left, endY: e.clientY - r.top, isDragging: true }));
-                                    }}
-                                    onMouseMove={(e) => {
-                                        if (!ptCropState.isDragging) return;
-                                        const r = e.target.getBoundingClientRect();
-                                        setPtCropState(p => ({ ...p, endX: e.clientX - r.left, endY: e.clientY - r.top }));
-                                    }}
-                                    onMouseUp={() => setPtCropState(p => ({ ...p, isDragging: false }))}
-                                    onMouseLeave={() => setPtCropState(p => ({ ...p, isDragging: false }))}
-                                />
-                                {(ptCropState.isDragging || (Math.abs(ptCropState.startX - ptCropState.endX) > 0 && Math.abs(ptCropState.startY - ptCropState.endY) > 0)) && (
-                                    <div className="absolute border-2 border-indigo-500 bg-indigo-500/30 pointer-events-none" style={{ left: Math.min(ptCropState.startX, ptCropState.endX), top: Math.min(ptCropState.startY, ptCropState.endY), width: Math.abs(ptCropState.startX - ptCropState.endX), height: Math.abs(ptCropState.startY - ptCropState.endY) }} />
+                                {/* 多圖切換區塊 */}
+                                {ptImages.length > 1 && (
+                                    <div className="flex gap-2 px-4 pb-3 overflow-x-auto custom-scrollbar">
+                                        {ptImages.map((img, idx) => (
+                                            <button
+                                                key={img.id}
+                                                onClick={() => setPtCropState(p => ({ ...p, selectedImageId: img.id, startX: 0, startY: 0, endX: 0, endY: 0, isDragging: false }))}
+                                                className={`relative w-14 h-14 shrink-0 rounded-lg border-2 overflow-hidden transition-all ${ptCropState.selectedImageId === img.id ? 'border-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.5)]' : 'border-slate-700 opacity-50 hover:opacity-100 hover:border-slate-500'}`}
+                                                title={`切換至圖片 ${idx + 1}`}
+                                            >
+                                                <img src={img.previewUrl} className="w-full h-full object-cover" />
+                                                <span className="absolute bottom-0 right-0 bg-black/80 text-white text-[10px] px-1.5 font-bold rounded-tl-md">{idx + 1}</span>
+                                            </button>
+                                        ))}
+                                    </div>
                                 )}
                             </div>
+
+                            {/* 移除 items-center justify-center，改為在內層使用 m-auto，防止頂部被切斷 */}
+                            <div className="flex-1 bg-black overflow-auto flex p-4">
+                                <div className="relative inline-block m-auto shrink-0">
+                                    <img
+                                        ref={ptCropImageRef}
+                                        src={ptImages.find(img => img.id === ptCropState.selectedImageId)?.previewUrl}
+                                        draggable={false}
+                                        className="max-h-[70vh] max-w-full block cursor-crosshair shadow-2xl"
+                                        onMouseDown={(e) => {
+                                            const r = e.target.getBoundingClientRect();
+                                            setPtCropState(p => ({ ...p, startX: e.clientX - r.left, startY: e.clientY - r.top, endX: e.clientX - r.left, endY: e.clientY - r.top, isDragging: true }));
+                                        }}
+                                        onMouseMove={(e) => {
+                                            if (!ptCropState.isDragging) return;
+                                            const r = e.target.getBoundingClientRect();
+                                            setPtCropState(p => ({ ...p, endX: e.clientX - r.left, endY: e.clientY - r.top }));
+                                        }}
+                                        onMouseUp={() => setPtCropState(p => ({ ...p, isDragging: false }))}
+                                        onMouseLeave={() => setPtCropState(p => ({ ...p, isDragging: false }))}
+                                    />
+                                    {(ptCropState.isDragging || (Math.abs(ptCropState.startX - ptCropState.endX) > 0 && Math.abs(ptCropState.startY - ptCropState.endY) > 0)) && (
+                                        <div className="absolute border-2 border-indigo-500 bg-indigo-500/30 pointer-events-none" style={{ left: Math.min(ptCropState.startX, ptCropState.endX), top: Math.min(ptCropState.startY, ptCropState.endY), width: Math.abs(ptCropState.startX - ptCropState.endX), height: Math.abs(ptCropState.startY - ptCropState.endY) }} />
+                                    )}
+                                </div>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
+                )
+            }
 
             {/* 放大檢視 (Lightbox) */}
-            {ptEnlargedImg && (
-                <div
-                    className="fixed flex flex-col bg-slate-900/95 backdrop-blur-md rounded-xl shadow-[0_10px_40px_rgba(0,0,0,0.6)] border border-slate-700"
-                    style={{ zIndex: 9999, left: `${lightboxState.x}px`, top: `${lightboxState.y}px`, width: `${lightboxState.w}px`, height: `${lightboxState.h}px` }}
-                >
-                    <div className="flex justify-between items-center p-3 pb-2 cursor-move border-b border-slate-800 hover:bg-slate-800/50 rounded-t-xl transition-colors" onMouseDown={handleLbDragStart}>
-                        <span className="text-white/80 text-sm font-bold flex items-center gap-1.5 select-none pointer-events-none"><ImageIcon size={16} className="text-indigo-400" /> 原圖預覽對照</span>
-                        <button className="text-white/60 hover:text-white p-1 transition-colors hover:bg-rose-500 rounded-lg cursor-pointer z-[101]" onClick={(e) => { e.stopPropagation(); setPtEnlargedImg(null); }} onMouseDown={e => e.stopPropagation()}><X size={18} /></button>
+            {
+                ptEnlargedImg && (
+                    <div
+                        className="fixed flex flex-col bg-slate-900/95 backdrop-blur-md rounded-xl shadow-[0_10px_40px_rgba(0,0,0,0.6)] border border-slate-700"
+                        style={{ zIndex: 9999, left: `${lightboxState.x}px`, top: `${lightboxState.y}px`, width: `${lightboxState.w}px`, height: `${lightboxState.h}px` }}
+                    >
+                        <div className="flex justify-between items-center p-3 pb-2 cursor-move border-b border-slate-800 hover:bg-slate-800/50 rounded-t-xl transition-colors" onMouseDown={handleLbDragStart}>
+                            <span className="text-white/80 text-sm font-bold flex items-center gap-1.5 select-none pointer-events-none"><ImageIcon size={16} className="text-indigo-400" /> 原圖預覽對照</span>
+                            <button className="text-white/60 hover:text-white p-1 transition-colors hover:bg-rose-500 rounded-lg cursor-pointer z-[101]" onClick={(e) => { e.stopPropagation(); setPtEnlargedImg(null); }} onMouseDown={e => e.stopPropagation()}><X size={18} /></button>
+                        </div>
+                        <div className="flex-1 overflow-hidden flex items-center justify-center p-2 relative bg-black/40">
+                            <img src={ptEnlargedImg} alt="Enlarged" className="max-w-full max-h-full object-contain drop-shadow-md pointer-events-none select-none" draggable={false} />
+                        </div>
+                        <div className="absolute bottom-0 right-0 w-8 h-8 cursor-se-resize flex justify-end items-end p-2 text-slate-500 hover:text-indigo-400" onMouseDown={handleLbResizeStart} title="拖曳以縮放視窗">
+                            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="3" fill="none" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 24 24 24 24 16"></polyline><line x1="14" y1="14" x2="24" y2="24"></line></svg>
+                        </div>
                     </div>
-                    <div className="flex-1 overflow-hidden flex items-center justify-center p-2 relative bg-black/40">
-                        <img src={ptEnlargedImg} alt="Enlarged" className="max-w-full max-h-full object-contain drop-shadow-md pointer-events-none select-none" draggable={false} />
-                    </div>
-                    <div className="absolute bottom-0 right-0 w-8 h-8 cursor-se-resize flex justify-end items-end p-2 text-slate-500 hover:text-indigo-400" onMouseDown={handleLbResizeStart} title="拖曳以縮放視窗">
-                        <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="3" fill="none" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 24 24 24 24 16"></polyline><line x1="14" y1="14" x2="24" y2="24"></line></svg>
-                    </div>
-                </div>
-            )}
+                )
+            }
 
             <CloudModal
                 show={showCloudModal}
@@ -2794,7 +2852,7 @@ function App() {
                     setTimeout(() => setTemplateMessage(''), 3000);
                 }}
             />
-        </div>
+        </div >
     );
 }
 
