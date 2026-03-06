@@ -3,7 +3,7 @@ import { Play, Settings, AlertCircle, CheckCircle2, Trophy, Coins, ChevronDown, 
 
 // === 模組匯入 ===
 import { GAS_URL, apiKey } from './utils/constants';
-import { toPx, toPct, fetchWithRetry, ptFileToBase64 } from './utils/helpers';
+import { toPx, toPct, fetchWithRetry, ptFileToBase64, resizeImageBase64 } from './utils/helpers';
 import { isScatterSymbol, isCollectSymbol, isWildSymbol, isCashSymbol, isJpSymbol, getCashValue, getBaseSymbol } from './utils/symbolUtils';
 import { computeGridResults } from './engine/computeGridResults';
 import { useLightbox } from './hooks/useLightbox';
@@ -1441,7 +1441,7 @@ function App() {
         });
     };
 
-    // === 核心：呼叫 Gemini API 進行語意辨識 (Phase 3 批次版) ===
+    // === 核心：呼叫 Gemini API 進行語意辨識 (Phase 3 批次版, Token 優化) ===
     const performAIVisionBatchMatching = async () => {
         if (visionImages.length === 0 || !template) {
             setTemplateError("請先上傳截圖，並確保已經完成 Phase 1 模板設定！");
@@ -1449,7 +1449,8 @@ function App() {
         }
 
         const effectiveApiKey = customApiKey.trim() || apiKey;
-        const modelName = customApiKey.trim() ? "gemini-2.5-flash" : "gemini-2.5-flash-preview-09-2025";
+        // Phase 3 使用 3.1-flash-lite：RPD 500 遠高於 2.5-flash-lite 的 RPD 20
+        const modelName = "gemini-3.1-flash-lite";
 
         let toProcess = visionImages.filter(img => !img.grid);
         if (toProcess.length === 0) {
@@ -1462,25 +1463,36 @@ function App() {
 
         let currentVisionImages = [...visionImages];
 
+        // --- 預先壓縮參考縮圖至 64px 以節省 token ---
         const referenceImages = [];
-        let referenceText = "【以下是本遊戲的符號參考圖，同一個符號可能有多種外觀：】\n";
+        let referenceText = "Symbol references:\n";
         let partIndex = 1;
 
         for (const symbol in template.symbolImagesAll) {
             const urls = template.symbolImagesAll[symbol];
             if (urls && urls.length > 0) {
-                referenceText += `- ${symbol}: 參考圖 ${urls.map((_, i) => partIndex + i).join(', ')}\n`;
-                urls.forEach(url => {
-                    const b64 = url.split(',')[1];
-                    if (b64) {
+                referenceText += `- ${symbol}: img ${urls.map((_, i) => partIndex + i).join(',')}\n`;
+                for (const url of urls) {
+                    try {
+                        const resized = await resizeImageBase64(url, 64, 0.6);
                         referenceImages.push({
-                            inlineData: { mimeType: "image/png", data: b64 }
+                            inlineData: { mimeType: resized.mimeType, data: resized.base64 }
                         });
-                        partIndex++;
+                    } catch {
+                        const b64 = url.split(',')[1];
+                        if (b64) referenceImages.push({ inlineData: { mimeType: "image/png", data: b64 } });
                     }
-                });
+                    partIndex++;
+                }
             }
         }
+
+        // --- 固定前綴 parts（利用 Gemini implicit caching）---
+        const fixedPrefixParts = [
+            { text: referenceText },
+            ...referenceImages,
+            { text: `Grid: ${template.rows}R x ${template.cols}C. Symbols: [${availableSymbols.join(',')}]. Rules: Pick closest symbol from list only. Cash with number: CASH_N (e.g. CASH_0.5). JP names as-is. Dimmed/grayed cells: identify by shape. Unrecognizable: "". Return ${template.rows}x${template.cols} 2D array.` }
+        ];
 
         for (let i = 0; i < toProcess.length; i++) {
             const targetImg = toProcess[i];
@@ -1490,6 +1502,7 @@ function App() {
             setVisionBatchProgress({ current: i + 1, total: toProcess.length });
 
             try {
+                // --- 裁切盤面區域 ---
                 const offCanvas = document.createElement('canvas');
                 const rx = (visionP1.x / 100) * targetImg.obj.width;
                 const ry = (visionP1.y / 100) * targetImg.obj.height;
@@ -1501,48 +1514,30 @@ function App() {
                 const ctx = offCanvas.getContext('2d');
                 ctx.drawImage(targetImg.obj, rx, ry, rw, rh, 0, 0, rw, rh);
 
-                const base64Image = offCanvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+                // --- 壓縮截圖至 512px, JPEG 0.5 ---
+                const rawBase64 = offCanvas.toDataURL('image/jpeg', 0.5).split(',')[1];
+                const resizedShot = await resizeImageBase64(`data:image/jpeg;base64,${rawBase64}`, 512, 0.5);
 
                 const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${effectiveApiKey}`;
-
-                const promptText = `
-                        這是一張老虎機遊戲盤面的截圖（已為你裁切好只保留盤面網格區域）。
-                        請幫我辨識出網格中「每一個位置」的符號。
-                        網格的大小為：${template.rows} 列 (Rows) x ${template.cols} 欄 (Cols)。
-
-                        ${referenceText}
-
-                        【重要規則】
-                        1. 你只能從以下「可用符號清單」中選擇最接近的符號填入，絕對不能自己發明新名稱：
-                           [${availableSymbols.join(', ')}]
-                        2. 若符號為收集符號，請填入 "COLLECT" 或 "WILD_COLLECT"。
-                        3. 若為帶有倍數或數值的現金符號(Cash)，請務必讀出上面的數字，並以 "CASH_數字" 格式填入 (例如: CASH_0.5, CASH_10)。如果是 JP 符號 (如 MINI, GRAND)，請直接填入該清單中的名稱。
-                        4. 如果某個格子看起來被變暗、變灰（通常是未中獎狀態），請忽略顏色，依然根據它的「形狀和特徵」辨識出它是哪個符號。
-                        5. 如果某個格子真的完全被特效遮擋無法辨識，或是空的，請填入空字串 ""。
-                        `;
 
                 const payload = {
                     contents: [{
                         role: "user",
                         parts: [
-                            { text: promptText },
-                            ...referenceImages,
-                            { text: "【請分析以下盤面截圖：】" },
-                            { inlineData: { mimeType: "image/jpeg", data: base64Image } }
+                            // 固定前綴（參考圖 + 規則）放最前面以觸發 implicit caching
+                            ...fixedPrefixParts,
+                            // 變動部分（當前盤面截圖）放最後
+                            { text: "Analyze:" },
+                            { inlineData: { mimeType: resizedShot.mimeType, data: resizedShot.base64 } }
                         ]
                     }],
                     generationConfig: {
                         responseMimeType: "application/json",
                         responseSchema: {
                             type: "ARRAY",
-                            description: `盤面二維陣列，共 ${template.rows} 列。`,
                             items: {
                                 type: "ARRAY",
-                                description: `每一列包含 ${template.cols} 個符號。`,
-                                items: {
-                                    type: "STRING",
-                                    description: "符號名稱"
-                                }
+                                items: { type: "STRING" }
                             }
                         }
                     }

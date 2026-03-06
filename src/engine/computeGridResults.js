@@ -1,4 +1,4 @@
-import { isScatterSymbol, isCollectSymbol, isWildSymbol, isCashSymbol, getCashValue } from '../utils/symbolUtils';
+import { isScatterSymbol, isCollectSymbol, isWildSymbol, isCashSymbol, getCashValue, isJpSymbol } from '../utils/symbolUtils';
 
 /**
  * 核心結算引擎：根據模板、盤面與押注計算線獎結果
@@ -147,7 +147,7 @@ export function computeGridResults(template, targetGrid, betAmount) {
         let collectCount = 0;
         const collectCoords = [];
         const cashCoords = [];
-        let totalCashValue = 0;
+        let totalCashWinValue = 0;
 
         for (let r = 0; r < template.rows; r++) {
             for (let c = 0; c < template.cols; c++) {
@@ -159,22 +159,28 @@ export function computeGridResults(template, targetGrid, betAmount) {
                 if (isCashSymbol(sym, template.jpConfig)) {
                     const val = getCashValue(sym, template.jpConfig);
                     if (val > 0) {
-                        totalCashValue += val;
+                        let symPayout = 0;
+                        if (isJpSymbol(sym, template.jpConfig)) {
+                            symPayout = val * parsedBet;
+                        } else {
+                            symPayout = val;
+                        }
+                        totalCashWinValue += symPayout;
                         cashCoords.push({ row: r, col: c });
                     }
                 }
             }
         }
 
-        if (collectCount > 0 && totalCashValue > 0) {
-            const totalPayout = totalCashValue * collectCount;
-            const payout = parseFloat((totalPayout * parsedBet).toFixed(8)); // CASH value is multiplier of Bet
+        if (collectCount > 0 && totalCashWinValue > 0) {
+            const totalPayout = totalCashWinValue * collectCount;
+            const payout = parseFloat(totalPayout.toFixed(8));
 
             calculatedResults.push({
                 lineId: `COLLECT_FEATURE`,
                 symbol: `CASH`,
                 count: cashCoords.length,
-                payoutMult: totalCashValue,
+                payoutMult: totalCashWinValue,
                 winAmount: payout,
                 symbolsOnLine: Array(collectCount).fill('COLLECT').concat(cashCoords.map(coord => safeGrid[coord.row][coord.col])),
                 positions: [`收集 x${collectCount}`],
