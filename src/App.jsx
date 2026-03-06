@@ -1449,8 +1449,8 @@ function App() {
         }
 
         const effectiveApiKey = customApiKey.trim() || apiKey;
-        // Phase 3 使用 3.1-flash-lite：RPD 500 遠高於 2.5-flash-lite 的 RPD 20
-        const modelName = "gemini-3.1-flash-lite";
+        // Phase 3 使用 3.1-flash-lite-preview：RPD 500，Preview 模型需加 -preview 後綴
+        const modelName = "gemini-3.1-flash-lite-preview";
 
         let toProcess = visionImages.filter(img => !img.grid);
         if (toProcess.length === 0) {
