@@ -1505,7 +1505,7 @@ function App() {
         // --- 動態決定是否需要辨識硬幣金幣上的數字 ---
         const hasCashOrCollect = availableSymbols.some(sym => isCashSymbol(sym, template.jpConfig) || isCollectSymbol(sym));
         const cashRule = hasCashOrCollect
-            ? "Cash with number: CASH_N (e.g. CASH_0.5). "
+            ? "If a symbol has a number, ALWAYS prioritize matching it to other non-cash symbols (like COLLECT) based on its shape first. Only classify as CASH_N (e.g. CASH_0.5) if it definitely does not match any other defined symbol. "
             : "Ignore small multiplier amounts on coins. Match base symbols only. (Do NOT ignore standard symbols that are numbers, e.g., '7', '10', '9'). ";
 
         // --- 固定前綴 parts（利用 Gemini implicit caching）---
