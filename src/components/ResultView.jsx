@@ -53,6 +53,7 @@ export default function ResultView({ template, calcData, calcErr, hoveredId, set
                                         const isWin = result.winAmount > 0;
                                         const isScatterWin = String(result.lineId).startsWith('SCATTER');
                                         const isCollectWin = String(result.lineId).startsWith('COLLECT');
+                                        const isWaysWin = String(result.lineId).startsWith('WAYS_');
 
                                         let rowBgClass = 'opacity-60 grayscale bg-slate-50';
                                         let idBgClass = 'bg-slate-200 border-slate-300';
@@ -70,6 +71,11 @@ export default function ResultView({ template, calcData, calcErr, hoveredId, set
                                                 idBgClass = 'bg-[#1a2923] border-emerald-500';
                                                 idTextClass = 'text-emerald-400';
                                                 idLabel = '💰';
+                                            } else if (isWaysWin) {
+                                                rowBgClass = 'bg-purple-50 border-purple-200 shadow-sm hover:border-purple-400 hover:shadow-md';
+                                                idBgClass = 'bg-[#231a29] border-purple-500';
+                                                idTextClass = 'text-purple-400';
+                                                idLabel = result.ways || '';
                                             } else {
                                                 rowBgClass = 'bg-white border-indigo-100 shadow-sm hover:border-indigo-300 hover:shadow-md';
                                                 idBgClass = 'bg-[#1a1c29] border-slate-500';
@@ -98,8 +104,8 @@ export default function ResultView({ template, calcData, calcErr, hoveredId, set
                                                 <div className="flex-1 min-w-0 flex flex-col justify-center">
                                                     <div className="flex items-center justify-between mb-1">
                                                         <div className="flex items-center gap-2 flex-wrap">
-                                                            <span className={`font-bold text-sm truncate ${isScatterWin ? 'text-amber-700' : isCollectWin ? 'text-emerald-700' : 'text-slate-800'}`}>
-                                                                {isCollectWin ? '金幣收集成功' : `${result.symbol} ${result.count} ${isScatterWin ? '個' : '連'}`}
+                                                            <span className={`font-bold text-sm truncate ${isScatterWin ? 'text-amber-700' : isCollectWin ? 'text-emerald-700' : isWaysWin ? 'text-purple-700' : 'text-slate-800'}`}>
+                                                                {isCollectWin ? '金幣收集成功' : isWaysWin ? `${result.symbol} ${result.count} 連 × ${result.ways} Ways` : `${result.symbol} ${result.count} ${isScatterWin ? '個' : '連'}`}
                                                             </span>
                                                             {isWin ? (
                                                                 <div className="flex items-center gap-1">
@@ -108,7 +114,7 @@ export default function ResultView({ template, calcData, calcErr, hoveredId, set
                                                                             🏆 {jp.toUpperCase()} {template.jpConfig[jp.toUpperCase()]}x
                                                                         </span>
                                                                     ))}
-                                                                    <span className={`text-[10px] px-2 py-0.5 font-bold rounded-full border whitespace-nowrap ${isScatterWin ? 'bg-amber-100 text-amber-700 border-amber-300' : isCollectWin ? 'bg-emerald-100 text-emerald-700 border-emerald-300' : 'bg-indigo-50 text-indigo-700 border-indigo-200'}`}>
+                                                                    <span className={`text-[10px] px-2 py-0.5 font-bold rounded-full border whitespace-nowrap ${isScatterWin ? 'bg-amber-100 text-amber-700 border-amber-300' : isCollectWin ? 'bg-emerald-100 text-emerald-700 border-emerald-300' : isWaysWin ? 'bg-purple-100 text-purple-700 border-purple-300' : 'bg-indigo-50 text-indigo-700 border-indigo-200'}`}>
                                                                         {isCollectWin ? `總面額 ${result.payoutMult}` : `倍率 ${result.payoutMult}x`}
                                                                     </span>
                                                                 </div>
@@ -116,7 +122,7 @@ export default function ResultView({ template, calcData, calcErr, hoveredId, set
                                                                 <span className="text-[10px] px-2 py-0.5 bg-slate-200 text-slate-500 rounded-full font-medium whitespace-nowrap">未中獎</span>
                                                             )}
                                                         </div>
-                                                        <span className={`font-black text-sm shrink-0 ml-2 ${isWin ? (isScatterWin ? 'text-amber-600' : 'text-emerald-600') : 'text-slate-400'}`}>
+                                                        <span className={`font-black text-sm shrink-0 ml-2 ${isWin ? (isScatterWin ? 'text-amber-600' : isWaysWin ? 'text-purple-600' : 'text-emerald-600') : 'text-slate-400'}`}>
                                                             {isWin ? `+${result.winAmount.toLocaleString()}` : '-'}
                                                         </span>
                                                     </div>
@@ -127,6 +133,8 @@ export default function ResultView({ template, calcData, calcErr, hoveredId, set
                                                                 <span className="text-amber-600 font-black px-1">全盤散佈 (Anywhere)</span>
                                                             ) : isCollectWin ? (
                                                                 <span className="text-emerald-600 font-black px-1">{result.positions[0]}</span>
+                                                            ) : isWaysWin ? (
+                                                                <span className="text-purple-600 font-black px-1">{result.positions[0]}</span>
                                                             ) : (
                                                                 <React.Fragment>
                                                                     {result.positions.map((pos, i) => (

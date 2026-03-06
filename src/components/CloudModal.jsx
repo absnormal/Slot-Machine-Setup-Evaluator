@@ -53,7 +53,13 @@ export default function CloudModal({
                                         <div className="text-sm text-slate-500 mt-1 flex flex-wrap gap-x-4 gap-y-1">
                                             {(t.platformName || t.gameName) && <span className="font-semibold text-indigo-600">{[t.platformName, t.gameName].filter(Boolean).join(' - ')}</span>}
                                             <span className="flex items-center gap-1"><Settings size={14} /> {t.gridRows}x{t.gridCols} 盤面</span>
-                                            <span className="flex items-center gap-1"><Trophy size={14} /> {t.linesCount !== undefined ? t.linesCount : (t.extractResults?.length || 0)} 條連線</span>
+                                            {(t.lineMode === 'allways' || t.linesCount === 0) ? (
+                                                <span className="flex items-center gap-1 text-purple-600 font-bold bg-purple-50 px-2 py-0.5 rounded-md border border-purple-100">
+                                                    <Trophy size={14} /> {Math.pow(t.gridRows || 3, t.gridCols || 5)} Ways
+                                                </span>
+                                            ) : (
+                                                <span className="flex items-center gap-1"><Trophy size={14} /> {t.linesCount !== undefined ? t.linesCount : (t.extractResults?.length || 0)} 條連線</span>
+                                            )}
                                         </div>
                                     </div>
                                     <div className="flex gap-2 items-center">
