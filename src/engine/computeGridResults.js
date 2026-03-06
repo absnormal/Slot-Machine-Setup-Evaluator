@@ -21,91 +21,143 @@ export function computeGridResults(template, targetGrid, betAmount) {
         let totalWin = 0;
         const allPaySymbols = Object.keys(template.paytable);
 
-        // === 線獎計算 ===
-        Object.entries(template.lines).forEach(([lineIdStr, positions]) => {
-            const lineId = parseInt(lineIdStr);
-
-            const symbolsOnLine = positions.map((row, colIndex) => {
-                const rIndex = row - 1;
-                if (rIndex < 0 || rIndex >= template.rows || !safeGrid[rIndex]) {
-                    throw new Error(`結算錯誤：線獎編號 ${lineId} 包含無效列數「${row}」，但盤面最大只有 ${template.rows} 列。請至 Phase 1 修正。`);
-                }
-                return safeGrid[rIndex][colIndex];
-            });
-
-            let bestPayout = 0;
-            let bestSymbol = null;
-            let bestCount = 0;
-
+        if (template.lineMode === 'allways') {
+            // === All Ways 計算 ===
             for (const targetSymbol of allPaySymbols) {
                 if (isScatterSymbol(targetSymbol)) continue;
                 if (isCashSymbol(targetSymbol, template.jpConfig)) continue;
                 if (isCollectSymbol(targetSymbol) && !isWildSymbol(targetSymbol)) continue;
 
-                let currentCount = 0;
-                let hasTargetSymbol = false;
+                let consecutiveReels = 0;
+                let ways = 1;
+                const winCoords = [];
 
-                for (let i = 0; i < symbolsOnLine.length; i++) {
-                    if (!symbolsOnLine[i]) break;
+                for (let col = 0; col < template.cols; col++) {
+                    let matchCount = 0;
+                    const colCoords = [];
+                    for (let row = 0; row < template.rows; row++) {
+                        const sym = safeGrid[row][col];
+                        if (!sym) continue;
+                        if (sym === targetSymbol || isWildSymbol(sym)) {
+                            matchCount++;
+                            colCoords.push({ row, col });
+                        }
+                    }
+                    if (matchCount === 0) break;
+                    consecutiveReels++;
+                    ways *= matchCount;
+                    winCoords.push(...colCoords);
+                }
 
-                    if (symbolsOnLine[i] === targetSymbol) {
-                        currentCount++;
-                        hasTargetSymbol = true;
-                    } else if (isWildSymbol(symbolsOnLine[i])) {
-                        currentCount++;
-                    } else {
-                        break;
+                if (consecutiveReels >= 2) {
+                    const payArray = template.paytable[targetSymbol];
+                    const payIndex = Math.min(consecutiveReels - 1, payArray.length - 1);
+                    const payoutMult = payIndex >= 0 ? payArray[payIndex] : 0;
+
+                    if (payoutMult > 0) {
+                        const payout = parseFloat((payoutMult * parsedBet * ways).toFixed(8));
+                        calculatedResults.push({
+                            lineId: `WAYS_${targetSymbol}`,
+                            symbol: targetSymbol,
+                            count: consecutiveReels,
+                            ways,
+                            payoutMult,
+                            winAmount: payout,
+                            symbolsOnLine: [],
+                            positions: [`${consecutiveReels} 連 × ${ways} Ways`],
+                            winCoords
+                        });
+                        totalWin = parseFloat((totalWin + payout).toFixed(8));
                     }
                 }
+            }
+        } else {
+            // === 固定線獎計算 ===
+            Object.entries(template.lines).forEach(([lineIdStr, positions]) => {
+                const lineId = parseInt(lineIdStr);
 
-                if (currentCount > 0 && (isWildSymbol(targetSymbol) || hasTargetSymbol)) {
-                    const payoutMult = template.paytable[targetSymbol][currentCount - 1] || 0;
-                    const payout = parseFloat((payoutMult * parsedBet).toFixed(8));
-
-                    if (payout > bestPayout) {
-                        bestPayout = payout;
-                        bestSymbol = targetSymbol;
-                        bestCount = currentCount;
+                const symbolsOnLine = positions.map((row, colIndex) => {
+                    const rIndex = row - 1;
+                    if (rIndex < 0 || rIndex >= template.rows || !safeGrid[rIndex]) {
+                        throw new Error(`結算錯誤：線獎編號 ${lineId} 包含無效列數「${row}」，但盤面最大只有 ${template.rows} 列。請至 Phase 1 修正。`);
                     }
-                }
-            }
-
-            if (bestPayout === 0) {
-                bestSymbol = symbolsOnLine[0] || '空';
-                if (isWildSymbol(bestSymbol)) {
-                    bestSymbol = symbolsOnLine.find(s => !isWildSymbol(s) && s !== '') || bestSymbol;
-                }
-                bestCount = 0;
-                for (let i = 0; i < symbolsOnLine.length; i++) {
-                    if (!symbolsOnLine[i]) break;
-                    if (isScatterSymbol(symbolsOnLine[i]) || isCashSymbol(symbolsOnLine[i], template.jpConfig) || (isCollectSymbol(symbolsOnLine[i]) && !isWildSymbol(symbolsOnLine[i]))) break;
-
-                    if (symbolsOnLine[i] === bestSymbol || isWildSymbol(symbolsOnLine[i])) bestCount++;
-                    else break;
-                }
-            }
-
-            const winCoords = [];
-            if (bestPayout > 0) {
-                for (let i = 0; i < bestCount; i++) {
-                    winCoords.push({ row: positions[i] - 1, col: i });
-                }
-            }
-
-            if (!isScatterSymbol(bestSymbol) && !isCashSymbol(bestSymbol, template.jpConfig)) {
-                calculatedResults.push({
-                    lineId,
-                    symbol: bestSymbol,
-                    count: bestCount,
-                    payoutMult: bestPayout > 0 ? template.paytable[bestSymbol][bestCount - 1] : 0,
-                    winAmount: bestPayout,
-                    symbolsOnLine,
-                    positions,
-                    winCoords
+                    return safeGrid[rIndex][colIndex];
                 });
-                totalWin = parseFloat((totalWin + bestPayout).toFixed(8));
-            }
-        });
+
+                let bestPayout = 0;
+                let bestSymbol = null;
+                let bestCount = 0;
+
+                for (const targetSymbol of allPaySymbols) {
+                    if (isScatterSymbol(targetSymbol)) continue;
+                    if (isCashSymbol(targetSymbol, template.jpConfig)) continue;
+                    if (isCollectSymbol(targetSymbol) && !isWildSymbol(targetSymbol)) continue;
+
+                    let currentCount = 0;
+                    let hasTargetSymbol = false;
+
+                    for (let i = 0; i < symbolsOnLine.length; i++) {
+                        if (!symbolsOnLine[i]) break;
+
+                        if (symbolsOnLine[i] === targetSymbol) {
+                            currentCount++;
+                            hasTargetSymbol = true;
+                        } else if (isWildSymbol(symbolsOnLine[i])) {
+                            currentCount++;
+                        } else {
+                            break;
+                        }
+                    }
+
+                    if (currentCount > 0 && (isWildSymbol(targetSymbol) || hasTargetSymbol)) {
+                        const payoutMult = template.paytable[targetSymbol][currentCount - 1] || 0;
+                        const payout = parseFloat((payoutMult * parsedBet).toFixed(8));
+
+                        if (payout > bestPayout) {
+                            bestPayout = payout;
+                            bestSymbol = targetSymbol;
+                            bestCount = currentCount;
+                        }
+                    }
+                }
+
+                if (bestPayout === 0) {
+                    bestSymbol = symbolsOnLine[0] || '空';
+                    if (isWildSymbol(bestSymbol)) {
+                        bestSymbol = symbolsOnLine.find(s => !isWildSymbol(s) && s !== '') || bestSymbol;
+                    }
+                    bestCount = 0;
+                    for (let i = 0; i < symbolsOnLine.length; i++) {
+                        if (!symbolsOnLine[i]) break;
+                        if (isScatterSymbol(symbolsOnLine[i]) || isCashSymbol(symbolsOnLine[i], template.jpConfig) || (isCollectSymbol(symbolsOnLine[i]) && !isWildSymbol(symbolsOnLine[i]))) break;
+
+                        if (symbolsOnLine[i] === bestSymbol || isWildSymbol(symbolsOnLine[i])) bestCount++;
+                        else break;
+                    }
+                }
+
+                const winCoords = [];
+                if (bestPayout > 0) {
+                    for (let i = 0; i < bestCount; i++) {
+                        winCoords.push({ row: positions[i] - 1, col: i });
+                    }
+                }
+
+                if (!isScatterSymbol(bestSymbol) && !isCashSymbol(bestSymbol, template.jpConfig)) {
+                    calculatedResults.push({
+                        lineId,
+                        symbol: bestSymbol,
+                        count: bestCount,
+                        payoutMult: bestPayout > 0 ? template.paytable[bestSymbol][bestCount - 1] : 0,
+                        winAmount: bestPayout,
+                        symbolsOnLine,
+                        positions,
+                        winCoords
+                    });
+                    totalWin = parseFloat((totalWin + bestPayout).toFixed(8));
+                }
+            });
+        } // end paylines else
 
         // === SCATTER 計算 ===
         const scatterSymbols = allPaySymbols.filter(isScatterSymbol);
