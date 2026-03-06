@@ -136,7 +136,9 @@ function App() {
         const symbols = new Set(Object.keys(template.paytable));
         if (template.jpConfig) {
             Object.keys(template.jpConfig).forEach(jp => {
-                if (jp.trim() !== '') symbols.add(jp.toUpperCase());
+                if (jp.trim() !== '' && template.jpConfig[jp] !== '') {
+                    symbols.add(jp.toUpperCase());
+                }
             });
         }
         if (!symbols.has('WILD') && !Array.from(symbols).some(s => isWildSymbol(s))) symbols.add('WILD');
@@ -1487,11 +1489,17 @@ function App() {
             }
         }
 
+        // --- 動態決定是否需要辨識硬幣金幣上的數字 ---
+        const hasCashOrCollect = availableSymbols.some(sym => isCashSymbol(sym, template.jpConfig) || isCollectSymbol(sym));
+        const cashRule = hasCashOrCollect
+            ? "Cash with number: CASH_N (e.g. CASH_0.5). "
+            : "Ignore small multiplier amounts on coins. Match base symbols only. (Do NOT ignore standard symbols that are numbers, e.g., '7', '10', '9'). ";
+
         // --- 固定前綴 parts（利用 Gemini implicit caching）---
         const fixedPrefixParts = [
             { text: referenceText },
             ...referenceImages,
-            { text: `Grid: ${template.rows}R x ${template.cols}C. Symbols: [${availableSymbols.join(',')}]. Rules: Pick closest symbol from list only. Cash with number: CASH_N (e.g. CASH_0.5). JP names as-is. Dimmed/grayed cells: identify by shape. Unrecognizable: "". Return ${template.rows}x${template.cols} 2D array.` }
+            { text: `Grid: ${template.rows}R x ${template.cols}C. Symbols: [${availableSymbols.join(',')}]. Rules: Pick closest symbol from list only. ${cashRule}JP names as-is. Dimmed/grayed cells: identify by shape. Unrecognizable: "". Return ${template.rows}x${template.cols} 2D array.` }
         ];
 
         for (let i = 0; i < toProcess.length; i++) {
