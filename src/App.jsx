@@ -129,6 +129,8 @@ function App() {
     const [templateMessage, setTemplateMessage] = useState('');
     const [isSaving, setIsSaving] = useState(false);
     const [deletingId, setDeletingId] = useState(null);
+    const [showOverwriteConfirm, setShowOverwriteConfirm] = useState(false);
+    const [pendingOverwriteData, setPendingOverwriteData] = useState(null);
 
     const defaultSaveName = [platformName, gameName].filter(Boolean).join('-') || `模板 ${gridRows}x${gridCols}`;
 
@@ -432,7 +434,7 @@ function App() {
         if (showCloudModal) fetchCloudTemplates();
     }, [showCloudModal, fetchCloudTemplates]);
 
-    const handleSaveToCloud = async () => {
+    const handleSaveToCloud = async (forceOverwriteId = null) => {
         setTemplateMessage('');
         if (lineMode === 'paylines' && extractResults.length === 0) {
             setTemplateError('沒有可儲存的連線資料，請先完成提取！');
@@ -442,23 +444,49 @@ function App() {
             setTemplateError('尚未設定 Google Sheets 連線網址，請在程式碼中填寫 GAS_URL！');
             return;
         }
+
+        const generatedName = [platformName, gameName].filter(Boolean).join('-');
+        const linesLabel = lineMode === 'allways' ? `${Math.pow(gridRows, gridCols)} Ways` : `${extractResults.length} 線`;
+        const name = templateName.trim() || generatedName || `模板 ${gridRows}x${gridCols} (${linesLabel})`;
+
+        // 防止 React 事件物件被當作 id 傳入
+        const isEvent = forceOverwriteId && typeof forceOverwriteId === 'object' && forceOverwriteId.nativeEvent;
+        const actualForceId = isEvent ? null : forceOverwriteId;
+
+        // 若非強制動作，先檢查是否有重複 (同平台+同遊戲)
+        if (!actualForceId) {
+            const existing = cloudTemplates.find(t =>
+                t.platformName?.trim().toUpperCase() === platformName?.trim().toUpperCase() &&
+                t.gameName?.trim().toUpperCase() === gameName?.trim().toUpperCase()
+            );
+            if (existing) {
+                setPendingOverwriteData({ existing, newName: name });
+                setShowOverwriteConfirm(true);
+                return;
+            }
+        }
+
         setIsSaving(true);
         try {
-            const generatedName = [platformName, gameName].filter(Boolean).join('-');
-            const linesLabel = lineMode === 'allways' ? `${Math.pow(gridRows, gridCols)} Ways` : `${extractResults.length} 線`;
-            const name = templateName.trim() || generatedName || `模板 ${gridRows}x${gridCols} (${linesLabel})`;
+            const isUpdating = actualForceId && actualForceId !== 'FORCE_NEW';
+            const targetId = isUpdating ? actualForceId : (Date.now().toString() + Math.random().toString(36).substring(2, 7));
+            const action = isUpdating ? 'update' : 'save';
 
-            const symbolImages = {};
-            ptResultItems.forEach(item => {
-                if (item.thumbUrls && item.thumbUrls.length > 0) {
-                    symbolImages[item.name] = item.thumbUrls[0];
-                } else if (item.thumbUrl) {
-                    symbolImages[item.name] = item.thumbUrl;
-                }
-            });
+            // --- 壓縮縮圖以節省空間 (Google Sheets 單格上限 50KB) ---
+            const cloudPtResultItems = await Promise.all(ptResultItems.map(async (item) => {
+                if (!item.thumbUrls || item.thumbUrls.length === 0) return item;
+                const compressedThumbs = await Promise.all(item.thumbUrls.slice(0, 3).map(async (url) => {
+                    try {
+                        if (url.length < 2000) return url;
+                        const res = await resizeImageBase64(url, 48, 0.4, 'image/jpeg');
+                        return `data:image/jpeg;base64,${res.base64}`;
+                    } catch { return url.substring(0, 100); }
+                }));
+                return { ...item, thumbUrls: compressedThumbs };
+            }));
 
             const newTemplate = {
-                id: Date.now().toString() + Math.random().toString(36).substring(2, 7),
+                id: targetId,
                 name,
                 platformName,
                 gameName,
@@ -467,25 +495,37 @@ function App() {
                 lineMode,
                 extractResults,
                 paytableInput,
-                ptResultItems,
+                ptResultItems: cloudPtResultItems,
                 jpConfig,
                 creatorId: localUserId,
                 createdAt: new Date().toISOString()
             };
 
-            await fetch(GAS_URL, {
+            const payload = JSON.stringify({ action, data: newTemplate });
+            console.log(`[CloudSave] Action: ${action}, ID: ${targetId}, Payload: ${payload.length} chars`);
+
+            if (payload.length > 49000) {
+                throw new Error('模板資料過大 (超過 50KB)，請減少符號縮圖再試。');
+            }
+
+            const response = await fetch(GAS_URL.trim(), {
                 method: 'POST',
-                body: JSON.stringify({ action: 'save', data: newTemplate }),
+                body: payload,
                 headers: { 'Content-Type': 'text/plain;charset=utf-8' }
             });
 
+            if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
+
             setTemplateName('');
             setTemplateError('');
-            setTemplateMessage('✅ 已成功儲存至 Google Sheets！');
+            setTemplateMessage(isUpdating ? '✅ 雲端模板已成功覆蓋更新！' : '✅ 已成功儲存至 Google Sheets！');
             setTimeout(() => setTemplateMessage(''), 3000);
 
             sessionStorage.removeItem('slot_templates_cache');
+            if (showOverwriteConfirm) setShowOverwriteConfirm(false);
+            fetchCloudTemplates();
         } catch (e) {
+            console.error('[CloudSave] Error:', e);
             setTemplateError('雲端儲存失敗：' + e.message);
         }
         setIsSaving(false);
@@ -2907,7 +2947,46 @@ function App() {
                 onLoadTemplate={loadCloudTemplate}
                 onDeleteTemplate={handleDeleteTemplate}
                 setDeletingId={setDeletingId}
+                currentPlatformName={platformName}
             />
+
+            {/* 覆蓋確認 Modal */}
+            {showOverwriteConfirm && pendingOverwriteData && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4" style={{ zIndex: 100000 }}>
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
+                        <div className="p-6 text-center">
+                            <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <Cloud size={32} />
+                            </div>
+                            <h3 className="text-xl font-bold text-slate-800 mb-2">偵測到重複模板</h3>
+                            <p className="text-slate-500 mb-6">
+                                雲端已存在 <span className="font-bold text-indigo-600">[{platformName} - {gameName}]</span> 的模板資料。<br />
+                                您要覆蓋既有模板，還是另存為新模板？
+                            </p>
+                            <div className="space-y-3">
+                                <button
+                                    onClick={() => handleSaveToCloud(pendingOverwriteData.existing.id)}
+                                    className="w-full py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200"
+                                >
+                                    覆蓋更新 (取代舊有)
+                                </button>
+                                <button
+                                    onClick={() => handleSaveToCloud('FORCE_NEW')}
+                                    className="w-full py-3 bg-white text-slate-700 font-bold rounded-xl border border-slate-200 hover:bg-slate-50 transition-colors"
+                                >
+                                    另存為新模板
+                                </button>
+                                <button
+                                    onClick={() => setShowOverwriteConfirm(false)}
+                                    className="w-full py-3 text-slate-400 font-bold hover:text-slate-600 transition-colors"
+                                >
+                                    取消
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <SettingsModal
                 show={showSettingsModal}
