@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { Play, Settings, AlertCircle, CheckCircle2, Trophy, Coins, ChevronDown, ChevronUp, Image as ImageIcon, Upload, Cloud, Download, X, Trash2, FileText, ImagePlus, Copy, Loader2, Crop, LayoutList, MousePointer2, LayoutGrid, Save, FolderOpen, RefreshCw, Plus, Paintbrush, Keyboard, Zap, Key, Database, BrainCircuit, ListChecks } from 'lucide-react';
+import { Play, Settings, AlertCircle, CheckCircle2, Trophy, Coins, ChevronDown, ChevronUp, Image as ImageIcon, Upload, Cloud, Download, X, Trash2, FileText, ImagePlus, Copy, Loader2, Crop, LayoutList, MousePointer2, LayoutGrid, Save, FolderOpen, RefreshCw, Plus, Paintbrush, Keyboard, Zap, Key, Database, BrainCircuit, ListChecks, ChevronLeft, ChevronRight, StopCircle } from 'lucide-react';
 
 // === 模組匯入 ===
 import { GAS_URL, apiKey } from './utils/constants';
@@ -102,6 +102,8 @@ function App() {
 
     const [visionP1, setVisionP1] = useState({ x: 10, y: 10, w: 80, h: 80 });
     const [isVisionProcessing, setIsVisionProcessing] = useState(false);
+    const isVisionCanceled = useRef(false);
+    const [isVisionStopping, setIsVisionStopping] = useState(false);
     const [visionBatchProgress, setVisionBatchProgress] = useState({ current: 0, total: 0 });
     const [visionDragState, setVisionDragState] = useState(null);
 
@@ -1497,6 +1499,38 @@ function App() {
     };
 
     // === 核心：呼叫 Gemini API 進行語意辨識 (Phase 3 批次版, Token 優化) ===
+    const goToPrevVisionImage = useCallback(() => {
+        if (!activeVisionId || visionImages.length === 0) return;
+        const curIdx = visionImages.findIndex(img => img.id === activeVisionId);
+        if (curIdx > 0) {
+            setActiveVisionId(visionImages[curIdx - 1].id);
+        }
+    }, [activeVisionId, visionImages]);
+
+    const goToNextVisionImage = useCallback(() => {
+        if (!activeVisionId || visionImages.length === 0) return;
+        const curIdx = visionImages.findIndex(img => img.id === activeVisionId);
+        if (curIdx >= 0 && curIdx < visionImages.length - 1) {
+            setActiveVisionId(visionImages[curIdx + 1].id);
+        }
+    }, [activeVisionId, visionImages]);
+
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            // 如果焦點在輸入框，不攔截左右鍵
+            if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
+
+            if (e.key === 'ArrowLeft') {
+                goToPrevVisionImage();
+            } else if (e.key === 'ArrowRight') {
+                goToNextVisionImage();
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [goToPrevVisionImage, goToNextVisionImage]);
+
     const performAIVisionBatchMatching = async () => {
         if (visionImages.length === 0 || !template) {
             setTemplateError("請先上傳截圖，並確保已經完成 Phase 1 模板設定！");
@@ -1513,6 +1547,8 @@ function App() {
         }
 
         setIsVisionProcessing(true);
+        setIsVisionStopping(false);
+        isVisionCanceled.current = false;
         setVisionBatchProgress({ current: 0, total: toProcess.length });
         setTemplateMessage(`AI 準備批次處理 ${toProcess.length} 張盤面中...`);
 
@@ -1556,6 +1592,11 @@ function App() {
         ];
 
         for (let i = 0; i < toProcess.length; i++) {
+            if (isVisionCanceled.current) {
+                setTemplateMessage("已停止批量辨識");
+                break;
+            }
+
             const targetImg = toProcess[i];
             const imgIndex = currentVisionImages.findIndex(img => img.id === targetImg.id);
 
@@ -1644,14 +1685,24 @@ function App() {
             }
 
             if (i < toProcess.length - 1) {
+                if (isVisionCanceled.current) {
+                    setTemplateMessage("已停止批量辨識");
+                    break;
+                }
                 await new Promise(res => setTimeout(res, 1500));
             }
-        }
+        } // End of for loop
 
         setIsVisionProcessing(false);
+        setIsVisionStopping(false);
         setVisionBatchProgress({ current: 0, total: 0 });
-        setTemplateMessage(`✅ 批次辨識完成！共處理 ${toProcess.length} 張圖片。`);
-        setTimeout(() => setTemplateMessage(''), 5000);
+
+        if (!isVisionCanceled.current) {
+            setTemplateMessage(`✅ 批次辨識完成！共處理 ${toProcess.length} 張圖片。`);
+            setTimeout(() => setTemplateMessage(''), 5000);
+        } else {
+            setTimeout(() => setTemplateMessage(''), 5000);
+        }
     };
 
     const computeGridResultsCb = useCallback((targetGrid, betAmount) => {
@@ -2660,23 +2711,62 @@ function App() {
                                                             onMouseUp={!activeVisionImg?.grid ? handleVisionMouseUp : undefined}
                                                             onMouseLeave={!activeVisionImg?.grid ? handleVisionMouseUp : undefined}
                                                         />
+
+                                                        {/* 左右圖片切換浮動按鈕 */}
+                                                        {visionImages.length > 1 && (
+                                                            <>
+                                                                <button
+                                                                    onClick={(e) => { e.stopPropagation(); goToPrevVisionImage(); }}
+                                                                    disabled={visionImages.findIndex(img => img.id === activeVisionId) === 0}
+                                                                    className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/40 hover:bg-black/80 text-white p-2 rounded-full backdrop-blur-sm transition-all disabled:opacity-30 disabled:cursor-not-allowed group/nav z-30"
+                                                                >
+                                                                    <ChevronLeft size={24} className="group-hover/nav:-translate-x-0.5 transition-transform" />
+                                                                </button>
+                                                                <button
+                                                                    onClick={(e) => { e.stopPropagation(); goToNextVisionImage(); }}
+                                                                    disabled={visionImages.findIndex(img => img.id === activeVisionId) === visionImages.length - 1}
+                                                                    className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/40 hover:bg-black/80 text-white p-2 rounded-full backdrop-blur-sm transition-all disabled:opacity-30 disabled:cursor-not-allowed group/nav z-30"
+                                                                >
+                                                                    <ChevronRight size={24} className="group-hover/nav:translate-x-0.5 transition-transform" />
+                                                                </button>
+                                                            </>
+                                                        )}
                                                     </div>
                                                 </div>
 
                                                 {/* Phase 3 執行按鈕與進度 */}
                                                 <div className="p-4 border-t border-slate-800 bg-slate-950 shrink-0">
-                                                    <button
-                                                        onClick={performAIVisionBatchMatching}
-                                                        disabled={isVisionProcessing}
-                                                        className={`w-full py-3 rounded-lg text-lg font-bold flex items-center justify-center gap-2 transition-all shadow-md ${isVisionProcessing ? 'bg-indigo-600/50 cursor-not-allowed text-white/50' : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-500/20'}`}
-                                                    >
-                                                        {isVisionProcessing ? <Loader2 size={20} className="animate-spin" /> : <ListChecks size={20} />}
-                                                        {isVisionProcessing
-                                                            ? `AI 批次辨識中 (${visionBatchProgress.current}/${visionBatchProgress.total})...`
-                                                            : (visionImages.filter(img => !img.grid).length > 0
+                                                    {!isVisionProcessing ? (
+                                                        <button
+                                                            onClick={performAIVisionBatchMatching}
+                                                            className="w-full py-3 rounded-lg text-lg font-bold flex items-center justify-center gap-2 transition-all shadow-md bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-500/20"
+                                                        >
+                                                            <ListChecks size={20} />
+                                                            {visionImages.filter(img => !img.grid).length > 0
                                                                 ? `批次辨識未處理圖片 (${visionImages.filter(img => !img.grid).length} 張)`
-                                                                : '重新辨識全部圖片')}
-                                                    </button>
+                                                                : '重新辨識全部圖片'}
+                                                        </button>
+                                                    ) : (
+                                                        <div className="flex gap-3">
+                                                            <div className="flex-1 py-3 bg-indigo-600/50 rounded-lg text-lg font-bold flex items-center justify-center gap-2 text-white/80 select-none shadow-inner border border-indigo-500/30">
+                                                                <Loader2 size={20} className="animate-spin" />
+                                                                {isVisionStopping
+                                                                    ? '正在等待當前回合完成並停止...'
+                                                                    : `AI 批次辨識中 (${visionBatchProgress.current}/${visionBatchProgress.total})...`}
+                                                            </div>
+                                                            <button
+                                                                onClick={() => {
+                                                                    isVisionCanceled.current = true;
+                                                                    setIsVisionStopping(true);
+                                                                }}
+                                                                disabled={isVisionStopping}
+                                                                className={`shrink-0 px-6 py-3 rounded-lg font-bold flex items-center gap-2 transition-all shadow-md border ${isVisionStopping ? 'bg-slate-800 text-slate-500 border-slate-700 cursor-not-allowed' : 'bg-rose-600 hover:bg-rose-500 text-white border-rose-500 shadow-rose-500/20 active:scale-95'}`}
+                                                            >
+                                                                <StopCircle size={20} />
+                                                                🛑 停止辨識
+                                                            </button>
+                                                        </div>
+                                                    )}
                                                 </div>
 
                                                 {/* 錯誤顯示區塊 */}
@@ -3000,7 +3090,7 @@ function App() {
                     setTimeout(() => setTemplateMessage(''), 3000);
                 }}
             />
-        </div >
+        </div>
     );
 }
 
