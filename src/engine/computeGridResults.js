@@ -13,29 +13,47 @@ export function computeGridResults(template, targetGrid, betAmount) {
     }
 
     try {
-        const safeGrid = targetGrid;
+        let safeGrid = targetGrid;
+        let evalTemplate = template;
+        let activeMultiplier = 1;
+        let multiplierSymStr = "";
+
+        if (template.hasMultiplierReel && template.cols > 1) {
+            evalTemplate = { ...template, cols: template.cols - 1 };
+            safeGrid = targetGrid.map(row => row.slice(0, evalTemplate.cols));
+            const midRow = Math.floor(template.rows / 2);
+            const rawSym = targetGrid[midRow]?.[template.cols - 1] || "";
+
+            // 支援如 x2, x5, MULT_10 等格式
+            const numMatch = String(rawSym).match(/(\d+(?:\.\d+)?)/);
+            if (numMatch && /x|mult|✖/i.test(String(rawSym))) {
+                activeMultiplier = parseFloat(numMatch[0]);
+                multiplierSymStr = `x${activeMultiplier}`;
+            }
+        }
+
         const parsedBet = parseFloat(betAmount);
         if (isNaN(parsedBet) || parsedBet <= 0) throw new Error('押注金額必須為大於 0 的有效數字。');
 
         const calculatedResults = [];
         let totalWin = 0;
-        const allPaySymbols = Object.keys(template.paytable);
+        const allPaySymbols = Object.keys(evalTemplate.paytable);
 
-        if (template.lineMode === 'allways') {
+        if (evalTemplate.lineMode === 'allways') {
             // === All Ways 計算 ===
             for (const targetSymbol of allPaySymbols) {
                 if (isScatterSymbol(targetSymbol)) continue;
-                if (isCashSymbol(targetSymbol, template.jpConfig)) continue;
+                if (isCashSymbol(targetSymbol, evalTemplate.jpConfig)) continue;
                 if (isCollectSymbol(targetSymbol) && !isWildSymbol(targetSymbol)) continue;
 
                 let consecutiveReels = 0;
                 let ways = 1;
                 const winCoords = [];
 
-                for (let col = 0; col < template.cols; col++) {
+                for (let col = 0; col < evalTemplate.cols; col++) {
                     let matchCount = 0;
                     const colCoords = [];
-                    for (let row = 0; row < template.rows; row++) {
+                    for (let row = 0; row < evalTemplate.rows; row++) {
                         const sym = safeGrid[row][col];
                         if (!sym) continue;
                         if (sym === targetSymbol || isWildSymbol(sym)) {
@@ -50,7 +68,7 @@ export function computeGridResults(template, targetGrid, betAmount) {
                 }
 
                 if (consecutiveReels >= 2) {
-                    const payArray = template.paytable[targetSymbol];
+                    const payArray = evalTemplate.paytable[targetSymbol];
                     const payIndex = Math.min(consecutiveReels - 1, payArray.length - 1);
                     const payoutMult = payIndex >= 0 ? payArray[payIndex] : 0;
 
@@ -73,13 +91,13 @@ export function computeGridResults(template, targetGrid, betAmount) {
             }
         } else {
             // === 固定線獎計算 ===
-            Object.entries(template.lines).forEach(([lineIdStr, positions]) => {
+            Object.entries(evalTemplate.lines).forEach(([lineIdStr, positions]) => {
                 const lineId = parseInt(lineIdStr);
 
                 const symbolsOnLine = positions.map((row, colIndex) => {
                     const rIndex = row - 1;
-                    if (rIndex < 0 || rIndex >= template.rows || !safeGrid[rIndex]) {
-                        throw new Error(`結算錯誤：線獎編號 ${lineId} 包含無效列數「${row}」，但盤面最大只有 ${template.rows} 列。請至 Phase 1 修正。`);
+                    if (rIndex < 0 || rIndex >= evalTemplate.rows || !safeGrid[rIndex]) {
+                        throw new Error(`結算錯誤：線獎編號 ${lineId} 包含無效列數「${row}」，但盤面最大只有 ${evalTemplate.rows} 列。請至 Phase 1 修正。`);
                     }
                     return safeGrid[rIndex][colIndex];
                 });
@@ -90,7 +108,7 @@ export function computeGridResults(template, targetGrid, betAmount) {
 
                 for (const targetSymbol of allPaySymbols) {
                     if (isScatterSymbol(targetSymbol)) continue;
-                    if (isCashSymbol(targetSymbol, template.jpConfig)) continue;
+                    if (isCashSymbol(targetSymbol, evalTemplate.jpConfig)) continue;
                     if (isCollectSymbol(targetSymbol) && !isWildSymbol(targetSymbol)) continue;
 
                     let currentCount = 0;
@@ -110,7 +128,7 @@ export function computeGridResults(template, targetGrid, betAmount) {
                     }
 
                     if (currentCount > 0 && (isWildSymbol(targetSymbol) || hasTargetSymbol)) {
-                        const payoutMult = template.paytable[targetSymbol][currentCount - 1] || 0;
+                        const payoutMult = evalTemplate.paytable[targetSymbol][currentCount - 1] || 0;
                         const payout = parseFloat((payoutMult * parsedBet).toFixed(8));
 
                         if (payout > bestPayout) {
@@ -129,7 +147,7 @@ export function computeGridResults(template, targetGrid, betAmount) {
                     bestCount = 0;
                     for (let i = 0; i < symbolsOnLine.length; i++) {
                         if (!symbolsOnLine[i]) break;
-                        if (isScatterSymbol(symbolsOnLine[i]) || isCashSymbol(symbolsOnLine[i], template.jpConfig) || (isCollectSymbol(symbolsOnLine[i]) && !isWildSymbol(symbolsOnLine[i]))) break;
+                        if (isScatterSymbol(symbolsOnLine[i]) || isCashSymbol(symbolsOnLine[i], evalTemplate.jpConfig) || (isCollectSymbol(symbolsOnLine[i]) && !isWildSymbol(symbolsOnLine[i]))) break;
 
                         if (symbolsOnLine[i] === bestSymbol || isWildSymbol(symbolsOnLine[i])) bestCount++;
                         else break;
@@ -143,15 +161,15 @@ export function computeGridResults(template, targetGrid, betAmount) {
                     }
                 }
 
-                if (!isScatterSymbol(bestSymbol) && !isCashSymbol(bestSymbol, template.jpConfig)) {
+                if (!isScatterSymbol(bestSymbol) && !isCashSymbol(bestSymbol, evalTemplate.jpConfig)) {
                     calculatedResults.push({
                         lineId,
                         symbol: bestSymbol,
                         count: bestCount,
-                        payoutMult: bestPayout > 0 ? template.paytable[bestSymbol][bestCount - 1] : 0,
+                        payoutMult: bestPayout > 0 ? evalTemplate.paytable[bestSymbol][bestCount - 1] : 0,
                         winAmount: bestPayout,
                         symbolsOnLine,
-                        positions,
+                        positions: [...positions],
                         winCoords
                     });
                     totalWin = parseFloat((totalWin + bestPayout).toFixed(8));
@@ -165,8 +183,8 @@ export function computeGridResults(template, targetGrid, betAmount) {
             let scatterCount = 0;
             const scatterCoords = [];
 
-            for (let r = 0; r < template.rows; r++) {
-                for (let c = 0; c < template.cols; c++) {
+            for (let r = 0; r < evalTemplate.rows; r++) {
+                for (let c = 0; c < evalTemplate.cols; c++) {
                     if (safeGrid[r][c] === scatterSymbol) {
                         scatterCount++;
                         scatterCoords.push({ row: r, col: c });
@@ -175,7 +193,7 @@ export function computeGridResults(template, targetGrid, betAmount) {
             }
 
             if (scatterCount > 0) {
-                const payArray = template.paytable[scatterSymbol];
+                const payArray = evalTemplate.paytable[scatterSymbol];
                 const payIndex = Math.min(scatterCount - 1, payArray.length - 1);
                 const payoutMult = payIndex >= 0 ? payArray[payIndex] : 0;
                 const payout = parseFloat((payoutMult * parsedBet).toFixed(8));
@@ -201,18 +219,18 @@ export function computeGridResults(template, targetGrid, betAmount) {
         const cashCoords = [];
         let totalCashWinValue = 0;
 
-        for (let r = 0; r < template.rows; r++) {
-            for (let c = 0; c < template.cols; c++) {
+        for (let r = 0; r < evalTemplate.rows; r++) {
+            for (let c = 0; c < evalTemplate.cols; c++) {
                 const sym = safeGrid[r][c];
                 if (isCollectSymbol(sym)) {
                     collectCount++;
                     collectCoords.push({ row: r, col: c });
                 }
-                if (isCashSymbol(sym, template.jpConfig)) {
-                    const val = getCashValue(sym, template.jpConfig);
+                if (isCashSymbol(sym, evalTemplate.jpConfig)) {
+                    const val = getCashValue(sym, evalTemplate.jpConfig);
                     if (val > 0) {
                         let symPayout = 0;
-                        if (isJpSymbol(sym, template.jpConfig)) {
+                        if (isJpSymbol(sym, evalTemplate.jpConfig)) {
                             symPayout = val * parsedBet;
                         } else {
                             symPayout = val;
@@ -241,6 +259,23 @@ export function computeGridResults(template, targetGrid, betAmount) {
             totalWin = parseFloat((totalWin + payout).toFixed(8));
         }
 
+        // === 乘倍處理 ===
+        if (activeMultiplier > 1 && totalWin > 0) {
+            totalWin = parseFloat((totalWin * activeMultiplier).toFixed(8));
+            calculatedResults.forEach(res => {
+                res.winAmount = parseFloat((res.winAmount * activeMultiplier).toFixed(8));
+                if (res.positions && res.positions.length > 0) {
+                    res.positions = [...res.positions, multiplierSymStr];
+                }
+                // Add the multiplier coordinate for highlighting
+                const midRow = Math.floor(template.rows / 2);
+                const multCol = template.cols - 1;
+                if (!res.winCoords.some(c => c.row === midRow && c.col === multCol)) {
+                    res.winCoords.push({ row: midRow, col: multCol });
+                }
+            });
+        }
+
         // === 排序 ===
         calculatedResults.sort((a, b) => {
             const aIsFeature = String(a.lineId).startsWith('SCATTER') || String(a.lineId).startsWith('COLLECT');
@@ -252,7 +287,7 @@ export function computeGridResults(template, targetGrid, betAmount) {
         });
 
         return {
-            results: { details: calculatedResults, totalWin, panel: safeGrid },
+            results: { details: calculatedResults, totalWin, panel: targetGrid },
             error: ''
         };
 

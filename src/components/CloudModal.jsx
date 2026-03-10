@@ -140,15 +140,28 @@ export default function CloudModal({
                                             {t.id === downloadingId && <Loader2 size={16} className="animate-spin text-indigo-500" />}
                                         </div>
                                         <div className="text-sm text-slate-500 flex flex-wrap gap-x-3 gap-y-1">
-                                            {(t.platformName || t.gameName) && (
-                                                <span className="font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded text-[11px] border border-indigo-100">
-                                                    {[t.platformName, t.gameName].filter(Boolean).join(' - ')}
+                                            {t.hasMultiplierReel && (
+                                                <span className="font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded text-[11px] border border-rose-200 flex items-center gap-1 shadow-sm">
+                                                    ✨ 乘倍輪
                                                 </span>
                                             )}
-                                            <span className="flex items-center gap-1"><Settings size={14} /> {t.gridRows}x{t.gridCols} 盤面</span>
+                                            {t.hasCash && (
+                                                <span className="font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded text-[11px] border border-amber-200 flex items-center gap-1 shadow-sm">
+                                                    💰 CASH
+                                                </span>
+                                            )}
+                                            {t.hasJp && (
+                                                <span className="font-bold text-fuchsia-600 bg-fuchsia-50 px-2 py-0.5 rounded text-[11px] border border-fuchsia-200 flex items-center gap-1 shadow-sm">
+                                                    🏆 JP
+                                                </span>
+                                            )}
+                                            <span className="flex items-center gap-1">
+                                                <Settings size={14} />
+                                                {t.gridRows}x{t.hasMultiplierReel ? (t.gridCols - 1) : t.gridCols} 盤面
+                                            </span>
                                             {(t.lineMode === 'allways' || t.linesCount === 0) ? (
                                                 <span className="flex items-center gap-1 text-purple-600 font-bold bg-purple-50 px-2 py-0.5 rounded-md border border-purple-100">
-                                                    <Trophy size={14} /> {Math.pow(t.gridRows || 3, t.gridCols || 5)} Ways
+                                                    <Trophy size={14} /> {Math.pow(t.gridRows || 3, (t.hasMultiplierReel ? (t.gridCols - 1) : t.gridCols) || 5)} Ways
                                                 </span>
                                             ) : (
                                                 <span className="flex items-center gap-1 font-medium"><Trophy size={14} /> {t.linesCount !== undefined ? t.linesCount : (t.extractResults?.length || 0)} 條連線</span>

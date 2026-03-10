@@ -44,6 +44,7 @@ function App() {
     const [templateError, setTemplateError] = useState('');
     const [buildErrorMsg, setBuildErrorMsg] = useState('');
     const [jpConfig, setJpConfig] = useState(defaultJpConfig);
+    const [hasMultiplierReel, setHasMultiplierReel] = useState(false);
 
     const [isTemplateMinimized, setIsTemplateMinimized] = useState(false);
     const [isPhase2Minimized, setIsPhase2Minimized] = useState(true);
@@ -101,6 +102,7 @@ function App() {
     const [activeVisionId, setActiveVisionId] = useState(null);
 
     const [visionP1, setVisionP1] = useState({ x: 10, y: 10, w: 80, h: 80 });
+    const [visionP1Mult, setVisionP1Mult] = useState({ x: 92, y: 45, w: 6, h: 10 }); // 預設在右側中間的一小格
     const [isVisionProcessing, setIsVisionProcessing] = useState(false);
     const isVisionCanceled = useRef(false);
     const [isVisionStopping, setIsVisionStopping] = useState(false);
@@ -152,18 +154,29 @@ function App() {
 
     useEffect(() => {
         if (template && availableSymbols.length > 0) {
-            if (!activeBrush || (!availableSymbols.includes(activeBrush) && !isCashSymbol(activeBrush))) {
+            const isMultiplierBrush = activeBrush && activeBrush.startsWith('x');
+            if (!activeBrush || (!availableSymbols.includes(activeBrush) && !isCashSymbol(activeBrush) && !isMultiplierBrush)) {
                 setActiveBrush(availableSymbols.includes('WILD') ? 'WILD' : availableSymbols[0]);
             }
         }
     }, [template, availableSymbols]);
 
-    const generateRandomPanelGrid = useCallback((rows, cols, symbols) => {
+    const generateRandomPanelGrid = useCallback((rows, cols, symbols, hasMultiplierReel = false) => {
         if (!symbols || symbols.length === 0) return [];
         const grid = [];
         for (let r = 0; r < rows; r++) {
             const rowArr = [];
             for (let c = 0; c < cols; c++) {
+                // === Multiplier Reel Constraints ===
+                if (hasMultiplierReel && c === cols - 1) {
+                    if (r === Math.floor(rows / 2)) {
+                        rowArr.push("x1"); // 預設填入 x1
+                    } else {
+                        rowArr.push("");
+                    }
+                    continue;
+                }
+
                 let sym = symbols[Math.floor(Math.random() * symbols.length)];
                 if (sym === 'CASH') {
                     sym = `CASH_${[0.5, 1, 2, 5, 10][Math.floor(Math.random() * 5)]}`;
@@ -178,12 +191,18 @@ function App() {
     const handleRandomizePanel = () => {
         if (!template) return;
         const allSymbols = Object.keys(template.paytable);
-        setPanelGrid(generateRandomPanelGrid(template.rows, template.cols, allSymbols));
+        setPanelGrid(generateRandomPanelGrid(template.rows, template.cols, allSymbols, template.hasMultiplierReel));
     };
 
     const handleClearPanel = () => {
         if (!template) return;
-        setPanelGrid(Array.from({ length: template.rows }, () => Array(template.cols).fill('')));
+        const grid = Array.from({ length: template.rows }, () => Array(template.cols).fill(''));
+        if (template.hasMultiplierReel) {
+            const midRow = Math.floor(template.rows / 2);
+            const lastCol = template.cols - 1;
+            if (grid[midRow]) grid[midRow][lastCol] = "x1";
+        }
+        setPanelGrid(grid);
     };
 
     const handlePaytableTextChange = (newText) => {
@@ -259,11 +278,13 @@ function App() {
                 paytable,
                 symbolImages,
                 symbolImagesAll,
-                jpConfig: { ...defaultJpConfig, ...(data.jpConfig || jpConfig) }
+                jpConfig: { ...defaultJpConfig, ...(data.jpConfig || jpConfig) },
+                hasMultiplierReel: data.hasMultiplierReel || false
             });
+            setHasMultiplierReel(data.hasMultiplierReel || false);
 
             const availableSyms = Object.keys(paytable);
-            setPanelGrid(generateRandomPanelGrid(targetRows, targetCols, availableSyms));
+            setPanelGrid(generateRandomPanelGrid(targetRows, targetCols, availableSyms, data.hasMultiplierReel || false));
 
             setIsTemplateMinimized(true);
             setIsPhase2Minimized(false);
@@ -370,7 +391,14 @@ function App() {
 
                     if (pastedCells[j] !== undefined) {
                         while (newGrid.length <= r) newGrid.push([]);
-                        newGrid[r][c] = pastedCells[j];
+
+                        // === Multiplier Reel Constraints ===
+                        let targetValue = pastedCells[j];
+                        if (template.hasMultiplierReel && c === template.cols - 1 && r !== Math.floor(template.rows / 2)) {
+                            targetValue = "";
+                        }
+
+                        newGrid[r][c] = targetValue;
                     }
                 }
             }
@@ -382,7 +410,14 @@ function App() {
         setPanelGrid(prev => {
             const newGrid = prev.map(row => [...row]);
             while (newGrid.length <= rIndex) newGrid.push([]);
-            newGrid[rIndex][cIndex] = newValue;
+
+            // === Multiplier Reel Constraints ===
+            let targetValue = newValue;
+            if (template.hasMultiplierReel && cIndex === template.cols - 1 && rIndex !== Math.floor(template.rows / 2)) {
+                targetValue = "";
+            }
+
+            newGrid[rIndex][cIndex] = targetValue;
             return newGrid;
         });
     };
@@ -499,6 +534,7 @@ function App() {
                 paytableInput,
                 ptResultItems: cloudPtResultItems,
                 jpConfig,
+                hasMultiplierReel,
                 creatorId: localUserId,
                 createdAt: new Date().toISOString()
             };
@@ -569,6 +605,8 @@ function App() {
             if (data.paytableInput) setPaytableInput(data.paytableInput);
             if (data.jpConfig) setJpConfig(data.jpConfig);
             else setJpConfig(defaultJpConfig);
+            if (data.hasMultiplierReel !== undefined) setHasMultiplierReel(data.hasMultiplierReel);
+            else setHasMultiplierReel(false);
 
             if (data.ptResultItems) {
                 const processedItems = data.ptResultItems.map(item => ({
@@ -1028,11 +1066,12 @@ function App() {
                 paytable,
                 symbolImages,
                 symbolImagesAll,
-                jpConfig
+                jpConfig,
+                hasMultiplierReel
             });
 
             const availableSyms = Object.keys(paytable);
-            setPanelGrid(generateRandomPanelGrid(gridRows, gridCols, availableSyms));
+            setPanelGrid(generateRandomPanelGrid(gridRows, gridCols, availableSyms, hasMultiplierReel));
 
             setIsTemplateMinimized(true);
             setIsPhase2Minimized(false);
@@ -1315,31 +1354,52 @@ function App() {
                 const rw = toPx(visionP1.w, visionImageObj.width);
                 const rh = toPx(visionP1.h, visionImageObj.height);
 
-                // 加上 5% 的 Padding 以免太緊貼，下方額外加上 50px 區域保留贏分和 BET 資訊
-                const paddingX = rw * 0.05;
-                const paddingY = rh * 0.05;
+                let cropRx = rx, cropRy = ry, cropRw = rw, cropRh = rh;
+
+                // 如果有乘倍輪，計算包含乘倍格的聯集矩形
+                if (template?.hasMultiplierReel) {
+                    const rMx = toPx(visionP1Mult.x, visionImageObj.width);
+                    const rMy = toPx(visionP1Mult.y, visionImageObj.height);
+                    const rMw = toPx(visionP1Mult.w, visionImageObj.width);
+                    const rMh = toPx(visionP1Mult.h, visionImageObj.height);
+
+                    const minX = Math.min(rx, rMx);
+                    const minY = Math.min(ry, rMy);
+                    const maxX = Math.max(rx + rw, rMx + rMw);
+                    const maxY = Math.max(ry + rh, rMy + rMh);
+
+                    cropRx = minX;
+                    cropRy = minY;
+                    cropRw = maxX - minX;
+                    cropRh = maxY - minY;
+                }
+
+                // 加上 5% 的 Padding 以免太緊貼，下方額外加上 150px 區域保留贏分和 BET 資訊
+                const paddingX = cropRw * 0.05;
+                const paddingY = cropRh * 0.05;
                 const bottomPadding = paddingY + 150;
 
-                const cropX = Math.max(0, rx - paddingX);
-                const cropY = Math.max(0, ry - paddingY);
-                const cropW = Math.min(visionImageObj.width - cropX, rw + paddingX * 2);
-                const cropH = Math.min(visionImageObj.height - cropY, rh + paddingY + bottomPadding);
+                const cropX = Math.max(0, cropRx - paddingX);
+                const cropY = Math.max(0, cropRy - paddingY);
+                const cropW = Math.min(visionImageObj.width - cropX, cropRw + paddingX * 2);
+                const cropH = Math.min(visionImageObj.height - cropY, cropRh + paddingY + bottomPadding);
 
                 canvas.width = cropW;
                 canvas.height = cropH;
                 ctx.drawImage(visionImageObj, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
 
-                // 畫框線 (在此要相對位移)
+                // --- 1. 畫主盤面框線 ---
                 const relativeRx = rx - cropX;
                 const relativeRy = ry - cropY;
 
                 if (template && template.rows > 0 && template.cols > 0) {
                     ctx.beginPath();
                     ctx.strokeStyle = 'rgba(16, 185, 129, 0.5)';
-                    const cellW = rw / template.cols;
+                    const displayCols = template.hasMultiplierReel ? template.cols - 1 : template.cols;
+                    const cellW = rw / displayCols;
                     const cellH = rh / template.rows;
 
-                    for (let c = 1; c < template.cols; c++) {
+                    for (let c = 1; c < displayCols; c++) {
                         const lx = relativeRx + c * cellW;
                         ctx.moveTo(lx, relativeRy);
                         ctx.lineTo(lx, relativeRy + rh);
@@ -1350,8 +1410,32 @@ function App() {
                         ctx.lineTo(relativeRx + rw, ly);
                     }
                     ctx.stroke();
+
+                    // 畫主框邊框
+                    ctx.strokeStyle = '#10b981';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(relativeRx, relativeRy, rw, rh);
                 }
 
+                // --- 2. 畫乘倍格框線 (選配) ---
+                if (template?.hasMultiplierReel) {
+                    const rMx = toPx(visionP1Mult.x, visionImageObj.width);
+                    const rMy = toPx(visionP1Mult.y, visionImageObj.height);
+                    const rMw = toPx(visionP1Mult.w, visionImageObj.width);
+                    const rMh = toPx(visionP1Mult.h, visionImageObj.height);
+
+                    const relMx = rMx - cropX;
+                    const relMy = rMy - cropY;
+
+                    ctx.strokeStyle = '#fbbf24';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(relMx, relMy, rMw, rMh);
+
+                    ctx.fillStyle = '#fbbf24';
+                    ctx.font = `bold ${Math.floor(rMw * 0.4)}px sans-serif`;
+                    ctx.textAlign = 'center';
+                    ctx.fillText('X', relMx + rMw / 2, relMy + rMh / 2 + (rMh * 0.15));
+                }
             } else {
                 // 尚未辨識：顯示全圖與操控框
                 canvas.width = visionImageObj.width;
@@ -1365,10 +1449,12 @@ function App() {
                     w: toPx(obj.w, visionImageObj.width),
                     h: toPx(obj.h, visionImageObj.height)
                 });
-                const rect = getRect(visionP1);
+
                 const baseThickness = Math.max(2, Math.floor(visionImageObj.width / 400));
                 const handleSize = Math.max(12, Math.floor(visionImageObj.width / 60));
 
+                // --- 1. 主盤面框 ---
+                const rect = getRect(visionP1);
                 ctx.lineWidth = baseThickness;
                 ctx.strokeStyle = '#10b981';
                 ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
@@ -1379,10 +1465,13 @@ function App() {
                 if (template && template.rows > 0 && template.cols > 0) {
                     ctx.beginPath();
                     ctx.strokeStyle = 'rgba(16, 185, 129, 0.5)';
-                    const cellW = rect.w / template.cols;
+
+                    // 如果有乘倍輪，主框只代表前 N-1 軸
+                    const displayCols = template.hasMultiplierReel ? template.cols - 1 : template.cols;
+                    const cellW = rect.w / displayCols;
                     const cellH = rect.h / template.rows;
 
-                    for (let c = 1; c < template.cols; c++) {
+                    for (let c = 1; c < displayCols; c++) {
                         const lx = rect.x + c * cellW;
                         ctx.moveTo(lx, rect.y);
                         ctx.lineTo(lx, rect.y + rect.h);
@@ -1394,9 +1483,26 @@ function App() {
                     }
                     ctx.stroke();
                 }
+
+                // --- 2. 乘倍格框 (僅在開啟時顯示) ---
+                if (template?.hasMultiplierReel) {
+                    const rectMult = getRect(visionP1Mult);
+                    ctx.lineWidth = baseThickness;
+                    ctx.strokeStyle = '#fbbf24'; // Amber 400
+                    ctx.strokeRect(rectMult.x, rectMult.y, rectMult.w, rectMult.h);
+
+                    ctx.fillStyle = '#fbbf24';
+                    ctx.fillRect(rectMult.x + rectMult.w - handleSize, rectMult.y + rectMult.h - handleSize, handleSize, handleSize);
+
+                    // 畫個小 X 標記代表乘倍格
+                    ctx.font = `bold ${Math.floor(handleSize * 1.5)}px sans-serif`;
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText('X', rectMult.x + rectMult.w / 2, rectMult.y + rectMult.h / 2);
+                }
             }
         }
-    }, [visionImageObj, visionP1, template, isPhase3Minimized, visionImages, activeVisionId]);
+    }, [visionImageObj, visionP1, visionP1Mult, template, isPhase3Minimized, visionImages, activeVisionId]);
 
     const getVisionMousePos = (e, ref, activeImgObj) => {
         if (!ref.current || !activeImgObj) return { x: 0, y: 0 };
@@ -1422,16 +1528,30 @@ function App() {
             w: toPx(obj.w, visionImageObj.width),
             h: toPx(obj.h, visionImageObj.height)
         });
-        const rect = getPxRect(visionP1);
+
+        const rectMain = getPxRect(visionP1);
         const handleSizePx = Math.max(12, Math.floor(visionImageObj.width / 60));
 
         const isOverHandle = (x, y, r) => x >= r.x + r.w - handleSizePx * 1.5 && x <= r.x + r.w + handleSizePx * 1.5 && y >= r.y + r.h - handleSizePx * 1.5 && y <= r.y + r.h + handleSizePx * 1.5;
         const isOverRect = (x, y, r) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
 
-        if (isOverHandle(pos.x, pos.y, rect)) {
-            setVisionDragState({ action: 'resize', startX: pos.x, startY: pos.y, initObj: { ...visionP1 } });
-        } else if (isOverRect(pos.x, pos.y, rect)) {
-            setVisionDragState({ action: 'move', startX: pos.x, startY: pos.y, initObj: { ...visionP1 } });
+        // 優先檢查主框
+        if (isOverHandle(pos.x, pos.y, rectMain)) {
+            setVisionDragState({ type: 'main', action: 'resize', startX: pos.x, startY: pos.y, initObj: { ...visionP1 } });
+            return;
+        } else if (isOverRect(pos.x, pos.y, rectMain)) {
+            setVisionDragState({ type: 'main', action: 'move', startX: pos.x, startY: pos.y, initObj: { ...visionP1 } });
+            return;
+        }
+
+        // 如果開啟乘倍輪，檢查乘倍框
+        if (template?.hasMultiplierReel) {
+            const rectMult = getPxRect(visionP1Mult);
+            if (isOverHandle(pos.x, pos.y, rectMult)) {
+                setVisionDragState({ type: 'mult', action: 'resize', startX: pos.x, startY: pos.y, initObj: { ...visionP1Mult } });
+            } else if (isOverRect(pos.x, pos.y, rectMult)) {
+                setVisionDragState({ type: 'mult', action: 'move', startX: pos.x, startY: pos.y, initObj: { ...visionP1Mult } });
+            }
         }
     };
 
@@ -1441,10 +1561,20 @@ function App() {
         const dxPct = toPct(pos.x - visionDragState.startX, visionImageObj.width);
         const dyPct = toPct(pos.y - visionDragState.startY, visionImageObj.height);
 
+        const updateState = visionDragState.type === 'mult' ? setVisionP1Mult : setVisionP1;
+
         if (visionDragState.action === 'move') {
-            setVisionP1({ ...visionDragState.initObj, x: Math.max(0, Math.min(100 - visionDragState.initObj.w, visionDragState.initObj.x + dxPct)), y: Math.max(0, Math.min(100 - visionDragState.initObj.h, visionDragState.initObj.y + dyPct)) });
+            updateState({
+                ...visionDragState.initObj,
+                x: Math.max(0, Math.min(100 - visionDragState.initObj.w, visionDragState.initObj.x + dxPct)),
+                y: Math.max(0, Math.min(100 - visionDragState.initObj.h, visionDragState.initObj.y + dyPct))
+            });
         } else if (visionDragState.action === 'resize') {
-            setVisionP1({ ...visionDragState.initObj, w: Math.max(5, Math.min(100 - visionDragState.initObj.x, visionDragState.initObj.w + dxPct)), h: Math.max(5, Math.min(100 - visionDragState.initObj.y, visionDragState.initObj.h + dyPct)) });
+            updateState({
+                ...visionDragState.initObj,
+                w: Math.max(2, Math.min(100 - visionDragState.initObj.x, visionDragState.initObj.w + dxPct)),
+                h: Math.max(2, Math.min(100 - visionDragState.initObj.h, visionDragState.initObj.h + dyPct))
+            });
         }
     };
 
@@ -1584,11 +1714,19 @@ function App() {
             ? "If a symbol has a number, ALWAYS prioritize matching it to other non-cash symbols (like COLLECT) based on its shape first. Only classify as CASH_N (e.g. CASH_0.5) if it definitely does not match any other defined symbol. "
             : "Ignore small multiplier amounts on coins. Match base symbols only. (Do NOT ignore standard symbols that are numbers, e.g., '7', '10', '9'). ";
 
+        const multiplierRule = template.hasMultiplierReel
+            ? `The LAST column (Reel ${template.cols}) is a MULTIPLIER REEL. ONLY the center cell (Row ${Math.floor(template.rows / 2) + 1}) has a multiplier value (e.g. "x2", "x5", "x10", "MULT_5"). YOU MUST EXTRACT THIS MULTIPLIER TEXT EXACTLY. Top and bottom cells of this reel are empty, output "". `
+            : "";
+
+        const pickRule = template.hasMultiplierReel
+            ? `Rules: For columns 1 to ${template.cols - 1}, pick closest symbol from list only. For the LAST column, do NOT use the list, extract the raw text if any. `
+            : `Rules: Pick closest symbol from list only. `;
+
         // --- 固定前綴 parts（利用 Gemini implicit caching）---
         const fixedPrefixParts = [
             { text: referenceText },
             ...referenceImages,
-            { text: `Grid: ${template.rows}R x ${template.cols}C. Symbols: [${availableSymbols.join(',')}]. Rules: Pick closest symbol from list only. ${cashRule}JP names as-is. Dimmed/grayed cells: identify by shape. Unrecognizable: "". Return ${template.rows}x${template.cols} 2D array.` }
+            { text: `Grid: ${template.rows}R x ${template.cols}C. Symbols: [${availableSymbols.join(',')}]. ${pickRule}${cashRule}${multiplierRule}JP names as-is. Dimmed/grayed cells: identify by shape. Unrecognizable: "". Return ${template.rows}x${template.cols} 2D array.` }
         ];
 
         for (let i = 0; i < toProcess.length; i++) {
@@ -1604,34 +1742,53 @@ function App() {
             setVisionBatchProgress({ current: i + 1, total: toProcess.length });
 
             try {
-                // --- 裁切盤面區域 ---
-                const offCanvas = document.createElement('canvas');
-                const rx = (visionP1.x / 100) * targetImg.obj.width;
-                const ry = (visionP1.y / 100) * targetImg.obj.height;
-                const rw = (visionP1.w / 100) * targetImg.obj.width;
-                const rh = (visionP1.h / 100) * targetImg.obj.height;
+                // --- 1. 裁切區域 1 (主盤面) ---
+                const offCanvas1 = document.createElement('canvas');
+                const rx1 = (visionP1.x / 100) * targetImg.obj.width;
+                const ry1 = (visionP1.y / 100) * targetImg.obj.height;
+                const rw1 = (visionP1.w / 100) * targetImg.obj.width;
+                const rh1 = (visionP1.h / 100) * targetImg.obj.height;
+                offCanvas1.width = rw1;
+                offCanvas1.height = rh1;
+                const ctx1 = offCanvas1.getContext('2d');
+                ctx1.drawImage(targetImg.obj, rx1, ry1, rw1, rh1, 0, 0, rw1, rh1);
 
-                offCanvas.width = rw;
-                offCanvas.height = rh;
-                const ctx = offCanvas.getContext('2d');
-                ctx.drawImage(targetImg.obj, rx, ry, rw, rh, 0, 0, rw, rh);
+                const raw1 = offCanvas1.toDataURL('image/jpeg', 0.5).split(',')[1];
+                const resized1 = await resizeImageBase64(`data:image/jpeg;base64,${raw1}`, 512, 0.5);
 
-                // --- 壓縮截圖至 512px, JPEG 0.5 ---
-                const rawBase64 = offCanvas.toDataURL('image/jpeg', 0.5).split(',')[1];
-                const resizedShot = await resizeImageBase64(`data:image/jpeg;base64,${rawBase64}`, 512, 0.5);
+                const currentParts = [
+                    ...fixedPrefixParts,
+                    { text: "ANALYZE NOW:\n" },
+                    { text: "Image 1: Main Grid (Columns 1 to " + (template.hasMultiplierReel ? template.cols - 1 : template.cols) + ")\n" },
+                    { inlineData: { mimeType: resized1.mimeType, data: resized1.base64 } }
+                ];
+
+                // --- 2. 裁切區域 2 (乘倍格) (選配) ---
+                if (template.hasMultiplierReel) {
+                    const offCanvas2 = document.createElement('canvas');
+                    const rx2 = (visionP1Mult.x / 100) * targetImg.obj.width;
+                    const ry2 = (visionP1Mult.y / 100) * targetImg.obj.height;
+                    const rw2 = (visionP1Mult.w / 100) * targetImg.obj.width;
+                    const rh2 = (visionP1Mult.h / 100) * targetImg.obj.height;
+                    offCanvas2.width = rw2;
+                    offCanvas2.height = rh2;
+                    const ctx2 = offCanvas2.getContext('2d');
+                    ctx2.drawImage(targetImg.obj, rx2, ry2, rw2, rh2, 0, 0, rw2, rh2);
+
+                    const raw2 = offCanvas2.toDataURL('image/jpeg', 0.5).split(',')[1];
+                    const resized2 = await resizeImageBase64(`data:image/jpeg;base64,${raw2}`, 320, 0.5); // 乘倍格不需要太大
+
+                    currentParts.push({ text: "Image 2: Multiplier Cell (Center cell of the last column)\n" });
+                    currentParts.push({ inlineData: { mimeType: resized2.mimeType, data: resized2.base64 } });
+                    currentParts.push({ text: "Please extract the symbols from Image 1 for the main grid, and strictly extract the multiplier value (e.g., x2, x5) for the center cell of the last column (Column " + template.cols + ") from Image 2. Empty cells in the last column should be \"\"." });
+                }
 
                 const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${effectiveApiKey}`;
 
                 const payload = {
                     contents: [{
                         role: "user",
-                        parts: [
-                            // 固定前綴（參考圖 + 規則）放最前面以觸發 implicit caching
-                            ...fixedPrefixParts,
-                            // 變動部分（當前盤面截圖）放最後
-                            { text: "Analyze:" },
-                            { inlineData: { mimeType: resizedShot.mimeType, data: resizedShot.base64 } }
-                        ]
+                        parts: currentParts
                     }],
                     generationConfig: {
                         responseMimeType: "application/json",
@@ -1667,7 +1824,8 @@ function App() {
                     const rowArr = [];
                     for (let c = 0; c < template.cols; c++) {
                         let sym = parsedGrid[r]?.[c] || '';
-                        if (sym && !availableSymbols.includes(sym) && !isCashSymbol(sym, template?.jpConfig)) {
+                        const isMultiplierCol = template.hasMultiplierReel && c === template.cols - 1;
+                        if (!isMultiplierCol && sym && !availableSymbols.includes(sym) && !isCashSymbol(sym, template?.jpConfig)) {
                             sym = '';
                         }
                         rowArr.push(sym);
@@ -1750,7 +1908,7 @@ function App() {
                             {template && isTemplateMinimized && (
                                 <div className="flex items-center space-x-2 text-emerald-600 text-sm font-medium">
                                     <CheckCircle2 size={16} />
-                                    <span>已載入: {template.rows}x{template.cols} 盤面, {template.linesCount} 條連線</span>
+                                    <span>已載入: {template.rows}x{template.hasMultiplierReel ? template.cols - 1 : template.cols} 盤面, {template.linesCount} 條連線{template.hasMultiplierReel && ", 啟用乘倍輪"}</span>
                                 </div>
                             )}
                             {isTemplateMinimized ? <ChevronDown className="text-slate-400" /> : <ChevronUp className="text-slate-400" />}
@@ -1845,7 +2003,7 @@ function App() {
                                                 <p className="text-xs text-indigo-600">不使用固定賠付線，從左至右逐 Reel 檢查相鄰符號。Ways 數 = 各 Reel 匹配數量的乘積。</p>
                                             </div>
                                         </div>
-                                        <div className="mt-3 flex items-center gap-4">
+                                        <div className="mt-3 flex items-center gap-4 flex-wrap">
                                             <div className="flex items-center gap-2">
                                                 <span className="text-xs text-slate-600 font-bold">Row</span>
                                                 <input type="number" value={gridRows} onChange={e => setGridRows(Number(e.target.value))} className="w-16 border border-indigo-300 rounded px-2 py-1 text-sm font-bold text-center focus:outline-none focus:ring-2 focus:ring-indigo-500" min="1" />
@@ -1856,10 +2014,29 @@ function App() {
                                                 <input type="number" value={gridCols} onChange={e => setGridCols(Number(e.target.value))} className="w-16 border border-indigo-300 rounded px-2 py-1 text-sm font-bold text-center focus:outline-none focus:ring-2 focus:ring-indigo-500" min="1" />
                                             </div>
                                             <span className="text-slate-400 font-bold">=</span>
-                                            <div className="bg-white px-3 py-1.5 rounded-lg border border-indigo-300 shadow-sm">
-                                                <span className="text-lg font-black text-indigo-700">{Math.pow(gridRows, gridCols).toLocaleString()}</span>
+                                            <div className="bg-white px-3 py-1.5 rounded-lg border border-indigo-300 shadow-sm flex items-center">
+                                                <span className="text-lg font-black text-indigo-700">{Math.pow(gridRows, gridCols - (hasMultiplierReel ? 1 : 0)).toLocaleString()}</span>
                                                 <span className="text-xs text-indigo-500 ml-1 font-bold">Ways</span>
                                             </div>
+
+                                            <label className="flex items-center gap-2 ml-4 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={hasMultiplierReel}
+                                                    onChange={e => {
+                                                        const isChecked = e.target.checked;
+                                                        setHasMultiplierReel(isChecked);
+                                                        // Auto increment/decrement cols strictly for UX
+                                                        if (isChecked) {
+                                                            setGridCols(prev => prev + 1);
+                                                        } else {
+                                                            setGridCols(prev => Math.max(1, prev - 1));
+                                                        }
+                                                    }}
+                                                    className="w-4 h-4 text-indigo-600 border-indigo-300 rounded focus:ring-indigo-500"
+                                                />
+                                                <span className="text-sm font-bold text-slate-700">啟用特殊乘倍輪 (最後一軸)</span>
+                                            </label>
                                         </div>
                                     </div>
                                 )}
@@ -1921,6 +2098,23 @@ function App() {
                                                                 <input type="number" value={gridCols} onChange={e => setGridCols(Number(e.target.value))} className="w-full border border-slate-300 rounded px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-bold" min="1" />
                                                             </div>
                                                         </div>
+                                                        <label className="flex items-center gap-2 mt-3 cursor-pointer">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={hasMultiplierReel}
+                                                                onChange={e => {
+                                                                    const isChecked = e.target.checked;
+                                                                    setHasMultiplierReel(isChecked);
+                                                                    if (isChecked) {
+                                                                        setGridCols(prev => prev + 1);
+                                                                    } else {
+                                                                        setGridCols(prev => Math.max(1, prev - 1));
+                                                                    }
+                                                                }}
+                                                                className="w-4 h-4 text-indigo-600 border-indigo-300 rounded focus:ring-indigo-500"
+                                                            />
+                                                            <span className="text-sm font-bold text-slate-700">啟用特殊乘倍輪 (最後一軸)</span>
+                                                        </label>
                                                     </div>
                                                     <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
                                                         <label className="text-xs text-slate-500 uppercase font-bold mb-2 block">已提取結果 ({extractResults.length} 條)</label>
@@ -2108,6 +2302,23 @@ function App() {
                                                                         <input type="number" value={gridCols} onChange={e => setGridCols(Number(e.target.value))} className="w-full bg-slate-700 border border-slate-600 rounded px-2 py-1.5 text-white focus:outline-none focus:border-rose-500" min="1" />
                                                                     </div>
                                                                 </div>
+                                                                <label className="flex items-center gap-2 mt-3 cursor-pointer">
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={hasMultiplierReel}
+                                                                        onChange={e => {
+                                                                            const isChecked = e.target.checked;
+                                                                            setHasMultiplierReel(isChecked);
+                                                                            if (isChecked) {
+                                                                                setGridCols(prev => prev + 1);
+                                                                            } else {
+                                                                                setGridCols(prev => Math.max(1, prev - 1));
+                                                                            }
+                                                                        }}
+                                                                        className="w-4 h-4 text-indigo-500 border-indigo-400 bg-slate-700 rounded focus:ring-indigo-500 focus:ring-offset-slate-800"
+                                                                    />
+                                                                    <span className="text-sm font-bold text-slate-300">啟用特殊乘倍輪 (最後一軸)</span>
+                                                                </label>
                                                             </div>
 
                                                             <button
@@ -2376,6 +2587,31 @@ function App() {
                                 </div>
                             </div>
 
+                            <div className="bg-slate-50 p-5 rounded-xl border border-slate-200 mt-6 flex items-center justify-between shadow-sm">
+                                <div className="flex flex-col">
+                                    <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
+                                        ✨ 特殊乘倍輪 (Multiplier Reel)
+                                    </h3>
+                                    <p className="text-xs text-slate-500 mt-1">
+                                        啟用後，系統將自動把這款遊戲的「最後一軸」獨立作為乘倍輪 (自動將盤面軸數 + 1)。<br />
+                                        只要主盤面有贏分，就會自動乘上該軸「中間格子」萃取出的數字倍數 (支援如 x2, x5, MULT_10 等符號)。
+                                    </p>
+                                </div>
+                                <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                                    <input
+                                        type="checkbox"
+                                        className="sr-only peer"
+                                        checked={hasMultiplierReel}
+                                        onChange={(e) => {
+                                            const isChecked = e.target.checked;
+                                            setHasMultiplierReel(isChecked);
+                                            setGridCols(prev => isChecked ? prev + 1 : prev - 1);
+                                        }}
+                                    />
+                                    <div className="w-14 h-7 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[4px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-emerald-500 shadow-inner"></div>
+                                </label>
+                            </div>
+
                             {/* 建構結算模板大按鈕 */}
                             <button onClick={handleBuildTemplate} className="w-full mt-6 py-4 bg-slate-800 hover:bg-slate-900 text-white text-lg font-bold rounded-xl shadow-xl flex items-center justify-center gap-2 transition-all active:scale-[0.99]">
                                 <CheckCircle2 size={24} />
@@ -2481,6 +2717,44 @@ function App() {
                                                                 </div>
                                                             </button>
 
+                                                            {/* 新增：乘倍輪專用畫筆 */}
+                                                            {template?.hasMultiplierReel && (
+                                                                <React.Fragment>
+                                                                    <div className="w-px h-10 bg-slate-700 mx-1 self-center"></div>
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            if (!activeBrush.startsWith('x')) {
+                                                                                setActiveBrush('x2');
+                                                                            }
+                                                                        }}
+                                                                        className={`relative w-[48px] h-[48px] sm:w-[52px] sm:h-[52px] rounded-lg border-2 flex flex-col items-center justify-center transition-all ${activeBrush.startsWith('x') ? 'border-amber-400 bg-amber-500/20 shadow-[0_0_10px_rgba(245,158,11,0.3)] scale-105 z-10' : 'border-slate-600 bg-slate-800 hover:border-slate-500 hover:bg-slate-700'}`}
+                                                                        title="乘倍畫筆 (點擊最後一軸中間格子)"
+                                                                    >
+                                                                        <span className="text-[10px] font-bold text-amber-500 mb-0.5 leading-none">MULT</span>
+                                                                        <span className="text-sm font-black text-amber-400 leading-none">
+                                                                            {activeBrush.startsWith('x') ? activeBrush : 'x?'}
+                                                                        </span>
+                                                                    </button>
+
+                                                                    {activeBrush.startsWith('x') && (
+                                                                        <div className="flex flex-col justify-center bg-amber-500/20 border border-amber-400/50 rounded-lg px-3 h-[48px] sm:h-[52px] animate-in fade-in slide-in-from-left-2 duration-200">
+                                                                            <label className="text-[9px] font-bold text-amber-300 mb-0.5">設定乘倍數值</label>
+                                                                            <div className="flex items-center gap-1">
+                                                                                <span className="text-amber-400 font-bold text-xs italic">x</span>
+                                                                                <input
+                                                                                    type="number"
+                                                                                    step="any"
+                                                                                    value={activeBrush.substring(1) || ''}
+                                                                                    onChange={(e) => setActiveBrush(`x${e.target.value}`)}
+                                                                                    className="w-16 px-1.5 py-0.5 text-xs font-black text-amber-900 bg-amber-50 hover:bg-white focus:bg-white rounded outline-none text-center focus:ring-2 focus:ring-amber-400 transition-all shadow-inner"
+                                                                                    placeholder="數值"
+                                                                                />
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
+                                                                </React.Fragment>
+                                                            )}
+
                                                             <div className="w-px h-10 bg-slate-700 mx-1 self-center"></div>
 
                                                             <button
@@ -2566,14 +2840,23 @@ function App() {
                                                                     const baseSym = getBaseSymbol(symbol, template?.jpConfig);
                                                                     const cashVal = getCashValue(symbol, template?.jpConfig);
 
+                                                                    // === Multiplier Reel Constraints ===
+                                                                    const isMultiplierReelCol = template.hasMultiplierReel && cIndex === template.cols - 1;
+                                                                    const isCenterRow = rIndex === Math.floor(template.rows / 2);
+                                                                    const isDisabledMultiplierCell = isMultiplierReelCol && !isCenterRow;
+
+                                                                    if (isDisabledMultiplierCell) {
+                                                                        cellClasses += " opacity-20 pointer-events-none grayscale bg-slate-900 border-none";
+                                                                    }
+
                                                                     return (
                                                                         <div
                                                                             key={cIndex}
-                                                                            className={`${cellClasses} ${panelInputMode === 'paint' ? 'cursor-pointer' : ''}`}
-                                                                            onMouseDown={(e) => { if (panelInputMode === 'paint') { e.preventDefault(); handleCellChange(rIndex, cIndex, activeBrush); } }}
-                                                                            onMouseEnter={(e) => { if (panelInputMode === 'paint' && e.buttons === 1) handleCellChange(rIndex, cIndex, activeBrush); }}
+                                                                            className={`${cellClasses} ${panelInputMode === 'paint' && !isDisabledMultiplierCell ? 'cursor-pointer' : ''}`}
+                                                                            onMouseDown={(e) => { if (panelInputMode === 'paint' && !isDisabledMultiplierCell) { e.preventDefault(); handleCellChange(rIndex, cIndex, activeBrush); } }}
+                                                                            onMouseEnter={(e) => { if (panelInputMode === 'paint' && e.buttons === 1 && !isDisabledMultiplierCell) handleCellChange(rIndex, cIndex, activeBrush); }}
                                                                         >
-                                                                            {panelInputMode === 'text' ? (
+                                                                            {panelInputMode === 'text' && !isDisabledMultiplierCell ? (
                                                                                 <input
                                                                                     id={`cell-${rIndex}-${cIndex}`}
                                                                                     value={symbol}
@@ -2693,9 +2976,17 @@ function App() {
                                         ) : (
                                             <div className="flex flex-col flex-1">
                                                 <div className="p-3 border-b border-slate-800 bg-slate-950 flex justify-between items-center shrink-0">
-                                                    <div className="flex items-center gap-2 px-2 text-sm text-slate-300">
-                                                        <div className="w-3 h-3 bg-emerald-500 border border-slate-400 rounded-sm shrink-0"></div>
-                                                        <span>請調整綠色框線對齊遊戲盤面 (將套用至所有圖片)</span>
+                                                    <div className="flex flex-col gap-0.5 px-2 text-sm text-slate-300">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="w-3 h-3 bg-emerald-500 border border-slate-400 rounded-sm shrink-0"></div>
+                                                            <span>請調整綠色框線對齊「遊戲盤面」 (將套用至所有圖片)</span>
+                                                        </div>
+                                                        {template?.hasMultiplierReel && (
+                                                            <div className="flex items-center gap-2">
+                                                                <div className="w-3 h-3 bg-amber-500 border border-slate-400 rounded-sm shrink-0"></div>
+                                                                <span className="text-amber-400 font-bold">請調整琥珀色框線對齊「乘倍格」</span>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                     <button onClick={() => { setVisionImages([]); setActiveVisionId(null); setVisionCalcResults(null); }} className="text-xs font-bold text-rose-400 hover:text-rose-300 px-3 py-1.5 rounded bg-rose-500/10 hover:bg-rose-500/20 transition-colors flex items-center gap-1">
                                                         <Trash2 size={14} /> 清空全部截圖
