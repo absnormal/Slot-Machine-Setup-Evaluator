@@ -157,11 +157,11 @@ export default function CloudModal({
                                             )}
                                             <span className="flex items-center gap-1">
                                                 <Settings size={14} />
-                                                {t.gridRows}x{t.hasMultiplierReel ? (t.gridCols - 1) : t.gridCols} 盤面
+                                                {t.gridRows}x{t.gridCols} 盤面
                                             </span>
                                             {(t.lineMode === 'allways' || t.linesCount === 0) ? (
                                                 <span className="flex items-center gap-1 text-purple-600 font-bold bg-purple-50 px-2 py-0.5 rounded-md border border-purple-100">
-                                                    <Trophy size={14} /> {Math.pow(t.gridRows || 3, (t.hasMultiplierReel ? (t.gridCols - 1) : t.gridCols) || 5)} Ways
+                                                    <Trophy size={14} /> {Math.pow(t.gridRows || 3, t.gridCols || 5)} Ways
                                                 </span>
                                             ) : (
                                                 <span className="flex items-center gap-1 font-medium"><Trophy size={14} /> {t.linesCount !== undefined ? t.linesCount : (t.extractResults?.length || 0)} 條連線</span>
