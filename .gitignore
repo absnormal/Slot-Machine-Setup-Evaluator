@@ -3,3 +3,14 @@ dist/
 .env
 .env.local
 *.local
+
+# Temporary utility and backup files
+patch*.js
+patch*.cjs
+patch_restore.cjs
+*.bak
+*.bak*
+*.log
+*fix.cjs
+extract_*.cjs
+test.jpg
