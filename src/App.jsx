@@ -44,6 +44,7 @@ function App() {
     const [templateError, setTemplateError] = useState('');
     const [buildErrorMsg, setBuildErrorMsg] = useState('');
     const [jpConfig, setJpConfig] = useState(defaultJpConfig);
+    const [hasJackpot, setHasJackpot] = useState(false);
     const [hasMultiplierReel, setHasMultiplierReel] = useState(false);
 
     const [isTemplateMinimized, setIsTemplateMinimized] = useState(false);
@@ -303,52 +304,7 @@ function App() {
         }
     };
 
-    const loadDemoData = () => {
-        const demoRows = 4;
-        const demoCols = 5;
-        setPlatformName('EGT');
-        setGameName('40 Sparkling Crown');
-        setGridRows(demoRows);
-        setGridCols(demoCols);
 
-        const demoLines = `2 2 2 2 2\n3 3 3 3 3\n1 1 1 1 1\n4 4 4 4 4\n1 2 3 2 1\n4 3 2 3 4\n2 3 4 3 2\n3 2 1 2 3\n2 4 4 4 2\n3 1 1 1 3\n1 1 2 1 1\n4 4 3 4 4\n2 2 1 2 2\n3 3 4 3 3\n1 2 2 2 1\n4 3 3 3 4\n2 1 1 1 2\n3 4 4 4 3\n1 2 1 2 1\n4 3 4 3 4\n2 1 2 1 2\n3 4 3 4 3\n1 3 1 3 1\n4 2 4 2 4\n2 4 2 4 2\n3 1 3 1 3\n1 1 3 1 1\n4 4 2 4 4\n2 2 4 2 2\n3 3 1 3 3\n1 4 4 4 1\n4 1 1 1 4\n2 3 2 3 2\n3 2 3 2 3\n1 4 1 4 1\n4 1 4 1 4\n2 3 3 3 2\n3 2 2 2 3\n1 3 3 3 1\n4 2 2 2 4`;
-        setLinesTextInput(demoLines);
-
-        const parsedLines = demoLines.split('\n').map((l, idx) => ({ id: idx + 1, data: l.split(' ').map(Number) }));
-        setExtractResults(parsedLines);
-        setLinesMode('text');
-
-        const demoPaytable = `數字7 0 0.25 1.25 6.25 125\n西瓜 0 0 1 3 17.5\n葡萄 0 0 1 3 17.5\n鈴鐺 0 0 0.5 1 5\n星星SCATTER 0 0 2 10 50\nWILD_COLLECT 0 0 0 0 0\nCASH 0 0 0 0 0`;
-        setPaytableInput(demoPaytable);
-
-        const validLines = demoPaytable.split('\n').filter(l => l.trim() !== '');
-        const newPtItems = validLines.map((line) => {
-            const parts = line.trim().split(/\s+/);
-            return {
-                name: parts[0] || '',
-                match1: parseFloat(parts[1]) || 0,
-                match2: parseFloat(parts[2]) || 0,
-                match3: parseFloat(parts[3]) || 0,
-                match4: parseFloat(parts[4]) || 0,
-                match5: parseFloat(parts[5]) || 0,
-                thumbUrls: []
-            };
-        });
-        setPtResultItems(newPtItems);
-        setPaytableMode('text');
-
-        setTemplateMessage('✅ 已為您載入包含收集機制的示範資料！');
-        setTimeout(() => setTemplateMessage(''), 5000);
-
-        performAutoBuild({
-            gridRows: demoRows,
-            gridCols: demoCols,
-            extractResults: parsedLines,
-            paytableInput: demoPaytable,
-            ptResultItems: newPtItems,
-            jpConfig: { "MINI": "10", "MINOR": "20", "MAJOR": "50", "GRAND": "1000" }
-        });
-    };
 
     const getSafeGrid = useCallback((sourceGrid) => {
         if (!template || (!sourceGrid && !panelGrid)) return [];
@@ -533,7 +489,7 @@ function App() {
                 extractResults,
                 paytableInput,
                 ptResultItems: cloudPtResultItems,
-                jpConfig,
+                jpConfig: hasJackpot ? jpConfig : {},
                 hasMultiplierReel,
                 creatorId: localUserId,
                 createdAt: new Date().toISOString()
@@ -603,8 +559,13 @@ function App() {
             setLineMode(data.lineMode || (!data.extractResults || data.extractResults.length === 0 ? 'allways' : 'paylines'));
             if (data.extractResults) setExtractResults(data.extractResults);
             if (data.paytableInput) setPaytableInput(data.paytableInput);
-            if (data.jpConfig) setJpConfig(data.jpConfig);
-            else setJpConfig(defaultJpConfig);
+            if (data.jpConfig) {
+                setJpConfig(data.jpConfig);
+                setHasJackpot(Object.keys(data.jpConfig).some(k => data.jpConfig[k] !== ''));
+            } else {
+                setJpConfig(defaultJpConfig);
+                setHasJackpot(false);
+            }
             if (data.hasMultiplierReel !== undefined) setHasMultiplierReel(data.hasMultiplierReel);
             else setHasMultiplierReel(false);
 
@@ -691,8 +652,13 @@ function App() {
                     setLinesTextInput(data.extractResults.map(r => r.data.join(' ')).join('\n'));
                 }
 
-                if (data.jpConfig) setJpConfig(data.jpConfig);
-                else setJpConfig(defaultJpConfig);
+                if (data.jpConfig) {
+                    setJpConfig(data.jpConfig);
+                    setHasJackpot(Object.keys(data.jpConfig).some(k => data.jpConfig[k] !== ''));
+                } else {
+                    setJpConfig(defaultJpConfig);
+                    setHasJackpot(false);
+                }
 
                 if (data.paytableInput) setPaytableInput(data.paytableInput);
                 if (data.ptResultItems) {
@@ -1066,7 +1032,7 @@ function App() {
                 paytable,
                 symbolImages,
                 symbolImagesAll,
-                jpConfig,
+                jpConfig: hasJackpot ? Object.fromEntries(Object.entries(jpConfig).filter(([_, v]) => v !== '')) : {},
                 hasMultiplierReel
             });
 
@@ -2205,18 +2171,6 @@ function App() {
                                                                     </div>
                                                                 </div>
 
-                                                                <div className="mt-6 p-5 bg-slate-800/40 rounded-xl border border-slate-700/50 text-left">
-                                                                    <div className="flex items-center gap-2 mb-2">
-                                                                        <div className="p-1.5 bg-indigo-500/20 text-indigo-400 rounded-lg"><Zap size={18} /></div>
-                                                                        <h4 className="text-slate-200 font-bold">第一次使用？看不懂怎麼操作？</h4>
-                                                                    </div>
-                                                                    <p className="text-xs text-slate-400 mb-4 leading-relaxed">
-                                                                        點擊下方按鈕，我們將直接為您載入「40 Sparkling Crown」的連線與賠率範本資料，讓您無須上傳圖片也能快速體驗結算功能！
-                                                                    </p>
-                                                                    <button onClick={loadDemoData} className="w-full py-2.5 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded-lg transition-colors text-sm flex items-center justify-center gap-2 shadow-sm border border-slate-600">
-                                                                        載入 40 Sparkling Crown 範例
-                                                                    </button>
-                                                                </div>
                                                             </div>
                                                         ) : (
                                                             <div className="relative w-full max-w-4xl mx-auto my-auto shrink-0">
@@ -2302,23 +2256,6 @@ function App() {
                                                                         <input type="number" value={gridCols} onChange={e => setGridCols(Number(e.target.value))} className="w-full bg-slate-700 border border-slate-600 rounded px-2 py-1.5 text-white focus:outline-none focus:border-rose-500" min="1" />
                                                                     </div>
                                                                 </div>
-                                                                <label className="flex items-center gap-2 mt-3 cursor-pointer">
-                                                                    <input
-                                                                        type="checkbox"
-                                                                        checked={hasMultiplierReel}
-                                                                        onChange={e => {
-                                                                            const isChecked = e.target.checked;
-                                                                            setHasMultiplierReel(isChecked);
-                                                                            if (isChecked) {
-                                                                                setGridCols(prev => prev + 1);
-                                                                            } else {
-                                                                                setGridCols(prev => Math.max(1, prev - 1));
-                                                                            }
-                                                                        }}
-                                                                        className="w-4 h-4 text-indigo-500 border-indigo-400 bg-slate-700 rounded focus:ring-indigo-500 focus:ring-offset-slate-800"
-                                                                    />
-                                                                    <span className="text-sm font-bold text-slate-300">啟用特殊乘倍輪 (最後一軸)</span>
-                                                                </label>
                                                             </div>
 
                                                             <button
@@ -2384,40 +2321,6 @@ function App() {
                                                     <Upload className="text-slate-400 mb-1" size={24} />
                                                     <p className="text-xs text-slate-500 font-medium">點擊或拖曳上傳賠率圖 (可多選)</p>
                                                 </label>
-
-                                                {/* 賠率圖範例預覽 */}
-                                                {ptImages.length === 0 && (
-                                                    <div className="mx-2 mb-2 p-3 bg-slate-50 border border-slate-200 rounded-lg shadow-inner">
-                                                        <span className="text-[10px] text-slate-500 font-bold mb-2 flex items-center justify-center gap-1"><ImageIcon size={12} /> 賠付表上傳範例參考</span>
-                                                        <div className="bg-[#000000] rounded-md p-2 flex flex-col gap-1.5 opacity-90 select-none border border-slate-700 shadow-[0_0_10px_rgba(0,0,0,0.3)]">
-                                                            <div className="flex items-center justify-between border border-slate-600 p-1.5 rounded bg-[#111]">
-                                                                <div className="w-8 h-8 flex items-center justify-center text-2xl drop-shadow-[0_0_4px_rgba(239,68,68,0.8)]">7️⃣</div>
-                                                                <div className="flex flex-col text-[9px] font-mono text-[#fcd34d] text-right">
-                                                                    <span>5 - 125</span>
-                                                                    <span>4 - 6.25</span>
-                                                                    <span>3 - 1.25</span>
-                                                                </div>
-                                                            </div>
-                                                            <div className="flex items-center justify-between border border-slate-600 p-1.5 rounded bg-[#111]">
-                                                                <div className="w-8 h-8 flex items-center justify-center text-2xl drop-shadow-sm">🍉</div>
-                                                                <div className="flex flex-col text-[9px] font-mono text-[#fcd34d] text-right">
-                                                                    <span>5 - 17.5</span>
-                                                                    <span>4 - 3</span>
-                                                                    <span>3 - 1</span>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                )}
-
-                                                {ptImages.length === 0 && (
-                                                    <div className="mx-2 mb-2 p-3 bg-slate-50 border border-slate-200 rounded-lg text-center">
-                                                        <span className="text-[10px] text-slate-500 block mb-1.5 font-bold">沒有圖片？先看看範本吧！</span>
-                                                        <button onClick={loadDemoData} className="w-full py-1.5 bg-white border border-indigo-200 text-indigo-600 hover:bg-indigo-50 font-bold rounded-md transition-colors text-xs flex items-center justify-center gap-1 shadow-sm">
-                                                            <Zap size={14} /> 載入 40 Sparkling Crown
-                                                        </button>
-                                                    </div>
-                                                )}
 
                                                 {ptImages.length > 0 && (
                                                     <div className="px-3 pb-2">
@@ -2526,64 +2429,82 @@ function App() {
                             <div className="bg-slate-50 p-5 rounded-xl border border-slate-200 mt-6">
                                 <div className="flex flex-col">
                                     <div className="flex items-center justify-between mb-4 border-b border-slate-200 pb-3">
-                                        <label className="text-base font-bold text-slate-800 flex items-center gap-2"><Trophy size={20} className="text-amber-500" /> Jackpot 倍率設定</label>
+                                        <div className="flex flex-col">
+                                            <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
+                                                <Trophy size={20} className="text-amber-500" /> Jackpot (JP) 倍率設定
+                                            </h3>
+                                            <p className="text-xs text-slate-500 mt-1">
+                                                啟用後即可設定各級別 JP (如 MINI, GRAND) 觸發收集時的面額倍率。可自行新增自訂大獎名稱，留空表示未使用。<br /><span className="text-indigo-500 font-bold">💡 若需要讓 Phase 3 AI 辨識 JP 符號，請在上方「賠付表資料設定 (圖片提取)」中新增對應名稱的符號行，並裁切該 JP 的特徵圖即可。</span>
+                                            </p>
+                                        </div>
+                                        <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-4">
+                                            <input
+                                                type="checkbox"
+                                                className="sr-only peer"
+                                                checked={hasJackpot}
+                                                onChange={(e) => setHasJackpot(e.target.checked)}
+                                            />
+                                            <div className="w-14 h-7 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[4px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-amber-500 shadow-inner"></div>
+                                        </label>
                                     </div>
-                                    <p className="text-xs text-slate-500 mb-4">設定各級別 JP (如 MINI, GRAND) 觸發收集時的面額倍率。可自行新增自訂大獎名稱，留空表示未使用。<br /><span className="text-indigo-500 font-bold">💡 若需要讓 Phase 3 AI 辨識 JP 符號，請在上方「賠付表資料設定 (圖片提取)」中新增對應名稱的符號行，並裁切該 JP 的特徵圖即可。</span></p>
-                                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-                                        {Object.entries(jpConfig).map(([jpName, jpMult], idx) => (
-                                            <div key={idx} className="flex flex-col bg-white border border-slate-200 rounded-lg p-3 hover:border-indigo-300 transition-colors shadow-sm relative group">
-                                                <input
-                                                    type="text"
-                                                    value={jpName}
-                                                    onChange={(e) => {
-                                                        const newName = e.target.value.toUpperCase();
-                                                        setJpConfig(prev => {
-                                                            const newConfig = {};
-                                                            Object.keys(prev).forEach(k => {
-                                                                if (k === jpName) newConfig[newName] = prev[k];
-                                                                else newConfig[k] = prev[k];
+
+                                    {hasJackpot && (
+                                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 animate-in fade-in slide-in-from-top-2 duration-300">
+                                            {Object.entries(jpConfig).map(([jpName, jpMult], idx) => (
+                                                <div key={idx} className="flex flex-col bg-white border border-slate-200 rounded-lg p-3 hover:border-indigo-300 transition-colors shadow-sm relative group">
+                                                    <input
+                                                        type="text"
+                                                        value={jpName}
+                                                        onChange={(e) => {
+                                                            const newName = e.target.value.toUpperCase();
+                                                            setJpConfig(prev => {
+                                                                const newConfig = {};
+                                                                Object.keys(prev).forEach(k => {
+                                                                    if (k === jpName) newConfig[newName] = prev[k];
+                                                                    else newConfig[k] = prev[k];
+                                                                });
+                                                                return newConfig;
                                                             });
-                                                            return newConfig;
-                                                        });
-                                                    }}
-                                                    className="w-full text-sm font-bold text-slate-700 outline-none uppercase border-b border-transparent hover:border-slate-200 focus:border-indigo-300 mb-2 placeholder:font-normal placeholder:lowercase placeholder:text-slate-300 pb-1"
-                                                    placeholder="JP分類"
-                                                />
-                                                <input
-                                                    type="number"
-                                                    step="any"
-                                                    value={jpMult}
-                                                    onChange={(e) => {
-                                                        setJpConfig(prev => ({ ...prev, [jpName]: e.target.value }));
-                                                    }}
-                                                    className="w-full text-lg font-black text-amber-600 outline-none bg-amber-50 hover:bg-amber-100 px-2 py-1.5 rounded focus:ring-1 focus:ring-amber-300 transition-colors"
-                                                    placeholder="倍率"
-                                                />
-                                                <button
-                                                    onClick={() => {
-                                                        setJpConfig(prev => {
-                                                            const newConfig = { ...prev };
-                                                            delete newConfig[jpName];
-                                                            return newConfig;
-                                                        });
-                                                    }}
-                                                    className="absolute -top-2 -right-2 bg-rose-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity shadow-md hover:bg-rose-600 focus:outline-none"
-                                                    disabled={Object.keys(jpConfig).length <= 1}
-                                                >
-                                                    <X size={12} />
-                                                </button>
-                                            </div>
-                                        ))}
-                                        <button
-                                            onClick={() => {
-                                                setJpConfig(prev => ({ ...prev, [`CUSTOM_${Object.keys(prev).length + 1}`]: "" }));
-                                            }}
-                                            className="flex flex-col items-center justify-center bg-transparent border-2 border-dashed border-slate-300 rounded-lg p-3 hover:bg-slate-100 hover:border-slate-400 hover:text-indigo-600 transition-colors text-slate-400 min-h-[95px] w-full"
-                                        >
-                                            <Plus size={24} className="mb-1" />
-                                            <span className="text-xs font-bold">新增 JP</span>
-                                        </button>
-                                    </div>
+                                                        }}
+                                                        className="w-full text-sm font-bold text-slate-700 outline-none uppercase border-b border-transparent hover:border-slate-200 focus:border-indigo-300 mb-2 placeholder:font-normal placeholder:lowercase placeholder:text-slate-300 pb-1"
+                                                        placeholder="JP分類"
+                                                    />
+                                                    <input
+                                                        type="number"
+                                                        step="any"
+                                                        value={jpMult}
+                                                        onChange={(e) => {
+                                                            setJpConfig(prev => ({ ...prev, [jpName]: e.target.value }));
+                                                        }}
+                                                        className="w-full text-lg font-black text-amber-600 outline-none bg-amber-50 hover:bg-amber-100 px-2 py-1.5 rounded focus:ring-1 focus:ring-amber-300 transition-colors"
+                                                        placeholder="倍率"
+                                                    />
+                                                    <button
+                                                        onClick={() => {
+                                                            setJpConfig(prev => {
+                                                                const newConfig = { ...prev };
+                                                                delete newConfig[jpName];
+                                                                return newConfig;
+                                                            });
+                                                        }}
+                                                        className="absolute -top-2 -right-2 bg-rose-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity shadow-md hover:bg-rose-600 focus:outline-none"
+                                                        disabled={Object.keys(jpConfig).length <= 1}
+                                                    >
+                                                        <X size={12} />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                            <button
+                                                onClick={() => {
+                                                    setJpConfig(prev => ({ ...prev, [`CUSTOM_${Object.keys(prev).length + 1}`]: "" }));
+                                                }}
+                                                className="flex flex-col items-center justify-center bg-transparent border-2 border-dashed border-slate-300 rounded-lg p-3 hover:bg-slate-100 hover:border-slate-400 hover:text-indigo-600 transition-colors text-slate-400 min-h-[95px] w-full"
+                                            >
+                                                <Plus size={24} className="mb-1" />
+                                                <span className="text-xs font-bold">新增 JP</span>
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 
