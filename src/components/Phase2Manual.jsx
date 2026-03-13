@@ -248,10 +248,10 @@ const Phase2Manual = ({
                                                                 e.preventDefault();
                                                                 const pastedData = e.clipboardData.getData('text');
                                                                 if (!pastedData) return;
-                                                                
+
                                                                 const lines = pastedData.trim().split(/\r?\n/);
                                                                 const newGrid = panelGrid.map(row => [...row]);
-                                                                
+
                                                                 for (let i = 0; i < lines.length; i++) {
                                                                     const symbols = lines[i].trim().split(/\s+/);
                                                                     for (let j = 0; j < symbols.length; j++) {
@@ -262,7 +262,7 @@ const Phase2Manual = ({
                                                                         }
                                                                     }
                                                                 }
-                                                                
+
                                                                 newGrid.forEach((row, ri) => {
                                                                     row.forEach((sym, ci) => {
                                                                         if (sym !== panelGrid[ri][ci]) {

@@ -180,7 +180,7 @@ export function useCloud() {
 
             sessionStorage.removeItem('slot_templates_cache');
             fetchCloudTemplates();
-            
+
             return { success: true, conflict: false };
         } catch (e) {
             console.error('[CloudSave] Error:', e);

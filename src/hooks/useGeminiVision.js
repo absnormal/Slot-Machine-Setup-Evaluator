@@ -27,7 +27,7 @@ export function useGeminiVision({
     const visionImageSrc = activeVisionImg?.previewUrl || null;
     const visionGrid = activeVisionImg?.grid || null;
     const visionError = activeVisionImg?.error || null;
-    
+
     // Canvas drawing effect
     useEffect(() => {
         if (visionImageObj && visionCanvasRef?.current) {
@@ -516,7 +516,7 @@ export function useGeminiVision({
                 }
                 await new Promise(res => setTimeout(res, 1500));
             }
-        } 
+        }
 
         setIsVisionProcessing(false);
         setIsVisionStopping(false);

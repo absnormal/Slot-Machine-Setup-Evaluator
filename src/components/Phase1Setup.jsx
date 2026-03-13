@@ -32,6 +32,8 @@ export default function Phase1Setup(props) {
         showPtModal, setShowPtModal
     } = props;
 
+    const [showNamingGuide, setShowNamingGuide] = React.useState(false);
+
     return (
         <>
             {/* Phase 1 */}
@@ -454,12 +456,72 @@ export default function Phase1Setup(props) {
                         <div className="bg-slate-50 p-5 rounded-xl border border-slate-200">
                             <div className="flex flex-col">
                                 <div className="flex items-center justify-between mb-4 border-b border-slate-200 pb-3">
-                                    <label className="text-base font-bold text-slate-800">賠付表資料設定</label>
+                                    <div className="flex items-center gap-2">
+                                        <label className="text-base font-bold text-slate-800">賠付表資料設定</label>
+                                        <button
+                                            onClick={() => setShowNamingGuide(!showNamingGuide)}
+                                            className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold transition-all ${showNamingGuide ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                                            title="點擊查看特殊符號命名規則"
+                                        >
+                                            <AlertCircle size={14} />
+                                            {showNamingGuide ? '隱藏說明' : '命名規則說明'}
+                                        </button>
+                                    </div>
                                     <div className="flex bg-slate-200 p-1 rounded-lg">
                                         <button onClick={() => setPaytableMode('text')} className={`px-3 py-1.5 text-sm font-bold rounded-md ${paytableMode === 'text' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>純文字</button>
                                         <button onClick={() => setPaytableMode('image')} className={`px-3 py-1.5 text-sm font-bold rounded-md ${paytableMode === 'image' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>圖片提取</button>
                                     </div>
                                 </div>
+
+                                {showNamingGuide && (
+                                    <div className="mb-6 bg-indigo-50 border border-indigo-100 rounded-xl p-5 animate-in fade-in slide-in-from-top-2 duration-300 shadow-sm">
+                                        <div className="flex items-center gap-2 mb-4 text-indigo-800 border-b border-indigo-200 pb-2">
+                                            <AlertCircle size={18} className="text-indigo-600" />
+                                            <h4 className="font-black text-sm uppercase tracking-wider">特殊符號命名規則說明</h4>
+                                        </div>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div className="space-y-3">
+                                                <div className="flex gap-3">
+                                                    <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center shrink-0 font-black text-xs shadow-sm">W</div>
+                                                    <div>
+                                                        <p className="text-sm font-bold text-slate-800">WILD (百搭)</p>
+                                                        <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">名稱內必須包含 <code className="bg-white px-1 py-0.5 rounded border border-indigo-200 text-indigo-600 font-bold mx-0.5">WILD</code> (不分大小寫)。<br/>範例：WILD, JokerWILD, Super_Wild</p>
+                                                    </div>
+                                                </div>
+                                                <div className="flex gap-3">
+                                                    <div className="w-8 h-8 rounded-lg bg-pink-500 text-white flex items-center justify-center shrink-0 font-black text-xs shadow-sm">S</div>
+                                                    <div>
+                                                        <p className="text-sm font-bold text-slate-800">SCATTER (分散/免費遊戲)</p>
+                                                        <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">名稱內必須包含 <code className="bg-white px-1 py-0.5 rounded border border-pink-200 text-pink-600 font-bold mx-0.5">SCATTER</code> (不分大小寫)。<br/>範例：SCATTER, Bonus_Scatter</p>
+                                                    </div>
+                                                </div>
+                                                <div className="flex gap-3">
+                                                    <div className="w-8 h-8 rounded-lg bg-emerald-500 text-white flex items-center justify-center shrink-0 font-black text-xs shadow-sm">C</div>
+                                                    <div>
+                                                        <p className="text-sm font-bold text-slate-800">COLLECT (收集符號)</p>
+                                                        <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">名稱內必須包含 <code className="bg-white px-1 py-0.5 rounded border border-emerald-200 text-emerald-600 font-bold mx-0.5">COLLECT</code> (不分大小寫)。<br/>範例：COLLECT, WILD_Collect</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="space-y-3">
+                                                <div className="flex gap-3">
+                                                    <div className="w-8 h-8 rounded-lg bg-amber-500 text-white flex items-center justify-center shrink-0 font-black text-xs shadow-sm">JP</div>
+                                                    <div>
+                                                        <p className="text-sm font-bold text-slate-800">Jackpot (JP 獎項)</p>
+                                                        <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">名稱必須與「Jackpot 倍率設定」中所定義的名稱<span className="text-amber-600 font-bold mx-0.5 underline decoration-amber-300 decoration-2">完全一致</span>。<br/>範例：GRAND, MAJOR, MINI (大小寫需相符)</p>
+                                                    </div>
+                                                </div>
+                                                <div className="flex gap-3">
+                                                    <div className="w-8 h-8 rounded-lg bg-slate-800 text-white flex items-center justify-center shrink-0 font-black text-xs shadow-sm">$</div>
+                                                    <div>
+                                                        <p className="text-sm font-bold text-slate-800">CASH (金幣/現金符號)</p>
+                                                        <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">名稱必須以 <code className="bg-white px-1 py-0.5 rounded border border-slate-300 text-slate-700 font-bold mx-0.5">CASH</code> 開頭 (不分大小寫)。<br/>範例：CASH_銅幣、CASH_金幣</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                                 {paytableMode === 'text' && (
                                     <textarea
                                         value={paytableInput}
