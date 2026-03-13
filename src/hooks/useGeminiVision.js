@@ -381,7 +381,7 @@ export function useGeminiVision({
 
         const hasCashOrCollect = availableSymbols.some(sym => isCashSymbol(sym, template.jpConfig) || isCollectSymbol(sym));
         const cashRule = hasCashOrCollect
-            ? "If a symbol has a number, ALWAYS prioritize matching it to other non-cash symbols (like COLLECT) based on its shape first. Only classify as CASH_N (e.g. CASH_0.5) if it definitely does not match any other defined symbol. "
+            ? "If a symbol has a number, ALWAYS prioritize matching it to other non-cash symbols (like COLLECT) based on its shape first. Only classify as CASH_VALUE if it definitely does not match any other defined symbol. If the value has units like K, M, or B (e.g., 1.5M), YOU MUST convert it to the actual full numeric value (e.g., 1500000) and return it as CASH_1500000. "
             : "Ignore small multiplier amounts on coins. Match base symbols only. (Do NOT ignore standard symbols that are numbers, e.g., '7', '10', '9'). ";
 
         const multiplierRule = template.hasMultiplierReel

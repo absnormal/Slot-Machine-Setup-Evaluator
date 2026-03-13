@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { BrainCircuit, ChevronDown, ChevronUp, X, Upload, ImageIcon, Trash2, ChevronLeft, ChevronRight, ListChecks, Loader2, StopCircle, AlertCircle, Trophy } from 'lucide-react';
 import ResultView from './ResultView';
-import { getBaseSymbol, getCashValue, isCashSymbol } from '../utils/symbolUtils';
+import { getBaseSymbol, getCashValue, isCashSymbol, formatShorthandValue, isJpSymbol } from '../utils/symbolUtils';
 
 export default function Phase3Vision({
     template,
@@ -219,10 +219,10 @@ export default function Phase3Vision({
                                                                             template?.symbolImages?.[baseSym] ? (
                                                                                 <React.Fragment>
                                                                                     <img src={template.symbolImages[baseSym]} className={`max-w-full max-h-full object-contain p-1 drop-shadow-md ${isCashSymbol(symbol, template?.jpConfig) ? 'opacity-80' : ''}`} alt={baseSym} />
-                                                                                    {cashVal > 0 && <div className="absolute inset-0 flex items-center justify-center font-black text-white drop-shadow-[0_1px_2px_rgba(0,0,0,1)] text-[10px] z-20 pointer-events-none">{cashVal}{isJpSymbol(symbol, template?.jpConfig) ? 'x' : ''}</div>}
+                                                                                     {cashVal > 0 && <div className="absolute inset-0 flex items-center justify-center font-black text-white drop-shadow-[0_1px_2px_rgba(0,0,0,1)] text-[10px] z-20 pointer-events-none">{isJpSymbol(symbol, template?.jpConfig) ? cashVal + 'x' : formatShorthandValue(cashVal)}</div>}
                                                                                 </React.Fragment>
                                                                             ) : (
-                                                                                <span>{isCashSymbol(symbol, template?.jpConfig) && cashVal > 0 ? `💰${cashVal}${isJpSymbol(symbol, template?.jpConfig) ? 'x' : ''}` : baseSym}</span>
+                                                                                 <span>{isCashSymbol(symbol, template?.jpConfig) && cashVal > 0 ? `💰${isJpSymbol(symbol, template?.jpConfig) ? cashVal + 'x' : formatShorthandValue(cashVal)}` : baseSym}</span>
                                                                             )
                                                                         ) : null}
                                                                     </div>

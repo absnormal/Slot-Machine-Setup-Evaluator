@@ -13,16 +13,47 @@ export const isCashSymbol = (sym, jpConfig = {}) => {
     return false;
 };
 
+export const formatShorthandValue = (num) => {
+    if (num === null || num === undefined || isNaN(num) || num === 0) return '';
+    const absNum = Math.abs(num);
+    if (absNum >= 1000000000) return +(num / 1000000000).toFixed(2) + 'B';
+    if (absNum >= 1000000) return +(num / 1000000).toFixed(2) + 'M';
+    if (absNum >= 1000) return +(num / 1000).toFixed(2) + 'K';
+    return String(num);
+};
+
+export const parseShorthandValue = (str) => {
+    if (!str || typeof str !== 'string') return parseFloat(str) || 0;
+    const cleanStr = str.trim().toUpperCase();
+    const multiplier = cleanStr.endsWith('K') ? 1000 :
+        cleanStr.endsWith('M') ? 1000000 :
+            cleanStr.endsWith('B') ? 1000000000 : 1;
+    const numPart = multiplier !== 1 ? cleanStr.slice(0, -1) : cleanStr;
+    const val = parseFloat(numPart);
+    return isNaN(val) ? 0 : val * multiplier;
+};
+
 export const getCashValue = (sym, jpConfig = {}) => {
     if (!isCashSymbol(sym, jpConfig)) return 0;
     if (isJpSymbol(sym, jpConfig)) {
         return parseFloat(jpConfig[sym.toUpperCase()]) || 0;
     }
     const parts = sym.split('_');
-    return parts.length > 1 ? parseFloat(parts[1]) || 0 : 0;
+    const lastPart = parts[parts.length - 1];
+    return parseShorthandValue(lastPart);
 };
 
 export const getBaseSymbol = (sym, jpConfig = {}) => {
-    if (isCashSymbol(sym, jpConfig)) return isJpSymbol(sym, jpConfig) ? sym.toUpperCase() : 'CASH';
+    if (isJpSymbol(sym, jpConfig)) return sym.toUpperCase();
+    if (isCashSymbol(sym, jpConfig)) {
+        const parts = sym.split('_');
+        const lastPart = parts[parts.length - 1];
+        // If the last part has a number or a unit shorthand, it's a value part
+        const hasNumber = /[0-9]/.test(lastPart);
+        if (parts.length > 1 && hasNumber) {
+            return parts.slice(0, -1).join('_');
+        }
+        return sym;
+    }
     return sym;
 };

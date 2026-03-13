@@ -1,7 +1,7 @@
 import React from 'react';
 import { LayoutGrid, ChevronDown, ChevronUp, MousePointer2, RefreshCw, Paintbrush, Keyboard, Trash2, Zap, Trophy } from 'lucide-react';
 import ResultView from './ResultView';
-import { isCashSymbol, getBaseSymbol, getCashValue, isJpSymbol } from '../utils/symbolUtils';
+import { getBaseSymbol, getCashValue, isCashSymbol, isJpSymbol, formatShorthandValue } from '../utils/symbolUtils';
 
 const Phase2Manual = ({
     template,
@@ -18,6 +18,36 @@ const Phase2Manual = ({
     panelGrid, handleCellChange,
     getSafeGrid
 }) => {
+    const [showCashModal, setShowCashModal] = React.useState(false);
+    const [modalCell, setModalCell] = React.useState({ row: 0, col: 0 });
+    const [cashValueInput, setCashValueInput] = React.useState('');
+
+    const handleConfirmCashValue = () => {
+        if (cashValueInput && activeBrush) {
+            const baseBrush = getBaseSymbol(activeBrush, template?.jpConfig);
+            const newSymbol = `${baseBrush}_${cashValueInput}`;
+            handleCellChange(modalCell.row, modalCell.col, newSymbol);
+        }
+        setShowCashModal(false);
+    };
+
+    const handleGridCellClick = (r, c) => {
+        if (panelInputMode !== 'paint') return;
+
+        const isCash = isCashSymbol(activeBrush, template?.jpConfig);
+        const isJP = isJpSymbol(activeBrush, template?.jpConfig);
+
+        // If it's a regular CASH symbol (not a fixed-value JP), open the modal
+        if (isCash && !isJP) {
+            setModalCell({ row: r, col: c });
+            // If the cell already has a value, use it as default
+            const currentVal = getCashValue(panelGrid[r][c], template?.jpConfig);
+            setCashValueInput(currentVal > 0 ? formatShorthandValue(currentVal) : '');
+            setShowCashModal(true);
+        } else {
+            handleCellChange(r, c, activeBrush);
+        }
+    };
     return (
         <div className={`bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden transition-all duration-300 ${!template ? 'opacity-30 pointer-events-none' : ''}`}>
             <div
@@ -76,7 +106,7 @@ const Phase2Manual = ({
                                                                 onClick={() => {
                                                                     if (isCash && !isJpSymbol(sym, template?.jpConfig)) {
                                                                         if (!isActive) {
-                                                                            setActiveBrush(`CASH_1`);
+                                                                            setActiveBrush(sym);
                                                                         }
                                                                     } else {
                                                                         setActiveBrush(sym);
@@ -90,13 +120,13 @@ const Phase2Manual = ({
                                                                         <img src={template.symbolImages[baseSym]} className="max-w-full max-h-full object-contain p-1" alt={baseSym} />
                                                                         {isActive && isCash && getCashValue(activeBrush, template?.jpConfig) > 0 && (
                                                                             <div className="absolute inset-0 flex items-center justify-center font-black text-white drop-shadow-[0_2px_3px_rgba(0,0,0,1)] text-[10px] z-20 pointer-events-none">
-                                                                                {getCashValue(activeBrush, template?.jpConfig)}{isJpSymbol(activeBrush, template?.jpConfig) ? 'x' : ''}
+                                                                                 {isJpSymbol(activeBrush, template?.jpConfig) ? getCashValue(activeBrush, template?.jpConfig) + 'x' : formatShorthandValue(getCashValue(activeBrush, template?.jpConfig))}
                                                                             </div>
                                                                         )}
                                                                     </React.Fragment>
                                                                 ) : (
                                                                     <span className="text-[10px] sm:text-xs font-black leading-tight text-center px-1 text-slate-200">
-                                                                        {isCash ? (isActive && getCashValue(activeBrush, template?.jpConfig) > 0 ? `💰${getCashValue(activeBrush, template?.jpConfig)}${isJpSymbol(activeBrush, template?.jpConfig) ? 'x' : ''}` : '💰設定') : sym}
+                                                                         {isCash ? (isActive && getCashValue(activeBrush, template?.jpConfig) > 0 ? `💰${isJpSymbol(activeBrush, template?.jpConfig) ? getCashValue(activeBrush, template?.jpConfig) + 'x' : formatShorthandValue(getCashValue(activeBrush, template?.jpConfig))}` : '💰設定') : sym}
                                                                     </span>
                                                                 )}
                                                             </button>
@@ -161,23 +191,6 @@ const Phase2Manual = ({
                                                         <span className="text-[10px] font-bold leading-none">清除盤面</span>
                                                     </button>
 
-                                                    {/* 新增：當選擇 CASH 畫筆時，動態顯示的面額輸入框 */}
-                                                    {getBaseSymbol(activeBrush, template?.jpConfig) === 'CASH' && (
-                                                        <React.Fragment>
-                                                            <div className="w-px h-10 bg-slate-700 mx-1 self-center"></div>
-                                                            <div className="flex flex-col justify-center bg-indigo-500/20 border border-indigo-400/50 rounded-lg px-3 h-[48px] sm:h-[52px] animate-in fade-in slide-in-from-left-2 duration-200">
-                                                                <label className="text-[9px] font-bold text-indigo-300 mb-0.5 flex items-center gap-1">設定 CASH 面額</label>
-                                                                <input
-                                                                    type="number"
-                                                                    step="any"
-                                                                    value={getCashValue(activeBrush, template?.jpConfig) || ''}
-                                                                    onChange={(e) => setActiveBrush(`CASH_${e.target.value}`)}
-                                                                    className="w-16 px-1.5 py-0.5 text-xs font-black text-indigo-900 bg-indigo-50 hover:bg-white focus:bg-white rounded outline-none text-center focus:ring-2 focus:ring-indigo-400 transition-all shadow-inner"
-                                                                    placeholder="數值"
-                                                                />
-                                                            </div>
-                                                        </React.Fragment>
-                                                    )}
                                                 </div>
                                             </div>
                                         )}
@@ -213,7 +226,7 @@ const Phase2Manual = ({
                                                                     const hoveredResult = calcResults.details.find(d => d.lineId === hoveredLineId);
                                                                     const isFeatureWin = String(hoveredResult.lineId).startsWith('SCATTER') || String(hoveredResult.lineId).startsWith('COLLECT');
                                                                     if (!isFeatureWin) {
-                                                                        isOnLine = template.lines[hoveredLineId]?.[cIndex] - 1 === rIndex;
+                                                                        isOnLine = template.lines[hoveredResult.lineId]?.[cIndex] - 1 === rIndex;
                                                                     }
                                                                     isWinSymbol = hoveredResult?.winCoords.some(c => c.row === rIndex && c.col === cIndex);
                                                                 } else {
@@ -276,8 +289,8 @@ const Phase2Manual = ({
                                                                 <div
                                                                     key={cIndex}
                                                                     className={`${cellClasses} ${panelInputMode === 'paint' && !isDisabledMultiplierCell ? 'cursor-pointer' : ''}`}
-                                                                    onMouseDown={(e) => { if (panelInputMode === 'paint' && !isDisabledMultiplierCell) { e.preventDefault(); handleCellChange(rIndex, cIndex, activeBrush); } }}
-                                                                    onMouseEnter={(e) => { if (panelInputMode === 'paint' && e.buttons === 1 && !isDisabledMultiplierCell) handleCellChange(rIndex, cIndex, activeBrush); }}
+                                                                    onMouseDown={(e) => { if (panelInputMode === 'paint' && !isDisabledMultiplierCell) { e.preventDefault(); handleGridCellClick(rIndex, cIndex); } }}
+                                                                    onMouseEnter={(e) => { if (panelInputMode === 'paint' && e.buttons === 1 && !isDisabledMultiplierCell) handleGridCellClick(rIndex, cIndex); }}
                                                                 >
                                                                     {panelInputMode === 'text' && !isDisabledMultiplierCell ? (
                                                                         <input
@@ -300,11 +313,11 @@ const Phase2Manual = ({
                                                                             template?.symbolImages?.[baseSym] ? (
                                                                                 <React.Fragment>
                                                                                     <img src={template.symbolImages[baseSym]} className={`max-w-full max-h-full object-contain p-1.5 drop-shadow-md pointer-events-none select-none ${isCashSymbol(symbol, template?.jpConfig) ? 'opacity-80' : ''}`} draggable={false} alt={baseSym} />
-                                                                                    {cashVal > 0 && <div className="absolute inset-0 flex items-center justify-center font-black text-white drop-shadow-[0_2px_3px_rgba(0,0,0,1)] text-sm sm:text-base z-20 pointer-events-none">{cashVal}{isJpSymbol(symbol, template?.jpConfig) ? 'x' : ''}</div>}
+                                                                                     {cashVal > 0 && <div className="absolute inset-0 flex items-center justify-center font-black text-white drop-shadow-[0_2px_3px_rgba(0,0,0,1)] text-sm sm:text-base z-20 pointer-events-none">{isJpSymbol(symbol, template?.jpConfig) ? cashVal + 'x' : formatShorthandValue(cashVal)}</div>}
                                                                                 </React.Fragment>
                                                                             ) : (
                                                                                 <span className="z-10 pointer-events-none select-none drop-shadow-md text-sm sm:text-xl">
-                                                                                    {isCashSymbol(symbol, template?.jpConfig) && cashVal > 0 ? `💰${cashVal}${isJpSymbol(symbol, template?.jpConfig) ? 'x' : ''}` : baseSym}
+                                                                                     {isCashSymbol(symbol, template?.jpConfig) && cashVal > 0 ? `💰${isJpSymbol(symbol, template?.jpConfig) ? cashVal + 'x' : formatShorthandValue(cashVal)}` : baseSym}
                                                                                 </span>
                                                                             )
                                                                         ) : (
@@ -325,6 +338,55 @@ const Phase2Manual = ({
 
                         {/* Phase 2 專屬結算 UI */}
                         <ResultView template={template} calcData={calcResults} calcErr={calculateError} hoveredId={hoveredLineId} setHoveredId={setHoveredLineId} showAll={showAllLines} setShowAll={setShowAllLines} betInput={betInput} setBetInput={setBetInput} />
+                    </div>
+                </div>
+            )}
+            {/* Cash Value Modal */}
+            {showCashModal && (
+                <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center p-4 z-[10000] animate-in fade-in duration-200">
+                    <div className="bg-slate-800 border border-slate-700 rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200">
+                        <div className="p-5 border-b border-slate-700 bg-slate-800/50 flex items-center gap-3">
+                            <div className="w-10 h-10 bg-indigo-500/20 rounded-xl flex items-center justify-center">
+                                <Zap className="text-indigo-400" size={20} />
+                            </div>
+                            <div>
+                                <h3 className="text-white font-bold">設定金幣數值</h3>
+                            </div>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <div>
+                                <label className="block text-slate-400 text-xs font-bold mb-2 uppercase tracking-wider">實際面額</label>
+                                <div className="relative">
+                                     <input
+                                         autoFocus
+                                         type="text"
+                                         value={cashValueInput}
+                                         onChange={(e) => setCashValueInput(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') handleConfirmCashValue();
+                                            if (e.key === 'Escape') setShowCashModal(false);
+                                        }}
+                                        className="w-full bg-slate-900 border border-slate-700 rounded-xl p-4 text-white text-2xl font-black focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                                         placeholder="例如:10、3.5M、2.5K"
+                                    />
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-4 gap-2">
+                                {[0.5, 1, 2, 5, 10, 20, 50, 100].map(v => (
+                                    <button
+                                        key={v}
+                                        onClick={() => setCashValueInput(String(v))}
+                                        className="py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-bold transition-colors border border-slate-600"
+                                    >
+                                        {v}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                        <div className="p-4 bg-slate-900/50 border-t border-slate-700 flex justify-end gap-3">
+                            <button onClick={() => setShowCashModal(false)} className="px-4 py-2 text-slate-400 font-bold text-sm hover:text-slate-200 transition-colors">取消</button>
+                            <button onClick={handleConfirmCashValue} className="px-8 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-lg shadow-indigo-500/20 transition-all active:scale-95">確認設定</button>
+                        </div>
                     </div>
                 </div>
             )}

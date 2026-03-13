@@ -485,21 +485,21 @@ export default function Phase1Setup(props) {
                                                     <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center shrink-0 font-black text-xs shadow-sm">W</div>
                                                     <div>
                                                         <p className="text-sm font-bold text-slate-800">WILD (百搭)</p>
-                                                        <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">名稱內必須包含 <code className="bg-white px-1 py-0.5 rounded border border-indigo-200 text-indigo-600 font-bold mx-0.5">WILD</code> (不分大小寫)。<br/>範例：WILD, JokerWILD, Super_Wild</p>
+                                                        <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">名稱內必須包含 <code className="bg-white px-1 py-0.5 rounded border border-indigo-200 text-indigo-600 font-bold mx-0.5">WILD</code> (不分大小寫)。<br />範例：WILD, JokerWILD, Super_Wild</p>
                                                     </div>
                                                 </div>
                                                 <div className="flex gap-3">
                                                     <div className="w-8 h-8 rounded-lg bg-pink-500 text-white flex items-center justify-center shrink-0 font-black text-xs shadow-sm">S</div>
                                                     <div>
-                                                        <p className="text-sm font-bold text-slate-800">SCATTER (分散/免費遊戲)</p>
-                                                        <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">名稱內必須包含 <code className="bg-white px-1 py-0.5 rounded border border-pink-200 text-pink-600 font-bold mx-0.5">SCATTER</code> (不分大小寫)。<br/>範例：SCATTER, Bonus_Scatter</p>
+                                                        <p className="text-sm font-bold text-slate-800">SCATTER (分散)</p>
+                                                        <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">名稱內必須包含 <code className="bg-white px-1 py-0.5 rounded border border-pink-200 text-pink-600 font-bold mx-0.5">SCATTER</code> (不分大小寫)。<br />範例：SCATTER, Bonus_Scatter</p>
                                                     </div>
                                                 </div>
                                                 <div className="flex gap-3">
                                                     <div className="w-8 h-8 rounded-lg bg-emerald-500 text-white flex items-center justify-center shrink-0 font-black text-xs shadow-sm">C</div>
                                                     <div>
                                                         <p className="text-sm font-bold text-slate-800">COLLECT (收集符號)</p>
-                                                        <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">名稱內必須包含 <code className="bg-white px-1 py-0.5 rounded border border-emerald-200 text-emerald-600 font-bold mx-0.5">COLLECT</code> (不分大小寫)。<br/>範例：COLLECT, WILD_Collect</p>
+                                                        <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">名稱內必須包含 <code className="bg-white px-1 py-0.5 rounded border border-emerald-200 text-emerald-600 font-bold mx-0.5">COLLECT</code> (不分大小寫)。<br />範例：COLLECT, WILD_Collect</p>
                                                     </div>
                                                 </div>
                                             </div>
@@ -508,14 +508,14 @@ export default function Phase1Setup(props) {
                                                     <div className="w-8 h-8 rounded-lg bg-amber-500 text-white flex items-center justify-center shrink-0 font-black text-xs shadow-sm">JP</div>
                                                     <div>
                                                         <p className="text-sm font-bold text-slate-800">Jackpot (JP 獎項)</p>
-                                                        <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">名稱必須與「Jackpot 倍率設定」中所定義的名稱<span className="text-amber-600 font-bold mx-0.5 underline decoration-amber-300 decoration-2">完全一致</span>。<br/>範例：GRAND, MAJOR, MINI (大小寫需相符)</p>
+                                                        <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">名稱必須與「Jackpot 倍率設定」中所定義的名稱<span className="text-amber-600 font-bold mx-0.5 underline decoration-amber-300 decoration-2">完全一致</span>。<br />範例：GRAND, MAJOR, MINI (大小寫需相符)</p>
                                                     </div>
                                                 </div>
                                                 <div className="flex gap-3">
                                                     <div className="w-8 h-8 rounded-lg bg-slate-800 text-white flex items-center justify-center shrink-0 font-black text-xs shadow-sm">$</div>
                                                     <div>
                                                         <p className="text-sm font-bold text-slate-800">CASH (金幣/現金符號)</p>
-                                                        <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">名稱必須以 <code className="bg-white px-1 py-0.5 rounded border border-slate-300 text-slate-700 font-bold mx-0.5">CASH</code> 開頭 (不分大小寫)。<br/>範例：CASH_銅幣、CASH_金幣</p>
+                                                        <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">名稱必須以 <code className="bg-white px-1 py-0.5 rounded border border-slate-300 text-slate-700 font-bold mx-0.5">CASH</code> 開頭 (不分大小寫)。<br />範例：CASH_銅幣、CASH_金幣</p>
                                                     </div>
                                                 </div>
                                             </div>
@@ -736,7 +736,7 @@ export default function Phase1Setup(props) {
                                 </h3>
                                 <p className="text-xs text-slate-500 mt-1">
                                     啟用後，系統將自動把這款遊戲的「最後一軸」獨立作為乘倍輪 (自動將盤面軸數 + 1)。<br />
-                                    只要主盤面有贏分，就會自動乘上該軸「中間格子」萃取出的數字倍數 (支援如 x2, x5, MULT_10 等符號)。
+                                    只要主盤面有贏分，就會自動乘上該格取出的數字倍數。
                                 </p>
                             </div>
                             <label className="relative inline-flex items-center cursor-pointer shrink-0">
