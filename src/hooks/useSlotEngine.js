@@ -53,7 +53,7 @@ export function useSlotEngine({ template }) {
     useEffect(() => {
         if (template && availableSymbols.length > 0) {
             const isMultiplierBrush = activeBrush && activeBrush.startsWith('x');
-            if (!activeBrush || (!availableSymbols.includes(activeBrush) && !isCashSymbol(activeBrush) && !isMultiplierBrush)) {
+            if (activeBrush !== '' && (!availableSymbols.includes(activeBrush) && !isCashSymbol(activeBrush) && !isMultiplierBrush)) {
                 setActiveBrush(availableSymbols.includes('WILD') ? 'WILD' : availableSymbols[0]);
             }
         }
