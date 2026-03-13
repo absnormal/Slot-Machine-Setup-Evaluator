@@ -169,7 +169,7 @@ function App() {
 
 
 
-const loadCloudTemplate = async (templateMeta) => {
+    const loadCloudTemplate = async (templateMeta) => {
         try {
             const data = await getTemplateData(templateMeta.id);
 
@@ -213,7 +213,7 @@ const loadCloudTemplate = async (templateMeta) => {
             // Error mapped to cloudError automatically
         }
     };
-const handleExportLocalTemplate = () => {
+    const handleExportLocalTemplate = () => {
         setTemplateMessage('');
         if (extractResults.length === 0 && !paytableInput) {
             setTemplateError('沒有可匯出的資料！');
@@ -331,7 +331,7 @@ const handleExportLocalTemplate = () => {
 
                 <AppHeader onOpenSettings={() => setShowSettingsModal(true)} />
 
-                <Phase1Setup 
+                <Phase1Setup
                     templateMessage={templateMessage}
                     isTemplateMinimized={isTemplateMinimized} setIsTemplateMinimized={setIsTemplateMinimized}
                     template={template} templateError={templateError}

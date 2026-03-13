@@ -196,7 +196,7 @@ export default function Phase3Vision({
                                                                         }
                                                                         isWinSymbol = hoveredResult?.winCoords.some(c => c.row === rIndex && c.col === cIndex);
                                                                     } else {
-                                                                        isWinSymbol = visionCalcResults.details.some(d => d.winCoords.some(c => c.row === rIndex && c.col === cIndex));
+                                                                        isWinSymbol = visionCalcResults.details.some(d => d.winAmount > 0 && d.winCoords.some(c => c.row === rIndex && c.col === cIndex));
                                                                     }
                                                                 }
 
@@ -219,10 +219,10 @@ export default function Phase3Vision({
                                                                             template?.symbolImages?.[baseSym] ? (
                                                                                 <React.Fragment>
                                                                                     <img src={template.symbolImages[baseSym]} className={`max-w-full max-h-full object-contain p-1 drop-shadow-md ${isCashSymbol(symbol, template?.jpConfig) ? 'opacity-80' : ''}`} alt={baseSym} />
-                                                                                    {cashVal > 0 && <div className="absolute inset-0 flex items-center justify-center font-black text-white drop-shadow-[0_1px_2px_rgba(0,0,0,1)] text-[10px] z-20 pointer-events-none">{cashVal}</div>}
+                                                                                    {cashVal > 0 && <div className="absolute inset-0 flex items-center justify-center font-black text-white drop-shadow-[0_1px_2px_rgba(0,0,0,1)] text-[10px] z-20 pointer-events-none">{cashVal}{isJpSymbol(symbol, template?.jpConfig) ? 'x' : ''}</div>}
                                                                                 </React.Fragment>
                                                                             ) : (
-                                                                                <span>{isCashSymbol(symbol, template?.jpConfig) && cashVal > 0 ? `💰${cashVal}` : baseSym}</span>
+                                                                                <span>{isCashSymbol(symbol, template?.jpConfig) && cashVal > 0 ? `💰${cashVal}${isJpSymbol(symbol, template?.jpConfig) ? 'x' : ''}` : baseSym}</span>
                                                                             )
                                                                         ) : null}
                                                                     </div>

@@ -21,12 +21,12 @@ export function useTemplateBuilder({
     const [linesTextInput, setLinesTextInput] = useState('');
     const [paytableMode, setPaytableMode] = useState('image');
     const [paytableInput, setPaytableInput] = useState(defaultPaytable);
-    
+
     // Core Output Template
     const [template, setTemplate] = useState(null);
     const [templateError, setTemplateError] = useState('');
     const [buildErrorMsg, setBuildErrorMsg] = useState('');
-    
+
     // Config State
     const [jpConfig, setJpConfig] = useState(defaultJpConfig);
     const [hasJackpot, setHasJackpot] = useState(false);
@@ -63,7 +63,7 @@ export function useTemplateBuilder({
     const [ptCropState, setPtCropState] = useState({ active: false, itemIndex: null, selectedImageId: null, startX: 0, startY: 0, endX: 0, endY: 0, isDragging: false });
     const [ptEnlargedImg, setPtEnlargedImg] = useState(null);
     const ptCropImageRef = useRef(null);
-    
+
     // Methods for 1-1
     const handleLineImageUpload = (e) => {
         const files = Array.from(e.target.files);
@@ -315,7 +315,7 @@ export function useTemplateBuilder({
     const handlePaytableTextChange = (newText) => {
         setPaytableInput(newText);
         const validLines = newText.split('\n').filter(l => l.trim() !== '');
-        
+
         setPtResultItems(prevItems => {
             return validLines.map((line, index) => {
                 const parts = line.trim().split(/\s+/);
@@ -439,7 +439,7 @@ export function useTemplateBuilder({
 
         setIsPtProcessing(true);
         setTemplateError("");
-        if(setTemplateMessage) setTemplateMessage("AI 正在分析賠率表中...");
+        if (setTemplateMessage) setTemplateMessage("AI 正在分析賠率表中...");
 
         try {
             const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${effectiveApiKey}`;
@@ -453,7 +453,7 @@ export function useTemplateBuilder({
 
             命名規則：
             1. 若符號上有寫 "WILD"、"百搭"、或取代其他圖案的功能，請統一命名為 "WILD"。
-            2. 若符號上有寫 "SCATTER"、"分散"、"奪寶"、"免費遊戲" (Free Spins) 等字樣，請統一在名稱中包含 "SCATTER" (例如: 星星SCATTER)。
+            2. 若符號上有寫 "SCATTER" 字樣，請統一在名稱中包含 "SCATTER" (例如: 星星SCATTER)。
             3. 若符號有「收集」其他符號分數的功能(如漁夫)，請在名稱中包含 "COLLECT" (若同時也是百搭，請命名為 WILD_COLLECT)。
             4. 若符號是帶有數字的現金/金幣，請統一命名為 "CASH" (不用加上數字，這裡是賠率表提取)。
             5. 若為英文字母或數字，請直接使用：A, K, Q, J, 10, 9。
@@ -534,12 +534,12 @@ export function useTemplateBuilder({
                 `${item.name} ${item.match1} ${item.match2} ${item.match3} ${item.match4} ${item.match5}`
             );
             setPaytableInput(formattedLines.join('\n'));
-            if(setTemplateMessage) setTemplateMessage("✅ 賠率表提取完成！可點擊清單手動擷取特徵縮圖。");
+            if (setTemplateMessage) setTemplateMessage("✅ 賠率表提取完成！可點擊清單手動擷取特徵縮圖。");
 
         } catch (err) {
             console.warn(err);
             setTemplateError(`賠率分析失敗：${err.message || '未知錯誤'}`);
-            if(setTemplateMessage) setTemplateMessage("");
+            if (setTemplateMessage) setTemplateMessage("");
         } finally {
             setIsPtProcessing(false);
         }
@@ -594,7 +594,7 @@ export function useTemplateBuilder({
                 jpConfig: { ...defaultJpConfig, ...(data.jpConfig || jpConfig) },
                 hasMultiplierReel: data.hasMultiplierReel || false
             };
-            
+
             setTemplate(tpl);
             setHasMultiplierReel(data.hasMultiplierReel || false);
 
@@ -674,7 +674,7 @@ export function useTemplateBuilder({
                 jpConfig: hasJackpot ? Object.fromEntries(Object.entries(jpConfig).filter(([_, v]) => v !== '')) : {},
                 hasMultiplierReel
             };
-            
+
             setTemplate(tpl);
 
             if (setIsPhase2Minimized) setIsPhase2Minimized(false);

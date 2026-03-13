@@ -90,13 +90,13 @@ const Phase2Manual = ({
                                                                         <img src={template.symbolImages[baseSym]} className="max-w-full max-h-full object-contain p-1" alt={baseSym} />
                                                                         {isActive && isCash && getCashValue(activeBrush, template?.jpConfig) > 0 && (
                                                                             <div className="absolute inset-0 flex items-center justify-center font-black text-white drop-shadow-[0_2px_3px_rgba(0,0,0,1)] text-[10px] z-20 pointer-events-none">
-                                                                                {getCashValue(activeBrush, template?.jpConfig)}
+                                                                                {getCashValue(activeBrush, template?.jpConfig)}{isJpSymbol(activeBrush, template?.jpConfig) ? 'x' : ''}
                                                                             </div>
                                                                         )}
                                                                     </React.Fragment>
                                                                 ) : (
                                                                     <span className="text-[10px] sm:text-xs font-black leading-tight text-center px-1 text-slate-200">
-                                                                        {isCash ? (isActive && getCashValue(activeBrush, template?.jpConfig) > 0 ? `💰${getCashValue(activeBrush, template?.jpConfig)}` : '💰設定') : sym}
+                                                                        {isCash ? (isActive && getCashValue(activeBrush, template?.jpConfig) > 0 ? `💰${getCashValue(activeBrush, template?.jpConfig)}${isJpSymbol(activeBrush, template?.jpConfig) ? 'x' : ''}` : '💰設定') : sym}
                                                                     </span>
                                                                 )}
                                                             </button>
@@ -217,7 +217,7 @@ const Phase2Manual = ({
                                                                     }
                                                                     isWinSymbol = hoveredResult?.winCoords.some(c => c.row === rIndex && c.col === cIndex);
                                                                 } else {
-                                                                    isWinSymbol = calcResults.details.some(d => d.winCoords.some(c => c.row === rIndex && c.col === cIndex));
+                                                                    isWinSymbol = calcResults.details.some(d => d.winAmount > 0 && d.winCoords.some(c => c.row === rIndex && c.col === cIndex));
                                                                 }
                                                             }
 
@@ -300,11 +300,11 @@ const Phase2Manual = ({
                                                                             template?.symbolImages?.[baseSym] ? (
                                                                                 <React.Fragment>
                                                                                     <img src={template.symbolImages[baseSym]} className={`max-w-full max-h-full object-contain p-1.5 drop-shadow-md pointer-events-none select-none ${isCashSymbol(symbol, template?.jpConfig) ? 'opacity-80' : ''}`} draggable={false} alt={baseSym} />
-                                                                                    {cashVal > 0 && <div className="absolute inset-0 flex items-center justify-center font-black text-white drop-shadow-[0_2px_3px_rgba(0,0,0,1)] text-sm sm:text-base z-20 pointer-events-none">{cashVal}</div>}
+                                                                                    {cashVal > 0 && <div className="absolute inset-0 flex items-center justify-center font-black text-white drop-shadow-[0_2px_3px_rgba(0,0,0,1)] text-sm sm:text-base z-20 pointer-events-none">{cashVal}{isJpSymbol(symbol, template?.jpConfig) ? 'x' : ''}</div>}
                                                                                 </React.Fragment>
                                                                             ) : (
                                                                                 <span className="z-10 pointer-events-none select-none drop-shadow-md text-sm sm:text-xl">
-                                                                                    {isCashSymbol(symbol, template?.jpConfig) && cashVal > 0 ? `💰${cashVal}` : baseSym}
+                                                                                    {isCashSymbol(symbol, template?.jpConfig) && cashVal > 0 ? `💰${cashVal}${isJpSymbol(symbol, template?.jpConfig) ? 'x' : ''}` : baseSym}
                                                                                 </span>
                                                                             )
                                                                         ) : (

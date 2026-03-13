@@ -206,7 +206,7 @@ export function computeGridResults(template, targetGrid, betAmount) {
                     winAmount: payout,
                     symbolsOnLine: Array(scatterCount).fill(scatterSymbol),
                     positions: ['Anywhere'],
-                    winCoords: scatterCoords
+                    winCoords: payoutMult > 0 ? scatterCoords : []
                 });
 
                 totalWin = parseFloat((totalWin + payout).toFixed(8));
