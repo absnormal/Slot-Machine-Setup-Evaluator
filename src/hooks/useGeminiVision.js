@@ -295,6 +295,10 @@ export function useGeminiVision({
 
     const removeVisionImage = (id) => {
         setVisionImages(prev => {
+            if (id === 'ALL') {
+                setActiveVisionId(null);
+                return [];
+            }
             const filtered = prev.filter(img => img.id !== id);
             if (activeVisionId === id) {
                 setActiveVisionId(filtered.length > 0 ? filtered[0].id : null);
@@ -366,7 +370,7 @@ export function useGeminiVision({
                 referenceText += `- ${symbol}: img ${urls.map((_, i) => partIndex + i).join(',')}\n`;
                 for (const url of urls) {
                     try {
-                        const resized = await resizeImageBase64(url, 64, 0.6);
+                        const resized = await resizeImageBase64(url, 128, 0.7);
                         referenceImages.push({
                             inlineData: { mimeType: resized.mimeType, data: resized.base64 }
                         });
@@ -381,11 +385,11 @@ export function useGeminiVision({
 
         const hasCashOrCollect = availableSymbols.some(sym => isCashSymbol(sym, template.jpConfig) || isCollectSymbol(sym));
         const cashRule = hasCashOrCollect
-            ? "If a symbol has a number, ALWAYS prioritize matching it to other non-cash symbols (like COLLECT) based on its shape first. Only classify as CASH_VALUE if it definitely does not match any other defined symbol. If the value has units like K, M, or B (e.g., 1.5M), YOU MUST convert it to the actual full numeric value (e.g., 1500000) and return it as CASH_1500000. "
+            ? "If a symbol has a number, ALWAYS prioritize matching it to COLLECT symbols based on its shape first. Only classify as CASH_VALUE if it definitely does not match any other defined symbol. If the value has units like K, M, or B (e.g., 1.5M), YOU MUST convert it to the actual full numeric value (e.g., 1500000) and return it as CASH_1500000. "
             : "Ignore small multiplier amounts on coins. Match base symbols only. (Do NOT ignore standard symbols that are numbers, e.g., '7', '10', '9'). ";
 
         const multiplierRule = template.hasMultiplierReel
-            ? `The LAST column (Reel ${template.cols}) is a MULTIPLIER REEL. ONLY the center cell (Row ${Math.floor(template.rows / 2) + 1}) has a multiplier value (e.g. "x2", "x5", "x10", "MULT_5"). YOU MUST EXTRACT THIS MULTIPLIER TEXT EXACTLY. Top and bottom cells of this reel are empty, output "". `
+            ? `The LAST column (Reel ${template.cols}) is a MULTIPLIER REEL. In Image 2, there might be a bar with multiple multiplier values (e.g. x1, x2, x3, x5). YOU MUST ONLY extract the "Highlighted" or "Activated" value (usually indicated by being brighter, yellow/gold color, or having a distinct frame vs the dimmed/dark green inactive ones). Output ONLY this active value for the center cell (Row ${Math.floor(template.rows / 2) + 1}). Top and bottom cells of this reel are empty, output "". `
             : "";
 
         const pickRule = template.hasMultiplierReel
@@ -395,7 +399,7 @@ export function useGeminiVision({
         const fixedPrefixParts = [
             { text: referenceText },
             ...referenceImages,
-            { text: `Grid: ${template.rows}R x ${template.cols}C. Symbols: [${availableSymbols.join(',')}]. ${pickRule}${cashRule}${multiplierRule}JP names as-is. Dimmed/grayed cells: identify by shape. Unrecognizable: "". Return ${template.rows}x${template.cols} 2D array.` }
+            { text: `Grid: ${template.rows}R x ${template.cols}C. Symbols: [${availableSymbols.join(',')}]. ${pickRule}${cashRule}${multiplierRule}JP names as-is. Dimmed/grayed cells: identify by shape. Unrecognizable: "". For complex symbols (like Mahjong tiles with multiple bars), YOU MUST precisely count the number of components and their arrangement to differentiate between similar symbols (e.g., M_2 vs M_5). Return ${template.rows}x${template.cols} 2D array.` }
         ];
 
         for (let i = 0; i < toProcess.length; i++) {
@@ -487,12 +491,29 @@ export function useGeminiVision({
                 }
 
                 const safeGrid = [];
+                const midRow = Math.floor(template.rows / 2);
+                let detectedMultiplier = '';
+
+                // First pass to detect multiplier if any in the last column
+                if (template.hasMultiplierReel) {
+                    for (let r = 0; r < template.rows; r++) {
+                        const sym = parsedGrid[r]?.[template.cols - 1];
+                        if (sym && (String(sym).match(/(\d+(?:\.\d+)?)/) && /x|mult|✖/i.test(String(sym)))) {
+                            detectedMultiplier = sym;
+                            break;
+                        }
+                    }
+                }
+
                 for (let r = 0; r < template.rows; r++) {
                     const rowArr = [];
                     for (let c = 0; c < template.cols; c++) {
                         let sym = parsedGrid[r]?.[c] || '';
                         const isMultiplierCol = template.hasMultiplierReel && c === template.cols - 1;
-                        if (!isMultiplierCol && sym && !availableSymbols.includes(sym) && !isCashSymbol(sym, template?.jpConfig)) {
+
+                        if (isMultiplierCol) {
+                            sym = (r === midRow) ? detectedMultiplier : '';
+                        } else if (sym && !availableSymbols.includes(sym) && !isCashSymbol(sym, template?.jpConfig)) {
                             sym = '';
                         }
                         rowArr.push(sym);

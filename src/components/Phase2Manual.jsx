@@ -200,7 +200,7 @@ const Phase2Manual = ({
                                                 <div className="flex items-center gap-2 text-indigo-300 text-sm font-bold bg-indigo-500/20 px-3 py-1.5 rounded-lg border border-indigo-500/30 animate-in fade-in slide-in-from-left-2 duration-200 shadow-sm">
                                                     <Zap size={14} className="fill-indigo-400" />
                                                     <span>正在查看第 <span className="text-white text-base mx-0.5">{hoveredLineId}</span> 條連線軌跡</span>
-                                                    {calcResults?.details?.find(d => d.lineId === hoveredLineId)?.winAmount > 0 && (
+                                                    {calcResults?.details?.find(d => d.lineId === hoveredLineId) && calcResults.details.find(d => d.lineId === hoveredLineId).winAmount > 0 && (
                                                         <span className="text-emerald-400 bg-emerald-500/20 border border-emerald-500/30 px-2 py-0.5 rounded ml-1 flex items-center gap-1">
                                                             <Trophy size={12} /> +{calcResults.details.find(d => d.lineId === hoveredLineId).winAmount.toLocaleString()}
                                                         </span>
@@ -224,11 +224,13 @@ const Phase2Manual = ({
                                                             if (calcResults) {
                                                                 if (hoveredLineId) {
                                                                     const hoveredResult = calcResults.details.find(d => d.lineId === hoveredLineId);
-                                                                    const isFeatureWin = String(hoveredResult.lineId).startsWith('SCATTER') || String(hoveredResult.lineId).startsWith('COLLECT');
-                                                                    if (!isFeatureWin) {
-                                                                        isOnLine = template.lines[hoveredResult.lineId]?.[cIndex] - 1 === rIndex;
+                                                                    if (hoveredResult) {
+                                                                        const isFeatureWin = String(hoveredResult.lineId).startsWith('SCATTER') || String(hoveredResult.lineId).startsWith('COLLECT');
+                                                                        if (!isFeatureWin) {
+                                                                            isOnLine = template.lines[hoveredResult.lineId]?.[cIndex] - 1 === rIndex;
+                                                                        }
+                                                                        isWinSymbol = hoveredResult.winCoords.some(c => c.row === rIndex && c.col === cIndex);
                                                                     }
-                                                                    isWinSymbol = hoveredResult?.winCoords.some(c => c.row === rIndex && c.col === cIndex);
                                                                 } else {
                                                                     isWinSymbol = calcResults.details.some(d => d.winAmount > 0 && d.winCoords.some(c => c.row === rIndex && c.col === cIndex));
                                                                 }

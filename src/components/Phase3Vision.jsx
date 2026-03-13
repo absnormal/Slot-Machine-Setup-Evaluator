@@ -190,11 +190,13 @@ export default function Phase3Vision({
                                                                 if (visionCalcResults) {
                                                                     if (visionHoveredLineId) {
                                                                         const hoveredResult = visionCalcResults.details.find(d => d.lineId === visionHoveredLineId);
-                                                                        const isFeatureWin = String(hoveredResult.lineId).startsWith('SCATTER') || String(hoveredResult.lineId).startsWith('COLLECT');
-                                                                        if (!isFeatureWin) {
-                                                                            isOnLine = template.lines[visionHoveredLineId]?.[cIndex] - 1 === rIndex;
+                                                                        if (hoveredResult) {
+                                                                            const isFeatureWin = String(hoveredResult.lineId).startsWith('SCATTER') || String(hoveredResult.lineId).startsWith('COLLECT');
+                                                                            if (!isFeatureWin) {
+                                                                                isOnLine = template.lines[visionHoveredLineId]?.[cIndex] - 1 === rIndex;
+                                                                            }
+                                                                            isWinSymbol = hoveredResult.winCoords.some(c => c.row === rIndex && c.col === cIndex);
                                                                         }
-                                                                        isWinSymbol = hoveredResult?.winCoords.some(c => c.row === rIndex && c.col === cIndex);
                                                                     } else {
                                                                         isWinSymbol = visionCalcResults.details.some(d => d.winAmount > 0 && d.winCoords.some(c => c.row === rIndex && c.col === cIndex));
                                                                     }
