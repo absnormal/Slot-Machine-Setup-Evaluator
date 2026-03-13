@@ -581,10 +581,11 @@ export function useTemplateBuilder({
 
             const targetRows = data.gridRows || gridRows;
             const targetCols = data.gridCols || gridCols;
+            const finalCols = (data.hasMultiplierReel || false) ? targetCols + 1 : targetCols;
 
             const tpl = {
                 rows: targetRows,
-                cols: targetCols,
+                cols: finalCols,
                 lineMode: loadedLineMode,
                 linesCount: loadedLineMode === 'allways' ? Math.pow(targetRows, targetCols) : (data.extractResults?.length || 0),
                 lines,
