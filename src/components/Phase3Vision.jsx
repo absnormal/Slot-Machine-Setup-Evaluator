@@ -228,13 +228,21 @@ export default function Phase3Vision({
                                                             return (
                                                                 <div key={cIndex} className={cellClass}>
                                                                     {symbol ? (
-                                                                        template?.symbolImages?.[baseSym] ? (
+                                                                        template?.symbolImages?.[symbol] || template?.symbolImages?.[baseSym] ? (
                                                                             <React.Fragment>
-                                                                                <img src={template.symbolImages[baseSym]} className={`max-w-full max-h-full object-contain p-1 drop-shadow-md ${isCashSymbol(symbol, template?.jpConfig) ? 'opacity-80' : ''}`} alt={baseSym} />
+                                                                                <img src={template.symbolImages[symbol] || template.symbolImages[baseSym]} className={`max-w-full max-h-full object-contain p-1 drop-shadow-md ${isCashSymbol(symbol, template?.jpConfig) ? 'opacity-80' : ''}`} alt={symbol} />
                                                                                  {cashVal > 0 && <div className="absolute inset-0 flex items-center justify-center font-black text-white drop-shadow-[0_1px_2px_rgba(0,0,0,1)] text-[10px] z-20 pointer-events-none">{isJpSymbol(symbol, template?.jpConfig) ? cashVal + 'x' : formatShorthandValue(cashVal)}</div>}
+                                                                                 {symbol.toLowerCase().endsWith('_double') && (
+                                                                                    <div className="absolute top-0 right-0 bg-indigo-600 text-white text-[6px] font-black px-0.5 rounded-bl shadow-sm border-l border-b border-indigo-400 z-30">
+                                                                                        2X
+                                                                                    </div>
+                                                                                 )}
                                                                             </React.Fragment>
                                                                         ) : (
-                                                                             <span>{isCashSymbol(symbol, template?.jpConfig) && cashVal > 0 ? `💰${isJpSymbol(symbol, template?.jpConfig) ? cashVal + 'x' : formatShorthandValue(cashVal)}` : baseSym}</span>
+                                                                             <div className="flex flex-col items-center">
+                                                                                <span>{isCashSymbol(symbol, template?.jpConfig) && cashVal > 0 ? `💰${isJpSymbol(symbol, template?.jpConfig) ? cashVal + 'x' : formatShorthandValue(cashVal)}` : baseSym}</span>
+                                                                                {symbol.toLowerCase().endsWith('_double') && <span className="text-[6px] text-indigo-400 font-bold -mt-1">DBL</span>}
+                                                                             </div>
                                                                         )
                                                                     ) : null}
                                                                 </div>

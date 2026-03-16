@@ -2,6 +2,11 @@
 export const toPx = (val, max) => (val / 100) * max;
 export const toPct = (val, max) => (val / max) * 100;
 
+export const parseBool = (val) => {
+    if (val === true || val === 1 || String(val).toUpperCase() === 'TRUE') return true;
+    return false;
+};
+
 export const fetchWithRetry = async (url, options, maxRetries = 5) => {
     const delays = [1000, 2000, 4000, 8000, 16000];
     for (let i = 0; i < maxRetries; i++) {

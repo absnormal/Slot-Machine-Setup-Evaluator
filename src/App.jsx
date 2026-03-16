@@ -3,9 +3,10 @@ import { Play, Settings, AlertCircle, CheckCircle2, Trophy, Coins, ChevronDown, 
 
 // === 模組匯入 ===
 import { GAS_URL, apiKey } from './utils/constants';
-import { toPx, toPct, fetchWithRetry, ptFileToBase64, resizeImageBase64 } from './utils/helpers';
+import { toPx, toPct, fetchWithRetry, ptFileToBase64, resizeImageBase64, parseBool } from './utils/helpers';
 import { isScatterSymbol, isCollectSymbol, isWildSymbol, isCashSymbol, isJpSymbol, getCashValue, getBaseSymbol } from './utils/symbolUtils';
 import { computeGridResults } from './engine/computeGridResults';
+
 import { useLightbox } from './hooks/useLightbox';
 import { useCanvasDrag } from './hooks/useCanvasDrag';
 import AppHeader from './components/AppHeader';
@@ -71,6 +72,7 @@ function App() {
         buildErrorMsg, setBuildErrorMsg, jpConfig, setJpConfig,
         hasJackpot, setHasJackpot, hasMultiplierReel, setHasMultiplierReel,
         requiresCollectToWin, setRequiresCollectToWin,
+        hasDoubleSymbol, setHasDoubleSymbol,
         lineImages, setLineImages, activeLineImageId, setActiveLineImageId,
         activeLineImage, imageSrc, imageObj,
         patternRows, setPatternRows, patternCols, setPatternCols,
@@ -149,7 +151,7 @@ function App() {
 
         const result = await saveTemplateToCloud({
             templateName, generatedName, platformName, gameName, gridRows, gridCols, lineMode, extractResults,
-            paytableInput, ptResultItems, jpConfig, hasJackpot, hasMultiplierReel, requiresCollectToWin,
+            paytableInput, ptResultItems, jpConfig, hasJackpot, hasMultiplierReel, requiresCollectToWin, hasDoubleSymbol,
             localUserId, actualForceId
         });
 
@@ -189,17 +191,28 @@ function App() {
                 setJpConfig(defaultJpConfig);
                 setHasJackpot(false);
             }
-            if (data.hasMultiplierReel !== undefined) setHasMultiplierReel(data.hasMultiplierReel);
+            if (data.hasMultiplierReel !== undefined) setHasMultiplierReel(parseBool(data.hasMultiplierReel));
             else setHasMultiplierReel(false);
 
-            if (data.requiresCollectToWin !== undefined) setRequiresCollectToWin(data.requiresCollectToWin);
+            if (data.requiresCollectToWin !== undefined) setRequiresCollectToWin(parseBool(data.requiresCollectToWin));
             else setRequiresCollectToWin(true);
 
+            if (data.hasDoubleSymbol !== undefined) setHasDoubleSymbol(parseBool(data.hasDoubleSymbol));
+            else setHasDoubleSymbol(false);
+
             if (data.ptResultItems) {
-                const processedItems = data.ptResultItems.map(item => ({
-                    ...item,
-                    thumbUrls: item.thumbUrls || (item.thumbUrl ? [item.thumbUrl] : [])
-                }));
+                const processedItems = data.ptResultItems.map(item => {
+                    const newItem = {
+                        ...item,
+                        thumbUrls: item.thumbUrls || (item.thumbUrl ? [item.thumbUrl] : []),
+                        doubleThumbUrls: item.doubleThumbUrls || []
+                    };
+                    // 確保 match6~10 存在，避免儲存回雲端時遺失
+                    for (let i = 6; i <= 10; i++) {
+                        if (newItem[`match${i}`] === undefined) newItem[`match${i}`] = 0;
+                    }
+                    return newItem;
+                });
                 setPtResultItems(processedItems);
                 setPaytableMode('image');
             } else {
@@ -236,7 +249,8 @@ function App() {
             ptResultItems,
             jpConfig,
             hasMultiplierReel,
-            requiresCollectToWin
+            requiresCollectToWin,
+            hasDoubleSymbol
         };
 
         const jsonStr = JSON.stringify(data, null, 2);
@@ -286,21 +300,31 @@ function App() {
 
                 if (data.paytableInput) setPaytableInput(data.paytableInput);
                 if (data.ptResultItems) {
-                    const processedItems = data.ptResultItems.map(item => ({
-                        ...item,
-                        thumbUrls: item.thumbUrls || (item.thumbUrl ? [item.thumbUrl] : [])
-                    }));
+                    const processedItems = data.ptResultItems.map(item => {
+                        const newItem = {
+                            ...item,
+                            thumbUrls: item.thumbUrls || (item.thumbUrl ? [item.thumbUrl] : []),
+                            doubleThumbUrls: item.doubleThumbUrls || []
+                        };
+                        for (let i = 6; i <= 10; i++) {
+                            if (newItem[`match${i}`] === undefined) newItem[`match${i}`] = 0;
+                        }
+                        return newItem;
+                    });
                     setPtResultItems(processedItems);
                     setPaytableMode('image');
                 } else {
                     setPaytableMode('text');
                 }
 
-                if (data.hasMultiplierReel !== undefined) setHasMultiplierReel(data.hasMultiplierReel);
+                if (data.hasMultiplierReel !== undefined) setHasMultiplierReel(parseBool(data.hasMultiplierReel));
                 else setHasMultiplierReel(false);
 
-                if (data.requiresCollectToWin !== undefined) setRequiresCollectToWin(data.requiresCollectToWin);
+                if (data.requiresCollectToWin !== undefined) setRequiresCollectToWin(parseBool(data.requiresCollectToWin));
                 else setRequiresCollectToWin(true);
+
+                if (data.hasDoubleSymbol !== undefined) setHasDoubleSymbol(parseBool(data.hasDoubleSymbol));
+                else setHasDoubleSymbol(false);
 
                 setLineImages([]);
                 setActiveLineImageId(null);
@@ -398,6 +422,7 @@ function App() {
                     gridCols={gridCols} setGridCols={setGridCols}
                     hasMultiplierReel={hasMultiplierReel} setHasMultiplierReel={setHasMultiplierReel}
                     requiresCollectToWin={requiresCollectToWin} setRequiresCollectToWin={setRequiresCollectToWin}
+                    hasDoubleSymbol={hasDoubleSymbol} setHasDoubleSymbol={setHasDoubleSymbol}
                     lineImages={lineImages} removeLineImage={removeLineImage} activeLineImageId={activeLineImageId} setActiveLineImageId={setActiveLineImageId} handleLineImageUpload={handleLineImageUpload}
                     isPtProcessing={isPtProcessing} handlePtExtract={handlePtExtract} ptImages={ptImages} removePtImage={removePtImage} clearPtAll={clearPtAll} handlePtFileChange={handlePtFileChange} handlePtDrop={handlePtDrop}
                     dragState={dragState} setDragState={setDragState} containerRef={containerRef} layoutStyle={layoutStyle} handleMouseDown={handleMouseDown} handleMouseMove={handleMouseMove} handleMouseUp={handleMouseUp}
@@ -497,7 +522,7 @@ function App() {
                             <div className="flex flex-col border-b border-slate-700 shrink-0">
                                 <div className="flex items-center justify-between p-4">
                                     <h3 className="text-white font-bold flex items-center gap-2">
-                                        手動擷取: <span className="text-indigo-400">{ptResultItems[ptCropState.itemIndex]?.name}</span>
+                                        手動擷取: <span className="text-indigo-400">{ptCropState.isDouble ? '雙重 ' : ''}{ptResultItems[ptCropState.itemIndex]?.name}</span>
                                     </h3>
                                     <div className="flex gap-2">
                                         <button onClick={() => {
@@ -517,16 +542,37 @@ function App() {
                                             }
 
                                             const canvas = document.createElement('canvas');
-                                            canvas.width = cW; canvas.height = cH;
-                                            canvas.getContext('2d').drawImage(img, startX * sX, startY * sY, cW, cH, 0, 0, cW, cH);
+                                            
+                                            // 壓縮補強：限制最大尺寸並使用 JPEG 0.7
+                                            const MAX_THUMB_SIZE = 128;
+                                            let targetW = cW;
+                                            let targetH = cH;
+                                            if (cW > MAX_THUMB_SIZE || cH > MAX_THUMB_SIZE) {
+                                                if (cW > cH) {
+                                                    targetW = MAX_THUMB_SIZE;
+                                                    targetH = (cH / cW) * MAX_THUMB_SIZE;
+                                                } else {
+                                                    targetH = MAX_THUMB_SIZE;
+                                                    targetW = (cW / cH) * MAX_THUMB_SIZE;
+                                                }
+                                            }
+                                            
+                                            canvas.width = targetW; 
+                                            canvas.height = targetH;
+                                            const ctx = canvas.getContext('2d');
+                                            // 使用複寫方式繪製並縮放
+                                            ctx.drawImage(img, startX * sX, startY * sY, cW, cH, 0, 0, targetW, targetH);
+                                            
+                                            const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.7);
 
                                             // 修改：將擷取到的圖片推入 thumbUrls 陣列中
                                             setPtResultItems(prev => {
                                                 const arr = [...prev];
-                                                if (!arr[ptCropState.itemIndex].thumbUrls) {
-                                                    arr[ptCropState.itemIndex].thumbUrls = [];
+                                                const targetField = ptCropState.isDouble ? 'doubleThumbUrls' : 'thumbUrls';
+                                                if (!arr[ptCropState.itemIndex][targetField]) {
+                                                    arr[ptCropState.itemIndex][targetField] = [];
                                                 }
-                                                arr[ptCropState.itemIndex].thumbUrls.push(canvas.toDataURL());
+                                                arr[ptCropState.itemIndex][targetField].push(compressedDataUrl);
                                                 return arr;
                                             });
                                             setPtCropState(p => ({ ...p, active: false }));

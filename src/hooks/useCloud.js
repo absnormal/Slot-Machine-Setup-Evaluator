@@ -96,6 +96,7 @@ export function useCloud() {
         templateName, generatedName,
         platformName, gameName, gridRows, gridCols, lineMode, extractResults,
         paytableInput, ptResultItems, jpConfig, hasJackpot, hasMultiplierReel,
+        requiresCollectToWin, hasDoubleSymbol,
         localUserId, actualForceId
     }) => {
         setCloudMessage('');
@@ -132,15 +133,31 @@ export function useCloud() {
 
             // --- 壓縮縮圖以節省空間 (Google Sheets 單格上限 50KB) ---
             const cloudPtResultItems = await Promise.all(ptResultItems.map(async (item) => {
-                if (!item.thumbUrls || item.thumbUrls.length === 0) return item;
-                const compressedThumbs = await Promise.all(item.thumbUrls.slice(0, 3).map(async (url) => {
-                    try {
-                        if (url.length < 2000) return url;
-                        const res = await resizeImageBase64(url, 48, 0.4, 'image/jpeg');
-                        return `data:image/jpeg;base64,${res.base64}`;
-                    } catch { return url.substring(0, 100); }
-                }));
-                return { ...item, thumbUrls: compressedThumbs };
+                const updatedItem = { ...item };
+
+                // 壓縮標準縮圖
+                if (item.thumbUrls && item.thumbUrls.length > 0) {
+                    updatedItem.thumbUrls = await Promise.all(item.thumbUrls.slice(0, 3).map(async (url) => {
+                        try {
+                            if (url.length < 2000) return url;
+                            const res = await resizeImageBase64(url, 48, 0.4, 'image/jpeg');
+                            return `data:image/jpeg;base64,${res.base64}`;
+                        } catch { return url.substring(0, 100); }
+                    }));
+                }
+
+                // 壓縮雙重縮圖
+                if (item.doubleThumbUrls && item.doubleThumbUrls.length > 0) {
+                    updatedItem.doubleThumbUrls = await Promise.all(item.doubleThumbUrls.slice(0, 3).map(async (url) => {
+                        try {
+                            if (url.length < 2000) return url;
+                            const res = await resizeImageBase64(url, 48, 0.4, 'image/jpeg');
+                            return `data:image/jpeg;base64,${res.base64}`;
+                        } catch { return url.substring(0, 100); }
+                    }));
+                }
+
+                return updatedItem;
             }));
 
             const newTemplate = {
@@ -156,12 +173,22 @@ export function useCloud() {
                 ptResultItems: cloudPtResultItems,
                 jpConfig: hasJackpot ? jpConfig : {},
                 hasMultiplierReel,
+                requiresCollectToWin,
+                hasDoubleSymbol,
                 creatorId: localUserId,
                 createdAt: new Date().toISOString()
             };
 
             const payload = JSON.stringify({ action, data: newTemplate });
             console.log(`[CloudSave] Action: ${action}, ID: ${targetId}, Payload: ${payload.length} chars`);
+            if (newTemplate.ptResultItems) {
+                console.log(`[CloudSave] ptResultItems sample:`, newTemplate.ptResultItems[0] ? {
+                    name: newTemplate.ptResultItems[0].name,
+                    m6: newTemplate.ptResultItems[0].match6,
+                    m10: newTemplate.ptResultItems[0].match10,
+                    doubleThumbs: newTemplate.ptResultItems[0].doubleThumbUrls?.length || 0
+                } : 'empty');
+            }
 
             if (payload.length > 49000) {
                 throw new Error('模板資料過大 (超過 50KB)，請減少符號縮圖再試。');

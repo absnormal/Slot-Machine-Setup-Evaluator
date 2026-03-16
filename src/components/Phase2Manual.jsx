@@ -1,7 +1,7 @@
 import React from 'react';
 import { LayoutGrid, ChevronDown, ChevronUp, MousePointer2, RefreshCw, Paintbrush, Keyboard, Trash2, Zap, Trophy } from 'lucide-react';
 import ResultView from './ResultView';
-import { getBaseSymbol, getCashValue, isCashSymbol, isJpSymbol, formatShorthandValue } from '../utils/symbolUtils';
+import { getBaseSymbol, getCashValue, isCashSymbol, isJpSymbol, formatShorthandValue, isDoubleSymbol } from '../utils/symbolUtils';
 
 const Phase2Manual = ({
     template,
@@ -25,8 +25,9 @@ const Phase2Manual = ({
 
     const handleConfirmCashValue = () => {
         if (cashValueInput && activeBrush) {
-            const baseBrush = getBaseSymbol(activeBrush, template?.jpConfig);
-            const newSymbol = `${baseBrush}_${cashValueInput}`;
+            const isDouble = activeBrush.toLowerCase().endsWith('_double');
+            let baseBrush = getBaseSymbol(activeBrush, template?.jpConfig);
+            const newSymbol = `${baseBrush}_${cashValueInput}${isDouble ? '_double' : ''}`;
             handleCellChange(modalCell.row, modalCell.col, newSymbol);
         }
         setShowCashModal(false);
@@ -107,7 +108,8 @@ const Phase2Manual = ({
                                                     {availableSymbols.map(sym => {
                                                         const isCash = isCashSymbol(sym, template?.jpConfig);
                                                         const baseSym = getBaseSymbol(sym, template?.jpConfig);
-                                                        const isActive = getBaseSymbol(activeBrush, template?.jpConfig) === baseSym;
+                                                        const isActive = getBaseSymbol(activeBrush, template?.jpConfig) === baseSym && 
+                                                                       isDoubleSymbol(activeBrush) === isDoubleSymbol(sym);
 
                                                         return (
                                                             <button
@@ -124,18 +126,24 @@ const Phase2Manual = ({
                                                                 className={`relative w-[48px] h-[48px] sm:w-[52px] sm:h-[52px] rounded-lg border-2 flex items-center justify-center transition-all ${isActive ? 'border-indigo-400 bg-indigo-500/20 shadow-[0_0_10px_rgba(99,102,241,0.3)] scale-105 z-10' : 'border-slate-600 bg-slate-800 hover:border-slate-500 hover:bg-slate-700'}`}
                                                                 title={isCash ? "點擊選擇金幣畫筆" : sym}
                                                             >
-                                                                {template?.symbolImages?.[baseSym] ? (
+                                                                {template?.symbolImages?.[sym] || template?.symbolImages?.[baseSym] ? (
                                                                     <React.Fragment>
-                                                                        <img src={template.symbolImages[baseSym]} className="max-w-full max-h-full object-contain p-1" alt={baseSym} />
+                                                                        <img src={template.symbolImages[sym] || template.symbolImages[baseSym]} className="max-w-full max-h-full object-contain p-1" alt={sym} />
                                                                         {isActive && isCash && getCashValue(activeBrush, template?.jpConfig) > 0 && (
                                                                             <div className="absolute inset-0 flex items-center justify-center font-black text-white drop-shadow-[0_2px_3px_rgba(0,0,0,1)] text-[10px] z-20 pointer-events-none">
                                                                                  {isJpSymbol(activeBrush, template?.jpConfig) ? getCashValue(activeBrush, template?.jpConfig) + 'x' : formatShorthandValue(getCashValue(activeBrush, template?.jpConfig))}
+                                                                            </div>
+                                                                        )}
+                                                                        {sym.toLowerCase().endsWith('_double') && (
+                                                                            <div className="absolute -top-1 -right-1 bg-indigo-600 text-white text-[8px] font-black px-1 rounded-sm shadow-sm border border-indigo-400 z-30">
+                                                                                2X
                                                                             </div>
                                                                         )}
                                                                     </React.Fragment>
                                                                 ) : (
                                                                     <span className="text-[10px] sm:text-xs font-black leading-tight text-center px-1 text-slate-200">
                                                                          {isCash ? (isActive && getCashValue(activeBrush, template?.jpConfig) > 0 ? `💰${isJpSymbol(activeBrush, template?.jpConfig) ? getCashValue(activeBrush, template?.jpConfig) + 'x' : formatShorthandValue(getCashValue(activeBrush, template?.jpConfig))}` : '💰設定') : sym}
+                                                                         {sym.toLowerCase().endsWith('_double') && <div className="text-[8px] text-indigo-400 mt-0.5">DOUBLE</div>}
                                                                     </span>
                                                                 )}
                                                             </button>
@@ -321,14 +329,20 @@ const Phase2Manual = ({
                                                                         />
                                                                     ) : (
                                                                         symbol ? (
-                                                                            template?.symbolImages?.[baseSym] ? (
+                                                                            template?.symbolImages?.[symbol] || template?.symbolImages?.[baseSym] ? (
                                                                                 <React.Fragment>
-                                                                                    <img src={template.symbolImages[baseSym]} className={`max-w-full max-h-full object-contain p-1.5 drop-shadow-md pointer-events-none select-none ${isCashSymbol(symbol, template?.jpConfig) ? 'opacity-80' : ''}`} draggable={false} alt={baseSym} />
+                                                                                    <img src={template.symbolImages[symbol] || template.symbolImages[baseSym]} className={`max-w-full max-h-full object-contain p-1.5 drop-shadow-md pointer-events-none select-none ${isCashSymbol(symbol, template?.jpConfig) ? 'opacity-80' : ''}`} draggable={false} alt={symbol} />
                                                                                      {cashVal > 0 && <div className="absolute inset-0 flex items-center justify-center font-black text-white drop-shadow-[0_2px_3px_rgba(0,0,0,1)] text-sm sm:text-base z-20 pointer-events-none">{isJpSymbol(symbol, template?.jpConfig) ? cashVal + 'x' : formatShorthandValue(cashVal)}</div>}
+                                                                                     {symbol.toLowerCase().endsWith('_double') && (
+                                                                                        <div className="absolute top-1 right-1 bg-indigo-600 text-white text-[10px] sm:text-xs font-black px-1.5 py-0.5 rounded shadow-lg border border-indigo-400 z-30 animate-in zoom-in duration-300">
+                                                                                            2X
+                                                                                        </div>
+                                                                                     )}
                                                                                 </React.Fragment>
                                                                             ) : (
-                                                                                <span className="z-10 pointer-events-none select-none drop-shadow-md text-sm sm:text-xl">
+                                                                                <span className="z-10 pointer-events-none select-none drop-shadow-md text-sm sm:text-xl flex flex-col items-center">
                                                                                      {isCashSymbol(symbol, template?.jpConfig) && cashVal > 0 ? `💰${isJpSymbol(symbol, template?.jpConfig) ? cashVal + 'x' : formatShorthandValue(cashVal)}` : baseSym}
+                                                                                     {symbol.toLowerCase().endsWith('_double') && <span className="text-[8px] sm:text-[10px] text-indigo-300 font-black mt-1">DOUBLE</span>}
                                                                                 </span>
                                                                             )
                                                                         ) : (

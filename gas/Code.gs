@@ -37,27 +37,24 @@ function doGet(e) {
         try {
           var obj = JSON.parse(data[i][3]);
           
-          // 判斷是否包含 Cash 與 JP 機制
-          var hasCash = false;
-          var hasJp = false;
-          if (obj.paytableInput) {
+          // 判斷是否包含 Cash 與 JP 機制 (支援新版布林與舊版全文比對)
+          var hasCash = obj.hasCash || false;
+          var hasJp = obj.hasJp || false;
+          
+          if (!hasCash && obj.paytableInput) {
              hasCash = obj.paytableInput.indexOf('CASH') !== -1;
-             
-             if (obj.jpConfig) {
-                 var jpKeys = Object.keys(obj.jpConfig);
-                 for (var k = 0; k < jpKeys.length; k++) {
-                     // 必須確保 jpConfig 的 key 不為空字串
-                     if (jpKeys[k].trim() === '') continue;
-                     
-                     // 避免截斷比對：確保是用空白、換行或字串邊界包圍的完整單字
-                     // 因為 paytableInput 的格式是 "符號名稱 0 0 1 3 17.5\n..."
-                     var regex = new RegExp('(^|\\s)' + jpKeys[k] + '(\\s|$)', 'i');
-                     if (regex.test(obj.paytableInput)) {
-                         hasJp = true;
-                         break;
-                     }
-                 }
-             }
+          }
+          
+          if (!hasJp && obj.paytableInput && obj.jpConfig) {
+              var jpKeys = Object.keys(obj.jpConfig);
+              for (var k = 0; k < jpKeys.length; k++) {
+                  if (jpKeys[k].trim() === '') continue;
+                  var regex = new RegExp('(^|\\s)' + jpKeys[k] + '(\\s|$)', 'i');
+                  if (regex.test(obj.paytableInput)) {
+                      hasJp = true;
+                      break;
+                  }
+              }
           }
 
           result.push({
@@ -68,6 +65,8 @@ function doGet(e) {
             gridRows: obj.gridRows,
             gridCols: obj.gridCols,
             hasMultiplierReel: obj.hasMultiplierReel || false, 
+            hasDoubleSymbol: obj.hasDoubleSymbol || false,
+            requiresCollectToWin: obj.requiresCollectToWin !== undefined ? obj.requiresCollectToWin : true,
             hasCash: hasCash,
             hasJp: hasJp,
             linesCount: obj.extractResults ? obj.extractResults.length : 0,

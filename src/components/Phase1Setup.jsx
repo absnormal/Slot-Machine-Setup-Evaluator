@@ -30,7 +30,8 @@ export default function Phase1Setup(props) {
         ptResultItems, setPtResultItems, ptCropState, setPtCropState, ptCropImageRef, ptEnlargedImg, setPtEnlargedImg,
         handlePtTableChange, handlePtTableDelete, handleAddPtRow, handleRemoveThumb,
         hasJackpot, setHasJackpot, jpConfig, setJpConfig, buildErrorMsg, handleBuildTemplate,
-        showPtModal, setShowPtModal
+        showPtModal, setShowPtModal,
+        hasDoubleSymbol, setHasDoubleSymbol
     } = props;
 
     const [showNamingGuide, setShowNamingGuide] = React.useState(false);
@@ -146,6 +147,7 @@ export default function Phase1Setup(props) {
                                             <p className="text-xs text-indigo-600">不使用固定賠付線，從左至右逐 Reel 檢查相鄰符號。Ways 數 = 各 Reel 匹配數量的乘積。</p>
                                         </div>
                                     </div>
+                                    
                                     <div className="mt-3 flex items-center gap-4 flex-wrap">
                                         <div className="flex items-center gap-2">
                                             <span className="text-xs text-slate-600 font-bold">Row</span>
@@ -166,26 +168,36 @@ export default function Phase1Setup(props) {
                                             <input
                                                 type="checkbox"
                                                 checked={hasMultiplierReel}
-                                                onChange={e => {
-                                                    setHasMultiplierReel(e.target.checked);
-                                                }}
+                                                onChange={e => setHasMultiplierReel(e.target.checked)}
                                                 className="w-4 h-4 text-indigo-600 border-indigo-300 rounded focus:ring-indigo-500"
                                             />
                                             <span className="text-sm font-bold text-slate-700">啟用特殊乘倍輪 (最後一軸)</span>
                                         </label>
-
-                                        <label className="flex items-center gap-2 ml-4 cursor-pointer">
-                                            <input
-                                                type="checkbox"
-                                                checked={requiresCollectToWin}
-                                                onChange={e => setRequiresCollectToWin(e.target.checked)}
-                                                className="w-4 h-4 text-indigo-600 border-indigo-300 rounded focus:ring-indigo-500"
-                                            />
-                                            <span className="text-sm font-bold text-slate-700">收集金幣必須包含 COLLECT 符號</span>
-                                        </label>
                                     </div>
                                 </div>
                             )}
+
+                            {/* 全域進階設定 (不論是 Paylines 還是 All Ways 都適用) */}
+                            <div className="flex items-center gap-6 px-4 py-3 bg-slate-100/50 rounded-lg border border-slate-200 mb-6 flex-wrap">
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={requiresCollectToWin}
+                                        onChange={e => setRequiresCollectToWin(e.target.checked)}
+                                        className="w-4 h-4 text-indigo-600 border-indigo-300 rounded focus:ring-indigo-500"
+                                    />
+                                    <span className="text-sm font-bold text-slate-700">💰 收集金幣必須包含 COLLECT 符號</span>
+                                </label>
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={hasDoubleSymbol}
+                                        onChange={e => setHasDoubleSymbol(e.target.checked)}
+                                        className="w-4 h-4 text-indigo-600 border-indigo-300 rounded focus:ring-indigo-500"
+                                    />
+                                    <span className="text-sm font-bold text-indigo-700">👥 啟用雙重符號功能</span>
+                                </label>
+                            </div>
 
                             {lineMode === 'paylines' && (
                                 <>
@@ -261,6 +273,15 @@ export default function Phase1Setup(props) {
                                                             className="w-4 h-4 text-indigo-600 border-indigo-300 rounded focus:ring-indigo-500"
                                                         />
                                                         <span className="text-sm font-bold text-slate-700">收集金幣必須包含 COLLECT 符號</span>
+                                                    </label>
+                                                    <label className="flex items-center gap-2 mt-2 cursor-pointer">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={hasDoubleSymbol}
+                                                            onChange={e => setHasDoubleSymbol(e.target.checked)}
+                                                            className="w-4 h-4 text-indigo-600 border-indigo-300 rounded focus:ring-indigo-500"
+                                                        />
+                                                        <span className="text-sm font-bold text-indigo-700">啟用雙重符號功能</span>
                                                     </label>
                                                 </div>
                                                 <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
@@ -593,11 +614,11 @@ export default function Phase1Setup(props) {
                                                             <thead>
                                                                 <tr className="bg-slate-100 text-slate-600 sticky top-0 shadow-sm z-10">
                                                                     <th className="p-2 border-b font-medium w-16 text-center">縮圖集</th>
-                                                                    <th className="p-2 border-b font-medium">名稱</th>
-                                                                    <th className="p-2 border-b font-medium text-center w-12">2連</th>
-                                                                    <th className="p-2 border-b font-medium text-center w-12">3連</th>
-                                                                    <th className="p-2 border-b font-medium text-center w-12">4連</th>
-                                                                    <th className="p-2 border-b font-medium text-center w-12">5連</th>
+                                                                    {hasDoubleSymbol && <th className="p-2 border-b font-medium w-16 text-center text-indigo-600">雙重縮圖</th>}
+                                                                    <th className="p-2 border-b font-medium text-center w-12">名稱</th>
+                                                                    {[...Array(hasDoubleSymbol ? gridCols * 2 - 1 : gridCols - 1)].map((_, i) => (
+                                                                        <th key={i} className="p-2 border-b font-medium text-center w-12">{i + 2}連</th>
+                                                                    ))}
                                                                     <th className="p-2 border-b font-medium text-center w-8"></th>
                                                                 </tr>
                                                             </thead>
@@ -615,7 +636,7 @@ export default function Phase1Setup(props) {
                                                                                     </div>
                                                                                 ))}
                                                                                 <button
-                                                                                    onClick={() => setPtCropState({ active: true, itemIndex: idx, selectedImageId: ptImages[0]?.id, startX: 0, startY: 0, endX: 0, endY: 0, isDragging: false })}
+                                                                                    onClick={() => setPtCropState({ active: true, itemIndex: idx, selectedImageId: ptImages[0]?.id, startX: 0, startY: 0, endX: 0, endY: 0, isDragging: false, isDouble: false })}
                                                                                     className="w-7 h-7 bg-slate-100 hover:bg-indigo-50 hover:border-indigo-300 rounded flex items-center justify-center border border-slate-200 border-dashed text-slate-400 hover:text-indigo-500 transition-colors"
                                                                                     title="新增此符號的另一張特徵圖"
                                                                                 >
@@ -623,21 +644,43 @@ export default function Phase1Setup(props) {
                                                                                 </button>
                                                                             </div>
                                                                         </td>
+                                                                        {hasDoubleSymbol && (
+                                                                            <td className="p-1.5 bg-indigo-50/30">
+                                                                                <div className="flex flex-row flex-nowrap gap-1 items-center overflow-x-auto max-w-[120px]">
+                                                                                    {item.doubleThumbUrls && item.doubleThumbUrls.map((url, tIdx) => (
+                                                                                        <div key={tIdx} className="relative w-7 h-7 bg-indigo-900 rounded border border-indigo-300 shadow-sm group/thumb-double">
+                                                                                            <img src={url} className="w-full h-full object-contain" />
+                                                                                            <button onClick={() => handleRemoveThumb(idx, tIdx, true)} className="absolute -top-1 -right-1 bg-rose-500 text-white rounded-full p-0.5 opacity-0 group-hover/thumb-double:opacity-100 transition-opacity">
+                                                                                                <X size={8} />
+                                                                                            </button>
+                                                                                        </div>
+                                                                                    ))}
+                                                                                    <button
+                                                                                        onClick={() => setPtCropState({ active: true, itemIndex: idx, selectedImageId: ptImages[0]?.id, startX: 0, startY: 0, endX: 0, endY: 0, isDragging: false, isDouble: true })}
+                                                                                        className="w-7 h-7 bg-indigo-100 hover:bg-indigo-200 hover:border-indigo-400 rounded flex items-center justify-center border border-indigo-300 border-dashed text-indigo-500 hover:text-indigo-700 transition-colors shadow-inner"
+                                                                                        title="擷取此符號的雙重特徵圖"
+                                                                                    >
+                                                                                        <ImagePlus size={12} />
+                                                                                    </button>
+                                                                                 </div>
+                                                                            </td>
+                                                                        )}
                                                                         <td className="p-1">
                                                                             <input type="text" value={item.name} onChange={(e) => handlePtTableChange(idx, 'name', e.target.value)} className="w-full font-bold text-slate-700 bg-transparent border border-transparent hover:border-slate-300 focus:border-indigo-500 focus:bg-white rounded px-1.5 py-1 outline-none transition-all" />
                                                                         </td>
-                                                                        <td className="p-1">
-                                                                            <input type="text" value={item.match2} onChange={(e) => handlePtTableChange(idx, 'match2', e.target.value)} className="w-full text-center text-slate-600 bg-transparent border border-transparent hover:border-slate-300 focus:border-indigo-500 focus:bg-white rounded px-1 py-1 outline-none transition-all" />
-                                                                        </td>
-                                                                        <td className="p-1">
-                                                                            <input type="text" value={item.match3} onChange={(e) => handlePtTableChange(idx, 'match3', e.target.value)} className="w-full text-center text-slate-600 bg-transparent border border-transparent hover:border-slate-300 focus:border-indigo-500 focus:bg-white rounded px-1 py-1 outline-none transition-all" />
-                                                                        </td>
-                                                                        <td className="p-1">
-                                                                            <input type="text" value={item.match4} onChange={(e) => handlePtTableChange(idx, 'match4', e.target.value)} className="w-full text-center text-slate-600 bg-transparent border border-transparent hover:border-slate-300 focus:border-indigo-500 focus:bg-white rounded px-1 py-1 outline-none transition-all" />
-                                                                        </td>
-                                                                        <td className="p-1">
-                                                                            <input type="text" value={item.match5} onChange={(e) => handlePtTableChange(idx, 'match5', e.target.value)} className="w-full text-center text-slate-600 bg-transparent border border-transparent hover:border-slate-300 focus:border-indigo-500 focus:bg-white rounded px-1 py-1 outline-none transition-all" />
-                                                                        </td>
+                                                                        {[...Array(hasDoubleSymbol ? gridCols * 2 - 1 : gridCols - 1)].map((_, i) => {
+                                                                            const matchKey = `match${i + 2}`;
+                                                                            return (
+                                                                                <td key={i} className="p-1">
+                                                                                    <input 
+                                                                                        type="text" 
+                                                                                        value={item[matchKey] || 0} 
+                                                                                        onChange={(e) => handlePtTableChange(idx, matchKey, e.target.value)} 
+                                                                                        className="w-full text-center text-slate-600 bg-transparent border border-transparent hover:border-slate-300 focus:border-indigo-500 focus:bg-white rounded px-1 py-1 outline-none transition-all" 
+                                                                                    />
+                                                                                </td>
+                                                                            );
+                                                                        })}
                                                                         <td className="p-1 text-center">
                                                                             <button onClick={() => handlePtTableDelete(idx)} className="p-1.5 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded transition-colors opacity-0 group-hover:opacity-100" title="刪除此符號">
                                                                                 <Trash2 size={14} />
@@ -770,26 +813,6 @@ export default function Phase1Setup(props) {
                             </label>
                         </div>
 
-                        <div className="bg-slate-50 p-5 rounded-xl border border-slate-200 mt-6 flex items-center justify-between shadow-sm">
-                            <div className="flex flex-col">
-                                <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
-                                    💰 收集機制 (Collection Settings)
-                                </h3>
-                                <p className="text-xs text-slate-500 mt-1">
-                                    開啟後：盤面必須出現 COLLECT 符號才會收集所有金幣 (預設模式)。<br />
-                                    關閉後：只要盤面有金幣符號即會直接收集加總，不必依靠 COLLECT。
-                                </p>
-                            </div>
-                            <label className="relative inline-flex items-center cursor-pointer shrink-0">
-                                <input
-                                    type="checkbox"
-                                    className="sr-only peer"
-                                    checked={requiresCollectToWin}
-                                    onChange={(e) => setRequiresCollectToWin(e.target.checked)}
-                                />
-                                <div className="w-14 h-7 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[4px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-indigo-500 shadow-inner"></div>
-                            </label>
-                        </div>
 
                         {/* 建構結算模板大按鈕 */}
                         <button onClick={handleBuildTemplate} className="w-full mt-6 py-4 bg-slate-800 hover:bg-slate-900 text-white text-lg font-bold rounded-xl shadow-xl flex items-center justify-center gap-2 transition-all active:scale-[0.99]">

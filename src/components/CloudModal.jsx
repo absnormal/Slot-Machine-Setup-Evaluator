@@ -145,6 +145,11 @@ export default function CloudModal({
                                                     ✨ 乘倍輪
                                                 </span>
                                             )}
+                                            {(t.hasDoubleSymbol === true || t.hasDoubleSymbol === 1 || String(t.hasDoubleSymbol).toUpperCase() === 'TRUE') && (
+                                                <span className="font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded text-[11px] border border-indigo-200 flex items-center gap-1 shadow-sm">
+                                                    👥 雙重
+                                                </span>
+                                            )}
                                             {t.hasCash && (
                                                 <span className="font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded text-[11px] border border-amber-200 flex items-center gap-1 shadow-sm">
                                                     💰 CASH

@@ -19,15 +19,38 @@ export function useSlotEngine({ template }) {
 
     const availableSymbols = useMemo(() => {
         if (!template) return [];
-        const symbols = new Set(Object.keys(template.paytable || {}));
-        if (template.jpConfig) {
-            Object.keys(template.jpConfig).forEach(jp => {
-                if (jp.trim() !== '' && template.jpConfig[jp] !== '') {
-                    symbols.add(jp.toUpperCase());
+        const symbols = new Set();
+        
+        // Add base symbols from paytable
+        if (template.paytable) {
+            Object.keys(template.paytable).forEach(sym => {
+                symbols.add(sym);
+                // If double symbol feature is enabled AND a double screenshot exists, add _double variant
+                if (template.hasDoubleSymbol && template.symbolImages?.[`${sym}_double` ?? '']) {
+                    symbols.add(`${sym}_double`);
                 }
             });
         }
-        if (!symbols.has('WILD') && !Array.from(symbols).some(s => isWildSymbol(s))) symbols.add('WILD');
+
+        if (template.jpConfig) {
+            Object.keys(template.jpConfig).forEach(jp => {
+                if (jp.trim() !== '' && template.jpConfig[jp] !== '') {
+                    const jpSym = jp.toUpperCase();
+                    symbols.add(jpSym);
+                    if (template.hasDoubleSymbol && template.symbolImages?.[`${jpSym}_double` ?? '']) {
+                        symbols.add(`${jpSym}_double`);
+                    }
+                }
+            });
+        }
+        
+        if (!symbols.has('WILD') && !Array.from(symbols).some(s => isWildSymbol(s))) {
+            symbols.add('WILD');
+            if (template.hasDoubleSymbol && template.symbolImages?.['WILD_double']) {
+                symbols.add('WILD_double');
+            }
+        }
+        
         return Array.from(symbols);
     }, [template]);
 

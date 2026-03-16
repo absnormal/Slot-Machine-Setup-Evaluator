@@ -1,4 +1,4 @@
-import { isScatterSymbol, isCollectSymbol, isWildSymbol, isCashSymbol, getCashValue, isJpSymbol } from '../utils/symbolUtils';
+import { isScatterSymbol, isCollectSymbol, isWildSymbol, isCashSymbol, getCashValue, isJpSymbol, getSymbolCount, isDoubleSymbol, getBaseSymbol } from '../utils/symbolUtils';
 
 /**
  * 核心結算引擎：根據模板、盤面與押注計算線獎結果
@@ -62,14 +62,66 @@ export function computeGridResults(template, targetGrid, betAmount) {
                         }
                     }
                     if (matchCount === 0) break;
-                    consecutiveReels++;
+                    
+                    // All Ways matching cumulative units
+                    let colMatchUnits = 0;
+                    for (let row = 0; row < evalTemplate.rows; row++) {
+                        const sym = safeGrid[row][col];
+                        if (getBaseSymbol(sym, evalTemplate.jpConfig) === targetSymbol || isWildSymbol(sym)) {
+                            colMatchUnits += getSymbolCount(sym);
+                        }
+                    }
+
+                    consecutiveReels += (colMatchUnits / matchCount); // Average units per physical matching symbol in this column
                     ways *= matchCount;
                     winCoords.push(...colCoords);
                 }
 
-                if (consecutiveReels >= 2) {
+                // Actually, the simpler way for All Ways is to sum up units for the 'count'
+                // and use 'matchCount' for the 'ways'.
+                // Recalculating consecutiveReels as cumulative units
+                let cumulativeUnits = 0;
+                let actualConsecutiveReels = 0;
+                for (let col = 0; col < evalTemplate.cols; col++) {
+                    let colHasMatch = false;
+                    let colMaxUnits = 0;
+                    for (let row = 0; row < evalTemplate.rows; row++) {
+                        const sym = safeGrid[row][col];
+                        if (getBaseSymbol(sym, evalTemplate.jpConfig) === targetSymbol || isWildSymbol(sym)) {
+                            colHasMatch = true;
+                            colMaxUnits = Math.max(colMaxUnits, getSymbolCount(sym));
+                        }
+                    }
+                    if (!colHasMatch) break;
+                    actualConsecutiveReels++;
+                    cumulativeUnits += colMaxUnits; // This is a simplification, usually games either count reels or sum units. 
+                }
+                // Standard behavior for double symbols: they count as 2 towards the "N-of-a-kind"
+                // So if we have [Double, Single, Single], it's a 4-of-a-kind.
+                
+                let totalUnits = 0;
+                let reelsReached = 0;
+                for (let col = 0; col < evalTemplate.cols; col++) {
+                    let foundMatchInCol = false;
+                    let maxUnitsInCol = 0; 
+                    for (let row = 0; row < evalTemplate.rows; row++) {
+                        const sym = safeGrid[row][col];
+                        if (getBaseSymbol(sym, evalTemplate.jpConfig) === targetSymbol || isWildSymbol(sym)) {
+                            foundMatchInCol = true;
+                            // In All Ways, we take 1 match from each reel. If any is double, it contributes 2.
+                            // But usually, all matches in a reel contribute to ways, and the payoff is based on the "longest" connection.
+                            maxUnitsInCol = Math.max(maxUnitsInCol, getSymbolCount(sym));
+                        }
+                    }
+                    if (!foundMatchInCol) break;
+                    reelsReached++;
+                    totalUnits += maxUnitsInCol;
+                }
+
+                if (reelsReached >= 2) {
                     const payArray = evalTemplate.paytable[targetSymbol];
-                    const payIndex = Math.min(consecutiveReels - 1, payArray.length - 1);
+                    // Map totalUnits to paytable index (e.g. 5 units -> index 4)
+                    const payIndex = Math.min(totalUnits - 1, payArray.length - 1);
                     const payoutMult = payIndex >= 0 ? payArray[payIndex] : 0;
 
                     if (payoutMult > 0) {
@@ -115,20 +167,22 @@ export function computeGridResults(template, targetGrid, betAmount) {
                     let hasTargetSymbol = false;
 
                     for (let i = 0; i < symbolsOnLine.length; i++) {
-                        if (!symbolsOnLine[i]) break;
+                        const sym = symbolsOnLine[i];
+                        if (!sym) break;
+                        const symBase = getBaseSymbol(sym, evalTemplate.jpConfig);
 
-                        if (symbolsOnLine[i] === targetSymbol) {
-                            currentCount++;
-                            hasTargetSymbol = true;
-                        } else if (isWildSymbol(symbolsOnLine[i])) {
-                            currentCount++;
+                        if (symBase === targetSymbol || isWildSymbol(sym)) {
+                            currentCount += getSymbolCount(sym);
+                            if (symBase === targetSymbol) hasTargetSymbol = true;
                         } else {
                             break;
                         }
                     }
 
                     if (currentCount > 0 && (isWildSymbol(targetSymbol) || hasTargetSymbol)) {
-                        const payoutMult = evalTemplate.paytable[targetSymbol][currentCount - 1] || 0;
+                        const payArray = evalTemplate.paytable[targetSymbol];
+                        const payIndex = Math.min(currentCount - 1, payArray.length - 1);
+                        const payoutMult = payIndex >= 0 ? payArray[payIndex] : 0;
                         const payout = parseFloat((payoutMult * parsedBet).toFixed(8));
 
                         if (payout > bestPayout) {
@@ -146,18 +200,24 @@ export function computeGridResults(template, targetGrid, betAmount) {
                     }
                     bestCount = 0;
                     for (let i = 0; i < symbolsOnLine.length; i++) {
-                        if (!symbolsOnLine[i]) break;
-                        if (isScatterSymbol(symbolsOnLine[i]) || isCashSymbol(symbolsOnLine[i], evalTemplate.jpConfig) || (isCollectSymbol(symbolsOnLine[i]) && !isWildSymbol(symbolsOnLine[i]))) break;
+                        const sym = symbolsOnLine[i];
+                        if (!sym) break;
+                        if (isScatterSymbol(sym) || isCashSymbol(sym, evalTemplate.jpConfig) || (isCollectSymbol(sym) && !isWildSymbol(sym))) break;
 
-                        if (symbolsOnLine[i] === bestSymbol || isWildSymbol(symbolsOnLine[i])) bestCount++;
-                        else break;
+                        if (getBaseSymbol(sym, evalTemplate.jpConfig) === bestSymbol || isWildSymbol(sym)) {
+                            bestCount += getSymbolCount(sym);
+                        } else break;
                     }
                 }
 
                 const winCoords = [];
                 if (bestPayout > 0) {
-                    for (let i = 0; i < bestCount; i++) {
+                    let cumulativeIdx = 0;
+                    for (let i = 0; i < symbolsOnLine.length; i++) {
+                        const sym = symbolsOnLine[i];
+                        cumulativeIdx += getSymbolCount(sym);
                         winCoords.push({ row: positions[i] - 1, col: i });
+                        if (cumulativeIdx >= bestCount) break;
                     }
                 }
 
@@ -185,8 +245,9 @@ export function computeGridResults(template, targetGrid, betAmount) {
 
             for (let r = 0; r < evalTemplate.rows; r++) {
                 for (let c = 0; c < evalTemplate.cols; c++) {
-                    if (safeGrid[r][c] === scatterSymbol) {
-                        scatterCount++;
+                    const sym = safeGrid[r][c];
+                    if (getBaseSymbol(sym, evalTemplate.jpConfig) === scatterSymbol) {
+                        scatterCount += getSymbolCount(sym);
                         scatterCoords.push({ row: r, col: c });
                     }
                 }

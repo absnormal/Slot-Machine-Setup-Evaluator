@@ -6,6 +6,10 @@ export const isWildSymbol = (sym) => sym && sym.toUpperCase().includes('WILD');
 // JP 符號需透過 template.jpConfig 來判定
 export const isJpSymbol = (sym, jpConfig = {}) => sym && typeof sym === 'string' && Object.keys(jpConfig || {}).includes(sym.toUpperCase());
 
+export const isDoubleSymbol = (sym) => sym && typeof sym === 'string' && sym.toLowerCase().endsWith('_double');
+
+export const getSymbolCount = (sym) => isDoubleSymbol(sym) ? 2 : 1;
+
 export const isCashSymbol = (sym, jpConfig = {}) => {
     if (!sym || typeof sym !== 'string') return false;
     if (sym.toUpperCase().startsWith('CASH')) return true;
@@ -44,16 +48,21 @@ export const getCashValue = (sym, jpConfig = {}) => {
 };
 
 export const getBaseSymbol = (sym, jpConfig = {}) => {
-    if (isJpSymbol(sym, jpConfig)) return sym.toUpperCase();
-    if (isCashSymbol(sym, jpConfig)) {
-        const parts = sym.split('_');
+    if (!sym || typeof sym !== 'string') return sym;
+    let base = sym;
+    if (isDoubleSymbol(base)) {
+        base = base.slice(0, -7); // strip '_double'
+    }
+    if (isJpSymbol(base, jpConfig)) return base.toUpperCase();
+    if (isCashSymbol(base, jpConfig)) {
+        const parts = base.split('_');
         const lastPart = parts[parts.length - 1];
         // If the last part has a number or a unit shorthand, it's a value part
         const hasNumber = /[0-9]/.test(lastPart);
         if (parts.length > 1 && hasNumber) {
             return parts.slice(0, -1).join('_');
         }
-        return sym;
+        return base;
     }
-    return sym;
+    return base;
 };

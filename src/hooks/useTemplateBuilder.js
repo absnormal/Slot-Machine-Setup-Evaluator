@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { toPx, toPct, fetchWithRetry, ptFileToBase64, resizeImageBase64 } from '../utils/helpers';
+import { toPx, toPct, fetchWithRetry, ptFileToBase64, resizeImageBase64, parseBool } from '../utils/helpers';
 import { isCashSymbol, isCollectSymbol, isWildSymbol } from '../utils/symbolUtils';
 const defaultPaytable = "";
 const defaultJpConfig = { "MINI": "", "MINOR": "", "MAJOR": "", "GRAND": "" };
@@ -32,6 +32,26 @@ export function useTemplateBuilder({
     const [hasJackpot, setHasJackpot] = useState(false);
     const [hasMultiplierReel, setHasMultiplierReel] = useState(false);
     const [requiresCollectToWin, setRequiresCollectToWin] = useState(true);
+    const [hasDoubleSymbol, setHasDoubleSymbol] = useState(false);
+    const prevHasDoubleSymbol = useRef(hasDoubleSymbol);
+
+    // Auto-reformat paytable input when doubling is toggled
+    useEffect(() => {
+        if (prevHasDoubleSymbol.current !== hasDoubleSymbol) {
+            setPtResultItems(prev => {
+                const formattedLines = prev.map(item => {
+                    const base = `${item.name} ${item.match1} ${item.match2} ${item.match3} ${item.match4} ${item.match5}`;
+                    if (hasDoubleSymbol) {
+                        return `${base} ${item.match6 || 0} ${item.match7 || 0} ${item.match8 || 0} ${item.match9 || 0} ${item.match10 || 0}`;
+                    }
+                    return base;
+                });
+                setPaytableInput(formattedLines.join('\n'));
+                return prev;
+            });
+            prevHasDoubleSymbol.current = hasDoubleSymbol;
+        }
+    }, [hasDoubleSymbol]);
 
     // 1-1. Panel Line Image Recognition State
     const [lineImages, setLineImages] = useState([]);
@@ -326,15 +346,23 @@ export function useTemplateBuilder({
                 const m3 = parts.length > 3 ? parseFloat(parts[3]) || 0 : 0;
                 const m4 = parts.length > 4 ? parseFloat(parts[4]) || 0 : 0;
                 const m5 = parts.length > 5 ? parseFloat(parts[5]) || 0 : 0;
+                const m6 = parts.length > 6 ? parseFloat(parts[6]) || 0 : 0;
+                const m7 = parts.length > 7 ? parseFloat(parts[7]) || 0 : 0;
+                const m8 = parts.length > 8 ? parseFloat(parts[8]) || 0 : 0;
+                const m9 = parts.length > 9 ? parseFloat(parts[9]) || 0 : 0;
+                const m10 = parts.length > 10 ? parseFloat(parts[10]) || 0 : 0;
 
                 let thumbUrls = [];
+                let doubleThumbUrls = [];
                 const existingByName = prevItems.find(p => p.name === name);
-                if (existingByName && existingByName.thumbUrls && existingByName.thumbUrls.length > 0) {
-                    thumbUrls = existingByName.thumbUrls;
-                } else if (prevItems[index] && prevItems[index].thumbUrls && prevItems[index].thumbUrls.length > 0) {
-                    thumbUrls = prevItems[index].thumbUrls;
+                if (existingByName) {
+                    if (existingByName.thumbUrls && existingByName.thumbUrls.length > 0) thumbUrls = existingByName.thumbUrls;
+                    if (existingByName.doubleThumbUrls && existingByName.doubleThumbUrls.length > 0) doubleThumbUrls = existingByName.doubleThumbUrls;
+                } else if (prevItems[index]) {
+                    if (prevItems[index].thumbUrls && prevItems[index].thumbUrls.length > 0) thumbUrls = prevItems[index].thumbUrls;
+                    if (prevItems[index].doubleThumbUrls && prevItems[index].doubleThumbUrls.length > 0) doubleThumbUrls = prevItems[index].doubleThumbUrls;
                 }
-                return { name, match1: m1, match2: m2, match3: m3, match4: m4, match5: m5, thumbUrls };
+                return { name, match1: m1, match2: m2, match3: m3, match4: m4, match5: m5, match6: m6, match7: m7, match8: m8, match9: m9, match10: m10, thumbUrls, doubleThumbUrls };
             });
         });
     };
@@ -343,9 +371,13 @@ export function useTemplateBuilder({
         setPtResultItems(prev => {
             const newItems = [...prev];
             newItems[index] = { ...newItems[index], [field]: value };
-            const formattedLines = newItems.map(item =>
-                `${item.name} ${item.match1} ${item.match2} ${item.match3} ${item.match4} ${item.match5}`
-            );
+            const formattedLines = newItems.map(item => {
+                const base = `${item.name} ${item.match1} ${item.match2} ${item.match3} ${item.match4} ${item.match5}`;
+                if (hasDoubleSymbol) {
+                    return `${base} ${item.match6 || 0} ${item.match7 || 0} ${item.match8 || 0} ${item.match9 || 0} ${item.match10 || 0}`;
+                }
+                return base;
+            });
             setPaytableInput(formattedLines.join('\n'));
             return newItems;
         });
@@ -354,9 +386,13 @@ export function useTemplateBuilder({
     const handlePtTableDelete = (index) => {
         setPtResultItems(prev => {
             const newItems = prev.filter((_, i) => i !== index);
-            const formattedLines = newItems.map(item =>
-                `${item.name} ${item.match1} ${item.match2} ${item.match3} ${item.match4} ${item.match5}`
-            );
+            const formattedLines = newItems.map(item => {
+                const base = `${item.name} ${item.match1} ${item.match2} ${item.match3} ${item.match4} ${item.match5}`;
+                if (hasDoubleSymbol) {
+                    return `${base} ${item.match6 || 0} ${item.match7 || 0} ${item.match8 || 0} ${item.match9 || 0} ${item.match10 || 0}`;
+                }
+                return base;
+            });
             setPaytableInput(formattedLines.join('\n'));
             return newItems;
         });
@@ -364,19 +400,26 @@ export function useTemplateBuilder({
 
     const handleAddPtRow = () => {
         setPtResultItems(prev => {
-            const newItems = [...prev, { name: '新符號', match1: 0, match2: 0, match3: 0, match4: 0, match5: 0, thumbUrls: [] }];
-            const formattedLines = newItems.map(item =>
-                `${item.name} ${item.match1} ${item.match2} ${item.match3} ${item.match4} ${item.match5}`
-            );
+            const newItems = [...prev, { name: '新符號', match1: 0, match2: 0, match3: 0, match4: 0, match5: 0, match6: 0, match7: 0, match8: 0, match9: 0, match10: 0, thumbUrls: [], doubleThumbUrls: [] }];
+            const formattedLines = newItems.map(item => {
+                const base = `${item.name} ${item.match1} ${item.match2} ${item.match3} ${item.match4} ${item.match5}`;
+                if (hasDoubleSymbol) {
+                    return `${base} ${item.match6 || 0} ${item.match7 || 0} ${item.match8 || 0} ${item.match9 || 0} ${item.match10 || 0}`;
+                }
+                return base;
+            });
             setPaytableInput(formattedLines.join('\n'));
             return newItems;
         });
     };
 
-    const handleRemoveThumb = (itemIndex, thumbIndex) => {
+    const handleRemoveThumb = (itemIndex, thumbIndex, isDouble = false) => {
         setPtResultItems(prev => {
             const newItems = [...prev];
-            newItems[itemIndex].thumbUrls.splice(thumbIndex, 1);
+            const targetField = isDouble ? 'doubleThumbUrls' : 'thumbUrls';
+            if (newItems[itemIndex][targetField]) {
+                newItems[itemIndex][targetField].splice(thumbIndex, 1);
+            }
             return newItems;
         });
     };
@@ -450,7 +493,7 @@ export function useTemplateBuilder({
 
             const promptText = `
             請仔細分析圖片中的「老虎機賠率表 (Paytable)」。
-            任務目標：辨識出圖片中【每一個】圖案符號，以及它對應的連線數量(通常為 5, 4, 3, 2連線)所獲得的「賠率分數」。
+            任務目標：辨識出圖片中【每一個】圖案符號，以及它對應的連線數量(通常為 5, 4, 3, 2連線，或是雙重符號遊戲中的 10, 9, 8, 7, 6連線)所獲得的「賠率分數」。
 
             命名規則：
             1. 若符號上有寫 "WILD"、"百搭"、或取代其他圖案的功能，請統一命名為 "WILD"。
@@ -482,7 +525,12 @@ export function useTemplateBuilder({
                                 match2: { type: "NUMBER", description: "2連線賠率" },
                                 match3: { type: "NUMBER", description: "3連線賠率" },
                                 match4: { type: "NUMBER", description: "4連線賠率" },
-                                match5: { type: "NUMBER", description: "5連線賠率" }
+                                match5: { type: "NUMBER", description: "5連線賠率" },
+                                match6: { type: "NUMBER", description: "6連線賠率" },
+                                match7: { type: "NUMBER", description: "7連線賠率" },
+                                match8: { type: "NUMBER", description: "8連線賠率" },
+                                match9: { type: "NUMBER", description: "9連線賠率" },
+                                match10: { type: "NUMBER", description: "10連線賠率" }
                             },
                             required: ["name", "match1", "match2", "match3", "match4", "match5"]
                         }
@@ -521,7 +569,12 @@ export function useTemplateBuilder({
                 match2: Number(item.match2) || 0,
                 match3: Number(item.match3) || 0,
                 match4: Number(item.match4) || 0,
-                match5: Number(item.match5) || 0
+                match5: Number(item.match5) || 0,
+                match6: Number(item.match6) || 0,
+                match7: Number(item.match7) || 0,
+                match8: Number(item.match8) || 0,
+                match9: Number(item.match9) || 0,
+                match10: Number(item.match10) || 0
             }));
 
             const hasWild = parsedData.some(item => isWildSymbol(item.name));
@@ -529,11 +582,15 @@ export function useTemplateBuilder({
                 parsedData.push({ name: 'WILD', match1: 0, match2: 0, match3: 0, match4: 0, match5: 0 });
             }
 
-            setPtResultItems(parsedData.map(item => ({ ...item, thumbUrls: [] })));
+            setPtResultItems(parsedData.map(item => ({ ...item, thumbUrls: [], doubleThumbUrls: [] })));
 
-            const formattedLines = parsedData.map(item =>
-                `${item.name} ${item.match1} ${item.match2} ${item.match3} ${item.match4} ${item.match5}`
-            );
+            const formattedLines = parsedData.map(item => {
+                const base = `${item.name} ${item.match1} ${item.match2} ${item.match3} ${item.match4} ${item.match5}`;
+                if (hasDoubleSymbol) {
+                    return `${base} ${item.match6 || 0} ${item.match7 || 0} ${item.match8 || 0} ${item.match9 || 0} ${item.match10 || 0}`;
+                }
+                return base;
+            });
             setPaytableInput(formattedLines.join('\n'));
             if (setTemplateMessage) setTemplateMessage("✅ 賠率表提取完成！可點擊清單手動擷取特徵縮圖。");
 
@@ -578,6 +635,15 @@ export function useTemplateBuilder({
                     symbolImages[item.name] = item.thumbUrl;
                     symbolImagesAll[item.name] = [item.thumbUrl];
                 }
+
+                // Double symbols
+                if (data.hasDoubleSymbol || hasDoubleSymbol) {
+                    const doubleName = `${item.name}_double`;
+                    if (item.doubleThumbUrls && item.doubleThumbUrls.length > 0) {
+                        symbolImages[doubleName] = item.doubleThumbUrls[0];
+                        symbolImagesAll[doubleName] = item.doubleThumbUrls;
+                    }
+                }
             });
 
             const targetRows = data.gridRows || gridRows;
@@ -595,12 +661,14 @@ export function useTemplateBuilder({
                 symbolImagesAll,
                 jpConfig: { ...defaultJpConfig, ...(data.jpConfig || jpConfig) },
                 hasMultiplierReel: data.hasMultiplierReel || false,
-                requiresCollectToWin: data.requiresCollectToWin !== undefined ? data.requiresCollectToWin : true
+                requiresCollectToWin: data.requiresCollectToWin !== undefined ? data.requiresCollectToWin : true,
+                hasDoubleSymbol: data.hasDoubleSymbol || false
             };
 
             setTemplate(tpl);
-            setHasMultiplierReel(data.hasMultiplierReel || false);
-            setRequiresCollectToWin(data.requiresCollectToWin !== undefined ? data.requiresCollectToWin : true);
+            setHasMultiplierReel(parseBool(data.hasMultiplierReel || false));
+            setRequiresCollectToWin(parseBool(data.requiresCollectToWin !== undefined ? data.requiresCollectToWin : true));
+            setHasDoubleSymbol(parseBool(data.hasDoubleSymbol || false));
 
             if (setIsPhase2Minimized) setIsPhase2Minimized(false);
             if (setIsPhase3Minimized) setIsPhase3Minimized(true);
@@ -664,6 +732,14 @@ export function useTemplateBuilder({
                     symbolImages[item.name] = item.thumbUrl;
                     symbolImagesAll[item.name] = [item.thumbUrl];
                 }
+
+                if (hasDoubleSymbol) {
+                    const doubleName = `${item.name}_double`;
+                    if (item.doubleThumbUrls && item.doubleThumbUrls.length > 0) {
+                        symbolImages[doubleName] = item.doubleThumbUrls[0];
+                        symbolImagesAll[doubleName] = item.doubleThumbUrls;
+                    }
+                }
             });
 
             const tpl = {
@@ -677,7 +753,8 @@ export function useTemplateBuilder({
                 symbolImagesAll,
                 jpConfig: hasJackpot ? Object.fromEntries(Object.entries(jpConfig).filter(([_, v]) => v !== '')) : {},
                 hasMultiplierReel,
-                requiresCollectToWin
+                requiresCollectToWin,
+                hasDoubleSymbol
             };
 
             setTemplate(tpl);
@@ -756,6 +833,7 @@ export function useTemplateBuilder({
         hasJackpot, setHasJackpot,
         hasMultiplierReel, setHasMultiplierReel,
         requiresCollectToWin, setRequiresCollectToWin,
+        hasDoubleSymbol, setHasDoubleSymbol,
         lineImages, setLineImages,
         activeLineImageId, setActiveLineImageId,
         activeLineImage, imageSrc, imageObj,
