@@ -96,7 +96,7 @@ export function useCloud() {
         templateName, generatedName,
         platformName, gameName, gridRows, gridCols, lineMode, extractResults,
         paytableInput, ptResultItems, jpConfig, hasJackpot, hasMultiplierReel,
-        requiresCollectToWin, hasDoubleSymbol,
+        requiresCollectToWin, hasDoubleSymbol, multiplierCalcType,
         localUserId, actualForceId
     }) => {
         setCloudMessage('');
@@ -175,6 +175,7 @@ export function useCloud() {
                 hasMultiplierReel,
                 requiresCollectToWin,
                 hasDoubleSymbol,
+                multiplierCalcType,
                 creatorId: localUserId,
                 createdAt: new Date().toISOString()
             };

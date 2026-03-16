@@ -66,6 +66,7 @@ function doGet(e) {
             gridCols: obj.gridCols,
             hasMultiplierReel: obj.hasMultiplierReel || false, 
             hasDoubleSymbol: obj.hasDoubleSymbol || false,
+            multiplierCalcType: obj.multiplierCalcType || 'product',
             requiresCollectToWin: obj.requiresCollectToWin !== undefined ? obj.requiresCollectToWin : true,
             hasCash: hasCash,
             hasJp: hasJp,
