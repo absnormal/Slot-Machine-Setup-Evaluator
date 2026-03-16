@@ -177,27 +177,6 @@ export default function Phase1Setup(props) {
                                 </div>
                             )}
 
-                            {/* 全域進階設定 (不論是 Paylines 還是 All Ways 都適用) */}
-                            <div className="flex items-center gap-6 px-4 py-3 bg-slate-100/50 rounded-lg border border-slate-200 mb-6 flex-wrap">
-                                <label className="flex items-center gap-2 cursor-pointer">
-                                    <input
-                                        type="checkbox"
-                                        checked={requiresCollectToWin}
-                                        onChange={e => setRequiresCollectToWin(e.target.checked)}
-                                        className="w-4 h-4 text-indigo-600 border-indigo-300 rounded focus:ring-indigo-500"
-                                    />
-                                    <span className="text-sm font-bold text-slate-700">💰 收集金幣必須包含 COLLECT 符號</span>
-                                </label>
-                                <label className="flex items-center gap-2 cursor-pointer">
-                                    <input
-                                        type="checkbox"
-                                        checked={hasDoubleSymbol}
-                                        onChange={e => setHasDoubleSymbol(e.target.checked)}
-                                        className="w-4 h-4 text-indigo-600 border-indigo-300 rounded focus:ring-indigo-500"
-                                    />
-                                    <span className="text-sm font-bold text-indigo-700">👥 啟用雙重符號功能</span>
-                                </label>
-                            </div>
 
                             {lineMode === 'paylines' && (
                                 <>
@@ -264,24 +243,6 @@ export default function Phase1Setup(props) {
                                                             className="w-4 h-4 text-indigo-600 border-indigo-300 rounded focus:ring-indigo-500"
                                                         />
                                                         <span className="text-sm font-bold text-slate-700">啟用特殊乘倍輪 (最後一軸)</span>
-                                                    </label>
-                                                    <label className="flex items-center gap-2 mt-2 cursor-pointer">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={requiresCollectToWin}
-                                                            onChange={e => setRequiresCollectToWin(e.target.checked)}
-                                                            className="w-4 h-4 text-indigo-600 border-indigo-300 rounded focus:ring-indigo-500"
-                                                        />
-                                                        <span className="text-sm font-bold text-slate-700">收集金幣必須包含 COLLECT 符號</span>
-                                                    </label>
-                                                    <label className="flex items-center gap-2 mt-2 cursor-pointer">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={hasDoubleSymbol}
-                                                            onChange={e => setHasDoubleSymbol(e.target.checked)}
-                                                            className="w-4 h-4 text-indigo-600 border-indigo-300 rounded focus:ring-indigo-500"
-                                                        />
-                                                        <span className="text-sm font-bold text-indigo-700">啟用雙重符號功能</span>
                                                     </label>
                                                 </div>
                                                 <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
@@ -491,6 +452,29 @@ export default function Phase1Setup(props) {
                                     )}
                                 </>
                             )}
+                        </div>
+
+                        {/* 全域進階設定 (例如：收集機制、雙重符號) */}
+                        <div className="bg-indigo-50/50 p-4 rounded-xl border border-indigo-100 flex items-center gap-8 shadow-sm">
+                            <label className="flex items-center gap-2.5 cursor-pointer group">
+                                <input
+                                    type="checkbox"
+                                    checked={requiresCollectToWin}
+                                    onChange={e => setRequiresCollectToWin(e.target.checked)}
+                                    className="w-5 h-5 text-indigo-600 border-indigo-300 rounded focus:ring-indigo-500 transition-all group-hover:scale-110"
+                                />
+                                <span className="text-sm font-bold text-slate-700 group-hover:text-indigo-600 transition-colors">💰 收集金幣必須包含 COLLECT 符號</span>
+                            </label>
+                            <div className="w-px h-6 bg-indigo-200"></div>
+                            <label className="flex items-center gap-2.5 cursor-pointer group">
+                                <input
+                                    type="checkbox"
+                                    checked={hasDoubleSymbol}
+                                    onChange={e => setHasDoubleSymbol(e.target.checked)}
+                                    className="w-5 h-5 text-indigo-600 border-indigo-300 rounded focus:ring-indigo-500 transition-all group-hover:scale-110"
+                                />
+                                <span className="text-sm font-bold text-indigo-700 group-hover:text-indigo-800 transition-colors">👥 啟用雙重符號功能</span>
+                            </label>
                         </div>
 
                         {/* Step 2: 賠率設定 */}
