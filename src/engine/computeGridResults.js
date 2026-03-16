@@ -1,4 +1,4 @@
-import { isScatterSymbol, isCollectSymbol, isWildSymbol, isCashSymbol, getCashValue, isJpSymbol, getSymbolCount, isDoubleSymbol, getBaseSymbol } from '../utils/symbolUtils';
+import { isScatterSymbol, isCollectSymbol, isWildSymbol, isCashSymbol, getCashValue, isJpSymbol, getSymbolCount, isDoubleSymbol, getBaseSymbol, getSymbolMultiplier } from '../utils/symbolUtils';
 
 /**
  * 核心結算引擎：根據模板、盤面與押注計算線獎結果
@@ -49,6 +49,8 @@ export function computeGridResults(template, targetGrid, betAmount) {
                 let consecutiveReels = 0;
                 let ways = 1;
                 const winCoords = [];
+                let lineMultiplierMultiplier = (template.multiplierCalcType === 'sum' ? 0 : 1);
+                const hasMultiplierAtAll = (template.multiplierCalcType === 'sum' ? (m => m > 0) : (m => m > 1));
 
                 for (let col = 0; col < evalTemplate.cols; col++) {
                     let matchCount = 0;
@@ -75,6 +77,16 @@ export function computeGridResults(template, targetGrid, betAmount) {
                     consecutiveReels += (colMatchUnits / matchCount); // Average units per physical matching symbol in this column
                     ways *= matchCount;
                     winCoords.push(...colCoords);
+                    
+                    // xN Multiplier logic for All Ways
+                    colCoords.forEach(coord => {
+                        const sym = safeGrid[coord.row][coord.col];
+                        const m = getSymbolMultiplier(sym);
+                        if (m > 1) {
+                            if (template.multiplierCalcType === 'sum') lineMultiplierMultiplier += m;
+                            else lineMultiplierMultiplier *= m;
+                        }
+                    });
                 }
 
                 // Actually, the simpler way for All Ways is to sum up units for the 'count'
@@ -125,16 +137,18 @@ export function computeGridResults(template, targetGrid, betAmount) {
                     const payoutMult = payIndex >= 0 ? payArray[payIndex] : 0;
 
                     if (payoutMult > 0) {
-                        const payout = parseFloat((payoutMult * parsedBet * ways).toFixed(8));
+                        const finalLineMult = (template.multiplierCalcType === 'sum' ? Math.max(1, lineMultiplierMultiplier) : lineMultiplierMultiplier);
+                        const payout = parseFloat((payoutMult * parsedBet * ways * finalLineMult).toFixed(8));
                         calculatedResults.push({
                             lineId: `WAYS_${targetSymbol}`,
                             symbol: targetSymbol,
-                            count: consecutiveReels,
+                            count: reelsReached,
                             ways,
                             payoutMult,
                             winAmount: payout,
+                            multiplier: finalLineMult > 1 ? finalLineMult : null,
                             symbolsOnLine: [],
-                            positions: [`${consecutiveReels} 連 × ${ways} Ways`],
+                            positions: [`${reelsReached} 連 × ${ways} Ways`],
                             winCoords
                         });
                         totalWin = parseFloat((totalWin + payout).toFixed(8));
@@ -157,6 +171,7 @@ export function computeGridResults(template, targetGrid, betAmount) {
                 let bestPayout = 0;
                 let bestSymbol = null;
                 let bestCount = 0;
+                let bestLineMult = 1;
 
                 for (const targetSymbol of allPaySymbols) {
                     if (isScatterSymbol(targetSymbol)) continue;
@@ -165,6 +180,7 @@ export function computeGridResults(template, targetGrid, betAmount) {
 
                     let currentCount = 0;
                     let hasTargetSymbol = false;
+                    let lineMultiplierMultiplier = (template.multiplierCalcType === 'sum' ? 0 : 1);
 
                     for (let i = 0; i < symbolsOnLine.length; i++) {
                         const sym = symbolsOnLine[i];
@@ -174,6 +190,13 @@ export function computeGridResults(template, targetGrid, betAmount) {
                         if (symBase === targetSymbol || isWildSymbol(sym)) {
                             currentCount += getSymbolCount(sym);
                             if (symBase === targetSymbol) hasTargetSymbol = true;
+                            
+                            // xN Multiplier logic
+                            const m = getSymbolMultiplier(sym);
+                            if (m > 1) {
+                                if (template.multiplierCalcType === 'sum') lineMultiplierMultiplier += m;
+                                else lineMultiplierMultiplier *= m;
+                            }
                         } else {
                             break;
                         }
@@ -183,15 +206,19 @@ export function computeGridResults(template, targetGrid, betAmount) {
                         const payArray = evalTemplate.paytable[targetSymbol];
                         const payIndex = Math.min(currentCount - 1, payArray.length - 1);
                         const payoutMult = payIndex >= 0 ? payArray[payIndex] : 0;
-                        const payout = parseFloat((payoutMult * parsedBet).toFixed(8));
+                        const finalLineMult = (template.multiplierCalcType === 'sum' ? Math.max(1, lineMultiplierMultiplier) : lineMultiplierMultiplier);
+                        const payout = parseFloat((payoutMult * parsedBet * finalLineMult).toFixed(8));
 
                         if (payout > bestPayout) {
                             bestPayout = payout;
                             bestSymbol = targetSymbol;
                             bestCount = currentCount;
+                            bestLineMult = finalLineMult;
                         }
                     }
                 }
+                
+                // Track bestLineMult for the actual result push
 
                 if (bestPayout === 0) {
                     bestSymbol = symbolsOnLine[0] || '空';
@@ -228,8 +255,9 @@ export function computeGridResults(template, targetGrid, betAmount) {
                         count: bestCount,
                         payoutMult: bestPayout > 0 ? evalTemplate.paytable[bestSymbol][bestCount - 1] : 0,
                         winAmount: bestPayout,
+                        multiplier: bestLineMult > 1 ? bestLineMult : null,
                         symbolsOnLine,
-                        positions: [...positions],
+                        positions: [...positions, ...(bestLineMult > 1 ? [`x${bestLineMult}`] : [])],
                         winCoords
                     });
                     totalWin = parseFloat((totalWin + bestPayout).toFixed(8));

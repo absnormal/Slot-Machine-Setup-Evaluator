@@ -73,6 +73,7 @@ function App() {
         hasJackpot, setHasJackpot, hasMultiplierReel, setHasMultiplierReel,
         requiresCollectToWin, setRequiresCollectToWin,
         hasDoubleSymbol, setHasDoubleSymbol,
+        multiplierCalcType, setMultiplierCalcType,
         lineImages, setLineImages, activeLineImageId, setActiveLineImageId,
         activeLineImage, imageSrc, imageObj,
         patternRows, setPatternRows, patternCols, setPatternCols,
@@ -151,7 +152,7 @@ function App() {
 
         const result = await saveTemplateToCloud({
             templateName, generatedName, platformName, gameName, gridRows, gridCols, lineMode, extractResults,
-            paytableInput, ptResultItems, jpConfig, hasJackpot, hasMultiplierReel, requiresCollectToWin, hasDoubleSymbol,
+            paytableInput, ptResultItems, jpConfig, hasJackpot, hasMultiplierReel, requiresCollectToWin, hasDoubleSymbol, multiplierCalcType,
             localUserId, actualForceId
         });
 
@@ -199,6 +200,8 @@ function App() {
 
             if (data.hasDoubleSymbol !== undefined) setHasDoubleSymbol(parseBool(data.hasDoubleSymbol));
             else setHasDoubleSymbol(false);
+            if (data.multiplierCalcType !== undefined) setMultiplierCalcType(data.multiplierCalcType);
+            else setMultiplierCalcType('product');
 
             if (data.ptResultItems) {
                 const processedItems = data.ptResultItems.map(item => {
@@ -250,7 +253,8 @@ function App() {
             jpConfig,
             hasMultiplierReel,
             requiresCollectToWin,
-            hasDoubleSymbol
+            hasDoubleSymbol,
+            multiplierCalcType
         };
 
         const jsonStr = JSON.stringify(data, null, 2);
@@ -325,6 +329,8 @@ function App() {
 
                 if (data.hasDoubleSymbol !== undefined) setHasDoubleSymbol(parseBool(data.hasDoubleSymbol));
                 else setHasDoubleSymbol(false);
+                if (data.multiplierCalcType !== undefined) setMultiplierCalcType(data.multiplierCalcType);
+                else setMultiplierCalcType('product');
 
                 setLineImages([]);
                 setActiveLineImageId(null);
@@ -423,6 +429,7 @@ function App() {
                     hasMultiplierReel={hasMultiplierReel} setHasMultiplierReel={setHasMultiplierReel}
                     requiresCollectToWin={requiresCollectToWin} setRequiresCollectToWin={setRequiresCollectToWin}
                     hasDoubleSymbol={hasDoubleSymbol} setHasDoubleSymbol={setHasDoubleSymbol}
+                    multiplierCalcType={multiplierCalcType} setMultiplierCalcType={setMultiplierCalcType}
                     lineImages={lineImages} removeLineImage={removeLineImage} activeLineImageId={activeLineImageId} setActiveLineImageId={setActiveLineImageId} handleLineImageUpload={handleLineImageUpload}
                     isPtProcessing={isPtProcessing} handlePtExtract={handlePtExtract} ptImages={ptImages} removePtImage={removePtImage} clearPtAll={clearPtAll} handlePtFileChange={handlePtFileChange} handlePtDrop={handlePtDrop}
                     dragState={dragState} setDragState={setDragState} containerRef={containerRef} layoutStyle={layoutStyle} handleMouseDown={handleMouseDown} handleMouseMove={handleMouseMove} handleMouseUp={handleMouseUp}

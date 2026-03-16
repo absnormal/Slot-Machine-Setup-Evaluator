@@ -10,6 +10,12 @@ export const isDoubleSymbol = (sym) => sym && typeof sym === 'string' && sym.toL
 
 export const getSymbolCount = (sym) => isDoubleSymbol(sym) ? 2 : 1;
 
+export const getSymbolMultiplier = (sym) => {
+    if (!sym || typeof sym !== 'string') return 1;
+    const match = sym.match(/_x(\d+(?:\.\d+)?)$/i);
+    return match ? parseFloat(match[1]) : 1;
+};
+
 export const isCashSymbol = (sym, jpConfig = {}) => {
     if (!sym || typeof sym !== 'string') return false;
     if (sym.toUpperCase().startsWith('CASH')) return true;
@@ -52,6 +58,11 @@ export const getBaseSymbol = (sym, jpConfig = {}) => {
     let base = sym;
     if (isDoubleSymbol(base)) {
         base = base.slice(0, -7); // strip '_double'
+    }
+    // Handle xN multiplier: e.g. "Grape_x5" -> "Grape"
+    const multMatch = base.match(/_x(\d+(?:\.\d+)?)$/i);
+    if (multMatch) {
+        base = base.replace(/_x(\d+(?:\.\d+)?)$/i, '');
     }
     if (isJpSymbol(base, jpConfig)) return base.toUpperCase();
     if (isCashSymbol(base, jpConfig)) {

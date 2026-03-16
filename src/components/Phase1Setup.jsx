@@ -31,7 +31,8 @@ export default function Phase1Setup(props) {
         handlePtTableChange, handlePtTableDelete, handleAddPtRow, handleRemoveThumb,
         hasJackpot, setHasJackpot, jpConfig, setJpConfig, buildErrorMsg, handleBuildTemplate,
         showPtModal, setShowPtModal,
-        hasDoubleSymbol, setHasDoubleSymbol
+        hasDoubleSymbol, setHasDoubleSymbol,
+        multiplierCalcType, setMultiplierCalcType
     } = props;
 
     const [showNamingGuide, setShowNamingGuide] = React.useState(false);
@@ -475,6 +476,26 @@ export default function Phase1Setup(props) {
                                 />
                                 <span className="text-sm font-bold text-indigo-700 group-hover:text-indigo-800 transition-colors">👥 啟用雙重符號功能</span>
                             </label>
+                            <div className="w-px h-6 bg-indigo-200"></div>
+                            <div className="flex items-center gap-3">
+                                <span className="text-sm font-bold text-slate-700">✖️ 乘倍符號計算方式:</span>
+                                <div className="flex bg-white border border-indigo-200 p-0.5 rounded-lg shadow-sm">
+                                    <button
+                                        onClick={() => setMultiplierCalcType('product')}
+                                        className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${multiplierCalcType === 'product' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                        title="連線中的所有倍率相乘"
+                                    >
+                                        乘倍積 (Product)
+                                    </button>
+                                    <button
+                                        onClick={() => setMultiplierCalcType('sum')}
+                                        className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${multiplierCalcType === 'sum' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                        title="連線中的所有倍率相加"
+                                    >
+                                        乘倍和 (Sum)
+                                    </button>
+                                </div>
+                            </div>
                         </div>
 
                         {/* Step 2: 賠率設定 */}
@@ -534,6 +555,13 @@ export default function Phase1Setup(props) {
                                                     <div>
                                                         <p className="text-sm font-bold text-slate-800">Jackpot (JP 獎項)</p>
                                                         <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">名稱必須與「Jackpot 倍率設定」中所定義的名稱<span className="text-amber-600 font-bold mx-0.5 underline decoration-amber-300 decoration-2">完全一致</span>。<br />範例：GRAND, MAJOR, MINI (大小寫需相符)</p>
+                                                    </div>
+                                                </div>
+                                                <div className="flex gap-3">
+                                                    <div className="w-8 h-8 rounded-lg bg-indigo-500 text-white flex items-center justify-center shrink-0 font-black text-xs shadow-sm">xN</div>
+                                                    <div>
+                                                        <p className="text-sm font-bold text-slate-800">xN Multiplier (乘倍符號)</p>
+                                                        <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">名稱後綴必須為 <code className="bg-white px-1 py-0.5 rounded border border-indigo-200 text-indigo-600 font-bold mx-0.5">_x數字</code>。<br />範例：Grape_x5, Seven_x10 (計算時視為該原符號)</p>
                                                     </div>
                                                 </div>
                                                 <div className="flex gap-3">

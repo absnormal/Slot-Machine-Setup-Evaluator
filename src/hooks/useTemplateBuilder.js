@@ -33,6 +33,7 @@ export function useTemplateBuilder({
     const [hasMultiplierReel, setHasMultiplierReel] = useState(false);
     const [requiresCollectToWin, setRequiresCollectToWin] = useState(true);
     const [hasDoubleSymbol, setHasDoubleSymbol] = useState(false);
+    const [multiplierCalcType, setMultiplierCalcType] = useState('product'); // 'product' or 'sum'
     const prevHasDoubleSymbol = useRef(hasDoubleSymbol);
 
     // Auto-reformat paytable input when doubling is toggled
@@ -662,13 +663,15 @@ export function useTemplateBuilder({
                 jpConfig: { ...defaultJpConfig, ...(data.jpConfig || jpConfig) },
                 hasMultiplierReel: data.hasMultiplierReel || false,
                 requiresCollectToWin: data.requiresCollectToWin !== undefined ? data.requiresCollectToWin : true,
-                hasDoubleSymbol: data.hasDoubleSymbol || false
+                hasDoubleSymbol: data.hasDoubleSymbol || false,
+                multiplierCalcType: data.multiplierCalcType || 'product'
             };
 
             setTemplate(tpl);
             setHasMultiplierReel(parseBool(data.hasMultiplierReel || false));
             setRequiresCollectToWin(parseBool(data.requiresCollectToWin !== undefined ? data.requiresCollectToWin : true));
             setHasDoubleSymbol(parseBool(data.hasDoubleSymbol || false));
+            setMultiplierCalcType(data.multiplierCalcType || 'product');
 
             if (setIsPhase2Minimized) setIsPhase2Minimized(false);
             if (setIsPhase3Minimized) setIsPhase3Minimized(true);
@@ -754,7 +757,8 @@ export function useTemplateBuilder({
                 jpConfig: hasJackpot ? Object.fromEntries(Object.entries(jpConfig).filter(([_, v]) => v !== '')) : {},
                 hasMultiplierReel,
                 requiresCollectToWin,
-                hasDoubleSymbol
+                hasDoubleSymbol,
+                multiplierCalcType
             };
 
             setTemplate(tpl);
@@ -829,6 +833,7 @@ export function useTemplateBuilder({
         template, setTemplate,
         templateError, setTemplateError,
         buildErrorMsg, setBuildErrorMsg,
+        multiplierCalcType, setMultiplierCalcType,
         jpConfig, setJpConfig,
         hasJackpot, setHasJackpot,
         hasMultiplierReel, setHasMultiplierReel,
