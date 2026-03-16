@@ -31,6 +31,7 @@ export function useTemplateBuilder({
     const [jpConfig, setJpConfig] = useState(defaultJpConfig);
     const [hasJackpot, setHasJackpot] = useState(false);
     const [hasMultiplierReel, setHasMultiplierReel] = useState(false);
+    const [requiresCollectToWin, setRequiresCollectToWin] = useState(true);
 
     // 1-1. Panel Line Image Recognition State
     const [lineImages, setLineImages] = useState([]);
@@ -593,11 +594,13 @@ export function useTemplateBuilder({
                 symbolImages,
                 symbolImagesAll,
                 jpConfig: { ...defaultJpConfig, ...(data.jpConfig || jpConfig) },
-                hasMultiplierReel: data.hasMultiplierReel || false
+                hasMultiplierReel: data.hasMultiplierReel || false,
+                requiresCollectToWin: data.requiresCollectToWin !== undefined ? data.requiresCollectToWin : true
             };
 
             setTemplate(tpl);
             setHasMultiplierReel(data.hasMultiplierReel || false);
+            setRequiresCollectToWin(data.requiresCollectToWin !== undefined ? data.requiresCollectToWin : true);
 
             if (setIsPhase2Minimized) setIsPhase2Minimized(false);
             if (setIsPhase3Minimized) setIsPhase3Minimized(true);
@@ -673,7 +676,8 @@ export function useTemplateBuilder({
                 symbolImages,
                 symbolImagesAll,
                 jpConfig: hasJackpot ? Object.fromEntries(Object.entries(jpConfig).filter(([_, v]) => v !== '')) : {},
-                hasMultiplierReel
+                hasMultiplierReel,
+                requiresCollectToWin
             };
 
             setTemplate(tpl);
@@ -751,6 +755,7 @@ export function useTemplateBuilder({
         jpConfig, setJpConfig,
         hasJackpot, setHasJackpot,
         hasMultiplierReel, setHasMultiplierReel,
+        requiresCollectToWin, setRequiresCollectToWin,
         lineImages, setLineImages,
         activeLineImageId, setActiveLineImageId,
         activeLineImage, imageSrc, imageObj,

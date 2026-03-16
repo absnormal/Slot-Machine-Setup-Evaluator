@@ -19,6 +19,7 @@ export default function Phase1Setup(props) {
         gridRows, setGridRows,
         gridCols, setGridCols,
         hasMultiplierReel, setHasMultiplierReel,
+        requiresCollectToWin, setRequiresCollectToWin,
         lineImages, removeLineImage, activeLineImageId, setActiveLineImageId, handleLineImageUpload,
         isPtProcessing, handlePtExtract, ptImages, removePtImage, clearPtAll, handlePtFileChange, handlePtDrop,
         dragState, setDragState, containerRef, layoutStyle, handleMouseDown, handleMouseMove, handleMouseUp,
@@ -172,6 +173,16 @@ export default function Phase1Setup(props) {
                                             />
                                             <span className="text-sm font-bold text-slate-700">啟用特殊乘倍輪 (最後一軸)</span>
                                         </label>
+
+                                        <label className="flex items-center gap-2 ml-4 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={requiresCollectToWin}
+                                                onChange={e => setRequiresCollectToWin(e.target.checked)}
+                                                className="w-4 h-4 text-indigo-600 border-indigo-300 rounded focus:ring-indigo-500"
+                                            />
+                                            <span className="text-sm font-bold text-slate-700">收集金幣必須包含 COLLECT 符號</span>
+                                        </label>
                                     </div>
                                 </div>
                             )}
@@ -241,6 +252,15 @@ export default function Phase1Setup(props) {
                                                             className="w-4 h-4 text-indigo-600 border-indigo-300 rounded focus:ring-indigo-500"
                                                         />
                                                         <span className="text-sm font-bold text-slate-700">啟用特殊乘倍輪 (最後一軸)</span>
+                                                    </label>
+                                                    <label className="flex items-center gap-2 mt-2 cursor-pointer">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={requiresCollectToWin}
+                                                            onChange={e => setRequiresCollectToWin(e.target.checked)}
+                                                            className="w-4 h-4 text-indigo-600 border-indigo-300 rounded focus:ring-indigo-500"
+                                                        />
+                                                        <span className="text-sm font-bold text-slate-700">收集金幣必須包含 COLLECT 符號</span>
                                                     </label>
                                                 </div>
                                                 <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
@@ -747,6 +767,27 @@ export default function Phase1Setup(props) {
                                     onChange={(e) => setHasMultiplierReel(e.target.checked)}
                                 />
                                 <div className="w-14 h-7 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[4px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-emerald-500 shadow-inner"></div>
+                            </label>
+                        </div>
+
+                        <div className="bg-slate-50 p-5 rounded-xl border border-slate-200 mt-6 flex items-center justify-between shadow-sm">
+                            <div className="flex flex-col">
+                                <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
+                                    💰 收集機制 (Collection Settings)
+                                </h3>
+                                <p className="text-xs text-slate-500 mt-1">
+                                    開啟後：盤面必須出現 COLLECT 符號才會收集所有金幣 (預設模式)。<br />
+                                    關閉後：只要盤面有金幣符號即會直接收集加總，不必依靠 COLLECT。
+                                </p>
+                            </div>
+                            <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                                <input
+                                    type="checkbox"
+                                    className="sr-only peer"
+                                    checked={requiresCollectToWin}
+                                    onChange={(e) => setRequiresCollectToWin(e.target.checked)}
+                                />
+                                <div className="w-14 h-7 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[4px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-indigo-500 shadow-inner"></div>
                             </label>
                         </div>
 

@@ -242,8 +242,12 @@ export function computeGridResults(template, targetGrid, betAmount) {
             }
         }
 
-        if (collectCount > 0 && totalCashWinValue > 0) {
-            const totalPayout = totalCashWinValue * collectCount;
+        const effectiveCollectCount = (evalTemplate.requiresCollectToWin === false) 
+            ? Math.max(1, collectCount) 
+            : collectCount;
+
+        if (effectiveCollectCount > 0 && totalCashWinValue > 0) {
+            const totalPayout = totalCashWinValue * effectiveCollectCount;
             const payout = parseFloat(totalPayout.toFixed(8));
 
             calculatedResults.push({
@@ -252,8 +256,8 @@ export function computeGridResults(template, targetGrid, betAmount) {
                 count: cashCoords.length,
                 payoutMult: totalCashWinValue,
                 winAmount: payout,
-                symbolsOnLine: Array(collectCount).fill('COLLECT').concat(cashCoords.map(coord => safeGrid[coord.row][coord.col])),
-                positions: [`收集 x${collectCount}`],
+                symbolsOnLine: Array(Math.max(1, collectCount)).fill('COLLECT').concat(cashCoords.map(coord => safeGrid[coord.row][coord.col])),
+                positions: [evalTemplate.requiresCollectToWin === false && collectCount === 0 ? "自動收集" : `收集 x${effectiveCollectCount}`],
                 winCoords: [...collectCoords, ...cashCoords]
             });
             totalWin = parseFloat((totalWin + payout).toFixed(8));

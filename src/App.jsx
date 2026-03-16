@@ -70,6 +70,7 @@ function App() {
         template, setTemplate, templateError, setTemplateError,
         buildErrorMsg, setBuildErrorMsg, jpConfig, setJpConfig,
         hasJackpot, setHasJackpot, hasMultiplierReel, setHasMultiplierReel,
+        requiresCollectToWin, setRequiresCollectToWin,
         lineImages, setLineImages, activeLineImageId, setActiveLineImageId,
         activeLineImage, imageSrc, imageObj,
         patternRows, setPatternRows, patternCols, setPatternCols,
@@ -148,7 +149,7 @@ function App() {
 
         const result = await saveTemplateToCloud({
             templateName, generatedName, platformName, gameName, gridRows, gridCols, lineMode, extractResults,
-            paytableInput, ptResultItems, jpConfig, hasJackpot, hasMultiplierReel,
+            paytableInput, ptResultItems, jpConfig, hasJackpot, hasMultiplierReel, requiresCollectToWin,
             localUserId, actualForceId
         });
 
@@ -191,6 +192,9 @@ function App() {
             if (data.hasMultiplierReel !== undefined) setHasMultiplierReel(data.hasMultiplierReel);
             else setHasMultiplierReel(false);
 
+            if (data.requiresCollectToWin !== undefined) setRequiresCollectToWin(data.requiresCollectToWin);
+            else setRequiresCollectToWin(true);
+
             if (data.ptResultItems) {
                 const processedItems = data.ptResultItems.map(item => ({
                     ...item,
@@ -231,7 +235,8 @@ function App() {
             paytableInput,
             ptResultItems,
             jpConfig,
-            hasMultiplierReel
+            hasMultiplierReel,
+            requiresCollectToWin
         };
 
         const jsonStr = JSON.stringify(data, null, 2);
@@ -293,6 +298,9 @@ function App() {
 
                 if (data.hasMultiplierReel !== undefined) setHasMultiplierReel(data.hasMultiplierReel);
                 else setHasMultiplierReel(false);
+
+                if (data.requiresCollectToWin !== undefined) setRequiresCollectToWin(data.requiresCollectToWin);
+                else setRequiresCollectToWin(true);
 
                 setLineImages([]);
                 setActiveLineImageId(null);
@@ -389,6 +397,7 @@ function App() {
                     gridRows={gridRows} setGridRows={setGridRows}
                     gridCols={gridCols} setGridCols={setGridCols}
                     hasMultiplierReel={hasMultiplierReel} setHasMultiplierReel={setHasMultiplierReel}
+                    requiresCollectToWin={requiresCollectToWin} setRequiresCollectToWin={setRequiresCollectToWin}
                     lineImages={lineImages} removeLineImage={removeLineImage} activeLineImageId={activeLineImageId} setActiveLineImageId={setActiveLineImageId} handleLineImageUpload={handleLineImageUpload}
                     isPtProcessing={isPtProcessing} handlePtExtract={handlePtExtract} ptImages={ptImages} removePtImage={removePtImage} clearPtAll={clearPtAll} handlePtFileChange={handlePtFileChange} handlePtDrop={handlePtDrop}
                     dragState={dragState} setDragState={setDragState} containerRef={containerRef} layoutStyle={layoutStyle} handleMouseDown={handleMouseDown} handleMouseMove={handleMouseMove} handleMouseUp={handleMouseUp}
