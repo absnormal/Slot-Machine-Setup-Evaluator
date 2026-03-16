@@ -9,7 +9,8 @@ export function useGeminiVision({
     customApiKey,
     setTemplateMessage,
     setTemplateError,
-    visionCanvasRef
+    visionCanvasRef,
+    isPhase3Minimized
 }) {
     const [visionImages, setVisionImages] = useState([]);
     const [activeVisionId, setActiveVisionId] = useState(null);
@@ -30,10 +31,10 @@ export function useGeminiVision({
 
     // Canvas drawing effect
     useEffect(() => {
-        if (visionImageObj && visionCanvasRef?.current) {
+        if (visionImageObj && visionCanvasRef?.current && !isPhase3Minimized) {
             const canvas = visionCanvasRef.current;
             const ctx = canvas.getContext('2d');
-
+/* ... rest of drawing logic ... */
             if (activeVisionImg?.grid) {
                 // 已辨識完成：僅顯示框選範圍 (裁切)
                 const rx = toPx(visionP1.x, visionImageObj.width);
@@ -179,7 +180,7 @@ export function useGeminiVision({
                 }
             }
         }
-    }, [visionImageObj, visionP1, visionP1Mult, template, visionImages, activeVisionId, visionCanvasRef]);
+    }, [visionImageObj, visionP1, visionP1Mult, template, visionImages, activeVisionId, visionCanvasRef, isPhase3Minimized]);
 
     const getVisionMousePos = (e, ref, activeImgObj) => {
         if (!ref.current || !activeImgObj) return { x: 0, y: 0 };

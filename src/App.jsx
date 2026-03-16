@@ -128,7 +128,8 @@ function App() {
         customApiKey,
         setTemplateMessage,
         setTemplateError,
-        visionCanvasRef
+        visionCanvasRef,
+        isPhase3Minimized
     });
 
 
@@ -311,16 +312,56 @@ function App() {
 
     const [visionCalcResults, setVisionCalcResults] = useState(null);
     const [visionCalculateError, setVisionCalculateError] = useState('');
+    const [visionBetInput, setVisionBetInput] = useState(100);
+
     useEffect(() => {
         if (!visionGrid) {
             setVisionCalcResults(null);
             setVisionCalculateError('');
             return;
         }
-        const { results, error } = computeGridResultsCb(visionGrid, betInput);
+        const { results, error } = computeGridResultsCb(visionGrid, visionBetInput);
         setVisionCalcResults(results);
         setVisionCalculateError(error);
-    }, [visionGrid, betInput, computeGridResultsCb]);
+    }, [visionGrid, visionBetInput, computeGridResultsCb]);
+
+    // --- 盤面傳遞功能 (Phase 3 -> Phase 2) ---
+    const handleTransferVisionToManual = useCallback(() => {
+        if (!visionGrid) return;
+        setPanelGrid(JSON.parse(JSON.stringify(visionGrid)));
+        setBetInput(visionBetInput); // 同步押注金額到 Phase 2
+        setIsPhase3Minimized(true);
+        setIsPhase2Minimized(false);
+        setTemplateMessage('✅ 已將 AI 辨識盤面及押注傳送到 Phase 2');
+        setTimeout(() => setTemplateMessage(''), 3000);
+    }, [visionGrid, visionBetInput, setPanelGrid, setBetInput, setIsPhase3Minimized, setIsPhase2Minimized, setTemplateMessage]);
+/* ... handleReturnToVision ... */
+    const handleReturnToVision = useCallback(() => {
+        setIsPhase2Minimized(true);
+        setIsPhase3Minimized(false);
+    }, [setIsPhase2Minimized, setIsPhase3Minimized]);
+
+    // 快捷鍵監聽 (方向鍵上: 傳送, 方向鍵下: 返回)
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            if (['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return;
+
+            if (e.key === 'ArrowUp') {
+                if (!isPhase3Minimized && visionGrid) {
+                    e.preventDefault();
+                    handleTransferVisionToManual();
+                }
+            } else if (e.key === 'ArrowDown') {
+                if (!isPhase2Minimized) {
+                    e.preventDefault();
+                    handleReturnToVision();
+                }
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [isPhase2Minimized, isPhase3Minimized, visionGrid, handleTransferVisionToManual, handleReturnToVision]);
 
     return (
         <div className="min-h-screen bg-slate-50 text-slate-800 p-6 font-sans relative">
@@ -375,6 +416,7 @@ function App() {
                     betInput={betInput} setBetInput={setBetInput}
                     panelGrid={panelGrid} handleCellChange={handleCellChange}
                     getSafeGrid={getSafeGrid}
+                    onReturn={handleReturnToVision}
                 />
 
                 <Phase3Vision
@@ -388,7 +430,8 @@ function App() {
                     isVisionProcessing={isVisionProcessing} performAIVisionBatchMatching={performAIVisionBatchMatching}
                     isVisionStopping={isVisionStopping} visionBatchProgress={visionBatchProgress} cancelVisionProcessing={cancelVisionProcessing}
                     visionError={visionError} visionGrid={visionGrid} visionCalcResults={visionCalcResults} visionCalculateError={visionCalculateError}
-                    getSafeGrid={getSafeGrid} betInput={betInput} setBetInput={setBetInput}
+                    getSafeGrid={getSafeGrid} betInput={visionBetInput} setBetInput={setVisionBetInput}
+                    onTransfer={handleTransferVisionToManual}
                 />
 
             </div>
