@@ -11,16 +11,31 @@ export default function SettingsModal({ show, customApiKey, setCustomApiKey, onC
                     <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-full transition-colors"><X size={20} /></button>
                 </div>
                 <div className="p-6 space-y-6 max-h-[70vh] overflow-y-auto custom-scrollbar">
-                    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                        <label className="block text-sm font-bold text-slate-800 mb-2 flex items-center gap-1.5"><Key size={16} className="text-amber-500" /> 1. Gemini API Key (AI 辨識必填)</label>
-                        <p className="text-xs text-slate-500 mb-3 leading-relaxed">提供給 AI 解析賠率表使用，將安全儲存於您的瀏覽器本地端 (localStorage)。</p>
-                        <input
-                            type="password"
-                            placeholder="請輸入 AIzaSy..."
-                            value={customApiKey}
-                            onChange={(e) => setCustomApiKey(e.target.value)}
-                            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-mono tracking-wider"
-                        />
+                    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-4">
+                        <div>
+                            <label className="block text-sm font-bold text-slate-800 mb-2 flex items-center gap-1.5"><Key size={16} className="text-amber-500" /> 1. Gemini API Key (AI 辨識必填)</label>
+                            <p className="text-xs text-slate-500 mb-3 leading-relaxed">提供給 AI 解析賠率表與截圖使用，將安全儲存於您的瀏覽器本地端 (localStorage)。</p>
+                            <input
+                                type="password"
+                                placeholder="請輸入 AIzaSy..."
+                                value={customApiKey}
+                                onChange={(e) => setCustomApiKey(e.target.value)}
+                                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-mono tracking-wider mb-2"
+                            />
+                        </div>
+                        
+                        <div className="pt-2 border-t border-slate-100">
+                            <p className="text-[11px] text-slate-500 mb-2">💡 尚未有 API Key？您可以前往 Google AI Studio 免費申請：</p>
+                            <a 
+                                href="https://aistudio.google.com/app/api-keys" 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition-colors border border-slate-200"
+                            >
+                                <img src="https://www.gstatic.com/lamda/images/favicon_v2_16x16.png" alt="Google" className="w-3.5 h-3.5" />
+                                獲取 Gemini API Key (Google AI Studio)
+                            </a>
+                        </div>
                     </div>
                     <div className="p-4 bg-indigo-50 rounded-lg border border-indigo-100">
                         <h3 className="text-sm font-bold text-indigo-800 mb-1">💡 關於 Google Sheets 雲端資料庫</h3>

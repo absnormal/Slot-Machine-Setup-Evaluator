@@ -32,7 +32,8 @@ export default function Phase1Setup(props) {
         hasJackpot, setHasJackpot, jpConfig, setJpConfig, buildErrorMsg, handleBuildTemplate,
         showPtModal, setShowPtModal,
         hasDoubleSymbol, setHasDoubleSymbol,
-        multiplierCalcType, setMultiplierCalcType
+        multiplierCalcType, setMultiplierCalcType,
+        hasApiKey
     } = props;
 
     const [showNamingGuide, setShowNamingGuide] = React.useState(false);
@@ -612,11 +613,20 @@ export default function Phase1Setup(props) {
                                                     </div>
                                                 </div>
                                             )}
-
-                                            <button onClick={() => setShowPtModal(true)} disabled={isPtProcessing || ptImages.length === 0} className={`m-2 mt-0 py-2.5 rounded-lg font-bold flex justify-center items-center gap-1.5 shadow-sm transition-colors ${isPtProcessing || ptImages.length === 0 ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700 text-white'}`}>
+                                            <button 
+                                                onClick={() => setShowPtModal(true)} 
+                                                disabled={isPtProcessing || ptImages.length === 0 || !hasApiKey} 
+                                                className={`m-2 mt-0 py-2.5 rounded-lg font-bold flex justify-center items-center gap-1.5 shadow-sm transition-colors ${isPtProcessing || ptImages.length === 0 || !hasApiKey ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700 text-white'}`}
+                                            >
                                                 {isPtProcessing ? <Loader2 size={16} className="animate-spin" /> : null}
                                                 {isPtProcessing ? '分析中...' : 'AI 分析賠率'}
                                             </button>
+                                            {!hasApiKey && ptImages.length > 0 && (
+                                                <div className="mx-2 mb-2 px-2 py-1 bg-amber-50 border border-amber-200 rounded text-[10px] text-amber-700 font-bold flex items-center gap-1">
+                                                    <AlertCircle size={10} />
+                                                    未偵測到 API Key。請點擊右上角「齒輪」圖示進行設定。
+                                                </div>
+                                            )}
                                         </div>
                                         <div className="w-full lg:w-2/3 bg-white border border-slate-300 rounded-lg overflow-auto shadow-sm relative">
                                             {ptResultItems.length > 0 ? (

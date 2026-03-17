@@ -14,7 +14,8 @@ export default function Phase3Vision({
     isVisionStopping, visionBatchProgress, cancelVisionProcessing,
     visionError, visionGrid, visionCalcResults, visionCalculateError, getSafeGrid,
     betInput, setBetInput,
-    onTransfer
+    onTransfer,
+    hasApiKey
 }) {
     // 獨立管理 Phase 3 專屬的 ResultView 懸停與線條顯示狀態
     const [visionHoveredLineId, setVisionHoveredLineId] = useState(null);
@@ -139,15 +140,25 @@ export default function Phase3Vision({
                                     {/* Phase 3 執行按鈕與進度 */}
                                     <div className="p-4 border-t border-slate-800 bg-slate-950 shrink-0">
                                         {!isVisionProcessing ? (
-                                            <button
-                                                onClick={performAIVisionBatchMatching}
-                                                className="w-full py-3 rounded-lg text-lg font-bold flex items-center justify-center gap-2 transition-all shadow-md bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-500/20"
-                                            >
-                                                <ListChecks size={20} />
-                                                {visionImages.filter(img => !img.grid).length > 0
-                                                    ? `批次辨識未處理圖片 (${visionImages.filter(img => !img.grid).length} 張)`
-                                                    : '重新辨識全部圖片'}
-                                            </button>
+                                            <div className="flex flex-col gap-2">
+                                                <button
+                                                    onClick={performAIVisionBatchMatching}
+                                                    disabled={!hasApiKey}
+                                                    className={`w-full py-3 rounded-lg text-lg font-bold flex items-center justify-center gap-2 transition-all shadow-md 
+                                                        ${!hasApiKey ? 'bg-slate-700 text-slate-500 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-500/20'}`}
+                                                >
+                                                    <ListChecks size={20} />
+                                                    {visionImages.filter(img => !img.grid).length > 0
+                                                        ? `批次辨識未處理圖片 (${visionImages.filter(img => !img.grid).length} 張)`
+                                                        : '重新辨識全部圖片'}
+                                                </button>
+                                                {!hasApiKey && visionImages.length > 0 && (
+                                                    <div className="px-3 py-2 bg-amber-950/40 border border-amber-900 rounded-lg text-xs text-amber-400 font-bold flex items-center gap-2">
+                                                        <AlertCircle size={14} className="shrink-0" />
+                                                        未偵測到 API Key。請點擊右上角「齒輪」圖示進行設定後，再使用 AI 辨識功能。
+                                                    </div>
+                                                )}
+                                            </div>
                                         ) : (
                                             <div className="flex gap-3">
                                                 <div className="flex-1 py-3 bg-indigo-600/50 rounded-lg text-lg font-bold flex items-center justify-center gap-2 text-white/80 select-none shadow-inner border border-indigo-500/30">

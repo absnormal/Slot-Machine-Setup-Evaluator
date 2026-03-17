@@ -401,6 +401,8 @@ function App() {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [isPhase2Minimized, isPhase3Minimized, visionGrid, handleTransferVisionToManual, handleReturnToVision]);
 
+    const hasApiKey = !!(customApiKey.trim() || apiKey);
+
     return (
         <div className="min-h-screen bg-slate-50 text-slate-800 p-6 font-sans relative">
 
@@ -441,6 +443,7 @@ function App() {
                     handlePtTableChange={handlePtTableChange} handlePtTableDelete={handlePtTableDelete} handleAddPtRow={handleAddPtRow} handleRemoveThumb={handleRemoveThumb}
                     hasJackpot={hasJackpot} setHasJackpot={setHasJackpot} jpConfig={jpConfig} setJpConfig={setJpConfig} buildErrorMsg={buildErrorMsg} handleBuildTemplate={handleBuildTemplate}
                     showPtModal={showPtModal} setShowPtModal={setShowPtModal}
+                    hasApiKey={hasApiKey}
                 />
 
                 <Phase2Manual
@@ -473,6 +476,7 @@ function App() {
                     visionError={visionError} visionGrid={visionGrid} visionCalcResults={visionCalcResults} visionCalculateError={visionCalculateError}
                     getSafeGrid={getSafeGrid} betInput={visionBetInput} setBetInput={setVisionBetInput}
                     onTransfer={handleTransferVisionToManual}
+                    hasApiKey={hasApiKey}
                 />
 
             </div>
