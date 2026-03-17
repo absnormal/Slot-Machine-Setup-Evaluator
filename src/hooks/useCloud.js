@@ -68,6 +68,8 @@ export function useCloud() {
             });
             setCloudTemplates(prev => prev.filter(t => t.id !== id));
             sessionStorage.removeItem('slot_templates_cache');
+            setCloudMessage('✅ 模板已成功刪除！');
+            setTimeout(() => setCloudMessage(''), 3000);
             setDeletingId(null);
         } catch (err) {
             console.warn("刪除失敗", err);

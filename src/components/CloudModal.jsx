@@ -21,7 +21,17 @@ export default function CloudModal({
         return Array.from(pSet).sort();
     }, [cloudTemplates]);
 
-    // 當 Modal 開啟時，預設切換到當前平台的分頁
+    const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+
+    // 當 Modal 開啟時，重置搜尋與刪除確認狀態
+    React.useEffect(() => {
+        if (show) {
+            setSearchTerm('');
+            setConfirmDeleteId(null);
+        }
+    }, [show]);
+
+    // 當 Modal 開啟或平台變動時，自動切換到對應分頁
     React.useEffect(() => {
         if (show && currentPlatformName) {
             const upper = currentPlatformName.toUpperCase();
@@ -30,9 +40,6 @@ export default function CloudModal({
             } else {
                 setActiveTab('ALL');
             }
-        }
-        if (show) {
-            setSearchTerm('');
         }
     }, [show, currentPlatformName, platforms]);
 
@@ -175,13 +182,33 @@ export default function CloudModal({
                                     </div>
                                     <div className="flex gap-2 items-center shrink-0">
                                         {t.creatorId === localUserId && (
-                                            deletingId === t.id ? (
+                                            confirmDeleteId === t.id ? (
                                                 <div className="flex gap-1 bg-rose-50 p-1 rounded-lg border border-rose-100 animate-in fade-in slide-in-from-right-2 duration-200">
-                                                    <button onClick={() => onDeleteTemplate(t.id)} className="px-3 py-2 bg-rose-600 text-white text-xs font-bold rounded hover:bg-rose-700">刪除</button>
-                                                    <button onClick={() => setDeletingId(null)} className="px-3 py-2 bg-slate-200 text-slate-700 text-xs font-bold rounded hover:bg-slate-300">取消</button>
+                                                    <button 
+                                                        onClick={() => onDeleteTemplate(t.id)} 
+                                                        disabled={deletingId === t.id}
+                                                        className={`px-3 py-2 text-white text-xs font-bold rounded flex items-center gap-1 ${deletingId === t.id ? 'bg-rose-400 cursor-not-allowed' : 'bg-rose-600 hover:bg-rose-700'}`}
+                                                    >
+                                                        {deletingId === t.id && <Loader2 size={12} className="animate-spin" />}
+                                                        {deletingId === t.id ? '刪除中' : '刪除'}
+                                                    </button>
+                                                    <button 
+                                                        onClick={() => setConfirmDeleteId(null)} 
+                                                        disabled={deletingId === t.id}
+                                                        className="px-3 py-2 bg-slate-200 text-slate-700 text-xs font-bold rounded hover:bg-slate-300 disabled:opacity-50"
+                                                    >
+                                                        取消
+                                                    </button>
                                                 </div>
                                             ) : (
-                                                <button onClick={() => setDeletingId(t.id)} className="p-2.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors" disabled={downloadingId === t.id} title="刪除此模板"><Trash2 size={18} /></button>
+                                                <button 
+                                                    onClick={() => setConfirmDeleteId(t.id)} 
+                                                    className="p-2.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors" 
+                                                    disabled={downloadingId === t.id || (deletingId && deletingId !== t.id)} 
+                                                    title="刪除此模板"
+                                                >
+                                                    <Trash2 size={18} />
+                                                </button>
                                             )
                                         )}
                                         <button
