@@ -155,7 +155,58 @@ export function computeGridResults(template, targetGrid, betAmount) {
                     }
                 }
             }
-        } else {
+        } else if (evalTemplate.lineMode === 'symbolcount') {
+            // === Symbol Count (Pay Anywhere / 消除模式) 計算 ===
+            for (const targetSymbol of allPaySymbols) {
+                if (isScatterSymbol(targetSymbol)) continue;
+                if (isCashSymbol(targetSymbol, evalTemplate.jpConfig)) continue;
+                if (isCollectSymbol(targetSymbol) && !isWildSymbol(targetSymbol)) continue;
+
+                let totalCount = 0;
+                const winCoords = [];
+                let lineMultiplierMultiplier = (template.multiplierCalcType === 'sum' ? 0 : 1);
+                let hasLineMultiplier = false;
+
+                for (let r = 0; r < evalTemplate.rows; r++) {
+                    for (let c = 0; c < evalTemplate.cols; c++) {
+                        const sym = safeGrid[r][c];
+                        if (getBaseSymbol(sym, evalTemplate.jpConfig) === targetSymbol || isWildSymbol(sym)) {
+                            totalCount += getSymbolCount(sym);
+                            winCoords.push({ row: r, col: c });
+                            
+                            const m = getSymbolMultiplier(sym);
+                            if (m > 1) {
+                                hasLineMultiplier = true;
+                                if (template.multiplierCalcType === 'sum') lineMultiplierMultiplier += m;
+                                else lineMultiplierMultiplier *= m;
+                            }
+                        }
+                    }
+                }
+
+                if (totalCount > 0) {
+                    const payArray = evalTemplate.paytable[targetSymbol];
+                    const payIndex = Math.min(totalCount - 1, payArray.length - 1);
+                    const payoutMult = payIndex >= 0 ? payArray[payIndex] : 0;
+
+                    if (payoutMult > 0) {
+                        const finalLineMult = hasLineMultiplier ? (template.multiplierCalcType === 'sum' ? Math.max(1, lineMultiplierMultiplier) : lineMultiplierMultiplier) : 1;
+                        const payout = parseFloat((payoutMult * parsedBet * finalLineMult).toFixed(8));
+                        calculatedResults.push({
+                            lineId: `COUNT_${targetSymbol}`,
+                            symbol: targetSymbol,
+                            count: totalCount,
+                            payoutMult,
+                            winAmount: payout,
+                            multiplier: finalLineMult > 1 ? finalLineMult : null,
+                            symbolsOnLine: [],
+                            positions: [`${totalCount} 消除`],
+                            winCoords
+                        });
+                        totalWin = parseFloat((totalWin + payout).toFixed(8));
+                    }
+                }
+            }
             // === 固定線獎計算 ===
             Object.entries(evalTemplate.lines).forEach(([lineIdStr, positions]) => {
                 const lineId = parseInt(lineIdStr);
@@ -303,18 +354,29 @@ export function computeGridResults(template, targetGrid, betAmount) {
         }
 
         // === CASH/COLLECT 計算 ===
-        let collectCount = 0;
+        let totalCollectorMultiplicity = 0;
         const collectCoords = [];
         const cashCoords = [];
         let totalCashWinValue = 0;
+        let otherGridMultiplier = (template.multiplierCalcType === 'sum' ? 0 : 1);
+        let hasOtherGridMultiplier = false;
+        const multiplierCoords = [];
 
         for (let r = 0; r < evalTemplate.rows; r++) {
             for (let c = 0; c < evalTemplate.cols; c++) {
                 const sym = safeGrid[r][c];
+                const m = getSymbolMultiplier(sym);
+                
                 if (isCollectSymbol(sym)) {
-                    collectCount++;
+                    totalCollectorMultiplicity += Math.max(1, m);
                     collectCoords.push({ row: r, col: c });
+                } else if (m > 1) {
+                    hasOtherGridMultiplier = true;
+                    multiplierCoords.push({ row: r, col: c });
+                    if (template.multiplierCalcType === 'sum') otherGridMultiplier += m;
+                    else otherGridMultiplier *= m;
                 }
+
                 if (isCashSymbol(sym, evalTemplate.jpConfig)) {
                     const val = getCashValue(sym, evalTemplate.jpConfig);
                     if (val > 0) {
@@ -332,11 +394,13 @@ export function computeGridResults(template, targetGrid, betAmount) {
         }
 
         const effectiveCollectCount = (evalTemplate.requiresCollectToWin === false) 
-            ? Math.max(1, collectCount) 
-            : collectCount;
+            ? Math.max(1, totalCollectorMultiplicity) 
+            : totalCollectorMultiplicity;
 
         if (effectiveCollectCount > 0 && totalCashWinValue > 0) {
-            const totalPayout = totalCashWinValue * effectiveCollectCount;
+            const finalOtherMult = hasOtherGridMultiplier ? (template.multiplierCalcType === 'sum' ? Math.max(1, otherGridMultiplier) : otherGridMultiplier) : 1;
+            const totalCollectionFactor = effectiveCollectCount * finalOtherMult;
+            const totalPayout = totalCashWinValue * totalCollectionFactor;
             const payout = parseFloat(totalPayout.toFixed(8));
 
             calculatedResults.push({
@@ -345,9 +409,9 @@ export function computeGridResults(template, targetGrid, betAmount) {
                 count: cashCoords.length,
                 payoutMult: totalCashWinValue,
                 winAmount: payout,
-                symbolsOnLine: Array(Math.max(1, collectCount)).fill('COLLECT').concat(cashCoords.map(coord => safeGrid[coord.row][coord.col])),
-                positions: [evalTemplate.requiresCollectToWin === false && collectCount === 0 ? "自動收集" : `收集 x${effectiveCollectCount}`],
-                winCoords: [...collectCoords, ...cashCoords]
+                symbolsOnLine: Array(Math.max(1, collectCoords.length)).fill('COLLECT').concat(cashCoords.map(coord => safeGrid[coord.row][coord.col])),
+                positions: [evalTemplate.requiresCollectToWin === false && totalCollectorMultiplicity === 0 ? "自動收集" : `收集 x${totalCollectionFactor}`],
+                winCoords: [...collectCoords, ...cashCoords, ...multiplierCoords]
             });
             totalWin = parseFloat((totalWin + payout).toFixed(8));
         }
@@ -357,7 +421,16 @@ export function computeGridResults(template, targetGrid, betAmount) {
             totalWin = parseFloat((totalWin * activeMultiplier).toFixed(8));
             calculatedResults.forEach(res => {
                 res.winAmount = parseFloat((res.winAmount * activeMultiplier).toFixed(8));
-                if (res.positions && res.positions.length > 0) {
+                if (res.lineId === 'COLLECT_FEATURE') {
+                    // 對於收集功能，直接將乘倍反映在「收集 xN」上
+                    const match = String(res.positions[0]).match(/收集 x(\d+(?:\.\d+)?)/);
+                    if (match) {
+                        const currentFactor = parseFloat(match[1]);
+                        res.positions[0] = `收集 x${(currentFactor * activeMultiplier).toFixed(2).replace(/\.00$/, '')}`;
+                    } else {
+                        res.positions.push(multiplierSymStr);
+                    }
+                } else if (res.positions && res.positions.length > 0) {
                     res.positions = [...res.positions, multiplierSymStr];
                 }
                 // Add the multiplier coordinate for highlighting

@@ -12,8 +12,17 @@ export const getSymbolCount = (sym) => isDoubleSymbol(sym) ? 2 : 1;
 
 export const getSymbolMultiplier = (sym) => {
     if (!sym || typeof sym !== 'string') return 1;
-    const match = sym.match(/_x(\d+(?:\.\d+)?)$/i);
-    return match ? parseFloat(match[1]) : 1;
+    // Handle suffix format: Symbol_x5
+    const suffixMatch = sym.match(/_x(\d+(?:\.\d+)?)$/i);
+    if (suffixMatch) return parseFloat(suffixMatch[1]);
+    // Handle standalone/prefix format: x5, x2
+    const prefixMatch = sym.match(/^x(\d+(?:\.\d+)?)$/i);
+    if (prefixMatch) return parseFloat(prefixMatch[1]);
+    return 1;
+};
+
+export const isMultiplierSymbol = (sym) => {
+    return getSymbolMultiplier(sym) > 1;
 };
 
 export const isCashSymbol = (sym, jpConfig = {}) => {
