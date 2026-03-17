@@ -8,8 +8,9 @@ export default function Phase1Setup(props) {
         template, templateError,
         showCloudModal, setShowCloudModal,
         handleImportLocalTemplate, handleExportLocalTemplate,
+        handleClearTemplate,
         templateName, setTemplateName, defaultSaveName,
-        handleSaveToCloud, isSaving,
+        handleSaveToCloud, isSaving, activeSaveAction,
         platformName, setPlatformName,
         gameName, setGameName,
         lineMode, setLineMode,
@@ -80,15 +81,25 @@ export default function Phase1Setup(props) {
                                 <button onClick={() => setShowCloudModal(true)} className="flex-1 lg:flex-none py-2.5 px-4 bg-white hover:bg-indigo-50 text-indigo-700 font-bold rounded-lg text-sm flex items-center justify-center gap-1.5 shadow-sm transition-colors border border-indigo-200">
                                     <Cloud size={16} />瀏覽雲端模板庫
                                 </button>
+                                <button onClick={handleClearTemplate} className="flex-1 lg:flex-none py-2.5 px-4 bg-white hover:bg-rose-50 text-rose-600 font-bold rounded-lg text-sm flex items-center justify-center gap-1.5 shadow-sm transition-colors border border-rose-200">
+                                    <Trash2 size={16} />清除當前模板
+                                </button>
                             </div>
                             <div className="flex w-full lg:w-auto gap-2 items-stretch">
                                 <button onClick={handleExportLocalTemplate} className="py-2.5 px-4 bg-white hover:bg-slate-50 text-slate-700 font-bold rounded-lg text-sm flex items-center justify-center gap-1.5 transition-colors shadow-sm border border-slate-200 shrink-0">
                                     <Save size={16} />匯出
                                 </button>
                                 <div className="flex bg-white rounded-lg shadow-sm border border-indigo-200 overflow-hidden flex-1 lg:flex-none">
-                                    <input type="text" placeholder={`儲存名稱 (預設: ${defaultSaveName})`} value={templateName} onChange={(e) => setTemplateName(e.target.value)} className="px-3 py-2 text-sm focus:outline-none w-full lg:w-48 text-slate-700 font-medium" />
-                                    <button onClick={handleSaveToCloud} disabled={isSaving} className={`px-4 py-2 text-white text-sm font-bold flex items-center justify-center gap-1 shrink-0 transition-colors border-l border-indigo-200 ${isSaving ? 'bg-indigo-400' : 'bg-indigo-600 hover:bg-indigo-700'}`}>
-                                        <Upload size={16} /> 存檔
+                                    <input 
+                                        type="text" 
+                                        placeholder={`儲存名稱 (預設: 平台-遊戲)`} 
+                                        value={templateName} 
+                                        onChange={(e) => setTemplateName(e.target.value)} 
+                                        className="px-3 py-2 text-sm focus:outline-none w-full lg:w-48 text-slate-700 font-medium" 
+                                    />
+                                    <button onClick={handleSaveToCloud} disabled={isSaving} className={`px-4 py-2 text-white text-sm font-bold flex items-center justify-center gap-1 shrink-0 transition-colors border-l border-indigo-200 ${isSaving ? 'bg-indigo-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'}`}>
+                                        {isSaving && activeSaveAction === 'initial' ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
+                                        {isSaving && activeSaveAction === 'initial' ? '存檔中' : '存檔'}
                                     </button>
                                 </div>
                             </div>
@@ -103,17 +114,19 @@ export default function Phase1Setup(props) {
                                         value={platformName}
                                         onChange={(e) => setPlatformName(e.target.value)}
                                         className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
-                                        placeholder="例如: PG, JDB..."
+                                        placeholder="例如: 金銀島, VF, 滿貫大亨..."
                                     />
                                 </div>
                                 <div className="flex-1">
-                                    <label className="block text-sm font-bold text-slate-700 mb-1">遊戲名稱</label>
+                                    <label className="block text-sm font-bold text-slate-700 mb-1">
+                                        遊戲名稱 <span className="text-rose-500 font-normal text-[10px] ml-1">(金銀島專案，需加上game ID，範例：757_超級麻將 2)</span>
+                                    </label>
                                     <input
                                         type="text"
                                         value={gameName}
                                         onChange={(e) => setGameName(e.target.value)}
                                         className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
-                                        placeholder="例如: 麻將胡了, 40 Sparkling Crown..."
+                                        placeholder="例如: 757_超級麻將 2, 40_Sparkling Crown..."
                                     />
                                 </div>
                             </div>

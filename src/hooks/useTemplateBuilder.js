@@ -825,6 +825,41 @@ export function useTemplateBuilder({
         return () => observer.disconnect();
     }, [isTemplateMinimized, linesTabMode]);
 
+    const resetTemplateBuilder = useCallback(() => {
+        setLineMode('paylines');
+        setLinesTextInput('');
+        setPaytableMode('image');
+        setPaytableInput(defaultPaytable);
+        setTemplate(null);
+        setTemplateError('');
+        setBuildErrorMsg('');
+        setJpConfig(defaultJpConfig);
+        setHasJackpot(false);
+        setHasMultiplierReel(false);
+        setRequiresCollectToWin(true);
+        setHasDoubleSymbol(false);
+        setMultiplierCalcType('product');
+        setLineImages([]);
+        setActiveLineImageId(null);
+        setPatternRows(6);
+        setPatternCols(5);
+        setGridRows(3);
+        setGridCols(5);
+        setThreshold(100);
+        setStartIndex(1);
+        setP1({ x: 8, y: 2, w: 16, h: 8 });
+        setPEnd({ x: 82, y: 90, w: 16, h: 8 });
+        setExtractResults([]);
+        setLinesTabMode('image');
+        setPtImages([]);
+        setIsPtProcessing(false);
+        setPtResultItems([]);
+        setPtCropState({ active: false, itemIndex: null, selectedImageId: null, startX: 0, startY: 0, endX: 0, endY: 0, isDragging: false });
+        setPtEnlargedImg(null);
+        if (setTemplateMessage) setTemplateMessage('✅ 已清除當前所有模板設定');
+        if (setTemplateMessage) setTimeout(() => setTemplateMessage(''), 3000);
+    }, [setTemplateMessage]);
+
     return {
         lineMode, setLineMode,
         linesTextInput, setLinesTextInput,

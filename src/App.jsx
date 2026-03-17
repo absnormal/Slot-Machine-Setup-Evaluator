@@ -89,7 +89,7 @@ function App() {
         handleMouseDown, handleMouseMove, handleMouseUp, draw,
         handlePaytableTextChange, handlePtTableChange, handlePtTableDelete, handleAddPtRow, handleRemoveThumb,
         handlePtFileChange, handlePtDrop, processPtFiles, removePtImage, clearPtAll, handlePtExtract,
-        performAutoBuild, handleBuildTemplate
+        performAutoBuild, handleBuildTemplate, resetTemplateBuilder
     } = useTemplateBuilder({
         customApiKey,
         apiKey,
@@ -100,6 +100,14 @@ function App() {
         isTemplateMinimized,
         linesMode
     });
+
+    const handleClearTemplate = useCallback(() => {
+        if (!window.confirm('確定要清除當前所有模板設定與提取結果嗎？')) return;
+        setPlatformName('');
+        setGameName('');
+        setTemplateName('');
+        resetTemplateBuilder();
+    }, [resetTemplateBuilder]);
 
 
     const { lightboxState, handleLbDragStart, handleLbResizeStart } = useLightbox(ptEnlargedImg);
@@ -144,10 +152,13 @@ function App() {
         if (showCloudModal) fetchCloudTemplates();
     }, [showCloudModal, fetchCloudTemplates]);
 
+    const [activeSaveAction, setActiveSaveAction] = useState(null); // 'initial', 'FORCE_NEW', or ID
+
     const handleSaveToCloud = async (forceOverwriteId = null) => {
         const isEvent = forceOverwriteId && typeof forceOverwriteId === 'object' && forceOverwriteId.nativeEvent;
         const actualForceId = isEvent ? null : forceOverwriteId;
 
+        setActiveSaveAction(actualForceId || 'initial');
         const generatedName = [platformName, gameName].filter(Boolean).join('-');
 
         const result = await saveTemplateToCloud({
@@ -164,6 +175,7 @@ function App() {
             setTemplateError('');
             if (showOverwriteConfirm) setShowOverwriteConfirm(false);
         }
+        setActiveSaveAction(null);
     };
 
 
@@ -403,23 +415,33 @@ function App() {
 
     const hasApiKey = !!(customApiKey.trim() || apiKey);
 
+    useEffect(() => {
+        if (cloudError) {
+            const timer = setTimeout(() => setCloudError(''), 4000);
+            return () => clearTimeout(timer);
+        }
+    }, [cloudError, setCloudError]);
+
     return (
         <div className="min-h-screen bg-slate-50 text-slate-800 p-6 font-sans relative">
 
             <ToastMessage message={templateMessage} />
+            <ToastMessage message={cloudMessage} />
+            <ToastMessage message={cloudError} type="error" />
 
             <div className="max-w-7xl mx-auto space-y-6">
 
                 <AppHeader onOpenSettings={() => setShowSettingsModal(true)} />
 
                 <Phase1Setup
+                    handleClearTemplate={handleClearTemplate}
                     templateMessage={templateMessage}
                     isTemplateMinimized={isTemplateMinimized} setIsTemplateMinimized={setIsTemplateMinimized}
                     template={template} templateError={templateError}
                     showCloudModal={showCloudModal} setShowCloudModal={setShowCloudModal}
                     handleImportLocalTemplate={handleImportLocalTemplate} handleExportLocalTemplate={handleExportLocalTemplate}
                     templateName={templateName} setTemplateName={setTemplateName} defaultSaveName={defaultSaveName}
-                    handleSaveToCloud={handleSaveToCloud} isSaving={isSaving}
+                    handleSaveToCloud={handleSaveToCloud} isSaving={isSaving} activeSaveAction={activeSaveAction}
                     platformName={platformName} setPlatformName={setPlatformName}
                     gameName={gameName} setGameName={setGameName}
                     lineMode={lineMode} setLineMode={setLineMode}
@@ -695,19 +717,24 @@ function App() {
                             <div className="space-y-3">
                                 <button
                                     onClick={() => handleSaveToCloud(pendingOverwriteData.existing.id)}
-                                    className="w-full py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200"
+                                    disabled={isSaving}
+                                    className={`w-full py-3 text-white font-bold rounded-xl transition-colors shadow-lg flex items-center justify-center gap-2 ${isSaving ? 'bg-indigo-400 cursor-not-allowed shadow-none' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200'}`}
                                 >
-                                    覆蓋更新 (取代舊有)
+                                    {isSaving && activeSaveAction === pendingOverwriteData.existing.id ? <Loader2 className="animate-spin" size={20} /> : null}
+                                    {isSaving && activeSaveAction === pendingOverwriteData.existing.id ? '處理中...' : '覆蓋更新 (取代舊有)'}
                                 </button>
                                 <button
                                     onClick={() => handleSaveToCloud('FORCE_NEW')}
-                                    className="w-full py-3 bg-white text-slate-700 font-bold rounded-xl border border-slate-200 hover:bg-slate-50 transition-colors"
+                                    disabled={isSaving}
+                                    className={`w-full py-3 font-bold rounded-xl border transition-colors flex items-center justify-center gap-2 ${isSaving ? 'bg-slate-50 text-slate-400 border-slate-100 cursor-not-allowed' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'}`}
                                 >
-                                    另存為新模板
+                                    {isSaving && activeSaveAction === 'FORCE_NEW' ? <Loader2 className="animate-spin" size={20} /> : null}
+                                    {isSaving && activeSaveAction === 'FORCE_NEW' ? '另存中...' : '另存為新模板'}
                                 </button>
                                 <button
                                     onClick={() => setShowOverwriteConfirm(false)}
-                                    className="w-full py-3 text-slate-400 font-bold hover:text-slate-600 transition-colors"
+                                    disabled={isSaving}
+                                    className="w-full py-3 text-slate-400 font-bold hover:text-slate-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                     取消
                                 </button>
