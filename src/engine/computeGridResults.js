@@ -21,14 +21,21 @@ export function computeGridResults(template, targetGrid, betAmount) {
         if (template.hasMultiplierReel && template.cols > 1) {
             evalTemplate = { ...template, cols: template.cols - 1 };
             safeGrid = targetGrid.map(row => row.slice(0, evalTemplate.cols));
-            const midRow = Math.floor(template.rows / 2);
-            const rawSym = targetGrid[midRow]?.[template.cols - 1] || "";
-
-            // 支援如 x2, x5, MULT_10 等格式
-            const numMatch = String(rawSym).match(/(\d+(?:\.\d+)?)/);
-            if (numMatch && /x|mult|✖/i.test(String(rawSym))) {
-                activeMultiplier = parseFloat(numMatch[0]);
-                multiplierSymStr = `x${activeMultiplier}`;
+            // Check the entire last column for multipliers (Global Multiplier)
+            multiplierSymStr = "";
+            let foundMultipliers = [];
+            
+            for (let r = 0; r < template.rows; r++) {
+                const rawSym = targetGrid[r]?.[template.cols - 1] || "";
+                const m = getSymbolMultiplier(rawSym);
+                if (m > 1) {
+                    if (activeMultiplier === 1) activeMultiplier = m;
+                    else activeMultiplier *= m;
+                    foundMultipliers.push({ row: r, col: template.cols - 1, m });
+                }
+            }
+            if (activeMultiplier > 1) {
+                multiplierSymStr = `x${activeMultiplier.toFixed(2).replace(/\.00$/, '')}`;
             }
         }
 
@@ -207,6 +214,7 @@ export function computeGridResults(template, targetGrid, betAmount) {
                     }
                 }
             }
+        } else {
             // === 固定線獎計算 ===
             Object.entries(evalTemplate.lines).forEach(([lineIdStr, positions]) => {
                 const lineId = parseInt(lineIdStr);
@@ -434,10 +442,15 @@ export function computeGridResults(template, targetGrid, betAmount) {
                     res.positions = [...res.positions, multiplierSymStr];
                 }
                 // Add the multiplier coordinate for highlighting
-                const midRow = Math.floor(template.rows / 2);
+                // Add all multiplier coordinates from the last column for highlighting
                 const multCol = template.cols - 1;
-                if (!res.winCoords.some(c => c.row === midRow && c.col === multCol)) {
-                    res.winCoords.push({ row: midRow, col: multCol });
+                for (let r = 0; r < template.rows; r++) {
+                    const rawSym = targetGrid[r]?.[multCol] || "";
+                    if (getSymbolMultiplier(rawSym) > 1) {
+                        if (!res.winCoords.some(c => c.row === r && c.col === multCol)) {
+                            res.winCoords.push({ row: r, col: multCol });
+                        }
+                    }
                 }
             });
         }

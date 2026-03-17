@@ -96,7 +96,7 @@ export default function Phase3Vision({
                                             {template?.hasMultiplierReel && (
                                                 <div className="flex items-center gap-2">
                                                     <div className="w-3 h-3 bg-amber-500 border border-slate-400 rounded-sm shrink-0"></div>
-                                                    <span className="text-amber-400 font-bold">請調整琥珀色框線對齊「乘倍格」</span>
+                                                    <span className="text-amber-400 font-bold">請調整琥珀色框線對齊「全盤乘倍格」</span>
                                                 </div>
                                             )}
                                         </div>

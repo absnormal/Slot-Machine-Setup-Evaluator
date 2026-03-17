@@ -166,7 +166,7 @@ const Phase2Manual = ({
                                                         </div>
                                                     </button>
 
-                                                    {/* 新增：乘倍輪專用畫筆 */}
+                                                    {/* 新增：全盤乘倍畫筆 */}
                                                     {template?.hasMultiplierReel && (
                                                         <React.Fragment>
                                                             <div className="w-px h-10 bg-slate-700 mx-1 self-center"></div>
@@ -177,7 +177,7 @@ const Phase2Manual = ({
                                                                     }
                                                                 }}
                                                                 className={`relative w-[48px] h-[48px] sm:w-[52px] sm:h-[52px] rounded-lg border-2 flex flex-col items-center justify-center transition-all ${activeBrush.startsWith('x') ? 'border-amber-400 bg-amber-500/20 shadow-[0_0_10px_rgba(245,158,11,0.3)] scale-105 z-10' : 'border-slate-600 bg-slate-800 hover:border-slate-500 hover:bg-slate-700'}`}
-                                                                title="乘倍畫筆 (點擊最後一軸中間格子)"
+                                                                title="全盤乘倍畫筆 (點擊對應格子)"
                                                             >
                                                                 <span className="text-[10px] font-bold text-amber-500 mb-0.5 leading-none">MULT</span>
                                                                 <span className="text-sm font-black text-amber-400 leading-none">
@@ -187,7 +187,7 @@ const Phase2Manual = ({
 
                                                             {activeBrush.startsWith('x') && (
                                                                 <div className="flex flex-col justify-center bg-amber-500/20 border border-amber-400/50 rounded-lg px-3 h-[48px] sm:h-[52px] animate-in fade-in slide-in-from-left-2 duration-200">
-                                                                    <label className="text-[9px] font-bold text-amber-300 mb-0.5">設定乘倍數值</label>
+                                                                    <label className="text-[9px] font-bold text-amber-300 mb-0.5">設定倍數值</label>
                                                                     <div className="flex items-center gap-1">
                                                                         <span className="text-amber-400 font-bold text-xs italic">x</span>
                                                                         <input
@@ -276,12 +276,8 @@ const Phase2Manual = ({
 
                                                             // === Multiplier Reel Constraints ===
                                                             const isMultiplierReelCol = template?.hasMultiplierReel && cIndex === template.cols - 1;
-                                                            const isCenterRow = rIndex === Math.floor(template?.rows / 2);
-                                                            const isDisabledMultiplierCell = isMultiplierReelCol && !isCenterRow;
-
-                                                            if (isDisabledMultiplierCell) {
-                                                                cellClasses += " opacity-20 pointer-events-none grayscale bg-slate-900 border-none";
-                                                            }
+                                                            // Removed center-row-only restriction for "全盤乘倍" flexibility
+                                                            const isDisabledMultiplierCell = false; 
 
                                                             const handleGridPaste = (e, targetRow, targetCol) => {
                                                                 e.preventDefault();

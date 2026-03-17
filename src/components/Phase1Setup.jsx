@@ -186,7 +186,7 @@ export default function Phase1Setup(props) {
                                                 onChange={e => setHasMultiplierReel(e.target.checked)}
                                                 className="w-4 h-4 text-indigo-600 border-indigo-300 rounded focus:ring-indigo-500"
                                             />
-                                            <span className="text-sm font-bold text-slate-700">啟用特殊乘倍輪 (最後一軸)</span>
+                                            <span className="text-sm font-bold text-slate-700">啟用全盤乘倍</span>
                                         </label>
                                     </div>
                                 </div>
@@ -257,7 +257,7 @@ export default function Phase1Setup(props) {
                                                             onChange={e => setHasMultiplierReel(e.target.checked)}
                                                             className="w-4 h-4 text-indigo-600 border-indigo-300 rounded focus:ring-indigo-500"
                                                         />
-                                                        <span className="text-sm font-bold text-slate-700">啟用特殊乘倍輪 (最後一軸)</span>
+                                                        <span className="text-sm font-bold text-slate-700">啟用全盤乘倍</span>
                                                     </label>
                                                 </div>
                                                 <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
@@ -830,11 +830,11 @@ export default function Phase1Setup(props) {
                         <div className="bg-slate-50 p-5 rounded-xl border border-slate-200 mt-6 flex items-center justify-between shadow-sm">
                             <div className="flex flex-col">
                                 <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
-                                    ✨ 特殊乘倍輪 (Multiplier Reel)
+                                    ✨ 全盤乘倍
                                 </h3>
-                                <p className="text-xs text-slate-500 mt-1">
-                                    啟用後，系統將自動把這款遊戲的「最後一軸」獨立作為乘倍輪 (自動將盤面軸數 + 1)。<br />
-                                    只要主盤面有贏分，就會自動乘上該格取出的數字倍數。
+                                <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                                    啟用後，只要主盤面有贏分，就會自動乘上該格取出的數字倍數。<br />
+                                    可以是單個格子 (EX. 迦羅寶石)，也可以是一排乘倍選亮的 (EX. 超級麻將)
                                 </p>
                             </div>
                             <label className="relative inline-flex items-center cursor-pointer shrink-0">

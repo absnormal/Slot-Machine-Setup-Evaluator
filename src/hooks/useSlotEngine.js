@@ -166,10 +166,7 @@ export function useSlotEngine({ template }) {
                         while (newGrid.length <= r) newGrid.push([]);
 
                         let targetValue = pastedCells[j];
-                        if (template.hasMultiplierReel && c === template.cols - 1 && r !== Math.floor(template.rows / 2)) {
-                            targetValue = "";
-                        }
-
+                        // Allow values in any row of the last column if it's a multiplier reel
                         newGrid[r][c] = targetValue;
                     }
                 }
@@ -184,10 +181,7 @@ export function useSlotEngine({ template }) {
             while (newGrid.length <= rIndex) newGrid.push([]);
 
             let targetValue = newValue;
-            if (template?.hasMultiplierReel && cIndex === template.cols - 1 && rIndex !== Math.floor(template.rows / 2)) {
-                targetValue = "";
-            }
-
+            // Allow values in any row of the last column if it's a multiplier reel
             newGrid[rIndex][cIndex] = targetValue;
             return newGrid;
         });
