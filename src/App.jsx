@@ -391,7 +391,7 @@ function App() {
         setIsPhase3Minimized(false);
     }, [setIsPhase2Minimized, setIsPhase3Minimized]);
 
-    // 快捷鍵監聽 (方向鍵上: 傳送, 方向鍵下: 返回)
+    // 快捷鍵監聽 (方向鍵上: 傳送, 方向鍵下: 返回, Enter: 執行各階段主動作)
     useEffect(() => {
         const handleKeyDown = (e) => {
             if (['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return;
@@ -406,12 +406,43 @@ function App() {
                     e.preventDefault();
                     handleReturnToVision();
                 }
+            } else if (e.key === 'Enter') {
+                // Phase 1: 建立模板
+                if (!isTemplateMinimized) {
+                    e.preventDefault();
+                    handleBuildTemplate();
+                } 
+                // Phase 2: 更新資產
+                else if (!isPhase2Minimized) {
+                    e.preventDefault();
+                    const winAmount = calcResults?.totalWin || 0;
+                    setTotalBalance(prev => prev + winAmount);
+                    setTemplateMessage(`💰 已將贏分 ${winAmount.toLocaleString()} 加入總資產`);
+                    setTimeout(() => setTemplateMessage(''), 3000);
+                }
+                // Phase 3: 更新資產
+                else if (!isPhase3Minimized) {
+                    e.preventDefault();
+                    const winAmount = visionCalcResults?.totalWin || 0;
+                    setTotalBalance(prev => prev + winAmount);
+                    setTemplateMessage(`💰 已將 AI 辨識贏分 ${winAmount.toLocaleString()} 加入總資產`);
+                    setTimeout(() => setTemplateMessage(''), 3000);
+                }
             }
         };
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [isPhase2Minimized, isPhase3Minimized, visionGrid, handleTransferVisionToManual, handleReturnToVision]);
+    }, [isTemplateMinimized, isPhase2Minimized, isPhase3Minimized, visionGrid, calcResults, visionCalcResults, handleTransferVisionToManual, handleReturnToVision, handleBuildTemplate]);
+
+    const [totalBalance, setTotalBalance] = useState(() => {
+        const saved = localStorage.getItem('slot_total_balance');
+        return saved ? parseFloat(saved) : 0;
+    });
+
+    useEffect(() => {
+        localStorage.setItem('slot_total_balance', totalBalance.toString());
+    }, [totalBalance]);
 
     const hasApiKey = !!(customApiKey.trim() || apiKey);
 
@@ -483,6 +514,8 @@ function App() {
                     panelGrid={panelGrid} handleCellChange={handleCellChange}
                     getSafeGrid={getSafeGrid}
                     onReturn={handleReturnToVision}
+                    totalBalance={totalBalance} setTotalBalance={setTotalBalance}
+                    setTemplateMessage={setTemplateMessage}
                 />
 
                 <Phase3Vision
@@ -499,6 +532,8 @@ function App() {
                     getSafeGrid={getSafeGrid} betInput={visionBetInput} setBetInput={setVisionBetInput}
                     onTransfer={handleTransferVisionToManual}
                     hasApiKey={hasApiKey}
+                    totalBalance={totalBalance} setTotalBalance={setTotalBalance}
+                    setTemplateMessage={setTemplateMessage}
                 />
 
             </div>

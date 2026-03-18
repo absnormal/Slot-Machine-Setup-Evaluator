@@ -12,10 +12,12 @@ export default function Phase3Vision({
     goToPrevVisionImage, goToNextVisionImage,
     isVisionProcessing, performAIVisionBatchMatching,
     isVisionStopping, visionBatchProgress, cancelVisionProcessing,
-    visionError, visionGrid, visionCalcResults, visionCalculateError, getSafeGrid,
-    betInput, setBetInput,
+    visionGrid, visionError, visionCalcResults, visionCalculateError,
+    getSafeGrid, betInput, setBetInput,
     onTransfer,
-    hasApiKey
+    hasApiKey,
+    totalBalance, setTotalBalance,
+    setTemplateMessage
 }) {
     // 獨立管理 Phase 3 專屬的 ResultView 懸停與線條顯示狀態
     const [visionHoveredLineId, setVisionHoveredLineId] = useState(null);
@@ -274,7 +276,7 @@ export default function Phase3Vision({
 
                     {/* Phase 3 專屬獨立結算 UI */}
                     {activeVisionImg && visionGrid ? (
-                        <ResultView template={template} calcData={visionCalcResults} calcErr={visionCalculateError} hoveredId={visionHoveredLineId} setHoveredId={setVisionHoveredLineId} showAll={visionShowAllLines} setShowAll={setVisionShowAllLines} betInput={betInput} setBetInput={setBetInput} />
+                        <ResultView template={template} calcData={visionCalcResults} calcErr={visionCalculateError} hoveredId={visionHoveredLineId} setHoveredId={setVisionHoveredLineId} showAll={visionShowAllLines} setShowAll={setVisionShowAllLines} betInput={betInput} setBetInput={setBetInput} totalBalance={totalBalance} setTotalBalance={setTotalBalance} setTemplateMessage={setTemplateMessage} />
                     ) : (
                         <div className="relative flex flex-col h-full lg:block w-full">
                             <div className="static lg:absolute lg:inset-0 flex flex-col w-full h-full">
