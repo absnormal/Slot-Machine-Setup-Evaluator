@@ -14,6 +14,7 @@ export default function Phase3Vision({
     isVisionStopping, visionBatchProgress, cancelVisionProcessing,
     visionGrid, visionError, visionCalcResults, visionCalculateError,
     getSafeGrid, betInput, setBetInput,
+    hasBetBox, setHasBetBox,
     onTransfer,
     hasApiKey,
     totalBalance, setTotalBalance,
@@ -102,10 +103,27 @@ export default function Phase3Vision({
                                                     <span className="text-amber-400 font-bold">請調整琥珀色框線對齊「全盤乘倍格」</span>
                                                 </div>
                                             )}
+                                            {template?.hasBetBox && (
+                                                <div className="flex items-center gap-2">
+                                                    <div className="w-3 h-3 bg-cyan-400 border border-slate-400 rounded-sm shrink-0"></div>
+                                                    <span className="text-cyan-400 font-bold">請調整青色框線對齊「押注金額 (BET)」區域</span>
+                                                </div>
+                                            )}
                                         </div>
-                                        <button onClick={() => { removeVisionImage('ALL'); setActiveVisionId(''); }} className="text-xs font-bold text-rose-400 hover:text-rose-300 px-3 py-1.5 rounded bg-rose-500/10 hover:bg-rose-500/20 transition-colors flex items-center gap-1">
-                                            <Trash2 size={14} /> 清空全部截圖
-                                        </button>
+                                        <div className="flex items-center gap-4">
+                                            <label className="flex items-center gap-2 cursor-pointer group px-3 py-1.5 rounded-lg bg-cyan-500/10 border border-cyan-500/20 hover:bg-cyan-500/20 transition-all">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={hasBetBox}
+                                                    onChange={e => setHasBetBox(e.target.checked)}
+                                                    className="w-4 h-4 text-cyan-500 border-cyan-300 rounded focus:ring-cyan-500 transition-all"
+                                                />
+                                                <span className="text-xs font-bold text-cyan-400">🎯 啟用辨識 BET</span>
+                                            </label>
+                                            <button onClick={() => { removeVisionImage('ALL'); setActiveVisionId(''); }} className="text-xs font-bold text-rose-400 hover:text-rose-300 px-3 py-1.5 rounded bg-rose-500/10 hover:bg-rose-500/20 transition-colors flex items-center gap-1">
+                                                <Trash2 size={14} /> 清空全部截圖
+                                            </button>
+                                        </div>
                                     </div>
                                     <div className="flex-1 relative overflow-hidden bg-black flex items-center justify-center min-h-[300px]" ref={visionContainerRef}>
                                         <div className={`relative w-full flex items-center justify-center overflow-hidden ${activeVisionImg?.grid ? 'h-auto py-4' : 'h-full'}`}>

@@ -17,10 +17,12 @@ export function useGeminiVision({
 
     const [visionP1, setVisionP1] = useState({ x: 10, y: 10, w: 80, h: 80 });
     const [visionP1Mult, setVisionP1Mult] = useState({ x: 92, y: 45, w: 6, h: 10 });
+    const [visionP1Bet, setVisionP1Bet] = useState({ x: 80, y: 92, w: 15, h: 5 });
     const [isVisionProcessing, setIsVisionProcessing] = useState(false);
     const isVisionCanceled = useRef(false);
     const [isVisionStopping, setIsVisionStopping] = useState(false);
     const [visionBatchProgress, setVisionBatchProgress] = useState({ current: 0, total: 0 });
+    const [hasBetBox, setHasBetBox] = useState(false);
     const [visionDragState, setVisionDragState] = useState(null);
 
     const activeVisionImg = visionImages.find(img => img.id === activeVisionId) || null;
@@ -119,6 +121,26 @@ export function useGeminiVision({
                     ctx.textAlign = 'center';
                     ctx.fillText('X', relMx + rMw / 2, relMy + rMh / 2 + (rMh * 0.15));
                 }
+
+                if (template?.hasBetBox) {
+                    const rBx = toPx(visionP1Bet.x, visionImageObj.width);
+                    const rBy = toPx(visionP1Bet.y, visionImageObj.height);
+                    const rBw = toPx(visionP1Bet.w, visionImageObj.width);
+                    const rBh = toPx(visionP1Bet.h, visionImageObj.height);
+
+                    const relBx = rBx - cropX;
+                    const relBy = rBy - cropY;
+
+                    ctx.strokeStyle = '#22d3ee'; // cyan-400
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(relBx, relBy, rBw, rBh);
+
+                    ctx.fillStyle = '#22d3ee';
+                    ctx.font = `bold ${Math.floor(rBh * 0.8)}px sans-serif`;
+                    ctx.textAlign = 'left';
+                    ctx.textBaseline = 'top';
+                    ctx.fillText('BET', relBx + 5, relBy + 2);
+                }
             } else {
                 // 尚未辨識：顯示全圖與操控框
                 canvas.width = visionImageObj.width;
@@ -178,9 +200,24 @@ export function useGeminiVision({
                     ctx.textBaseline = 'middle';
                     ctx.fillText('X', rectMult.x + rectMult.w / 2, rectMult.y + rectMult.h / 2);
                 }
+
+                if (hasBetBox) {
+                    const rectBet = getRect(visionP1Bet);
+                    ctx.lineWidth = baseThickness;
+                    ctx.strokeStyle = '#22d3ee';
+                    ctx.strokeRect(rectBet.x, rectBet.y, rectBet.w, rectBet.h);
+
+                    ctx.fillStyle = '#22d3ee';
+                    ctx.fillRect(rectBet.x + rectBet.w - handleSize, rectBet.y + rectBet.h - handleSize, handleSize, handleSize);
+
+                    ctx.font = `bold ${Math.floor(handleSize * 1.2)}px sans-serif`;
+                    ctx.textAlign = 'left';
+                    ctx.textBaseline = 'top';
+                    ctx.fillText('BET', rectBet.x + 5, rectBet.y + 5);
+                }
             }
         }
-    }, [visionImageObj, visionP1, visionP1Mult, template, visionImages, activeVisionId, visionCanvasRef, isPhase3Minimized]);
+    }, [visionImageObj, visionP1, visionP1Mult, visionP1Bet, template, visionImages, activeVisionId, visionCanvasRef, isPhase3Minimized, hasBetBox]);
 
     const getVisionMousePos = (e, ref, activeImgObj) => {
         if (!ref.current || !activeImgObj) return { x: 0, y: 0 };
@@ -232,6 +269,18 @@ export function useGeminiVision({
             setVisionDragState({ type: 'main', action: 'move', startX: pos.x, startY: pos.y, initObj: { ...visionP1 } });
             return;
         }
+
+        // 最後判定 BET 框
+        if (hasBetBox) {
+            const rectBet = getPxRect(visionP1Bet);
+            if (isOverHandle(pos.x, pos.y, rectBet)) {
+                setVisionDragState({ type: 'bet', action: 'resize', startX: pos.x, startY: pos.y, initObj: { ...visionP1Bet } });
+                return;
+            } else if (isOverRect(pos.x, pos.y, rectBet)) {
+                setVisionDragState({ type: 'bet', action: 'move', startX: pos.x, startY: pos.y, initObj: { ...visionP1Bet } });
+                return;
+            }
+        }
     };
 
     const handleVisionMouseMove = (e) => {
@@ -240,7 +289,10 @@ export function useGeminiVision({
         const dxPct = toPct(pos.x - visionDragState.startX, visionImageObj.width);
         const dyPct = toPct(pos.y - visionDragState.startY, visionImageObj.height);
 
-        const updateState = visionDragState.type === 'mult' ? setVisionP1Mult : setVisionP1;
+        let updateState;
+        if (visionDragState.type === 'mult') updateState = setVisionP1Mult;
+        else if (visionDragState.type === 'bet') updateState = setVisionP1Bet;
+        else updateState = setVisionP1;
 
         if (visionDragState.action === 'move') {
             updateState({
@@ -330,6 +382,7 @@ export function useGeminiVision({
     useEffect(() => {
         const handleKeyDown = (e) => {
             if (['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return;
+            if (isPhase3Minimized) return;
 
             if (e.key === 'ArrowLeft') {
                 goToPrevVisionImage();
@@ -340,7 +393,7 @@ export function useGeminiVision({
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [goToPrevVisionImage, goToNextVisionImage]);
+    }, [goToPrevVisionImage, goToNextVisionImage, isPhase3Minimized]);
 
     const performAIVisionBatchMatching = async () => {
         if (visionImages.length === 0 || !template) {
@@ -374,7 +427,7 @@ export function useGeminiVision({
                 referenceText += `- ${symbol}: img ${urls.map((_, i) => partIndex + i).join(',')}\n`;
                 for (const url of urls) {
                     try {
-                        const resized = await resizeImageBase64(url, 128, 0.7);
+                        const resized = await resizeImageBase64(url, 256, 0.7);
                         referenceImages.push({
                             inlineData: { mimeType: resized.mimeType, data: resized.base64 }
                         });
@@ -396,14 +449,29 @@ export function useGeminiVision({
             ? `The LAST column (Reel ${template.cols}) is a MULTIPLIER REEL. In Image 2, there might be a bar with multiple multiplier values (e.g. x1, x2, x3, x5). YOU MUST ONLY extract the "Highlighted" or "Activated" value (usually indicated by being brighter, yellow/gold color, or having a distinct frame vs the dimmed/dark green inactive ones). Output ONLY the format 'xN' (e.g., if you see '5x' or '5', output 'x5') for the center cell (Row ${Math.floor(template.rows / 2) + 1}). Top and bottom cells of this reel are empty, output "". `
             : "";
 
+        const betRule = hasBetBox
+            ? `Image 3 is identifying the BET amount. YOU MUST extract the numeric value ONLY (e.g., if you see "$1,000" or "1000", output 1000). Return it in the "bet" field of your JSON response.`
+            : "";
+
         const pickRule = template.hasMultiplierReel
             ? `Rules: For columns 1 to ${template.cols - 1}, pick closest symbol from list only. For the LAST column, do NOT use the list, extract the raw text if any. `
             : `Rules: Pick closest symbol from list only. `;
 
+        // 動態偵測易混淆符號對並生成警告
+        const confusablePairs = [
+            ['二條', '五條'], ['二筒', '五筒'], ['WILD_元寶', 'SCATTER_錢幣']
+        ];
+        const activeConfusables = confusablePairs.filter(
+            ([a, b]) => availableSymbols.includes(a) && availableSymbols.includes(b)
+        );
+        const confusableWarning = activeConfusables.length > 0
+            ? `CONFUSABLE PAIRS WARNING: The following symbols look very similar. You MUST compare each cell carefully against the reference images before deciding: ${activeConfusables.map(([a, b]) => `${a} vs ${b}`).join(', ')}. Count the exact number of bars/dots/strokes to distinguish them. `
+            : '';
+
         const fixedPrefixParts = [
             { text: referenceText },
             ...referenceImages,
-            { text: `Grid: ${template.rows}R x ${template.cols}C. Symbols: [${availableSymbols.join(',')}]. ${pickRule}${cashRule}${multiplierRule}JP names as-is. Dimmed/grayed cells: identify by shape. Unrecognizable: "". For complex symbols (like Mahjong tiles with multiple bars), YOU MUST precisely count the number of components and their arrangement to differentiate between similar symbols (e.g., M_2 vs M_5). Return ${template.rows}x${template.cols} 2D array.` }
+            { text: `Grid: ${template.rows}R x ${template.cols}C. Symbols: [${availableSymbols.join(',')}]. ${pickRule}${cashRule}${multiplierRule}${betRule}${confusableWarning}JP names as-is. Dimmed/grayed cells: identify by shape. Unrecognizable: "". IMPORTANT: Always identify each cell as a WHOLE tile/symbol. Do NOT decompose a single tile into sub-parts. For complex symbols (like Mahjong tiles with multiple bars/dots), match the ENTIRE tile pattern against reference images as one unit. Return a JSON object with "grid" (${template.rows}x${template.cols} 2D array) and "bet" (number).` }
         ];
 
         for (let i = 0; i < toProcess.length; i++) {
@@ -429,8 +497,8 @@ export function useGeminiVision({
                 const ctx1 = offCanvas1.getContext('2d');
                 ctx1.drawImage(targetImg.obj, rx1, ry1, rw1, rh1, 0, 0, rw1, rh1);
 
-                const raw1 = offCanvas1.toDataURL('image/jpeg', 0.5).split(',')[1];
-                const resized1 = await resizeImageBase64(`data:image/jpeg;base64,${raw1}`, 512, 0.5);
+                const raw1 = offCanvas1.toDataURL('image/jpeg', 0.65).split(',')[1];
+                const resized1 = await resizeImageBase64(`data:image/jpeg;base64,${raw1}`, 512, 0.65);
 
                 const currentParts = [
                     ...fixedPrefixParts,
@@ -458,6 +526,25 @@ export function useGeminiVision({
                     currentParts.push({ text: "Please extract the symbols from Image 1 for the main grid, and strictly extract the multiplier value for the center cell of the last column (Column " + template.cols + ") from Image 2. Output ONLY the format \"xN\", for example, \"5x\" or \"5\" should be returned as \"x5\". Empty cells in the last column should be \"\"." });
                 }
 
+                if (hasBetBox) {
+                    const offCanvas3 = document.createElement('canvas');
+                    const rx3 = (visionP1Bet.x / 100) * targetImg.obj.width;
+                    const ry3 = (visionP1Bet.y / 100) * targetImg.obj.height;
+                    const rw3 = (visionP1Bet.w / 100) * targetImg.obj.width;
+                    const rh3 = (visionP1Bet.h / 100) * targetImg.obj.height;
+                    offCanvas3.width = rw3;
+                    offCanvas3.height = rh3;
+                    const ctx3 = offCanvas3.getContext('2d');
+                    ctx3.drawImage(targetImg.obj, rx3, ry3, rw3, rh3, 0, 0, rw3, rh3);
+
+                    const raw3 = offCanvas3.toDataURL('image/jpeg', 0.5).split(',')[1];
+                    const resized3 = await resizeImageBase64(`data:image/jpeg;base64,${raw3}`, 320, 0.5);
+
+                    currentParts.push({ text: "Image 3: BET Area\n" });
+                    currentParts.push({ inlineData: { mimeType: resized3.mimeType, data: resized3.base64 } });
+                    currentParts.push({ text: "Please extract the numeric BET amount from Image 3." });
+                }
+
                 const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${effectiveApiKey}`;
 
                 const payload = {
@@ -468,11 +555,18 @@ export function useGeminiVision({
                     generationConfig: {
                         responseMimeType: "application/json",
                         responseSchema: {
-                            type: "ARRAY",
-                            items: {
-                                type: "ARRAY",
-                                items: { type: "STRING" }
-                            }
+                            type: "OBJECT",
+                            properties: {
+                                grid: {
+                                    type: "ARRAY",
+                                    items: {
+                                        type: "ARRAY",
+                                        items: { type: "STRING" }
+                                    }
+                                },
+                                bet: { type: "NUMBER" }
+                            },
+                            required: ["grid"]
                         }
                     }
                 };
@@ -486,10 +580,12 @@ export function useGeminiVision({
                 const jsonText = result.candidates?.[0]?.content?.parts?.[0]?.text;
                 if (!jsonText) throw new Error("無法從 AI 取得有效回應，請確認 API Key 是否正確。");
 
-                let parsedGrid = JSON.parse(jsonText);
+                const responseData = JSON.parse(jsonText);
+                let parsedGrid = responseData.grid;
+                let recognizedBet = responseData.bet || null;
 
                 if (!Array.isArray(parsedGrid) || parsedGrid.length === 0 || !Array.isArray(parsedGrid[0])) {
-                    const possibleGrid = Object.values(parsedGrid).find(val => Array.isArray(val) && Array.isArray(val[0]));
+                    const possibleGrid = Object.values(responseData).find(val => Array.isArray(val) && Array.isArray(val[0]));
                     if (possibleGrid) parsedGrid = possibleGrid;
                     else throw new Error("AI 回傳的格式不正確，無法解析為二維盤面陣列。");
                 }
@@ -529,7 +625,12 @@ export function useGeminiVision({
                     safeGrid.push(rowArr);
                 }
 
-                currentVisionImages[imgIndex] = { ...currentVisionImages[imgIndex], grid: safeGrid, error: '' };
+                currentVisionImages[imgIndex] = {
+                    ...currentVisionImages[imgIndex],
+                    grid: safeGrid,
+                    bet: (hasBetBox && recognizedBet !== null) ? recognizedBet : currentVisionImages[imgIndex].bet,
+                    error: ''
+                };
                 setVisionImages([...currentVisionImages]);
 
             } catch (err) {
@@ -575,6 +676,12 @@ export function useGeminiVision({
         isVisionProcessing,
         isVisionStopping,
         visionBatchProgress,
+        visionP1,
+        visionP1Mult,
+        visionP1Bet,
+        setVisionP1,
+        setVisionP1Mult,
+        setVisionP1Bet,
         setActiveVisionId,
         setVisionImages,
         handleVisionMouseDown,
@@ -585,6 +692,8 @@ export function useGeminiVision({
         performAIVisionBatchMatching,
         cancelVisionProcessing,
         goToPrevVisionImage,
-        goToNextVisionImage
+        goToNextVisionImage,
+        hasBetBox,
+        setHasBetBox
     };
 }

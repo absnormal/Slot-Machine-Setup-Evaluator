@@ -133,7 +133,8 @@ function App() {
         isVisionProcessing, isVisionStopping, visionBatchProgress,
         setActiveVisionId, setVisionImages, handleVisionMouseDown, handleVisionMouseMove, handleVisionMouseUp,
         handleVisionImageUpload, removeVisionImage, performAIVisionBatchMatching, cancelVisionProcessing,
-        goToPrevVisionImage, goToNextVisionImage
+        goToPrevVisionImage, goToNextVisionImage,
+        hasBetBox, setHasBetBox
     } = useGeminiVision({
         template,
         availableSymbols,
@@ -363,6 +364,23 @@ function App() {
     const [visionCalcResults, setVisionCalcResults] = useState(null);
     const [visionCalculateError, setVisionCalculateError] = useState('');
     const [visionBetInput, setVisionBetInput] = useState(100);
+ 
+    // 同步當前圖片的辨識 BET
+    useEffect(() => {
+        if (activeVisionImg && typeof activeVisionImg.bet === 'number') {
+            setVisionBetInput(activeVisionImg.bet);
+        }
+    }, [activeVisionId, activeVisionImg]);
+
+    // 排程更新圖片內的 BET (避免在渲染期間更新)
+    const handleVisionBetInputChange = (newBet) => {
+        setVisionBetInput(newBet);
+        if (activeVisionId) {
+            setVisionImages(prev => prev.map(img => 
+                img.id === activeVisionId ? { ...img, bet: newBet } : img
+            ));
+        }
+    };
 
     useEffect(() => {
         if (!visionGrid) {
@@ -538,7 +556,8 @@ function App() {
                     isVisionProcessing={isVisionProcessing} performAIVisionBatchMatching={performAIVisionBatchMatching}
                     isVisionStopping={isVisionStopping} visionBatchProgress={visionBatchProgress} cancelVisionProcessing={cancelVisionProcessing}
                     visionError={visionError} visionGrid={visionGrid} visionCalcResults={visionCalcResults} visionCalculateError={visionCalculateError}
-                    getSafeGrid={getSafeGrid} betInput={visionBetInput} setBetInput={setVisionBetInput}
+                    getSafeGrid={getSafeGrid} betInput={visionBetInput} setBetInput={handleVisionBetInputChange}
+                    hasBetBox={hasBetBox} setHasBetBox={setHasBetBox}
                     onTransfer={handleTransferVisionToManual}
                     hasApiKey={hasApiKey}
                     totalBalance={totalBalance} setTotalBalance={setTotalBalance}
