@@ -17,7 +17,8 @@ export default function Phase3Vision({
     onTransfer,
     hasApiKey,
     totalBalance, setTotalBalance,
-    setTemplateMessage
+    setTemplateMessage,
+    isBalanceExpanded, setIsBalanceExpanded
 }) {
     // 獨立管理 Phase 3 專屬的 ResultView 懸停與線條顯示狀態
     const [visionHoveredLineId, setVisionHoveredLineId] = useState(null);
@@ -276,7 +277,7 @@ export default function Phase3Vision({
 
                     {/* Phase 3 專屬獨立結算 UI */}
                     {activeVisionImg && visionGrid ? (
-                        <ResultView template={template} calcData={visionCalcResults} calcErr={visionCalculateError} hoveredId={visionHoveredLineId} setHoveredId={setVisionHoveredLineId} showAll={visionShowAllLines} setShowAll={setVisionShowAllLines} betInput={betInput} setBetInput={setBetInput} totalBalance={totalBalance} setTotalBalance={setTotalBalance} setTemplateMessage={setTemplateMessage} />
+                        <ResultView template={template} calcData={visionCalcResults} calcErr={visionCalculateError} hoveredId={visionHoveredLineId} setHoveredId={setVisionHoveredLineId} showAll={visionShowAllLines} setShowAll={setVisionShowAllLines} betInput={betInput} setBetInput={setBetInput} totalBalance={totalBalance} setTotalBalance={setTotalBalance} setTemplateMessage={setTemplateMessage} isBalanceExpanded={isBalanceExpanded} setIsBalanceExpanded={setIsBalanceExpanded} />
                     ) : (
                         <div className="relative flex flex-col h-full lg:block w-full">
                             <div className="static lg:absolute lg:inset-0 flex flex-col w-full h-full">

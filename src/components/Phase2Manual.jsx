@@ -19,7 +19,8 @@ const Phase2Manual = ({
     getSafeGrid,
     onReturn,
     totalBalance, setTotalBalance,
-    setTemplateMessage
+    setTemplateMessage,
+    isBalanceExpanded, setIsBalanceExpanded
 }) => {
     const [showCashModal, setShowCashModal] = React.useState(false);
     const [modalCell, setModalCell] = React.useState({ row: 0, col: 0 });
@@ -364,7 +365,7 @@ const Phase2Manual = ({
                         </div>
 
                         {/* Phase 2 專屬結算 UI */}
-                        <ResultView template={template} calcData={calcResults} calcErr={calculateError} hoveredId={hoveredLineId} setHoveredId={setHoveredLineId} showAll={showAllLines} setShowAll={setShowAllLines} betInput={betInput} setBetInput={setBetInput} totalBalance={totalBalance} setTotalBalance={setTotalBalance} setTemplateMessage={setTemplateMessage} />
+                        <ResultView template={template} calcData={calcResults} calcErr={calculateError} hoveredId={hoveredLineId} setHoveredId={setHoveredLineId} showAll={showAllLines} setShowAll={setShowAllLines} betInput={betInput} setBetInput={setBetInput} totalBalance={totalBalance} setTotalBalance={setTotalBalance} setTemplateMessage={setTemplateMessage} isBalanceExpanded={isBalanceExpanded} setIsBalanceExpanded={setIsBalanceExpanded} />
                     </div>
                 </div>
             )}

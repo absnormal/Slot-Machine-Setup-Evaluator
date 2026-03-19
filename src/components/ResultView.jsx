@@ -1,8 +1,8 @@
 import React from 'react';
-import { Trophy, AlertCircle, Zap, Coins, ArrowLeft } from 'lucide-react';
+import { Trophy, AlertCircle, Zap, Coins, ArrowLeft, ChevronDown, ChevronUp } from 'lucide-react';
 import { getBaseSymbol, isJpSymbol } from '../utils/symbolUtils';
 
-export default function ResultView({ template, calcData, calcErr, hoveredId, setHoveredId, showAll, setShowAll, betInput, setBetInput, totalBalance, setTotalBalance, setTemplateMessage }) {
+export default function ResultView({ template, calcData, calcErr, hoveredId, setHoveredId, showAll, setShowAll, betInput, setBetInput, totalBalance, setTotalBalance, setTemplateMessage, isBalanceExpanded, setIsBalanceExpanded }) {
     const handleUpdateBalance = (e) => {
         if (e) {
             if (e.preventDefault) e.preventDefault();
@@ -25,7 +25,15 @@ export default function ResultView({ template, calcData, calcErr, hoveredId, set
                         {/* 第一排：[押注] [自動即時結算] */}
                         <div className="flex flex-col sm:flex-row justify-between items-end gap-4">
                             <div className="flex-1 w-full">
-                                <label className="block text-sm font-bold text-slate-700 mb-1.5">押注 (Total Bet)</label>
+                                <div className="flex items-center justify-between mb-1.5">
+                                    <label className="block text-sm font-bold text-slate-700">押注 (Total Bet)</label>
+                                    <button 
+                                        onClick={() => setIsBalanceExpanded(!isBalanceExpanded)}
+                                        className="text-[10px] font-bold text-indigo-500 hover:text-indigo-600 flex items-center gap-1 bg-indigo-50 px-2 py-0.5 rounded transition-colors"
+                                    >
+                                        {isBalanceExpanded ? <><ChevronUp size={12}/> 收合資產</> : <><ChevronDown size={12}/> 展開資產</>}
+                                    </button>
+                                </div>
                                 <div className="relative">
                                     <Coins className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                                     <input 
@@ -43,45 +51,47 @@ export default function ResultView({ template, calcData, calcErr, hoveredId, set
                         </div>
 
                         {/* 第二排：[目前總財產] [+] [預期總財產] */}
-                        <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_1fr] gap-4 items-end pt-3 border-t border-slate-200">
-                            {/* 目前總財產 */}
-                            <div className="w-full">
-                                <label className="block text-xs font-bold text-slate-700 mb-1">目前總財產 (Assets)</label>
-                                <div className="relative">
-                                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">$</span>
-                                    <input 
-                                        type="number" 
-                                        value={totalBalance} 
-                                        onChange={(e) => setTotalBalance(parseFloat(e.target.value) || 0)} 
-                                        onKeyDown={(e) => e.key === 'Enter' && handleUpdateBalance(e)}
-                                        className="w-full h-[28px] pl-6 pr-2 py-1 border border-slate-300 rounded-md focus:ring-2 focus:ring-indigo-500 outline-none font-black text-sm text-slate-700 shadow-sm transition-shadow" 
-                                    />
+                        {isBalanceExpanded && (
+                            <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_1fr] gap-4 items-end pt-3 border-t border-slate-200 animate-in fade-in slide-in-from-top-2 duration-200">
+                                {/* 目前總財產 */}
+                                <div className="w-full">
+                                    <label className="block text-xs font-bold text-slate-700 mb-1">目前總財產 (Assets)</label>
+                                    <div className="relative">
+                                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">$</span>
+                                        <input 
+                                            type="number" 
+                                            value={totalBalance} 
+                                            onChange={(e) => setTotalBalance(parseFloat(e.target.value) || 0)} 
+                                            onKeyDown={(e) => e.key === 'Enter' && handleUpdateBalance(e)}
+                                            className="w-full h-[28px] pl-6 pr-2 py-1 border border-slate-300 rounded-md focus:ring-2 focus:ring-indigo-500 outline-none font-black text-sm text-slate-700 shadow-sm transition-shadow" 
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* [+] 按鈕 (置中) */}
+                                <div className="flex items-center justify-center h-[28px]">
+                                    <button 
+                                        type="button"
+                                        onClick={handleUpdateBalance}
+                                        className="w-[28px] h-[28px] bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-md shadow-md transition-all active:scale-95 flex items-center justify-center shrink-0"
+                                        title="將贏分加入總財產 (Enter)"
+                                    >
+                                        <ArrowLeft size={16} />
+                                    </button>
+                                </div>
+
+                                {/* 預計結算後餘額 */}
+                                <div className="w-full">
+                                    <label className="block text-xs font-bold text-slate-700 mb-1">預計結算後餘額 (Expected)</label>
+                                    <div className="relative bg-white h-[28px] rounded-md border border-slate-300 shadow-sm flex items-center">
+                                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">$</span>
+                                        <span className="w-full pl-6 pr-2 font-black text-sm text-slate-700 truncate">
+                                            {(totalBalance + (calcData?.totalWin || 0)).toLocaleString()}
+                                        </span>
+                                    </div>
                                 </div>
                             </div>
-
-                            {/* [+] 按鈕 (置中) */}
-                            <div className="flex items-center justify-center h-[28px]">
-                                <button 
-                                    type="button"
-                                    onClick={handleUpdateBalance}
-                                    className="w-[28px] h-[28px] bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-md shadow-md transition-all active:scale-95 flex items-center justify-center shrink-0"
-                                    title="將贏分加入總財產 (Enter)"
-                                >
-                                    <ArrowLeft size={16} />
-                                </button>
-                            </div>
-
-                            {/* 預計結算後餘額 */}
-                            <div className="w-full">
-                                <label className="block text-xs font-bold text-slate-700 mb-1">預計結算後餘額 (Expected)</label>
-                                <div className="relative bg-white h-[28px] rounded-md border border-slate-300 shadow-sm flex items-center">
-                                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">$</span>
-                                    <span className="w-full pl-6 pr-2 font-black text-sm text-slate-700 truncate">
-                                        {(totalBalance + (calcData?.totalWin || 0)).toLocaleString()}
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
+                        )}
                     </div>
 
                     {calcErr && (

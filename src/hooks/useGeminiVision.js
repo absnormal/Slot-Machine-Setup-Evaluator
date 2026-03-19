@@ -34,7 +34,7 @@ export function useGeminiVision({
         if (visionImageObj && visionCanvasRef?.current && !isPhase3Minimized) {
             const canvas = visionCanvasRef.current;
             const ctx = canvas.getContext('2d');
-/* ... rest of drawing logic ... */
+            /* ... rest of drawing logic ... */
             if (activeVisionImg?.grid) {
                 // 已辨識完成：僅顯示框選範圍 (裁切)
                 const rx = toPx(visionP1.x, visionImageObj.width);
@@ -207,27 +207,30 @@ export function useGeminiVision({
             h: toPx(obj.h, visionImageObj.height)
         });
 
-        const rectMain = getPxRect(visionP1);
         const handleSizePx = Math.max(12, Math.floor(visionImageObj.width / 60));
-
         const isOverHandle = (x, y, r) => x >= r.x + r.w - handleSizePx * 1.5 && x <= r.x + r.w + handleSizePx * 1.5 && y >= r.y + r.h - handleSizePx * 1.5 && y <= r.y + r.h + handleSizePx * 1.5;
         const isOverRect = (x, y, r) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
 
+        // 優先判定乘倍框 (通常較小，可能在盤面框內)
+        if (template?.hasMultiplierReel) {
+            const rectMult = getPxRect(visionP1Mult);
+            if (isOverHandle(pos.x, pos.y, rectMult)) {
+                setVisionDragState({ type: 'mult', action: 'resize', startX: pos.x, startY: pos.y, initObj: { ...visionP1Mult } });
+                return;
+            } else if (isOverRect(pos.x, pos.y, rectMult)) {
+                setVisionDragState({ type: 'mult', action: 'move', startX: pos.x, startY: pos.y, initObj: { ...visionP1Mult } });
+                return;
+            }
+        }
+
+        // 其次判定盤面框
+        const rectMain = getPxRect(visionP1);
         if (isOverHandle(pos.x, pos.y, rectMain)) {
             setVisionDragState({ type: 'main', action: 'resize', startX: pos.x, startY: pos.y, initObj: { ...visionP1 } });
             return;
         } else if (isOverRect(pos.x, pos.y, rectMain)) {
             setVisionDragState({ type: 'main', action: 'move', startX: pos.x, startY: pos.y, initObj: { ...visionP1 } });
             return;
-        }
-
-        if (template?.hasMultiplierReel) {
-            const rectMult = getPxRect(visionP1Mult);
-            if (isOverHandle(pos.x, pos.y, rectMult)) {
-                setVisionDragState({ type: 'mult', action: 'resize', startX: pos.x, startY: pos.y, initObj: { ...visionP1Mult } });
-            } else if (isOverRect(pos.x, pos.y, rectMult)) {
-                setVisionDragState({ type: 'mult', action: 'move', startX: pos.x, startY: pos.y, initObj: { ...visionP1Mult } });
-            }
         }
     };
 
@@ -390,7 +393,7 @@ export function useGeminiVision({
             : "Ignore small multiplier amounts on coins. Match base symbols only. (Do NOT ignore standard symbols that are numbers, e.g., '7', '10', '9'). ";
 
         const multiplierRule = template.hasMultiplierReel
-            ? `The LAST column (Reel ${template.cols}) is a MULTIPLIER REEL. In Image 2, there might be a bar with multiple multiplier values (e.g. x1, x2, x3, x5). YOU MUST ONLY extract the "Highlighted" or "Activated" value (usually indicated by being brighter, yellow/gold color, or having a distinct frame vs the dimmed/dark green inactive ones). Output ONLY this active value for the center cell (Row ${Math.floor(template.rows / 2) + 1}). Top and bottom cells of this reel are empty, output "". `
+            ? `The LAST column (Reel ${template.cols}) is a MULTIPLIER REEL. In Image 2, there might be a bar with multiple multiplier values (e.g. x1, x2, x3, x5). YOU MUST ONLY extract the "Highlighted" or "Activated" value (usually indicated by being brighter, yellow/gold color, or having a distinct frame vs the dimmed/dark green inactive ones). Output ONLY the format 'xN' (e.g., if you see '5x' or '5', output 'x5') for the center cell (Row ${Math.floor(template.rows / 2) + 1}). Top and bottom cells of this reel are empty, output "". `
             : "";
 
         const pickRule = template.hasMultiplierReel
@@ -452,7 +455,7 @@ export function useGeminiVision({
 
                     currentParts.push({ text: "Image 2: Multiplier Cell (Center cell of the last column)\n" });
                     currentParts.push({ inlineData: { mimeType: resized2.mimeType, data: resized2.base64 } });
-                    currentParts.push({ text: "Please extract the symbols from Image 1 for the main grid, and strictly extract the multiplier value (e.g., x2, x5) for the center cell of the last column (Column " + template.cols + ") from Image 2. Empty cells in the last column should be \"\"." });
+                    currentParts.push({ text: "Please extract the symbols from Image 1 for the main grid, and strictly extract the multiplier value for the center cell of the last column (Column " + template.cols + ") from Image 2. Output ONLY the format \"xN\", for example, \"5x\" or \"5\" should be returned as \"x5\". Empty cells in the last column should be \"\"." });
                 }
 
                 const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${effectiveApiKey}`;
@@ -499,9 +502,13 @@ export function useGeminiVision({
                 if (template.hasMultiplierReel) {
                     for (let r = 0; r < template.rows; r++) {
                         const sym = parsedGrid[r]?.[template.cols - 1];
-                        if (sym && (String(sym).match(/(\d+(?:\.\d+)?)/) && /x|mult|✖/i.test(String(sym)))) {
-                            detectedMultiplier = sym;
-                            break;
+                        if (sym) {
+                            const strSym = String(sym);
+                            const match = strSym.match(/(\d+(?:\.\d+)?)/);
+                            if (match) {
+                                detectedMultiplier = "x" + match[0];
+                                break;
+                            }
                         }
                     }
                 }
@@ -569,6 +576,7 @@ export function useGeminiVision({
         isVisionStopping,
         visionBatchProgress,
         setActiveVisionId,
+        setVisionImages,
         handleVisionMouseDown,
         handleVisionMouseMove,
         handleVisionMouseUp,

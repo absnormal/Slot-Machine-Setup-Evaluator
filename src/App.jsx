@@ -131,7 +131,7 @@ function App() {
     const {
         visionImages, activeVisionId, activeVisionImg, visionImageObj, visionImageSrc, visionGrid, visionError,
         isVisionProcessing, isVisionStopping, visionBatchProgress,
-        setActiveVisionId, handleVisionMouseDown, handleVisionMouseMove, handleVisionMouseUp,
+        setActiveVisionId, setVisionImages, handleVisionMouseDown, handleVisionMouseMove, handleVisionMouseUp,
         handleVisionImageUpload, removeVisionImage, performAIVisionBatchMatching, cancelVisionProcessing,
         goToPrevVisionImage, goToNextVisionImage
     } = useGeminiVision({
@@ -387,9 +387,15 @@ function App() {
     }, [visionGrid, visionBetInput, setPanelGrid, setBetInput, setIsPhase3Minimized, setIsPhase2Minimized, setTemplateMessage]);
 /* ... handleReturnToVision ... */
     const handleReturnToVision = useCallback(() => {
+        if (activeVisionId) {
+            setVisionImages(prev => prev.map(img => 
+                img.id === activeVisionId ? { ...img, grid: JSON.parse(JSON.stringify(panelGrid)) } : img
+            ));
+            setVisionBetInput(betInput);
+        }
         setIsPhase2Minimized(true);
         setIsPhase3Minimized(false);
-    }, [setIsPhase2Minimized, setIsPhase3Minimized]);
+    }, [activeVisionId, panelGrid, betInput, setVisionImages, setVisionBetInput, setIsPhase2Minimized, setIsPhase3Minimized]);
 
     // 快捷鍵監聽 (方向鍵上: 傳送, 方向鍵下: 返回, Enter: 執行各階段主動作)
     useEffect(() => {
@@ -439,6 +445,8 @@ function App() {
         const saved = localStorage.getItem('slot_total_balance');
         return saved ? parseFloat(saved) : 0;
     });
+
+    const [isBalanceExpanded, setIsBalanceExpanded] = useState(false);
 
     useEffect(() => {
         localStorage.setItem('slot_total_balance', totalBalance.toString());
@@ -516,6 +524,7 @@ function App() {
                     onReturn={handleReturnToVision}
                     totalBalance={totalBalance} setTotalBalance={setTotalBalance}
                     setTemplateMessage={setTemplateMessage}
+                    isBalanceExpanded={isBalanceExpanded} setIsBalanceExpanded={setIsBalanceExpanded}
                 />
 
                 <Phase3Vision
@@ -534,6 +543,7 @@ function App() {
                     hasApiKey={hasApiKey}
                     totalBalance={totalBalance} setTotalBalance={setTotalBalance}
                     setTemplateMessage={setTemplateMessage}
+                    isBalanceExpanded={isBalanceExpanded} setIsBalanceExpanded={setIsBalanceExpanded}
                 />
 
             </div>
