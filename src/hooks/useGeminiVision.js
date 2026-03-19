@@ -36,7 +36,10 @@ export function useGeminiVision({
         if (visionImageObj && visionCanvasRef?.current && !isPhase3Minimized) {
             const canvas = visionCanvasRef.current;
             const ctx = canvas.getContext('2d');
-            /* ... rest of drawing logic ... */
+
+            const baseThickness = Math.max(2, Math.floor(visionImageObj.width / 400));
+            const handleSize = Math.max(12, Math.floor(visionImageObj.width / 60));
+
             if (activeVisionImg?.grid) {
                 // 已辨識完成：僅顯示框選範圍 (裁切)
                 const rx = toPx(visionP1.x, visionImageObj.width);
@@ -117,9 +120,10 @@ export function useGeminiVision({
                     ctx.strokeRect(relMx, relMy, rMw, rMh);
 
                     ctx.fillStyle = '#fbbf24';
-                    ctx.font = `bold ${Math.floor(rMw * 0.4)}px sans-serif`;
+                    ctx.font = `bold ${Math.floor(handleSize * 1.5)}px sans-serif`;
                     ctx.textAlign = 'center';
-                    ctx.fillText('X', relMx + rMw / 2, relMy + rMh / 2 + (rMh * 0.15));
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText('X', relMx + rMw / 2, relMy + rMh / 2);
                 }
 
                 if (template?.hasBetBox) {
@@ -153,9 +157,6 @@ export function useGeminiVision({
                     w: toPx(obj.w, visionImageObj.width),
                     h: toPx(obj.h, visionImageObj.height)
                 });
-
-                const baseThickness = Math.max(2, Math.floor(visionImageObj.width / 400));
-                const handleSize = Math.max(12, Math.floor(visionImageObj.width / 60));
 
                 const rect = getRect(visionP1);
                 ctx.lineWidth = baseThickness;
