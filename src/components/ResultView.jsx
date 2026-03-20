@@ -21,18 +21,23 @@ export default function ResultView({ template, calcData, calcErr, hoveredId, set
             <div className="static lg:absolute lg:inset-0 flex flex-col w-full h-full">
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col flex-1 min-h-0">
 
-                    <div className="mb-6 space-y-4 bg-slate-50 p-4 rounded-xl border border-slate-200 shrink-0">
+                    <div className="relative mb-6 space-y-4 bg-slate-50 p-4 rounded-xl border border-slate-200 shrink-0">
+                        <button 
+                            onClick={() => setIsBalanceExpanded(!isBalanceExpanded)}
+                            className={`absolute top-4 right-4 text-xs font-black flex items-center gap-1.5 px-3 py-1 rounded-full transition-all shadow-sm z-10 ${
+                                isBalanceExpanded 
+                                ? 'bg-slate-200 text-slate-600 hover:bg-slate-300' 
+                                : 'bg-indigo-600 text-white hover:bg-indigo-700 hover:scale-105 active:scale-95'
+                            }`}
+                        >
+                            {isBalanceExpanded ? <><ChevronUp size={14}/> 收合資產</> : <><ChevronDown size={14}/> 展開資產 (Assets)</>}
+                        </button>
+
                         {/* 第一排：[押注] [自動即時結算] */}
                         <div className="flex flex-col sm:flex-row justify-between items-end gap-4">
                             <div className="flex-1 w-full">
-                                <div className="flex items-center justify-between mb-1.5">
+                                <div className="mb-1.5">
                                     <label className="block text-sm font-bold text-slate-700">押注 (Total Bet)</label>
-                                    <button 
-                                        onClick={() => setIsBalanceExpanded(!isBalanceExpanded)}
-                                        className="text-[10px] font-bold text-indigo-500 hover:text-indigo-600 flex items-center gap-1 bg-indigo-50 px-2 py-0.5 rounded transition-colors"
-                                    >
-                                        {isBalanceExpanded ? <><ChevronUp size={12}/> 收合資產</> : <><ChevronDown size={12}/> 展開資產</>}
-                                    </button>
                                 </div>
                                 <div className="relative">
                                     <Coins className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />

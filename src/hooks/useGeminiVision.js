@@ -460,7 +460,9 @@ export function useGeminiVision({
 
         // 動態偵測易混淆符號對並生成警告
         const confusablePairs = [
-            ['二條', '五條'], ['二筒', '五筒'], ['WILD_元寶', 'SCATTER_錢幣'],
+            ['二條', '五條'], ['二筒', '五筒'],
+            ['二條', '二條'], ['二筒', '五條'],
+            ['WILD_元寶', 'SCATTER_錢幣'],
             ['橘子', '檸檬']
         ];
         const activeConfusables = confusablePairs.filter(
