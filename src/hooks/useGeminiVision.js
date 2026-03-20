@@ -443,7 +443,7 @@ export function useGeminiVision({
 
         const hasCashOrCollect = availableSymbols.some(sym => isCashSymbol(sym, template.jpConfig) || isCollectSymbol(sym));
         const cashRule = hasCashOrCollect
-            ? "If a symbol has a number, ALWAYS prioritize matching it to COLLECT symbols based on its shape first. Only classify as CASH_VALUE if it definitely does not match any other defined symbol. If the value has units like K, M, or B (e.g., 1.5M), YOU MUST convert it to the actual full numeric value (e.g., 1500000) and return it as CASH_1500000. "
+            ? "CASH/COLLECT RULES: If a cell contains a coin/token/gem with a numeric value displayed on it, you MUST identify it — do NOT leave it empty. First, check if the shape matches a COLLECT symbol from the reference images. If it matches COLLECT, return the COLLECT symbol name exactly as listed. If it does not match COLLECT but has a standalone numeric value (like 500, 1.5K, 2M), return it as CASH_{full_numeric_value} (e.g., 1.5M → CASH_1500000, 500 → CASH_500). Convert K=1000, M=1000000, B=1000000000. "
             : "Ignore small multiplier amounts on coins. Match base symbols only. (Do NOT ignore standard symbols that are numbers, e.g., '7', '10', '9'). ";
 
         const multiplierRule = template.hasMultiplierReel
@@ -460,7 +460,8 @@ export function useGeminiVision({
 
         // 動態偵測易混淆符號對並生成警告
         const confusablePairs = [
-            ['二條', '五條'], ['二筒', '五筒'], ['WILD_元寶', 'SCATTER_錢幣']
+            ['二條', '五條'], ['二筒', '五筒'], ['WILD_元寶', 'SCATTER_錢幣'],
+            ['橘子', '檸檬']
         ];
         const activeConfusables = confusablePairs.filter(
             ([a, b]) => availableSymbols.includes(a) && availableSymbols.includes(b)
@@ -472,7 +473,7 @@ export function useGeminiVision({
         const fixedPrefixParts = [
             { text: referenceText },
             ...referenceImages,
-            { text: `Grid: ${template.rows}R x ${template.cols}C. Symbols: [${availableSymbols.join(',')}]. ${pickRule}${cashRule}${multiplierRule}${betRule}${confusableWarning}JP names as-is. Dimmed/grayed cells: identify by shape. Unrecognizable: "". IMPORTANT: Always identify each cell as a WHOLE tile/symbol. Do NOT decompose a single tile into sub-parts. For complex symbols (like Mahjong tiles with multiple bars/dots), match the ENTIRE tile pattern against reference images as one unit. Return a JSON object with "grid" (${template.rows}x${template.cols} 2D array) and "bet" (number).` }
+            { text: `Grid: ${template.rows}R x ${template.cols}C. Symbols: [${availableSymbols.join(',')}]. ${pickRule}${cashRule}${multiplierRule}${betRule}${confusableWarning}JP names as-is. Dimmed/grayed cells: identify by shape. Truly unrecognizable cells: \"\". VISUAL EFFECTS: Some cells may be partially obscured by animation effects (sparkles, fire, glow, lightning, smoke, particle trails, shine, win-line highlights). These are NOT part of the symbol. Look THROUGH the effects and identify the underlying symbol based on its visible outline, color, and shape. Winning cells are often the ones with effects, so they are important — do NOT leave them empty just because of visual noise. IMPORTANT: The image has RED grid lines drawn on it to show exact cell boundaries. Analyze each cell INDIVIDUALLY within its red-bordered area. Do NOT let adjacent cell content influence your identification. Scan Row 1 left-to-right first, then Row 2, then Row 3, etc. Always identify each cell as a WHOLE tile/symbol. Do NOT decompose a single tile into sub-parts. For complex symbols (like Mahjong tiles with multiple bars/dots), match the ENTIRE tile pattern against reference images as one unit. If a cell clearly contains a visible symbol or value, you MUST identify it — do not skip it. Return a JSON object with \"grid\" (${template.rows}x${template.cols} 2D array) and \"bet\" (number).` }
         ];
 
         for (let i = 0; i < toProcess.length; i++) {
@@ -498,8 +499,27 @@ export function useGeminiVision({
                 const ctx1 = offCanvas1.getContext('2d');
                 ctx1.drawImage(targetImg.obj, rx1, ry1, rw1, rh1, 0, 0, rw1, rh1);
 
-                const raw1 = offCanvas1.toDataURL('image/jpeg', 0.65).split(',')[1];
-                const resized1 = await resizeImageBase64(`data:image/jpeg;base64,${raw1}`, 512, 0.65);
+                // 繪製紅色格線標記，幫助 AI 識別格子邊界
+                const displayCols = template.hasMultiplierReel ? template.cols - 1 : template.cols;
+                const cellW = rw1 / displayCols;
+                const cellH = rh1 / template.rows;
+                ctx1.strokeStyle = 'rgba(255, 0, 0, 0.6)';
+                ctx1.lineWidth = Math.max(2, Math.floor(Math.min(rw1, rh1) / 200));
+                for (let c = 1; c < displayCols; c++) {
+                    ctx1.beginPath();
+                    ctx1.moveTo(c * cellW, 0);
+                    ctx1.lineTo(c * cellW, rh1);
+                    ctx1.stroke();
+                }
+                for (let r = 1; r < template.rows; r++) {
+                    ctx1.beginPath();
+                    ctx1.moveTo(0, r * cellH);
+                    ctx1.lineTo(rw1, r * cellH);
+                    ctx1.stroke();
+                }
+
+                const raw1 = offCanvas1.toDataURL('image/jpeg', 0.75).split(',')[1];
+                const resized1 = await resizeImageBase64(`data:image/jpeg;base64,${raw1}`, 768, 0.75);
 
                 const currentParts = [
                     ...fixedPrefixParts,
@@ -554,6 +574,7 @@ export function useGeminiVision({
                         parts: currentParts
                     }],
                     generationConfig: {
+                        temperature: 0,
                         responseMimeType: "application/json",
                         responseSchema: {
                             type: "OBJECT",
@@ -618,7 +639,7 @@ export function useGeminiVision({
 
                         if (isMultiplierCol) {
                             sym = (r === midRow) ? detectedMultiplier : '';
-                        } else if (sym && !availableSymbols.includes(sym) && !isCashSymbol(sym, template?.jpConfig)) {
+                        } else if (sym && !availableSymbols.includes(sym) && !isCashSymbol(sym, template?.jpConfig) && !isCollectSymbol(sym)) {
                             sym = '';
                         }
                         rowArr.push(sym);
