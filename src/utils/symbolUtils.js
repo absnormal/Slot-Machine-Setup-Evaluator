@@ -62,6 +62,13 @@ export const getCashValue = (sym, jpConfig = {}) => {
     return parseShorthandValue(lastPart);
 };
 
+export const getCollectValue = (sym) => {
+    if (!isCollectSymbol(sym)) return 0;
+    const parts = sym.split('_');
+    const lastPart = parts[parts.length - 1];
+    return parseShorthandValue(lastPart);
+};
+
 export const getBaseSymbol = (sym, jpConfig = {}) => {
     if (!sym || typeof sym !== 'string') return sym;
     let base = sym;
@@ -74,7 +81,7 @@ export const getBaseSymbol = (sym, jpConfig = {}) => {
         base = base.replace(/_x(\d+(?:\.\d+)?)$/i, '');
     }
     if (isJpSymbol(base, jpConfig)) return base.toUpperCase();
-    if (isCashSymbol(base, jpConfig)) {
+    if (isCashSymbol(base, jpConfig) || isCollectSymbol(base)) {
         const parts = base.split('_');
         const lastPart = parts[parts.length - 1];
         // If the last part has a number or a unit shorthand, it's a value part
@@ -85,4 +92,46 @@ export const getBaseSymbol = (sym, jpConfig = {}) => {
         return base;
     }
     return base;
+};
+
+/**
+ * 尋找最適合該符號呈現的圖片
+ * 處理 AI 辨識出的動態符號 (如 COLLECT_500) 與 模板原始定義 (如 漁夫COLLECT) 的對應
+ */
+export const getSymbolDisplayImage = (sym, symbolImages, jpConfig = {}) => {
+    if (!sym || !symbolImages) return null;
+    
+    // 1. 直覺匹配 (完整名稱)
+    if (symbolImages[sym]) return symbolImages[sym];
+    
+    // 2. 基本符號匹配 (剝除 _double, _xN, _value)
+    const base = getBaseSymbol(sym, jpConfig);
+    if (symbolImages[base]) return symbolImages[base];
+    
+    // 3. 模糊匹配：處理 COLLECT_500 -> 漁夫COLLECT 這種情況
+    const isCollect = isCollectSymbol(sym);
+    const isCash = isCashSymbol(sym, jpConfig);
+    const isScatter = isScatterSymbol(sym);
+    const isWild = isWildSymbol(sym);
+    
+    if (isCollect || isCash || isScatter || isWild) {
+        // 在所有已登記的小圖中尋找具有相同特性的「基底」圖片
+        const allKeys = Object.keys(symbolImages);
+        
+        // 優先找完全包含 base 名稱的 (例如 sym="COLLECT_500", base="COLLECT", key="漁夫COLLECT")
+        const partialMatch = allKeys.find(k => k.toUpperCase().includes(base.toUpperCase()));
+        if (partialMatch) return symbolImages[partialMatch];
+        
+        // 次之依據符號類別尋找
+        const categoryMatch = allKeys.find(k => {
+            if (isCollect) return isCollectSymbol(k);
+            if (isCash) return isCashSymbol(k, jpConfig);
+            if (isScatter) return isScatterSymbol(k);
+            if (isWild) return isWildSymbol(k);
+            return false;
+        });
+        if (categoryMatch) return symbolImages[categoryMatch];
+    }
+    
+    return null;
 };

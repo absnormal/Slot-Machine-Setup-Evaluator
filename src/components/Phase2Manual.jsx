@@ -1,7 +1,7 @@
 import React from 'react';
 import { LayoutGrid, ChevronDown, ChevronUp, MousePointer2, RefreshCw, Paintbrush, Keyboard, Trash2, Zap, Trophy } from 'lucide-react';
 import ResultView from './ResultView';
-import { getBaseSymbol, getCashValue, isCashSymbol, isJpSymbol, formatShorthandValue, isDoubleSymbol, getSymbolMultiplier } from '../utils/symbolUtils';
+import { getBaseSymbol, getCashValue, isCashSymbol, isJpSymbol, formatShorthandValue, isDoubleSymbol, getSymbolMultiplier, getCollectValue, getSymbolDisplayImage } from '../utils/symbolUtils';
 
 const Phase2Manual = ({
     template,
@@ -275,7 +275,9 @@ const Phase2Manual = ({
                                                             }
 
                                                             const baseSym = getBaseSymbol(symbol, template?.jpConfig);
-                                                            const cashVal = getCashValue(symbol, template?.jpConfig);
+                                                            const isGridSymCash = isCashSymbol(symbol, template?.jpConfig);
+                                                            const isGridSymCollect = symbol && symbol.toUpperCase().includes('COLLECT');
+                                                            const cashVal = isGridSymCash ? getCashValue(symbol, template?.jpConfig) : (isGridSymCollect ? getCollectValue(symbol) : 0);
 
                                                             // === Multiplier Reel Constraints ===
                                                             const isMultiplierReelCol = template?.hasMultiplierReel && cIndex === template.cols - 1;
@@ -335,19 +337,21 @@ const Phase2Manual = ({
                                                                         />
                                                                     ) : (
                                                                         symbol ? (
-                                                                            template?.symbolImages?.[symbol] || template?.symbolImages?.[baseSym] ? (
-                                                                                <React.Fragment>
-                                                                                    <img src={template.symbolImages[symbol] || template.symbolImages[baseSym]} className={`max-w-full max-h-full object-contain p-1.5 drop-shadow-md pointer-events-none select-none ${isCashSymbol(symbol, template?.jpConfig) ? 'opacity-80' : ''}`} draggable={false} alt={symbol} />
-                                                                                    {cashVal > 0 && <div className="absolute inset-0 flex items-center justify-center font-black text-white drop-shadow-[0_2px_3px_rgba(0,0,0,1)] text-sm sm:text-base z-20 pointer-events-none">{isJpSymbol(symbol, template?.jpConfig) ? cashVal + 'x' : formatShorthandValue(cashVal)}</div>}
-                                                                                    {cashVal > 0 && <div className="absolute inset-0 flex items-center justify-center font-black text-white drop-shadow-[0_2px_3px_rgba(0,0,0,1)] text-sm sm:text-base z-20 pointer-events-none">{isJpSymbol(symbol, template?.jpConfig) ? cashVal + 'x' : formatShorthandValue(cashVal)}</div>}
-                                                                                    {/* Removed 2X badge */}
-                                                                                </React.Fragment>
-                                                                            ) : (
-                                                                                <span className="z-10 pointer-events-none select-none drop-shadow-md text-sm sm:text-xl flex flex-col items-center">
-                                                                                    {isCashSymbol(symbol, template?.jpConfig) && cashVal > 0 ? `💰${isJpSymbol(symbol, template?.jpConfig) ? cashVal + 'x' : formatShorthandValue(cashVal)}` : baseSym}
-                                                                                    {symbol.toLowerCase().endsWith('_double') && <span className="text-[8px] sm:text-[10px] text-indigo-300 font-black mt-1">DOUBLE</span>}
-                                                                                </span>
-                                                                            )
+                                                                            (() => {
+                                                                                const displayImg = getSymbolDisplayImage(symbol, template?.symbolImages, template?.jpConfig);
+                                                                                return displayImg ? (
+                                                                                    <React.Fragment>
+                                                                                        <img src={displayImg} className={`max-w-full max-h-full object-contain p-1.5 drop-shadow-md pointer-events-none select-none ${(isGridSymCash || isGridSymCollect) ? 'opacity-80' : ''}`} draggable={false} alt={symbol} />
+                                                                                        {cashVal > 0 && <div className="absolute inset-0 flex items-center justify-center font-black text-white drop-shadow-[0_2px_3px_rgba(0,0,0,1)] text-sm sm:text-base z-20 pointer-events-none">{isJpSymbol(symbol, template?.jpConfig) ? cashVal + 'x' : formatShorthandValue(cashVal)}</div>}
+                                                                                        {/* Removed 2X badge */}
+                                                                                    </React.Fragment>
+                                                                                ) : (
+                                                                                    <span className="z-10 pointer-events-none select-none drop-shadow-md text-sm sm:text-xl flex flex-col items-center">
+                                                                                        {(isGridSymCash || isGridSymCollect) && cashVal > 0 ? `💰${isJpSymbol(symbol, template?.jpConfig) ? cashVal + 'x' : formatShorthandValue(cashVal)}` : baseSym}
+                                                                                        {symbol.toLowerCase().endsWith('_double') && <span className="text-[8px] sm:text-[10px] text-indigo-300 font-black mt-1">DOUBLE</span>}
+                                                                                    </span>
+                                                                                );
+                                                                            })()
                                                                         ) : (
                                                                             <div className="w-2 h-2 rounded-full bg-slate-600/50 pointer-events-none"></div>
                                                                         )

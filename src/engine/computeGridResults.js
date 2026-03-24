@@ -1,4 +1,4 @@
-import { isScatterSymbol, isCollectSymbol, isWildSymbol, isCashSymbol, getCashValue, isJpSymbol, getSymbolCount, isDoubleSymbol, getBaseSymbol, getSymbolMultiplier } from '../utils/symbolUtils';
+import { isScatterSymbol, isCollectSymbol, isWildSymbol, isCashSymbol, getCashValue, isJpSymbol, getSymbolCount, isDoubleSymbol, getBaseSymbol, getSymbolMultiplier, getCollectValue } from '../utils/symbolUtils';
 
 /**
  * 核心結算引擎：根據模板、盤面與押注計算線獎結果
