@@ -117,9 +117,9 @@ const Phase2Manual = ({
                                                     }).map(sym => {
                                                         const isCash = isCashSymbol(sym, template?.jpConfig);
                                                         const baseSym = getBaseSymbol(sym, template?.jpConfig);
-                                                        const isActive = getBaseSymbol(activeBrush, template?.jpConfig) === baseSym && 
-                                                                       isDoubleSymbol(activeBrush) === isDoubleSymbol(sym) &&
-                                                                       getSymbolMultiplier(activeBrush) === getSymbolMultiplier(sym);
+                                                        const isActive = getBaseSymbol(activeBrush, template?.jpConfig) === baseSym &&
+                                                            isDoubleSymbol(activeBrush) === isDoubleSymbol(sym) &&
+                                                            getSymbolMultiplier(activeBrush) === getSymbolMultiplier(sym);
 
                                                         return (
                                                             <button
@@ -141,7 +141,7 @@ const Phase2Manual = ({
                                                                         <img src={template.symbolImages[sym] || template.symbolImages[baseSym]} className="max-w-full max-h-full object-contain p-1" alt={sym} />
                                                                         {isActive && isCash && getCashValue(activeBrush, template?.jpConfig) > 0 && (
                                                                             <div className="absolute inset-0 flex items-center justify-center font-black text-white drop-shadow-[0_2px_3px_rgba(0,0,0,1)] text-[10px] z-20 pointer-events-none">
-                                                                                 {isJpSymbol(activeBrush, template?.jpConfig) ? getCashValue(activeBrush, template?.jpConfig) + 'x' : formatShorthandValue(getCashValue(activeBrush, template?.jpConfig))}
+                                                                                {isJpSymbol(activeBrush, template?.jpConfig) ? getCashValue(activeBrush, template?.jpConfig) + 'x' : formatShorthandValue(getCashValue(activeBrush, template?.jpConfig))}
                                                                             </div>
                                                                         )}
                                                                         {sym.toLowerCase().endsWith('_double') && (
@@ -152,8 +152,8 @@ const Phase2Manual = ({
                                                                     </React.Fragment>
                                                                 ) : (
                                                                     <span className="text-[10px] sm:text-xs font-black leading-tight text-center px-1 text-slate-200">
-                                                                         {isCash ? (isActive && getCashValue(activeBrush, template?.jpConfig) > 0 ? `💰${isJpSymbol(activeBrush, template?.jpConfig) ? getCashValue(activeBrush, template?.jpConfig) + 'x' : formatShorthandValue(getCashValue(activeBrush, template?.jpConfig))}` : '💰設定') : sym}
-                                                                         {sym.toLowerCase().endsWith('_double') && <div className="text-[8px] text-indigo-400 mt-0.5">DOUBLE</div>}
+                                                                        {isCash ? (isActive && getCashValue(activeBrush, template?.jpConfig) > 0 ? `💰${isJpSymbol(activeBrush, template?.jpConfig) ? getCashValue(activeBrush, template?.jpConfig) + 'x' : formatShorthandValue(getCashValue(activeBrush, template?.jpConfig))}` : '💰設定') : sym}
+                                                                        {sym.toLowerCase().endsWith('_double') && <div className="text-[8px] text-indigo-400 mt-0.5">DOUBLE</div>}
                                                                     </span>
                                                                 )}
                                                             </button>
@@ -280,7 +280,7 @@ const Phase2Manual = ({
                                                             // === Multiplier Reel Constraints ===
                                                             const isMultiplierReelCol = template?.hasMultiplierReel && cIndex === template.cols - 1;
                                                             // Removed center-row-only restriction for "全盤乘倍" flexibility
-                                                            const isDisabledMultiplierCell = false; 
+                                                            const isDisabledMultiplierCell = false;
 
                                                             const handleGridPaste = (e, targetRow, targetCol) => {
                                                                 e.preventDefault();
@@ -338,14 +338,14 @@ const Phase2Manual = ({
                                                                             template?.symbolImages?.[symbol] || template?.symbolImages?.[baseSym] ? (
                                                                                 <React.Fragment>
                                                                                     <img src={template.symbolImages[symbol] || template.symbolImages[baseSym]} className={`max-w-full max-h-full object-contain p-1.5 drop-shadow-md pointer-events-none select-none ${isCashSymbol(symbol, template?.jpConfig) ? 'opacity-80' : ''}`} draggable={false} alt={symbol} />
-                                                                                     {cashVal > 0 && <div className="absolute inset-0 flex items-center justify-center font-black text-white drop-shadow-[0_2px_3px_rgba(0,0,0,1)] text-sm sm:text-base z-20 pointer-events-none">{isJpSymbol(symbol, template?.jpConfig) ? cashVal + 'x' : formatShorthandValue(cashVal)}</div>}
-                                                                                     {cashVal > 0 && <div className="absolute inset-0 flex items-center justify-center font-black text-white drop-shadow-[0_2px_3px_rgba(0,0,0,1)] text-sm sm:text-base z-20 pointer-events-none">{isJpSymbol(symbol, template?.jpConfig) ? cashVal + 'x' : formatShorthandValue(cashVal)}</div>}
-                                                                                     {/* Removed 2X badge */}
+                                                                                    {cashVal > 0 && <div className="absolute inset-0 flex items-center justify-center font-black text-white drop-shadow-[0_2px_3px_rgba(0,0,0,1)] text-sm sm:text-base z-20 pointer-events-none">{isJpSymbol(symbol, template?.jpConfig) ? cashVal + 'x' : formatShorthandValue(cashVal)}</div>}
+                                                                                    {cashVal > 0 && <div className="absolute inset-0 flex items-center justify-center font-black text-white drop-shadow-[0_2px_3px_rgba(0,0,0,1)] text-sm sm:text-base z-20 pointer-events-none">{isJpSymbol(symbol, template?.jpConfig) ? cashVal + 'x' : formatShorthandValue(cashVal)}</div>}
+                                                                                    {/* Removed 2X badge */}
                                                                                 </React.Fragment>
                                                                             ) : (
                                                                                 <span className="z-10 pointer-events-none select-none drop-shadow-md text-sm sm:text-xl flex flex-col items-center">
-                                                                                     {isCashSymbol(symbol, template?.jpConfig) && cashVal > 0 ? `💰${isJpSymbol(symbol, template?.jpConfig) ? cashVal + 'x' : formatShorthandValue(cashVal)}` : baseSym}
-                                                                                     {symbol.toLowerCase().endsWith('_double') && <span className="text-[8px] sm:text-[10px] text-indigo-300 font-black mt-1">DOUBLE</span>}
+                                                                                    {isCashSymbol(symbol, template?.jpConfig) && cashVal > 0 ? `💰${isJpSymbol(symbol, template?.jpConfig) ? cashVal + 'x' : formatShorthandValue(cashVal)}` : baseSym}
+                                                                                    {symbol.toLowerCase().endsWith('_double') && <span className="text-[8px] sm:text-[10px] text-indigo-300 font-black mt-1">DOUBLE</span>}
                                                                                 </span>
                                                                             )
                                                                         ) : (
@@ -385,17 +385,17 @@ const Phase2Manual = ({
                             <div>
                                 <label className="block text-slate-400 text-xs font-bold mb-2 uppercase tracking-wider">實際面額</label>
                                 <div className="relative">
-                                     <input
-                                         autoFocus
-                                         type="text"
-                                         value={cashValueInput}
-                                         onChange={(e) => setCashValueInput(e.target.value)}
+                                    <input
+                                        autoFocus
+                                        type="text"
+                                        value={cashValueInput}
+                                        onChange={(e) => setCashValueInput(e.target.value)}
                                         onKeyDown={(e) => {
                                             if (e.key === 'Enter') handleConfirmCashValue();
                                             if (e.key === 'Escape') setShowCashModal(false);
                                         }}
                                         className="w-full bg-slate-900 border border-slate-700 rounded-xl p-4 text-white text-2xl font-black focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
-                                         placeholder="例如:10、3.5M、2.5K"
+                                        placeholder="例如:10、3.5M、2.5K"
                                     />
                                 </div>
                             </div>

@@ -23,6 +23,7 @@ export function useGeminiVision({
     const [isVisionStopping, setIsVisionStopping] = useState(false);
     const [visionBatchProgress, setVisionBatchProgress] = useState({ current: 0, total: 0 });
     const [hasBetBox, setHasBetBox] = useState(false);
+    const [collectShowsTotalWin, setCollectShowsTotalWin] = useState(false);
     const [visionDragState, setVisionDragState] = useState(null);
 
     const activeVisionImg = visionImages.find(img => img.id === activeVisionId) || null;
@@ -442,9 +443,15 @@ export function useGeminiVision({
         }
 
         const hasCashOrCollect = availableSymbols.some(sym => isCashSymbol(sym, template.jpConfig) || isCollectSymbol(sym));
-        const cashRule = hasCashOrCollect
-            ? "CASH/COLLECT RULES: If a cell contains a coin/token/gem with a numeric value displayed on it, you MUST identify it — do NOT leave it empty. First, check if the shape matches a COLLECT symbol from the reference images. If it matches COLLECT, return the COLLECT symbol name exactly as listed. If it does not match COLLECT but has a standalone numeric value (like 500, 1.5K, 2M), return it as CASH_{full_numeric_value} (e.g., 1.5M → CASH_1500000, 500 → CASH_500). Convert K=1000, M=1000000, B=1000000000. "
-            : "Ignore small multiplier amounts on coins. Match base symbols only. (Do NOT ignore standard symbols that are numbers, e.g., '7', '10', '9'). ";
+        let cashRule = "Ignore small multiplier amounts on coins. Match base symbols only. (Do NOT ignore standard symbols that are numbers, e.g., '7', '10', '9'). ";
+
+        if (hasCashOrCollect) {
+            if (collectShowsTotalWin) {
+                cashRule = "CASH/COLLECT RULES: In this specific game, coin symbols disappear from the grid upon collection, and the summarized win value is displayed directly on the COLLECT symbol itself! If you see a shape that matches a COLLECT symbol from reference images AND it has a numeric value displayed on it, you MUST output it as COLLECT_{full_numeric_value} (e.g., if you see a fisherman with 1500000, output COLLECT_1500000). Do NOT use CASH_ prefix for this. For any empty grid cells left behind by vanished coins, you MUST output \"\" (empty string). Any standalone coins remaining should be CASH_{value}. Convert K=1000, M=1000000. ";
+            } else {
+                cashRule = "CASH/COLLECT RULES: If a cell contains a coin/token/gem with a numeric value displayed on it, you MUST identify it — do NOT leave it empty. First, check if the shape matches a COLLECT symbol from the reference images. If it is a COLLECT symbol AND has a numeric value (e.g. COLLECT_500 or 1.5M), format it as CASH_{full_numeric_value} (e.g., 1.5M → CASH_1500000, 500 → CASH_500). If it matches COLLECT but has NO explicit number, return the COLLECT symbol name exactly as listed. If it does not match COLLECT but has a standalone numeric value, return it as CASH_{full_numeric_value}. Convert K=1000, M=1000000, B=1000000000. If the symbol functions as BOTH WILD and CASH, you MUST use the format CASH_WILD_{value} (e.g. CASH_WILD_500). ";
+            }
+        }
 
         const multiplierRule = template.hasMultiplierReel
             ? `The LAST column (Reel ${template.cols}) is a MULTIPLIER REEL. In Image 2, there might be a bar with multiple multiplier values (e.g. x1, x2, x3, x5). YOU MUST ONLY extract the "Highlighted" or "Activated" value (usually indicated by being brighter, yellow/gold color, or having a distinct frame vs the dimmed/dark green inactive ones). Output ONLY the format 'xN' (e.g., if you see '5x' or '5', output 'x5') for the center cell (Row ${Math.floor(template.rows / 2) + 1}). Top and bottom cells of this reel are empty, output "". `
@@ -649,6 +656,12 @@ export function useGeminiVision({
                     safeGrid.push(rowArr);
                 }
 
+                console.log(`%c=== AI 辨識結果 (圖片: ${targetImg.file?.name || '未知'}) ===`, 'color: #4f46e5; font-weight: bold; font-size: 14px;');
+                if (hasBetBox && recognizedBet !== null) {
+                    console.log(`%c👉 辨識押注: ${recognizedBet}`, 'color: #10b981; font-weight: bold;');
+                }
+                console.table(safeGrid);
+
                 currentVisionImages[imgIndex] = {
                     ...currentVisionImages[imgIndex],
                     grid: safeGrid,
@@ -718,6 +731,8 @@ export function useGeminiVision({
         goToPrevVisionImage,
         goToNextVisionImage,
         hasBetBox,
-        setHasBetBox
+        setHasBetBox,
+        collectShowsTotalWin,
+        setCollectShowsTotalWin
     };
 }

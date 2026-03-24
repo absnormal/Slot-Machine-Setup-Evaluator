@@ -16,6 +16,17 @@ export default function ResultView({ template, calcData, calcErr, hoveredId, set
         }
     };
 
+    const handleDeductBet = () => {
+        const betAmount = parseFloat(betInput) || 0;
+        if (betAmount > 0) {
+            setTotalBalance(prev => prev - betAmount);
+            if (setTemplateMessage) {
+                setTemplateMessage(`🪙 已扣除押注 -${betAmount.toLocaleString()}`);
+                setTimeout(() => setTemplateMessage(''), 3000);
+            }
+        }
+    };
+
     return (
         <div className="relative flex flex-col h-full lg:block w-full">
             <div className="static lg:absolute lg:inset-0 flex flex-col w-full h-full">
@@ -50,9 +61,18 @@ export default function ResultView({ template, calcData, calcErr, hoveredId, set
                                     />
                                 </div>
                             </div>
-                            <div className="px-4 py-2 bg-emerald-50 border border-emerald-200 text-emerald-700 font-bold rounded-lg flex items-center justify-center gap-2 shadow-sm pointer-events-none select-none h-[46px] w-full sm:w-auto shrink-0">
-                                <Zap size={18} className="fill-emerald-500 text-emerald-500" /> 自動即時結算
-                            </div>
+                            {isBalanceExpanded ? (
+                                <button 
+                                    onClick={handleDeductBet}
+                                    className="px-6 py-2 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 font-bold rounded-lg flex items-center justify-center gap-2 shadow-sm transition-all active:scale-95 h-[46px] w-full sm:w-auto shrink-0 cursor-pointer"
+                                >
+                                    <Coins size={18} className="text-rose-500" /> 扣一次BET
+                                </button>
+                            ) : (
+                                <div className="px-4 py-2 bg-emerald-50 border border-emerald-200 text-emerald-700 font-bold rounded-lg flex items-center justify-center gap-2 shadow-sm pointer-events-none select-none h-[46px] w-full sm:w-auto shrink-0">
+                                    <Zap size={18} className="fill-emerald-500 text-emerald-500" /> 自動即時結算
+                                </div>
+                            )}
                         </div>
 
                         {/* 第二排：[目前總財產] [+] [預期總財產] */}
