@@ -90,12 +90,12 @@ export default function Phase1Setup(props) {
                                     <Save size={16} />匯出
                                 </button>
                                 <div className="flex bg-white rounded-lg shadow-sm border border-indigo-200 overflow-hidden flex-1 lg:flex-none">
-                                    <input 
-                                        type="text" 
-                                        placeholder={`儲存名稱 (預設: 平台-遊戲)`} 
-                                        value={templateName} 
-                                        onChange={(e) => setTemplateName(e.target.value)} 
-                                        className="px-3 py-2 text-sm focus:outline-none w-full lg:w-48 text-slate-700 font-medium" 
+                                    <input
+                                        type="text"
+                                        placeholder={`儲存名稱 (預設: 平台-遊戲)`}
+                                        value={templateName}
+                                        onChange={(e) => setTemplateName(e.target.value)}
+                                        className="px-3 py-2 text-sm focus:outline-none w-full lg:w-48 text-slate-700 font-medium"
                                     />
                                     <button onClick={handleSaveToCloud} disabled={isSaving} className={`px-4 py-2 text-white text-sm font-bold flex items-center justify-center gap-1 shrink-0 transition-colors border-l border-indigo-200 ${isSaving ? 'bg-indigo-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'}`}>
                                         {isSaving && activeSaveAction === 'initial' ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
@@ -162,7 +162,7 @@ export default function Phase1Setup(props) {
                                             <p className="text-xs text-indigo-600">不使用固定賠付線，從左至右逐 Reel 檢查相鄰符號。Ways 數 = 各 Reel 匹配數量的乘積。</p>
                                         </div>
                                     </div>
-                                    
+
                                     <div className="mt-3 flex items-center gap-4 flex-wrap">
                                         <div className="flex items-center gap-2">
                                             <span className="text-xs text-slate-600 font-bold">Row</span>
@@ -626,9 +626,9 @@ export default function Phase1Setup(props) {
                                                     </div>
                                                 </div>
                                             )}
-                                            <button 
-                                                onClick={() => setShowPtModal(true)} 
-                                                disabled={isPtProcessing || ptImages.length === 0 || !hasApiKey} 
+                                            <button
+                                                onClick={() => setShowPtModal(true)}
+                                                disabled={isPtProcessing || ptImages.length === 0 || !hasApiKey}
                                                 className={`m-2 mt-0 py-2.5 rounded-lg font-bold flex justify-center items-center gap-1.5 shadow-sm transition-colors ${isPtProcessing || ptImages.length === 0 || !hasApiKey ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700 text-white'}`}
                                             >
                                                 {isPtProcessing ? <Loader2 size={16} className="animate-spin" /> : null}
@@ -697,7 +697,7 @@ export default function Phase1Setup(props) {
                                                                                     >
                                                                                         <ImagePlus size={12} />
                                                                                     </button>
-                                                                                 </div>
+                                                                                </div>
                                                                             </td>
                                                                         )}
                                                                         <td className="p-1">
@@ -707,11 +707,11 @@ export default function Phase1Setup(props) {
                                                                             const matchKey = `match${i + 2}`;
                                                                             return (
                                                                                 <td key={i} className="p-1">
-                                                                                    <input 
-                                                                                        type="text" 
-                                                                                        value={item[matchKey] || 0} 
-                                                                                        onChange={(e) => handlePtTableChange(idx, matchKey, e.target.value)} 
-                                                                                        className="w-full text-center text-slate-600 bg-transparent border border-transparent hover:border-slate-300 focus:border-indigo-500 focus:bg-white rounded px-1 py-1 outline-none transition-all" 
+                                                                                    <input
+                                                                                        type="text"
+                                                                                        value={item[matchKey] || 0}
+                                                                                        onChange={(e) => handlePtTableChange(idx, matchKey, e.target.value)}
+                                                                                        className="w-full text-center text-slate-600 bg-transparent border border-transparent hover:border-slate-300 focus:border-indigo-500 focus:bg-white rounded px-1 py-1 outline-none transition-all"
                                                                                     />
                                                                                 </td>
                                                                             );

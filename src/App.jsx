@@ -364,7 +364,7 @@ function App() {
     const [visionCalcResults, setVisionCalcResults] = useState(null);
     const [visionCalculateError, setVisionCalculateError] = useState('');
     const [visionBetInput, setVisionBetInput] = useState(100);
- 
+
     // 同步當前圖片的辨識 BET
     useEffect(() => {
         if (activeVisionImg && typeof activeVisionImg.bet === 'number') {
@@ -376,7 +376,7 @@ function App() {
     const handleVisionBetInputChange = (newBet) => {
         setVisionBetInput(newBet);
         if (activeVisionId) {
-            setVisionImages(prev => prev.map(img => 
+            setVisionImages(prev => prev.map(img =>
                 img.id === activeVisionId ? { ...img, bet: newBet } : img
             ));
         }
@@ -403,10 +403,10 @@ function App() {
         setTemplateMessage('✅ 已將 AI 辨識盤面及押注傳送到 Phase 2');
         setTimeout(() => setTemplateMessage(''), 3000);
     }, [visionGrid, visionBetInput, setPanelGrid, setBetInput, setIsPhase3Minimized, setIsPhase2Minimized, setTemplateMessage]);
-/* ... handleReturnToVision ... */
+    /* ... handleReturnToVision ... */
     const handleReturnToVision = useCallback(() => {
         if (activeVisionId) {
-            setVisionImages(prev => prev.map(img => 
+            setVisionImages(prev => prev.map(img =>
                 img.id === activeVisionId ? { ...img, grid: JSON.parse(JSON.stringify(panelGrid)) } : img
             ));
             setVisionBetInput(betInput);
@@ -435,7 +435,7 @@ function App() {
                 if (!isTemplateMinimized) {
                     e.preventDefault();
                     handleBuildTemplate();
-                } 
+                }
                 // Phase 2: 更新資產
                 else if (!isPhase2Minimized) {
                     e.preventDefault();
@@ -639,7 +639,7 @@ function App() {
                                             }
 
                                             const canvas = document.createElement('canvas');
-                                            
+
                                             // 壓縮補強：限制最大尺寸並使用 JPEG 0.7
                                             const MAX_THUMB_SIZE = 128;
                                             let targetW = cW;
@@ -653,13 +653,13 @@ function App() {
                                                     targetW = (cW / cH) * MAX_THUMB_SIZE;
                                                 }
                                             }
-                                            
-                                            canvas.width = targetW; 
+
+                                            canvas.width = targetW;
                                             canvas.height = targetH;
                                             const ctx = canvas.getContext('2d');
                                             // 使用複寫方式繪製並縮放
                                             ctx.drawImage(img, startX * sX, startY * sY, cW, cH, 0, 0, targetW, targetH);
-                                            
+
                                             const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.7);
 
                                             // 修改：將擷取到的圖片推入 thumbUrls 陣列中

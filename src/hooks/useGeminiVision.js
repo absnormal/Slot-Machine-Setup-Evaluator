@@ -3,6 +3,22 @@ import { toPx, toPct, fetchWithRetry, resizeImageBase64 } from '../utils/helpers
 import { isCashSymbol, isCollectSymbol } from '../utils/symbolUtils';
 import { apiKey } from '../utils/constants';
 
+const CACHE_KEYS = {
+    MAIN: 'SLOT_P3_CACHE_MAIN',
+    MULT: 'SLOT_P3_CACHE_MULT',
+    BET: 'SLOT_P3_CACHE_BET'
+};
+
+const loadCache = (key, defaultValue) => {
+    try {
+        const cached = localStorage.getItem(key);
+        return cached ? JSON.parse(cached) : defaultValue;
+    } catch (e) {
+        console.warn(`Failed to load cache for ${key}:`, e);
+        return defaultValue;
+    }
+};
+
 export function useGeminiVision({
     template,
     availableSymbols,
@@ -15,9 +31,9 @@ export function useGeminiVision({
     const [visionImages, setVisionImages] = useState([]);
     const [activeVisionId, setActiveVisionId] = useState(null);
 
-    const [visionP1, setVisionP1] = useState({ x: 10, y: 10, w: 80, h: 80 });
-    const [visionP1Mult, setVisionP1Mult] = useState({ x: 92, y: 45, w: 6, h: 10 });
-    const [visionP1Bet, setVisionP1Bet] = useState({ x: 80, y: 92, w: 15, h: 5 });
+    const [visionP1, setVisionP1] = useState(() => loadCache(CACHE_KEYS.MAIN, { x: 10, y: 10, w: 80, h: 80 }));
+    const [visionP1Mult, setVisionP1Mult] = useState(() => loadCache(CACHE_KEYS.MULT, { x: 92, y: 45, w: 6, h: 10 }));
+    const [visionP1Bet, setVisionP1Bet] = useState(() => loadCache(CACHE_KEYS.BET, { x: 80, y: 92, w: 15, h: 5 }));
     const [isVisionProcessing, setIsVisionProcessing] = useState(false);
     const isVisionCanceled = useRef(false);
     const [isVisionStopping, setIsVisionStopping] = useState(false);
@@ -401,6 +417,15 @@ export function useGeminiVision({
         if (visionImages.length === 0 || !template) {
             setTemplateError("請先上傳截圖，並確保已經完成 Phase 1 模板設定！");
             return;
+        }
+
+        // 儲存選取框位置到快取
+        try {
+            localStorage.setItem(CACHE_KEYS.MAIN, JSON.stringify(visionP1));
+            localStorage.setItem(CACHE_KEYS.MULT, JSON.stringify(visionP1Mult));
+            localStorage.setItem(CACHE_KEYS.BET, JSON.stringify(visionP1Bet));
+        } catch (e) {
+            console.warn("Failed to save vision box cache:", e);
         }
 
         const effectiveApiKey = customApiKey.trim() || apiKey;
