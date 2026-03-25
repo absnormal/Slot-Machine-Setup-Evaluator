@@ -18,9 +18,11 @@ import { useCloud } from './hooks/useCloud';
 import { useGeminiVision } from './hooks/useGeminiVision';
 import { useTemplateBuilder } from './hooks/useTemplateBuilder';
 import { useSlotEngine } from './hooks/useSlotEngine';
+import { useVideoProcessor } from './hooks/useVideoProcessor';
 import Phase1Setup from './components/Phase1Setup';
 import Phase2Manual from './components/Phase2Manual';
 import Phase3Vision from './components/Phase3Vision';
+import Phase4Video from './components/Phase4Video';
 function App() {
     // --- 預設資料清空 ---
     const defaultPaytable = "";
@@ -45,6 +47,7 @@ function App() {
     const [isTemplateMinimized, setIsTemplateMinimized] = useState(false);
     const [isPhase2Minimized, setIsPhase2Minimized] = useState(true);
     const [isPhase3Minimized, setIsPhase3Minimized] = useState(true);
+    const [isPhase4Minimized, setIsPhase4Minimized] = useState(true);
 
     const [templateMessage, setTemplateMessage] = useState('');
 
@@ -144,6 +147,45 @@ function App() {
         visionCanvasRef,
         isPhase3Minimized
     });
+
+    // --- 狀態管理: Phase 4 (影片自動辨識截圖) ---
+    const {
+        videoSrc, videoRef, handleVideoUpload,
+        isAutoDetecting, setIsAutoDetecting,
+        sensitivity, setSensitivity,
+        capturedImages, removeCapturedImage, clearAllCaptures,
+        reelROI, setReelROI, winROI, setWinROI,
+        captureCurrentFrame,
+        debugData
+    } = useVideoProcessor({ setTemplateMessage });
+
+    const handleTransferPhase4ToPhase3 = useCallback(async () => {
+        if (capturedImages.length === 0) return;
+        
+        // 轉換為 Phase 3 需要的格式 (需帶有 HTML Image 對象)
+        const transformed = await Promise.all(capturedImages.map(imgData => {
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.onload = () => {
+                    resolve({
+                        id: imgData.id,
+                        file: imgData.file,
+                        previewUrl: imgData.previewUrl,
+                        obj: img, // Phase 3 畫 canvas 需要原始對象
+                        grid: null,
+                        error: ''
+                    });
+                };
+                img.src = imgData.previewUrl;
+            });
+        }));
+        
+        setVisionImages(prev => [...prev, ...transformed]);
+        setIsPhase4Minimized(true);
+        setIsPhase3Minimized(false);
+        setTemplateMessage(`✅ 已成功從影片匯入 ${capturedImages.length} 張截圖至 Phase 3`);
+        clearAllCaptures();
+    }, [capturedImages, setVisionImages, setTemplateMessage, clearAllCaptures]);
 
 
 
@@ -542,7 +584,7 @@ function App() {
                     onReturn={handleReturnToVision}
                     totalBalance={totalBalance} setTotalBalance={setTotalBalance}
                     setTemplateMessage={setTemplateMessage}
-                    isBalanceExpanded={isBalanceExpanded} setIsBalanceExpanded={setIsBalanceExpanded}
+                    isBalanceExpanded={isBalanceExpanded}                    setIsBalanceExpanded={setIsBalanceExpanded}
                 />
 
                 <Phase3Vision
@@ -563,6 +605,20 @@ function App() {
                     totalBalance={totalBalance} setTotalBalance={setTotalBalance}
                     setTemplateMessage={setTemplateMessage}
                     isBalanceExpanded={isBalanceExpanded} setIsBalanceExpanded={setIsBalanceExpanded}
+                />
+
+                <Phase4Video
+                    isPhase4Minimized={isPhase4Minimized} setIsPhase4Minimized={setIsPhase4Minimized}
+                    videoSrc={videoSrc} videoRef={videoRef} handleVideoUpload={handleVideoUpload}
+                    isAutoDetecting={isAutoDetecting} setIsAutoDetecting={setIsAutoDetecting}
+                    sensitivity={sensitivity} setSensitivity={setSensitivity}
+                    capturedImages={capturedImages} removeCapturedImage={removeCapturedImage} clearAllCaptures={clearAllCaptures}
+                    reelROI={reelROI} setReelROI={setReelROI}
+                    winROI={winROI} setWinROI={setWinROI}
+                    captureCurrentFrame={captureCurrentFrame}
+                    onTransferToPhase3={handleTransferPhase4ToPhase3}
+                    setTemplateMessage={setTemplateMessage}
+                    debugData={debugData}
                 />
 
             </div>
