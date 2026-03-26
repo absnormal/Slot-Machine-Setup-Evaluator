@@ -13,7 +13,21 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
     const [motionDelay, setMotionDelay] = useState(300); // 穩定判定時間 (ms)
     
     const [capturedImages, setCapturedImages] = useState([]);
-    const [reelROI, setReelROI] = useState({ x: 15, y: 15, w: 70, h: 55 });
+    const [reelROI, setReelROI] = useState(() => {
+        const saved = localStorage.getItem('slot_phase4_roi');
+        try {
+            return saved ? JSON.parse(saved) : { x: 15, y: 15, w: 70, h: 55 };
+        } catch (e) {
+            return { x: 15, y: 15, w: 70, h: 55 };
+        }
+    });
+
+    // 當切換為「開始偵測」時，才進行 ROI 持久化 (減少頻繁寫入快取的資源消耗)
+    useEffect(() => {
+        if (isAutoDetecting && reelROI) {
+            localStorage.setItem('slot_phase4_roi', JSON.stringify(reelROI));
+        }
+    }, [isAutoDetecting]); 
     
     // 除錯資料
     const [debugData, setDebugData] = useState({ 
