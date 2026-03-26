@@ -134,10 +134,11 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
             const imageData = ctx.getImageData(0, 0, targetW, targetH);
             const data = imageData.data;
 
-            // 3. 轉為灰階 (不再進行二值化，直接保留灰階值以提升比對精度)
-            const grayscale = new Uint8Array(targetW * targetH);
+            // 3. 轉為灰階二值化 (還原為二值化比對)
+            const binarized = new Uint8Array(targetW * targetH);
             for (let i = 0; i < data.length; i += 4) {
-                grayscale[i/4] = (data[i] + data[i+1] + data[i+2]) / 3;
+                const avg = (data[i] + data[i+1] + data[i+2]) / 3;
+                binarized[i/4] = avg > 120 ? 255 : 0;
             }
 
             // 4. 格點位移比對
@@ -153,11 +154,11 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
                         const startX = c * cellW;
                         const startY = r * cellH;
 
-                        // 採樣比對：使用灰階亮度差 (閾值 10) 判定像素級位移
+                        // 採樣比對：回到二值化比對
                         for (let y = startY; y < startY + cellH; y += 4) {
                             for (let x = startX; x < startX + cellW; x += 4) {
                                 const idx = y * targetW + x;
-                                if (Math.abs(grayscale[idx] - lastFrameRef.current[idx]) > 10) {
+                                if (binarized[idx] !== lastFrameRef.current[idx]) {
                                     cellDiff++;
                                 }
                             }
@@ -204,6 +205,7 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
                 }
 
                 spinStateRef.current = nextStatus;
+                lastFrameRef.current = binarized;
 
                 // 強制更新除錯面板
                 setDebugData({
