@@ -155,6 +155,7 @@ function App() {
         sensitivity, setSensitivity,
         motionCoverageMin, setMotionCoverageMin,
         motionDelay, setMotionDelay,
+        vLineThreshold, setVLineThreshold,
         capturedImages, removeCapturedImage, clearAllCaptures,
         reelROI, setReelROI,
         winROI, setWinROI,
@@ -618,6 +619,7 @@ function App() {
                     sensitivity={sensitivity} setSensitivity={setSensitivity}
                     motionCoverageMin={motionCoverageMin} setMotionCoverageMin={setMotionCoverageMin}
                     motionDelay={motionDelay} setMotionDelay={setMotionDelay}
+                    vLineThreshold={vLineThreshold} setVLineThreshold={setVLineThreshold}
                     capturedImages={capturedImages} removeCapturedImage={removeCapturedImage} clearAllCaptures={clearAllCaptures}
                     reelROI={reelROI} setReelROI={setReelROI}
                     winROI={winROI} setWinROI={setWinROI}

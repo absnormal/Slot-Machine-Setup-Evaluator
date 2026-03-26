@@ -16,7 +16,8 @@ const Phase4Video = ({
     onTransferToPhase3,
     setTemplateMessage,
     template,
-    debugData
+    debugData,
+    vLineThreshold, setVLineThreshold
 }) => {
     const [isPlaying, setIsPlaying] = useState(false);
     const [showDebug, setShowDebug] = useState(true);
@@ -27,10 +28,11 @@ const Phase4Video = ({
     const containerRef = useRef(null);
     const listEndRef = useRef(null);
 
-    // 自動滾動清單到底部
+    // 自動滾動清單到底部 (侷限在容器內)
     useEffect(() => {
         if (listEndRef.current) {
-            listEndRef.current.scrollIntoView({ behavior: 'smooth' });
+            // 使用 nearest 或手動設定 scrollTop 可避免滾動整個網頁
+            listEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
     }, [capturedImages.length]);
 
@@ -328,8 +330,24 @@ const Phase4Video = ({
                                                 <span className="text-amber-300">{motionCoverageMin}%</span>
                                             </div>
                                             <div className="flex justify-between">
-                                                <span className="text-slate-500">DELAY:</span>
-                                                <span className="text-amber-300">{motionDelay}ms</span>
+                                                <span className="text-slate-500 text-[10px]">DELAY:</span>
+                                                <span className="text-amber-300 text-[10px]">{motionDelay}ms</span>
+                                            </div>
+                                            <div className="pt-1 mt-1 border-t border-white/5 space-y-1">
+                                                <div className="flex justify-between text-[10px]">
+                                                    <span className="text-slate-500">V-LINE %:</span>
+                                                    <span className="text-amber-400 font-mono italic">{debugData.vLineRate}%</span>
+                                                </div>
+                                                <div className="flex justify-between text-[10px]">
+                                                    <span className="text-slate-500 font-bold">RATIO:</span>
+                                                    <span className={`font-mono ${debugData.isBigWin ? 'text-rose-400' : 'text-amber-400'}`}>{debugData.ratio}</span>
+                                                </div>
+                                                <div className="flex justify-between items-center text-[10px]">
+                                                    <span className="text-slate-500 uppercase tracking-tighter">BigWin Lock:</span>
+                                                    <span className={`px-1 rounded-sm text-[9px] font-black ${debugData.isBigWin ? 'bg-rose-500 text-white animate-pulse' : 'bg-slate-700 text-slate-500'}`}>
+                                                        {debugData.isBigWin ? 'LOCKED' : 'READY'}
+                                                    </span>
+                                                </div>
                                             </div>
                                         </div>
                                         {debugData.error && (
@@ -359,6 +377,12 @@ const Phase4Video = ({
                                         判定延遲 (DELAY) <span>{motionDelay}ms</span>
                                     </label>
                                     <input type="range" min="100" max="1000" step="50" value={motionDelay} onChange={(e) => setMotionDelay(parseInt(e.target.value))} className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-amber-500" />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <label className="text-[11px] font-bold text-slate-500 flex justify-between">
+                                        線條消失門檻 (RATIO) <span>{vLineThreshold}</span>
+                                    </label>
+                                    <input type="range" min="0.1" max="1.0" step="0.05" value={vLineThreshold} onChange={(e) => setVLineThreshold(parseFloat(e.target.value))} className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-rose-500" />
                                 </div>
                             </div>
                         </div>

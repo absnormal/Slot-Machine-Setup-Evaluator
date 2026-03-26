@@ -12,6 +12,7 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
     const [sensitivity, setSensitivity] = useState(15);
     const [motionCoverageMin, setMotionCoverageMin] = useState(60); // 預設 60% 區塊有位移才算轉動
     const [motionDelay, setMotionDelay] = useState(400); // 穩定判定時間 (ms)，預設 400ms
+    const [vLineThreshold, setVLineThreshold] = useState(0.25); // 網格線消失判定比值 (VLine/Coverage)
     
     const [capturedImages, setCapturedImages] = useState([]);
     const [reelROI, setReelROI] = useState(() => {
@@ -50,6 +51,9 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
     const [debugData, setDebugData] = useState({ 
         diff: 0, 
         coverage: 0, 
+        vLineRate: 0,
+        ratio: 0,
+        isBigWin: false,
         status: 'idle', 
         lastTrigger: '',
         error: null 
@@ -64,6 +68,8 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
     // 狀態機控制
     const spinStateRef = useRef('IDLE'); // IDLE, SPINNING, STABILIZING
     const stateStartTimeRef = useRef(0);
+    const firstMotionTimeRef = useRef(null); // 上升斜率判定起始時間
+    const lastBigWinTimeRef = useRef(0); // 最後一次 BIGWIN 偵測時間
     
     // Canvas 緩存
     const scanCanvasRef = useRef(null);
@@ -91,23 +97,25 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
             const cx = Math.floor(fullCanvas.width * (roi.x / 100));
             const cy = Math.floor(fullCanvas.height * (roi.y / 100));
             
-            cropCanvas.width = cw;
-            cropCanvas.height = ch;
+            const scale = 3;
+            cropCanvas.width = cw * scale;
+            cropCanvas.height = ch * scale;
             const ctx = cropCanvas.getContext('2d');
-            ctx.drawImage(fullCanvas, cx, cy, cw, ch, 0, 0, cw, ch);
+            ctx.drawImage(fullCanvas, cx, cy, cw, ch, 0, 0, cw * scale, ch * scale);
             
-            // 影像增強：轉為灰階並增加對比
-            const imgData = ctx.getImageData(0, 0, cw, ch);
+            // 影像增強：轉為灰階並二值化
+            const imgData = ctx.getImageData(0, 0, cw * scale, ch * scale);
             for (let i = 0; i < imgData.data.length; i += 4) {
                 const gray = imgData.data[i] * 0.3 + imgData.data[i+1] * 0.59 + imgData.data[i+2] * 0.11;
-                const v = gray > 128 ? 255 : 0; // 二值化幫助 OCR
+                const v = gray > 140 ? 255 : 0; // 調高門檻，讓背景更乾淨
                 imgData.data[i] = imgData.data[i+1] = imgData.data[i+2] = v;
             }
             ctx.putImageData(imgData, 0, 0);
 
             const worker = await createWorker('eng');
             await worker.setParameters({
-                tessedit_char_whitelist: '0123456789.,',
+                tessedit_char_whitelist: '0123456789.',
+                tessedit_pageseg_mode: '7', // 加強單行辨識
             });
             const { data: { text } } = await worker.recognize(cropCanvas);
             await worker.terminate();
@@ -216,8 +224,27 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
 
             // 4. 格點位移比對
             if (lastFrameRef.current && lastFrameRef.current.length === binarized.length) {
+                const cols = template?.grid?.cols || 5;
+                const rows = template?.grid?.rows || 3;
                 const cellW = Math.floor(targetW / cols);
                 const cellH = Math.floor(targetH / rows);
+                
+                let vLineMotionCount = 0;
+                let vLineTotalPixels = 0;
+
+                // 4.1 垂直網格線位移抽樣 (V-Line Check)
+                for (let i = 1; i < cols; i++) {
+                    const vx = Math.floor(i * (targetW / cols));
+                    for (let vy = 0; vy < targetH; vy += 2) {
+                        vLineTotalPixels++;
+                        const idx = vy * targetW + vx;
+                        if (binarized[idx] !== lastFrameRef.current[idx]) {
+                            vLineMotionCount++;
+                        }
+                    }
+                }
+                const vLineMotionRate = vLineTotalPixels > 0 ? (vLineMotionCount / vLineTotalPixels) * 100 : 0;
+
                 let motionCells = 0;
                 let totalDiff = 0;
 
@@ -227,7 +254,7 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
                         const startX = c * cellW;
                         const startY = r * cellH;
 
-                        // 採樣比對：回到二值化比對
+                        // 採樣比對
                         for (let y = startY; y < startY + cellH; y += 4) {
                             for (let x = startX; x < startX + cellW; x += 4) {
                                 const idx = y * targetW + x;
@@ -249,15 +276,39 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
 
                 const coverage = (motionCells / (rows * cols)) * 100;
                 const avgDiff = totalDiff / (rows * cols);
+                const motionRatio = coverage > 0 ? (vLineMotionRate / coverage) : 0;
+                const isLineHidden = motionRatio > vLineThreshold;
                 const now = Date.now();
+
+                // 紀錄 BIGWIN 時間用於冷卻
+                if (isLineHidden) {
+                    lastBigWinTimeRef.current = now;
+                }
 
                 // 5. 狀態機邏輯
                 let nextStatus = spinStateRef.current;
 
+                // 只有位移完全消失才重置起始時間
+                if (coverage < 5) {
+                    firstMotionTimeRef.current = null;
+                }
+
                 if (spinStateRef.current === 'IDLE') {
-                    if (coverage > motionCoverageMin && avgDiff > sensitivity) {
-                        nextStatus = 'SPINNING';
-                        stateStartTimeRef.current = now;
+                    if (coverage > 5) {
+                        if (firstMotionTimeRef.current === null) {
+                            firstMotionTimeRef.current = now;
+                        }
+                        
+                        // 若正在 BIGWIN 冷卻期 (0.5s)，禁止啟動
+                        if (now - lastBigWinTimeRef.current < 500) {
+                            nextStatus = 'IDLE';
+                        } else if (coverage > 80) {
+                            const timeDiff = now - firstMotionTimeRef.current;
+                            if (timeDiff < 150 && !isLineHidden) {
+                                nextStatus = 'SPINNING';
+                                stateStartTimeRef.current = now;
+                            }
+                        }
                     }
                 } 
                 else if (spinStateRef.current === 'SPINNING') {
@@ -278,12 +329,14 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
                 }
 
                 spinStateRef.current = nextStatus;
-                lastFrameRef.current = binarized;
-
+                
                 // 強制更新除錯面板
                 setDebugData({
                     diff: avgDiff.toFixed(1),
                     coverage: coverage.toFixed(1),
+                    vLineRate: vLineMotionRate.toFixed(1),
+                    ratio: motionRatio.toFixed(2),
+                    isBigWin: isLineHidden,
                     status: nextStatus,
                     error: null
                 });
@@ -297,10 +350,41 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
         }
 
         requestRef.current = requestAnimationFrame(processFrame);
-    }, [isAutoDetecting, reelROI, template, sensitivity, motionCoverageMin, motionDelay, captureCurrentFrame, setTemplateMessage]);
+    }, [isAutoDetecting, reelROI, template, sensitivity, motionCoverageMin, motionDelay, vLineThreshold, captureCurrentFrame, setTemplateMessage]);
 
     useEffect(() => {
         if (isAutoDetecting) {
+            // [Startup Optimization] 全面狀態重置：直接跳過斜率判定，進入 SPINNING 模式等待停輪
+            spinStateRef.current = 'SPINNING';
+            stateStartTimeRef.current = Date.now();
+            firstMotionTimeRef.current = null;
+            lastBigWinTimeRef.current = 0;
+            lastFrameRef.current = null;
+
+            // 啟動瞬間立即擷取一幀並二值化作為參考基底，消除首次循環跳過
+            if (videoRef.current && videoRef.current.readyState >= 2) {
+                const video = videoRef.current;
+                const canvas = document.createElement('canvas');
+                const targetW = 320; 
+                const targetH = Math.round(targetW * (reelROI.h / reelROI.w));
+                canvas.width = targetW;
+                canvas.height = targetH;
+
+                const sourceX = (reelROI.x / 100) * video.videoWidth;
+                const sourceY = (reelROI.y / 100) * video.videoHeight;
+                const sourceW = (reelROI.w / 100) * video.videoWidth;
+                const sourceH = (reelROI.h / 100) * video.videoHeight;
+
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(video, sourceX, sourceY, sourceW, sourceH, 0, 0, targetW, targetH);
+                const data = ctx.getImageData(0, 0, targetW, targetH).data;
+                const binarized = new Uint8Array(targetW * targetH);
+                for (let i = 0; i < data.length; i += 4) {
+                    const avg = (data[i] + data[i+1] + data[i+2]) / 3;
+                    binarized[i/4] = avg > 120 ? 255 : 0;
+                }
+                lastFrameRef.current = binarized;
+            }
             requestRef.current = requestAnimationFrame(processFrame);
         } else {
             if (requestRef.current) cancelAnimationFrame(requestRef.current);
@@ -316,6 +400,7 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
         sensitivity, setSensitivity,
         motionCoverageMin, setMotionCoverageMin,
         motionDelay, setMotionDelay,
+        vLineThreshold, setVLineThreshold,
         capturedImages, removeCapturedImage, clearAllCaptures,
         reelROI, setReelROI,
         winROI, setWinROI,
