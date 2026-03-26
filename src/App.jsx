@@ -589,8 +589,7 @@ function App() {
                     isBalanceExpanded={isBalanceExpanded}                    setIsBalanceExpanded={setIsBalanceExpanded}
                 />
 
-            <div className={isPhase3Minimized ? 'hidden' : ''}>
-                <Phase3Vision
+            <Phase3Vision
                     template={template}
                     isPhase3Minimized={isPhase3Minimized} setIsPhase3Minimized={setIsPhase3Minimized}
                     visionImages={visionImages} activeVisionId={activeVisionId} setActiveVisionId={setActiveVisionId}
@@ -609,10 +608,8 @@ function App() {
                     setTemplateMessage={setTemplateMessage}
                     isBalanceExpanded={isBalanceExpanded} setIsBalanceExpanded={setIsBalanceExpanded}
                 />
-            </div>
 
-            <div className={isPhase4Minimized ? 'hidden' : ''}>
-                <Phase4Video
+            <Phase4Video
                     isPhase4Minimized={isPhase4Minimized} setIsPhase4Minimized={setIsPhase4Minimized}
                     videoSrc={videoSrc} videoRef={videoRef} handleVideoUpload={handleVideoUpload}
                     isAutoDetecting={isAutoDetecting} setIsAutoDetecting={setIsAutoDetecting}
@@ -627,7 +624,6 @@ function App() {
                     template={template}
                     debugData={debugData}
                 />
-            </div>
 
             </div>
 

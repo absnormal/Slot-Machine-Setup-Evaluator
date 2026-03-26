@@ -122,13 +122,11 @@ const Phase4Video = ({
         const cols = template?.GridCols || 5;
         const lines = [];
 
-        // 垂直線
         for (let i = 1; i < cols; i++) {
             lines.push(
                 <div key={`v-${i}`} className="absolute h-full border-r-2 border-amber-400/60" style={{ left: `${(i / cols) * 100}%` }} />
             );
         }
-        // 水平線
         for (let i = 1; i < rows; i++) {
             lines.push(
                 <div key={`h-${i}`} className="absolute w-full border-b-2 border-amber-400/60" style={{ top: `${(i / rows) * 100}%` }} />
@@ -137,53 +135,41 @@ const Phase4Video = ({
         return lines;
     };
 
-    if (isPhase4Minimized) {
-        return (
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden mb-6">
-                <div className="p-4 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors" onClick={() => setIsPhase4Minimized(false)}>
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center">
-                            <Video size={20} />
-                        </div>
-                        <div>
-                            <h2 className="text-lg font-bold text-slate-800">Phase 4: 影片自動偵測擷取</h2>
-                            <p className="text-xs text-slate-500">格點動態偵測模式 (已最小化)</p>
-                        </div>
-                    </div>
-                    <ChevronDown className="text-slate-400" />
-                </div>
-            </div>
-        );
-    }
-
     return (
         <div className="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden mb-8 animate-in fade-in slide-in-from-top-4 duration-500">
-            {/* Header */}
-            <div className="bg-slate-800 p-4 flex items-center justify-between">
+            {/* Minimized Header / Toggle Bar */}
+            <div 
+                className={`p-4 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors ${!isPhase4Minimized ? 'bg-slate-800' : 'bg-white'}`}
+                onClick={() => setIsPhase4Minimized(!isPhase4Minimized)}
+            >
                 <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-amber-500 text-white rounded-xl flex items-center justify-center shadow-lg shadow-amber-500/20">
-                        <Scan size={20} />
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-lg ${!isPhase4Minimized ? 'bg-amber-500 text-white shadow-amber-500/20' : 'bg-indigo-100 text-indigo-600'}`}>
+                        {isPhase4Minimized ? <Video size={20} /> : <Scan size={20} />}
                     </div>
                     <div>
-                        <h2 className="text-lg font-bold text-white">Phase 4: 影片動態自動擷取</h2>
-                        <p className="text-xs text-slate-400">基於盤面格點位移覆蓋率 (Coverage) 偵測轉動與停止</p>
+                        <h2 className={`text-lg font-bold ${!isPhase4Minimized ? 'text-white' : 'text-slate-800'}`}>
+                            Phase 4: 影片動態自動擷取
+                        </h2>
+                        <p className={`text-xs ${!isPhase4Minimized ? 'text-slate-400' : 'text-slate-500'}`}>
+                            {isPhase4Minimized ? '格點動態偵測模式 (已最小化)' : '基於盤面格點位移覆蓋率 (Coverage) 偵測轉動與停止'}
+                        </p>
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
-                    <button 
-                        onClick={() => setShowDebug(!showDebug)}
-                        className={`p-2 rounded-lg transition-colors flex items-center gap-2 text-xs font-bold ${showDebug ? 'bg-amber-500 text-white' : 'bg-slate-700 text-slate-300 hover:text-white'}`}
-                    >
-                        <Settings2 size={16} /> 除錯儀表板: {showDebug ? 'ON' : 'OFF'}
-                    </button>
-                    <button onClick={() => setIsPhase4Minimized(true)} className="p-2 hover:bg-slate-700 text-slate-400 hover:text-white rounded-lg transition-colors">
-                        <ChevronUp size={20} />
-                    </button>
+                    {!isPhase4Minimized && (
+                        <button 
+                            onClick={(e) => { e.stopPropagation(); setShowDebug(!showDebug); }}
+                            className={`p-2 rounded-lg transition-colors flex items-center gap-2 text-xs font-bold ${showDebug ? 'bg-amber-500 text-white' : 'bg-slate-700 text-slate-300 hover:text-white'}`}
+                        >
+                            <Settings2 size={16} /> 除錯儀表板: {showDebug ? 'ON' : 'OFF'}
+                        </button>
+                    )}
+                    {isPhase4Minimized ? <ChevronDown className="text-slate-400" /> : <ChevronUp className="text-white/60" />}
                 </div>
             </div>
 
-            <div className="p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
-                {/* Left: Video Player */}
+            {/* Main Content Area - Hidden Display but keeps Video in DOM */}
+            <div className={`p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 ${isPhase4Minimized ? 'hidden' : ''}`}>
                 <div className="lg:col-span-8 space-y-4">
                     {!videoSrc ? (
                         <div className="aspect-video bg-slate-100 rounded-2xl border-2 border-dashed border-slate-300 flex flex-col items-center justify-center p-12 transition-all hover:bg-slate-50 hover:border-amber-300 group">
@@ -207,8 +193,6 @@ const Phase4Video = ({
                                     onMouseLeave={handleMouseUp}
                                 >
                                     <video ref={videoRef} src={videoSrc} className="max-w-full max-h-[70vh] block" onClick={togglePlay} />
-                                    
-                                    {/* Reel ROI Overlay */}
                                     <div 
                                         className="absolute border-2 border-amber-400 bg-amber-400/5 cursor-move"
                                         style={{ left: `${reelROI.x}%`, top: `${reelROI.y}%`, width: `${reelROI.w}%`, height: `${reelROI.h}%` }}
@@ -224,7 +208,6 @@ const Phase4Video = ({
                                     </div>
                                 </div>
 
-                                {/* Controls */}
                                 <div className="w-full bg-slate-900/90 backdrop-blur p-3 px-5 flex items-center gap-4 border-t border-white/10">
                                     <button onClick={togglePlay} className="text-white hover:text-amber-400 transition-colors">
                                         {isPlaying ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" />}
@@ -242,7 +225,6 @@ const Phase4Video = ({
                                     </button>
                                 </div>
 
-                                {/* Debug Panel */}
                                 {showDebug && (
                                     <div className="absolute top-4 left-4 bg-slate-900/80 backdrop-blur-md text-white p-3 rounded-xl border border-white/20 z-30 font-mono text-[10px] space-y-1 min-w-[160px] shadow-2xl">
                                         <div className="flex justify-between border-b border-white/10 pb-1 mb-1 font-bold text-amber-400">
@@ -280,7 +262,6 @@ const Phase4Video = ({
                                 )}
                             </div>
 
-                            {/* Settings Panel */}
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
                                 <div className="space-y-1.5">
                                     <label className="text-[11px] font-bold text-slate-500 flex justify-between">
@@ -305,7 +286,6 @@ const Phase4Video = ({
                     )}
                 </div>
 
-                {/* Right Panel: History */}
                 <div className="lg:col-span-4 flex flex-col h-[600px]">
                     <div className="bg-slate-50 rounded-2xl border border-slate-200 flex flex-col h-full overflow-hidden">
                         <div className="p-4 border-b bg-white flex items-center justify-between sticky top-0 z-10 shadow-sm">
