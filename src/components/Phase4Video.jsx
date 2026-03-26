@@ -320,7 +320,7 @@ const Phase4Video = ({
                                                 <img src={img.previewUrl} className="w-full h-full object-cover" />
                                             </div>
                                             <div className="flex-1 min-w-0 pr-6">
-                                                <p className="text-[11px] font-bold text-slate-700 truncate">Auto-Capture #{capturedImages.length - idx}</p>
+                                                <p className="text-[11px] font-bold text-slate-700 truncate">Auto-Capture #{idx + 1}</p>
                                                 <div className="flex items-center gap-2 mt-1">
                                                     <span className="text-[9px] text-amber-600 bg-amber-50 px-1 rounded flex items-center gap-1">
                                                         <Clock size={8} /> {img.timestamp}s
