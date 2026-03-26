@@ -10,7 +10,7 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
     const [isAutoDetecting, setIsAutoDetecting] = useState(false);
     const [sensitivity, setSensitivity] = useState(15);
     const [motionCoverageMin, setMotionCoverageMin] = useState(60); // 預設 60% 區塊有位移才算轉動
-    const [motionDelay, setMotionDelay] = useState(1000); // 穩定判定時間 (ms)，調升至 1000ms 確保所有盤面完全靜止
+    const [motionDelay, setMotionDelay] = useState(400); // 穩定判定時間 (ms)，預設 400ms
     
     const [capturedImages, setCapturedImages] = useState([]);
     const [reelROI, setReelROI] = useState(() => {
