@@ -157,6 +157,8 @@ function App() {
         motionDelay, setMotionDelay,
         capturedImages, removeCapturedImage, clearAllCaptures,
         reelROI, setReelROI,
+        winROI, setWinROI,
+        balanceROI, setBalanceROI,
         captureCurrentFrame,
         debugData
     } = useVideoProcessor({ setTemplateMessage, template });
@@ -618,6 +620,8 @@ function App() {
                     motionDelay={motionDelay} setMotionDelay={setMotionDelay}
                     capturedImages={capturedImages} removeCapturedImage={removeCapturedImage} clearAllCaptures={clearAllCaptures}
                     reelROI={reelROI} setReelROI={setReelROI}
+                    winROI={winROI} setWinROI={setWinROI}
+                    balanceROI={balanceROI} setBalanceROI={setBalanceROI}
                     captureCurrentFrame={captureCurrentFrame}
                     onTransferToPhase3={handleTransferPhase4ToPhase3}
                     setTemplateMessage={setTemplateMessage}

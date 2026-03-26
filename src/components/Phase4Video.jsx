@@ -10,6 +10,8 @@ const Phase4Video = ({
     motionDelay, setMotionDelay,
     capturedImages, removeCapturedImage, clearAllCaptures,
     reelROI, setReelROI,
+    winROI, setWinROI,
+    balanceROI, setBalanceROI,
     captureCurrentFrame,
     onTransferToPhase3,
     setTemplateMessage,
@@ -21,6 +23,7 @@ const Phase4Video = ({
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
     const [dragState, setDragState] = useState(null);
+    const [roiMode, setRoiMode] = useState('reel'); // 'reel' | 'win' | 'balance'
     const containerRef = useRef(null);
     const listEndRef = useRef(null);
 
@@ -88,37 +91,44 @@ const Phase4Video = ({
     const handleMouseDown = (e) => {
         const pos = getMousePos(e);
         const handleSize = 5;
-        const isOverHandle = pos.x >= reelROI.x + reelROI.w - handleSize && pos.x <= reelROI.x + reelROI.w && 
-                             pos.y >= reelROI.y + reelROI.h - handleSize && pos.y <= reelROI.y + reelROI.h;
+        
+        let targetROI, setTargetROI;
+        if (roiMode === 'win') { targetROI = winROI; setTargetROI = setWinROI; }
+        else if (roiMode === 'balance') { targetROI = balanceROI; setTargetROI = setBalanceROI; }
+        else { targetROI = reelROI; setTargetROI = setReelROI; }
+
+        const isOverHandle = pos.x >= targetROI.x + targetROI.w - handleSize && pos.x <= targetROI.x + targetROI.w && 
+                             pos.y >= targetROI.y + targetROI.h - handleSize && pos.y <= targetROI.y + targetROI.h;
         
         setDragState({
             action: isOverHandle ? 'resize' : 'move',
             startX: pos.x,
             startY: pos.y,
-            initObj: { ...reelROI }
+            initObj: { ...targetROI },
+            setter: setTargetROI
         });
     };
 
-    const handleMouseMove = useCallback((e) => {
+    const handleMouseMove = (e) => {
         if (!dragState) return;
         const pos = getMousePos(e);
         const dx = pos.x - dragState.startX;
         const dy = pos.y - dragState.startY;
-        
+
         if (dragState.action === 'move') {
-            setReelROI({
+            dragState.setter({
                 ...dragState.initObj,
                 x: Math.max(0, Math.min(100 - dragState.initObj.w, dragState.initObj.x + dx)),
                 y: Math.max(0, Math.min(100 - dragState.initObj.h, dragState.initObj.y + dy))
             });
-        } else {
-            setReelROI({
+        } else if (dragState.action === 'resize') {
+            dragState.setter({
                 ...dragState.initObj,
-                w: Math.max(5, Math.min(100 - dragState.initObj.x, dragState.initObj.w + dx)),
-                h: Math.max(5, Math.min(100 - dragState.initObj.y, dragState.initObj.h + dy))
+                w: Math.max(0.5, Math.min(100 - dragState.initObj.x, dragState.initObj.w + dx)),
+                h: Math.max(0.5, Math.min(100 - dragState.initObj.y, dragState.initObj.h + dy))
             });
         }
-    }, [dragState, setReelROI]);
+    };
 
     const handleMouseUp = () => setDragState(null);
 
@@ -191,26 +201,89 @@ const Phase4Video = ({
                     ) : (
                         <div className="space-y-4">
                             <div className="relative rounded-2xl shadow-2xl bg-black group flex flex-col items-center overflow-hidden">
+                                {/* 頂部 ROI 切換器 */}
+                                <div className="absolute top-4 right-4 z-40 bg-slate-900/80 backdrop-blur-md p-1 rounded-lg border border-white/20 shadow-xl flex gap-1">
+                                    <button 
+                                        onClick={() => setRoiMode('reel')}
+                                        className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${roiMode === 'reel' ? 'bg-amber-500 text-white' : 'text-slate-400 hover:text-white'}`}
+                                    >
+                                        盤面
+                                    </button>
+                                    <button 
+                                        onClick={() => setRoiMode('win')}
+                                        className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${roiMode === 'win' ? 'bg-emerald-500 text-white' : 'text-slate-400 hover:text-white'}`}
+                                    >
+                                        贏分
+                                    </button>
+                                    <button 
+                                        onClick={() => setRoiMode('balance')}
+                                        className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${roiMode === 'balance' ? 'bg-sky-500 text-white' : 'text-slate-400 hover:text-white'}`}
+                                    >
+                                        總分
+                                    </button>
+                                </div>
+
                                 <div 
                                     className="relative inline-block"
                                     ref={containerRef}
                                     onMouseMove={handleMouseMove}
                                     onMouseUp={handleMouseUp}
                                     onMouseLeave={handleMouseUp}
+                                    onMouseDown={handleMouseDown}
                                 >
-                                    <video ref={videoRef} src={videoSrc} className="max-w-full max-h-[70vh] block" onClick={togglePlay} />
+                                    <video ref={videoRef} src={videoSrc} className="max-w-full max-h-[70vh] block" />
+                                    
+                                    {/* 1. 盤面 ROI (Amber) */}
                                     <div 
-                                        className="absolute border-2 border-amber-400 bg-amber-400/5 cursor-move"
-                                        style={{ left: `${reelROI.x}%`, top: `${reelROI.y}%`, width: `${reelROI.w}%`, height: `${reelROI.h}%` }}
-                                        onMouseDown={handleMouseDown}
+                                        className={`absolute border-2 border-amber-400 transition-opacity ${roiMode === 'reel' ? 'opacity-100 pointer-events-auto cursor-move bg-amber-400/10' : 'opacity-40 pointer-events-none'}`}
+                                        style={{
+                                            left: `${reelROI.x}%`, 
+                                            top: `${reelROI.y}%`, 
+                                            width: `${reelROI.w}%`, 
+                                            height: `${reelROI.h}%`,
+                                            zIndex: roiMode === 'reel' ? 20 : 10
+                                        }}
+                                        onMouseDown={(e) => { e.stopPropagation(); handleMouseDown(e); }}
                                     >
-                                        <div className="absolute top-0 left-0 bg-amber-500 text-white text-[10px] px-1.5 py-0.5 font-bold flex items-center gap-1 shadow-md">
-                                            <Scan size={10} /> 動態偵測區域 (Grid Mode)
+                                        <div className="absolute inset-0 grid grid-cols-5 grid-rows-3">
+                                            {[...Array(14)].map((_, i) => (
+                                                <div key={i} className="border-[0.5px] border-amber-400/30"></div>
+                                            ))}
                                         </div>
-                                        {renderGridLines()}
-                                        <div className="absolute bottom-0 right-0 w-4 h-4 bg-amber-500 flex items-center justify-center cursor-se-resize">
-                                            <div className="w-1.5 h-1.5 border-r border-b border-white" />
-                                        </div>
+                                        {roiMode === 'reel' && <div className="absolute -right-1 -bottom-1 w-4 h-4 bg-amber-500 rounded-full border-2 border-white pointer-events-auto cursor-nwse-resize shadow-md" />}
+                                        <div className="absolute -top-5 left-0 bg-amber-500 text-white text-[10px] px-1 rounded shadow-sm">盤面</div>
+                                    </div>
+
+                                    {/* 2. 贏分 ROI (Emerald) */}
+                                    <div 
+                                        className={`absolute border-2 border-emerald-400 transition-opacity ${roiMode === 'win' ? 'opacity-100 pointer-events-auto cursor-move bg-emerald-400/10' : 'opacity-40 pointer-events-none'}`}
+                                        style={{
+                                            left: `${winROI.x}%`, 
+                                            top: `${winROI.y}%`, 
+                                            width: `${winROI.w}%`, 
+                                            height: `${winROI.h}%`,
+                                            zIndex: roiMode === 'win' ? 20 : 10
+                                        }}
+                                        onMouseDown={(e) => { e.stopPropagation(); handleMouseDown(e); }}
+                                    >
+                                        {roiMode === 'win' && <div className="absolute -right-1 -bottom-1 w-4 h-4 bg-emerald-500 rounded-full border-2 border-white pointer-events-auto cursor-nwse-resize shadow-md" />}
+                                        <div className="absolute -top-5 left-0 bg-emerald-500 text-white text-[10px] px-1 rounded shadow-sm">贏分</div>
+                                    </div>
+
+                                    {/* 3. 餘額 ROI (Sky) */}
+                                    <div 
+                                        className={`absolute border-2 border-sky-400 transition-opacity ${roiMode === 'balance' ? 'opacity-100 pointer-events-auto cursor-move bg-sky-400/10' : 'opacity-40 pointer-events-none'}`}
+                                        style={{
+                                            left: `${balanceROI.x}%`, 
+                                            top: `${balanceROI.y}%`, 
+                                            width: `${balanceROI.w}%`, 
+                                            height: `${balanceROI.h}%`,
+                                            zIndex: roiMode === 'balance' ? 20 : 10
+                                        }}
+                                        onMouseDown={(e) => { e.stopPropagation(); handleMouseDown(e); }}
+                                    >
+                                        {roiMode === 'balance' && <div className="absolute -right-1 -bottom-1 w-4 h-4 bg-sky-500 rounded-full border-2 border-white pointer-events-auto cursor-nwse-resize shadow-md" />}
+                                        <div className="absolute -top-5 left-0 bg-sky-500 text-white text-[10px] px-1 rounded shadow-sm">總分</div>
                                     </div>
                                 </div>
 
@@ -320,11 +393,28 @@ const Phase4Video = ({
                                                 <img src={img.previewUrl} className="w-full h-full object-cover" />
                                             </div>
                                             <div className="flex-1 min-w-0 pr-6">
-                                                <p className="text-[11px] font-bold text-slate-700 truncate">Auto-Capture #{idx + 1}</p>
-                                                <div className="flex items-center gap-2 mt-1">
-                                                    <span className="text-[9px] text-amber-600 bg-amber-50 px-1 rounded flex items-center gap-1">
-                                                        <Clock size={8} /> {img.timestamp}s
-                                                    </span>
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-[10px] font-bold text-slate-800 truncate max-w-[100px]">{img.file.name}</span>
+                                                    <span className="text-[10px] text-slate-400">#{idx + 1}</span>
+                                                </div>
+                                                <div className="flex items-center gap-1 mt-0.5">
+                                                    <Clock size={10} className="text-slate-400" />
+                                                    <span className="text-[10px] font-mono text-slate-500">{img.timestamp}s</span>
+                                                </div>
+                                                {/* OCR 數據展示 */}
+                                                <div className="grid grid-cols-2 gap-1 mt-1.5 pt-1.5 border-t border-slate-50">
+                                                    <div className="flex flex-col">
+                                                        <span className="text-[8px] text-slate-400 font-medium lowercase">win</span>
+                                                        <span className={`text-[10px] font-bold ${img.extractedWin === "..." ? "text-slate-300 animate-pulse" : "text-emerald-600"}`}>
+                                                            {img.extractedWin || "0"}
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex flex-col">
+                                                        <span className="text-[8px] text-slate-400 font-medium lowercase">total</span>
+                                                        <span className={`text-[10px] font-bold ${img.extractedBalance === "..." ? "text-slate-300 animate-pulse" : "text-sky-600"}`}>
+                                                            {img.extractedBalance || "0"}
+                                                        </span>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>

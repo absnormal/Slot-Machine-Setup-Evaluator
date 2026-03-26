@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { createWorker } from 'tesseract.js';
 
 /**
  * Phase 4 影片處理核心：Grid Motion Detection Version
@@ -22,10 +23,26 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
         }
     });
 
-    // 當切換為「開始偵測」時，才進行 ROI 持久化 (減少頻繁寫入快取的資源消耗)
+    const [winROI, setWinROI] = useState(() => {
+        const saved = localStorage.getItem('slot_phase4_win_roi');
+        try {
+            return saved ? JSON.parse(saved) : { x: 40, y: 75, w: 20, h: 10 };
+        } catch (e) { return { x: 40, y: 75, w: 20, h: 10 }; }
+    });
+
+    const [balanceROI, setBalanceROI] = useState(() => {
+        const saved = localStorage.getItem('slot_phase4_balance_roi');
+        try {
+            return saved ? JSON.parse(saved) : { x: 10, y: 85, w: 25, h: 8 };
+        } catch (e) { return { x: 10, y: 85, w: 25, h: 8 }; }
+    });
+
+    // 持久化儲存 ROI 區域 (僅在啟動偵測時同步)
     useEffect(() => {
-        if (isAutoDetecting && reelROI) {
-            localStorage.setItem('slot_phase4_roi', JSON.stringify(reelROI));
+        if (isAutoDetecting) {
+            if (reelROI) localStorage.setItem('slot_phase4_roi', JSON.stringify(reelROI));
+            if (winROI) localStorage.setItem('slot_phase4_win_roi', JSON.stringify(winROI));
+            if (balanceROI) localStorage.setItem('slot_phase4_balance_roi', JSON.stringify(balanceROI));
         }
     }, [isAutoDetecting]); 
     
@@ -64,8 +81,51 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
         }
     }, [videoSrc, setTemplateMessage]);
 
+    // 核心辨識函式：使用 Tesseract.js 本地辨識
+    const recognizeData = async (fullCanvas, roi) => {
+        if (!roi) return "";
+        try {
+            const cropCanvas = document.createElement('canvas');
+            const cw = Math.floor(fullCanvas.width * (roi.w / 100));
+            const ch = Math.floor(fullCanvas.height * (roi.h / 100));
+            const cx = Math.floor(fullCanvas.width * (roi.x / 100));
+            const cy = Math.floor(fullCanvas.height * (roi.y / 100));
+            
+            cropCanvas.width = cw;
+            cropCanvas.height = ch;
+            const ctx = cropCanvas.getContext('2d');
+            ctx.drawImage(fullCanvas, cx, cy, cw, ch, 0, 0, cw, ch);
+            
+            // 影像增強：轉為灰階並增加對比
+            const imgData = ctx.getImageData(0, 0, cw, ch);
+            for (let i = 0; i < imgData.data.length; i += 4) {
+                const gray = imgData.data[i] * 0.3 + imgData.data[i+1] * 0.59 + imgData.data[i+2] * 0.11;
+                const v = gray > 128 ? 255 : 0; // 二值化幫助 OCR
+                imgData.data[i] = imgData.data[i+1] = imgData.data[i+2] = v;
+            }
+            ctx.putImageData(imgData, 0, 0);
+
+            const worker = await createWorker('eng');
+            await worker.setParameters({
+                tessedit_char_whitelist: '0123456789.,',
+            });
+            const { data: { text } } = await worker.recognize(cropCanvas);
+            await worker.terminate();
+            
+            // 後處理：只保留數字與小數點，移除所有英文字母或雜訊
+            const cleaned = text.trim()
+                .replace(/[^0-9.,]/g, '') // 移除英文字母
+                .replace(/,/g, '');      // 移除千分位逗號，統一數據格式
+                
+            return cleaned || "0";
+        } catch (err) {
+            console.error("OCR Error:", err);
+            return "Err";
+        }
+    };
+
     // 擷取目前畫面
-    const captureCurrentFrame = useCallback(() => {
+    const captureCurrentFrame = useCallback(async () => {
         if (!videoRef.current) return;
         const video = videoRef.current;
         const canvas = document.createElement('canvas');
@@ -75,16 +135,29 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
         ctx.drawImage(video, 0, 0);
         
         const previewUrl = canvas.toDataURL('image/jpeg', 0.8);
+        const captureId = Date.now();
         const newImg = {
-            id: Date.now(),
+            id: captureId,
             file: { name: `Auto-Capture-${video.currentTime.toFixed(1)}s` },
             previewUrl,
-            timestamp: video.currentTime.toFixed(2)
+            timestamp: video.currentTime.toFixed(2),
+            extractedWin: "...",
+            extractedBalance: "..."
         };
         
         setCapturedImages(prev => [...prev, newImg]);
+
+        // 異步執行本地 OCR
+        (async () => {
+            const winText = await recognizeData(canvas, winROI);
+            const balanceText = await recognizeData(canvas, balanceROI);
+            setCapturedImages(prev => prev.map(img => 
+                img.id === captureId ? { ...img, extractedWin: winText, extractedBalance: balanceText } : img
+            ));
+        })();
+
         return newImg;
-    }, []);
+    }, [winROI, balanceROI]);
 
     const removeCapturedImage = (id) => setCapturedImages(prev => prev.filter(img => img.id !== id));
     const clearAllCaptures = () => setCapturedImages([]);
@@ -245,6 +318,8 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
         motionDelay, setMotionDelay,
         capturedImages, removeCapturedImage, clearAllCaptures,
         reelROI, setReelROI,
+        winROI, setWinROI,
+        balanceROI, setBalanceROI,
         captureCurrentFrame,
         debugData
     };
