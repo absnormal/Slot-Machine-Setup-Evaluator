@@ -13,7 +13,7 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
     const [motionCoverageMin, setMotionCoverageMin] = useState(60); // 預設 60% 區塊有位移才算轉動
     const [motionDelay, setMotionDelay] = useState(400); // 穩定判定時間 (ms)，預設 400ms
     const [vLineThreshold, setVLineThreshold] = useState(0.25); // 網格線消失判定比值 (VLine/Coverage)
-    
+
     const [capturedImages, setCapturedImages] = useState([]);
     const [reelROI, setReelROI] = useState(() => {
         const saved = localStorage.getItem('slot_phase4_roi');
@@ -45,18 +45,18 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
             if (winROI) localStorage.setItem('slot_phase4_win_roi', JSON.stringify(winROI));
             if (balanceROI) localStorage.setItem('slot_phase4_balance_roi', JSON.stringify(balanceROI));
         }
-    }, [isAutoDetecting]); 
-    
+    }, [isAutoDetecting]);
+
     // 除錯資料
-    const [debugData, setDebugData] = useState({ 
-        diff: 0, 
-        coverage: 0, 
+    const [debugData, setDebugData] = useState({
+        diff: 0,
+        coverage: 0,
         vLineRate: 0,
         ratio: 0,
         isBigWin: false,
-        status: 'idle', 
+        status: 'idle',
         lastTrigger: '',
-        error: null 
+        error: null
     });
 
     // --- 核心引用 ---
@@ -64,13 +64,13 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
     const lastFrameRef = useRef(null);
     const isProcessingRef = useRef(false);
     const requestRef = useRef(null);
-    
+
     // 狀態機控制
     const spinStateRef = useRef('IDLE'); // IDLE, SPINNING, STABILIZING
     const stateStartTimeRef = useRef(0);
     const firstMotionTimeRef = useRef(null); // 上升斜率判定起始時間
     const lastBigWinTimeRef = useRef(0); // 最後一次 BIGWIN 偵測時間
-    
+
     // Canvas 緩存
     const scanCanvasRef = useRef(null);
     const lastROIValuesRef = useRef(null); // 用於偵測 ROI 是否變動
@@ -96,19 +96,19 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
             const ch = Math.floor(fullCanvas.height * (roi.h / 100));
             const cx = Math.floor(fullCanvas.width * (roi.x / 100));
             const cy = Math.floor(fullCanvas.height * (roi.y / 100));
-            
+
             const scale = 3;
             cropCanvas.width = cw * scale;
             cropCanvas.height = ch * scale;
             const ctx = cropCanvas.getContext('2d');
             ctx.drawImage(fullCanvas, cx, cy, cw, ch, 0, 0, cw * scale, ch * scale);
-            
+
             // 影像增強：轉為灰階並二值化
             const imgData = ctx.getImageData(0, 0, cw * scale, ch * scale);
             for (let i = 0; i < imgData.data.length; i += 4) {
-                const gray = imgData.data[i] * 0.3 + imgData.data[i+1] * 0.59 + imgData.data[i+2] * 0.11;
+                const gray = imgData.data[i] * 0.3 + imgData.data[i + 1] * 0.59 + imgData.data[i + 2] * 0.11;
                 const v = gray > 140 ? 255 : 0; // 調高門檻，讓背景更乾淨
-                imgData.data[i] = imgData.data[i+1] = imgData.data[i+2] = v;
+                imgData.data[i] = imgData.data[i + 1] = imgData.data[i + 2] = v;
             }
             ctx.putImageData(imgData, 0, 0);
 
@@ -119,12 +119,12 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
             });
             const { data: { text } } = await worker.recognize(cropCanvas);
             await worker.terminate();
-            
+
             // 後處理：只保留數字與小數點，移除所有英文字母或雜訊
             const cleaned = text.trim()
                 .replace(/[^0-9.,]/g, '') // 移除英文字母
                 .replace(/,/g, '');      // 移除千分位逗號，統一數據格式
-                
+
             return cleaned || "0";
         } catch (err) {
             console.error("OCR Error:", err);
@@ -141,7 +141,7 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
         canvas.height = video.videoHeight;
         const ctx = canvas.getContext('2d');
         ctx.drawImage(video, 0, 0);
-        
+
         const previewUrl = canvas.toDataURL('image/jpeg', 0.8);
         const captureId = Date.now();
         const newImg = {
@@ -152,14 +152,14 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
             extractedWin: "...",
             extractedBalance: "..."
         };
-        
+
         setCapturedImages(prev => [...prev, newImg]);
 
         // 異步執行本地 OCR
         (async () => {
             const winText = await recognizeData(canvas, winROI);
             const balanceText = await recognizeData(canvas, balanceROI);
-            setCapturedImages(prev => prev.map(img => 
+            setCapturedImages(prev => prev.map(img =>
                 img.id === captureId ? { ...img, extractedWin: winText, extractedBalance: balanceText } : img
             ));
         })();
@@ -196,7 +196,7 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
             const scanCanvas = scanCanvasRef.current;
             const targetW = 320; // 降低解析度提升效率
             const targetH = Math.round(targetW * (reelROI.h / reelROI.w));
-            
+
             if (scanCanvas.width !== targetW || scanCanvas.height !== targetH) {
                 scanCanvas.width = targetW;
                 scanCanvas.height = targetH;
@@ -218,17 +218,17 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
             // 3. 轉為灰階二值化 (還原為二值化比對)
             const binarized = new Uint8Array(targetW * targetH);
             for (let i = 0; i < data.length; i += 4) {
-                const avg = (data[i] + data[i+1] + data[i+2]) / 3;
-                binarized[i/4] = avg > 120 ? 255 : 0;
+                const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
+                binarized[i / 4] = avg > 120 ? 255 : 0;
             }
 
             // 4. 格點位移比對
             if (lastFrameRef.current && lastFrameRef.current.length === binarized.length) {
-                const cols = template?.grid?.cols || 5;
-                const rows = template?.grid?.rows || 3;
+                const cols = template?.GridCols || template?.grid?.cols || 5;
+                const rows = template?.GridRows || template?.grid?.rows || 3;
                 const cellW = Math.floor(targetW / cols);
                 const cellH = Math.floor(targetH / rows);
-                
+
                 let vLineMotionCount = 0;
                 let vLineTotalPixels = 0;
 
@@ -266,7 +266,7 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
 
                         const sampleCount = (cellW / 4) * (cellH / 4);
                         const cellDiffRate = (cellDiff / sampleCount) * 100;
-                        
+
                         if (cellDiffRate > sensitivity) {
                             motionCells++;
                         }
@@ -298,27 +298,30 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
                         if (firstMotionTimeRef.current === null) {
                             firstMotionTimeRef.current = now;
                         }
-                        
+
                         // 若正在 BIGWIN 冷卻期 (0.5s)，禁止啟動
                         if (now - lastBigWinTimeRef.current < 500) {
                             nextStatus = 'IDLE';
-                        } else if (coverage > 80) {
+                        } 
+                        // [靈敏度優化] 調降啟動覆蓋率門檻 (80% -> 40%) 並放寬偵測窗口 (150ms -> 200ms)
+                        else if (coverage > 40) {
                             const timeDiff = now - firstMotionTimeRef.current;
-                            if (timeDiff < 150 && !isLineHidden) {
+                            if (timeDiff < 200 && !isLineHidden) {
                                 nextStatus = 'SPINNING';
                                 stateStartTimeRef.current = now;
                             }
                         }
                     }
-                } 
+                }
                 else if (spinStateRef.current === 'SPINNING') {
-                    if (coverage < 10) { // 門檻降至 10%，確保最後一輪也接近停止
+                    if (coverage < 10) { 
                         nextStatus = 'STABILIZING';
                         stateStartTimeRef.current = now;
                     }
                 }
                 else if (spinStateRef.current === 'STABILIZING') {
-                    if (coverage > 15) { // 如果位移回升 (如最後一輪又動了或是中獎動畫開始)，回到 SPINNING 重新計時
+                    // [穩定調優] 只有位移很高 (30%+) 且「不是中獎線特效」時，才判定為重新動起來回到 SPINNING
+                    if (coverage > 30 && !isLineHidden) { 
                         nextStatus = 'SPINNING';
                         stateStartTimeRef.current = now;
                     } else if (now - stateStartTimeRef.current > motionDelay) {
@@ -329,7 +332,7 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
                 }
 
                 spinStateRef.current = nextStatus;
-                
+
                 // 強制更新除錯面板
                 setDebugData({
                     diff: avgDiff.toFixed(1),
@@ -365,7 +368,7 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
             if (videoRef.current && videoRef.current.readyState >= 2) {
                 const video = videoRef.current;
                 const canvas = document.createElement('canvas');
-                const targetW = 320; 
+                const targetW = 320;
                 const targetH = Math.round(targetW * (reelROI.h / reelROI.w));
                 canvas.width = targetW;
                 canvas.height = targetH;
@@ -380,8 +383,8 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
                 const data = ctx.getImageData(0, 0, targetW, targetH).data;
                 const binarized = new Uint8Array(targetW * targetH);
                 for (let i = 0; i < data.length; i += 4) {
-                    const avg = (data[i] + data[i+1] + data[i+2]) / 3;
-                    binarized[i/4] = avg > 120 ? 255 : 0;
+                    const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
+                    binarized[i / 4] = avg > 120 ? 255 : 0;
                 }
                 lastFrameRef.current = binarized;
             }

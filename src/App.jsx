@@ -166,7 +166,7 @@ function App() {
 
     const handleTransferPhase4ToPhase3 = useCallback(async () => {
         if (capturedImages.length === 0) return;
-        
+
         // 轉換為 Phase 3 需要的格式 (需帶有 HTML Image 對象)
         const transformed = await Promise.all(capturedImages.map(imgData => {
             return new Promise((resolve) => {
@@ -184,13 +184,19 @@ function App() {
                 img.src = imgData.previewUrl;
             });
         }));
-        
+
         setVisionImages(prev => [...prev, ...transformed]);
         setIsPhase4Minimized(true);
         setIsPhase3Minimized(false);
         setTemplateMessage(`✅ 已成功從影片匯入 ${capturedImages.length} 張截圖至 Phase 3`);
+        
+        // [自動開啟] 傳送完成後直接進入第一張新圖片的辨識介面
+        if (transformed.length > 0) {
+            setActiveVisionId(transformed[0].id);
+        }
+        
         clearAllCaptures();
-    }, [capturedImages, setVisionImages, setTemplateMessage, clearAllCaptures]);
+    }, [capturedImages, setVisionImages, setTemplateMessage, clearAllCaptures, setActiveVisionId]);
 
 
 
@@ -589,10 +595,10 @@ function App() {
                     onReturn={handleReturnToVision}
                     totalBalance={totalBalance} setTotalBalance={setTotalBalance}
                     setTemplateMessage={setTemplateMessage}
-                    isBalanceExpanded={isBalanceExpanded}                    setIsBalanceExpanded={setIsBalanceExpanded}
+                    isBalanceExpanded={isBalanceExpanded} setIsBalanceExpanded={setIsBalanceExpanded}
                 />
 
-            <Phase3Vision
+                <Phase3Vision
                     template={template}
                     isPhase3Minimized={isPhase3Minimized} setIsPhase3Minimized={setIsPhase3Minimized}
                     visionImages={visionImages} activeVisionId={activeVisionId} setActiveVisionId={setActiveVisionId}
@@ -612,7 +618,7 @@ function App() {
                     isBalanceExpanded={isBalanceExpanded} setIsBalanceExpanded={setIsBalanceExpanded}
                 />
 
-            <Phase4Video
+                <Phase4Video
                     isPhase4Minimized={isPhase4Minimized} setIsPhase4Minimized={setIsPhase4Minimized}
                     videoSrc={videoSrc} videoRef={videoRef} handleVideoUpload={handleVideoUpload}
                     isAutoDetecting={isAutoDetecting} setIsAutoDetecting={setIsAutoDetecting}

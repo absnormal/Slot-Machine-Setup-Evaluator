@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Video, Scan, Play, Pause, Trash2, Send, Settings2, Sparkles, ChevronDown, ChevronUp, Image as ImageIcon, History, Clock, X, AlertCircle } from 'lucide-react';
 
-const Phase4Video = ({ 
+const Phase4Video = ({
     isPhase4Minimized, setIsPhase4Minimized,
     videoSrc, videoRef, handleVideoUpload,
     isAutoDetecting, setIsAutoDetecting,
@@ -93,15 +93,15 @@ const Phase4Video = ({
     const handleMouseDown = (e) => {
         const pos = getMousePos(e);
         const handleSize = 5;
-        
+
         let targetROI, setTargetROI;
         if (roiMode === 'win') { targetROI = winROI; setTargetROI = setWinROI; }
         else if (roiMode === 'balance') { targetROI = balanceROI; setTargetROI = setBalanceROI; }
         else { targetROI = reelROI; setTargetROI = setReelROI; }
 
-        const isOverHandle = pos.x >= targetROI.x + targetROI.w - handleSize && pos.x <= targetROI.x + targetROI.w && 
-                             pos.y >= targetROI.y + targetROI.h - handleSize && pos.y <= targetROI.y + targetROI.h;
-        
+        const isOverHandle = pos.x >= targetROI.x + targetROI.w - handleSize && pos.x <= targetROI.x + targetROI.w &&
+            pos.y >= targetROI.y + targetROI.h - handleSize && pos.y <= targetROI.y + targetROI.h;
+
         setDragState({
             action: isOverHandle ? 'resize' : 'move',
             startX: pos.x,
@@ -156,7 +156,7 @@ const Phase4Video = ({
     return (
         <div className="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden mb-8 animate-in fade-in slide-in-from-top-4 duration-500">
             {/* Minimized Header / Toggle Bar */}
-            <div 
+            <div
                 className={`p-4 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors ${!isPhase4Minimized ? 'bg-slate-800' : 'bg-white'}`}
                 onClick={() => setIsPhase4Minimized(!isPhase4Minimized)}
             >
@@ -175,7 +175,7 @@ const Phase4Video = ({
                 </div>
                 <div className="flex items-center gap-2">
                     {!isPhase4Minimized && (
-                        <button 
+                        <button
                             onClick={(e) => { e.stopPropagation(); setShowDebug(!showDebug); }}
                             className={`p-2 rounded-lg transition-colors flex items-center gap-2 text-xs font-bold ${showDebug ? 'bg-amber-500 text-white' : 'bg-slate-700 text-slate-300 hover:text-white'}`}
                         >
@@ -205,19 +205,19 @@ const Phase4Video = ({
                             <div className="relative rounded-2xl shadow-2xl bg-black group flex flex-col items-center overflow-hidden">
                                 {/* 頂部 ROI 切換器 */}
                                 <div className="absolute top-4 right-4 z-40 bg-slate-900/80 backdrop-blur-md p-1 rounded-lg border border-white/20 shadow-xl flex gap-1">
-                                    <button 
+                                    <button
                                         onClick={() => setRoiMode('reel')}
                                         className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${roiMode === 'reel' ? 'bg-amber-500 text-white' : 'text-slate-400 hover:text-white'}`}
                                     >
                                         盤面
                                     </button>
-                                    <button 
+                                    <button
                                         onClick={() => setRoiMode('win')}
                                         className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${roiMode === 'win' ? 'bg-emerald-500 text-white' : 'text-slate-400 hover:text-white'}`}
                                     >
                                         贏分
                                     </button>
-                                    <button 
+                                    <button
                                         onClick={() => setRoiMode('balance')}
                                         className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${roiMode === 'balance' ? 'bg-sky-500 text-white' : 'text-slate-400 hover:text-white'}`}
                                     >
@@ -225,7 +225,7 @@ const Phase4Video = ({
                                     </button>
                                 </div>
 
-                                <div 
+                                <div
                                     className="relative inline-block"
                                     ref={containerRef}
                                     onMouseMove={handleMouseMove}
@@ -234,14 +234,14 @@ const Phase4Video = ({
                                     onMouseDown={handleMouseDown}
                                 >
                                     <video ref={videoRef} src={videoSrc} className="max-w-full max-h-[70vh] block" />
-                                    
+
                                     {/* 1. 盤面 ROI (Amber) */}
-                                    <div 
+                                    <div
                                         className={`absolute border-2 border-amber-400 transition-opacity ${roiMode === 'reel' ? 'opacity-100 pointer-events-auto cursor-move bg-amber-400/10' : 'opacity-40 pointer-events-none'}`}
                                         style={{
-                                            left: `${reelROI.x}%`, 
-                                            top: `${reelROI.y}%`, 
-                                            width: `${reelROI.w}%`, 
+                                            left: `${reelROI.x}%`,
+                                            top: `${reelROI.y}%`,
+                                            width: `${reelROI.w}%`,
                                             height: `${reelROI.h}%`,
                                             zIndex: roiMode === 'reel' ? 20 : 10
                                         }}
@@ -257,12 +257,12 @@ const Phase4Video = ({
                                     </div>
 
                                     {/* 2. 贏分 ROI (Emerald) */}
-                                    <div 
+                                    <div
                                         className={`absolute border-2 border-emerald-400 transition-opacity ${roiMode === 'win' ? 'opacity-100 pointer-events-auto cursor-move bg-emerald-400/10' : 'opacity-40 pointer-events-none'}`}
                                         style={{
-                                            left: `${winROI.x}%`, 
-                                            top: `${winROI.y}%`, 
-                                            width: `${winROI.w}%`, 
+                                            left: `${winROI.x}%`,
+                                            top: `${winROI.y}%`,
+                                            width: `${winROI.w}%`,
                                             height: `${winROI.h}%`,
                                             zIndex: roiMode === 'win' ? 20 : 10
                                         }}
@@ -273,12 +273,12 @@ const Phase4Video = ({
                                     </div>
 
                                     {/* 3. 餘額 ROI (Sky) */}
-                                    <div 
+                                    <div
                                         className={`absolute border-2 border-sky-400 transition-opacity ${roiMode === 'balance' ? 'opacity-100 pointer-events-auto cursor-move bg-sky-400/10' : 'opacity-40 pointer-events-none'}`}
                                         style={{
-                                            left: `${balanceROI.x}%`, 
-                                            top: `${balanceROI.y}%`, 
-                                            width: `${balanceROI.w}%`, 
+                                            left: `${balanceROI.x}%`,
+                                            top: `${balanceROI.y}%`,
+                                            width: `${balanceROI.w}%`,
                                             height: `${balanceROI.h}%`,
                                             zIndex: roiMode === 'balance' ? 20 : 10
                                         }}
@@ -293,12 +293,29 @@ const Phase4Video = ({
                                     <button onClick={togglePlay} className="text-white hover:text-amber-400 transition-colors">
                                         {isPlaying ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" />}
                                     </button>
+
+                                    {/* 換影片按鈕 */}
+                                    <button
+                                        onClick={() => {
+                                            const input = document.createElement('input');
+                                            input.type = 'file';
+                                            input.accept = 'video/*';
+                                            input.onchange = handleVideoUpload;
+                                            input.click();
+                                        }}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg text-xs font-bold transition-all border border-white/5"
+                                    >
+                                        <div className="w-4 h-4 flex items-center justify-center">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m16 13 5.23 3.41c.33.22.77-.02.77-.41V8c0-.39-.44-.63-.77-.41L16 11V5c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2z" /></svg>
+                                        </div>
+                                        換影片
+                                    </button>
                                     <div className="flex-1 flex items-center gap-3">
                                         <span className="text-[10px] font-mono text-slate-400">{formatTime(currentTime)}</span>
                                         <input type="range" min="0" max={duration || 0} step="0.1" value={currentTime} onChange={handleSeek} className="flex-1 h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-500" />
                                         <span className="text-[10px] font-mono text-slate-400">{formatTime(duration)}</span>
                                     </div>
-                                    <button 
+                                    <button
                                         onClick={togglePlay}
                                         className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${isAutoDetecting ? 'bg-rose-600 text-white animate-pulse' : 'bg-slate-700 text-slate-300'}`}
                                     >
@@ -452,7 +469,7 @@ const Phase4Video = ({
                         </div>
 
                         <div className="p-4 bg-white border-t space-y-3">
-                            <button 
+                            <button
                                 onClick={onTransferToPhase3}
                                 disabled={capturedImages.length === 0}
                                 className={`w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg ${capturedImages.length === 0 ? 'bg-slate-100 text-slate-400 cursor-not-allowed shadow-none' : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-emerald-200'}`}
