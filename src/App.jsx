@@ -153,11 +153,13 @@ function App() {
         videoSrc, videoRef, handleVideoUpload,
         isAutoDetecting, setIsAutoDetecting,
         sensitivity, setSensitivity,
+        motionCoverageMin, setMotionCoverageMin,
+        motionDelay, setMotionDelay,
         capturedImages, removeCapturedImage, clearAllCaptures,
-        reelROI, setReelROI, winROI, setWinROI,
+        reelROI, setReelROI,
         captureCurrentFrame,
         debugData
-    } = useVideoProcessor({ setTemplateMessage });
+    } = useVideoProcessor({ setTemplateMessage, template });
 
     const handleTransferPhase4ToPhase3 = useCallback(async () => {
         if (capturedImages.length === 0) return;
@@ -587,6 +589,7 @@ function App() {
                     isBalanceExpanded={isBalanceExpanded}                    setIsBalanceExpanded={setIsBalanceExpanded}
                 />
 
+            <div className={isPhase3Minimized ? 'hidden' : ''}>
                 <Phase3Vision
                     template={template}
                     isPhase3Minimized={isPhase3Minimized} setIsPhase3Minimized={setIsPhase3Minimized}
@@ -606,20 +609,25 @@ function App() {
                     setTemplateMessage={setTemplateMessage}
                     isBalanceExpanded={isBalanceExpanded} setIsBalanceExpanded={setIsBalanceExpanded}
                 />
+            </div>
 
+            <div className={isPhase4Minimized ? 'hidden' : ''}>
                 <Phase4Video
                     isPhase4Minimized={isPhase4Minimized} setIsPhase4Minimized={setIsPhase4Minimized}
                     videoSrc={videoSrc} videoRef={videoRef} handleVideoUpload={handleVideoUpload}
                     isAutoDetecting={isAutoDetecting} setIsAutoDetecting={setIsAutoDetecting}
                     sensitivity={sensitivity} setSensitivity={setSensitivity}
+                    motionCoverageMin={motionCoverageMin} setMotionCoverageMin={setMotionCoverageMin}
+                    motionDelay={motionDelay} setMotionDelay={setMotionDelay}
                     capturedImages={capturedImages} removeCapturedImage={removeCapturedImage} clearAllCaptures={clearAllCaptures}
                     reelROI={reelROI} setReelROI={setReelROI}
-                    winROI={winROI} setWinROI={setWinROI}
                     captureCurrentFrame={captureCurrentFrame}
                     onTransferToPhase3={handleTransferPhase4ToPhase3}
                     setTemplateMessage={setTemplateMessage}
+                    template={template}
                     debugData={debugData}
                 />
+            </div>
 
             </div>
 
