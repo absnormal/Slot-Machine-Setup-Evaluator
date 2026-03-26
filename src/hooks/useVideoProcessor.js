@@ -82,7 +82,7 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
             timestamp: video.currentTime.toFixed(2)
         };
         
-        setCapturedImages(prev => [newImg, ...prev]);
+        setCapturedImages(prev => [...prev, newImg]);
         return newImg;
     }, []);
 
