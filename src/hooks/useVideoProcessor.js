@@ -10,7 +10,7 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
     const [isAutoDetecting, setIsAutoDetecting] = useState(false);
     const [sensitivity, setSensitivity] = useState(15);
     const [motionCoverageMin, setMotionCoverageMin] = useState(60); // 預設 60% 區塊有位移才算轉動
-    const [motionDelay, setMotionDelay] = useState(300); // 穩定判定時間 (ms)
+    const [motionDelay, setMotionDelay] = useState(1000); // 穩定判定時間 (ms)，調升至 1000ms 確保所有盤面完全靜止
     
     const [capturedImages, setCapturedImages] = useState([]);
     const [reelROI, setReelROI] = useState(() => {
@@ -134,11 +134,10 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
             const imageData = ctx.getImageData(0, 0, targetW, targetH);
             const data = imageData.data;
 
-            // 3. 轉為灰階二值化
-            const binarized = new Uint8Array(targetW * targetH);
+            // 3. 轉為灰階 (不再進行二值化，直接保留灰階值以提升比對精度)
+            const grayscale = new Uint8Array(targetW * targetH);
             for (let i = 0; i < data.length; i += 4) {
-                const avg = (data[i] + data[i+1] + data[i+2]) / 3;
-                binarized[i/4] = avg > 120 ? 255 : 0;
+                grayscale[i/4] = (data[i] + data[i+1] + data[i+2]) / 3;
             }
 
             // 4. 格點位移比對
@@ -154,11 +153,11 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
                         const startX = c * cellW;
                         const startY = r * cellH;
 
-                        // 採樣比對
+                        // 採樣比對：使用灰階亮度差 (閾值 10) 判定像素級位移
                         for (let y = startY; y < startY + cellH; y += 4) {
                             for (let x = startX; x < startX + cellW; x += 4) {
                                 const idx = y * targetW + x;
-                                if (binarized[idx] !== lastFrameRef.current[idx]) {
+                                if (Math.abs(grayscale[idx] - lastFrameRef.current[idx]) > 10) {
                                     cellDiff++;
                                 }
                             }
@@ -188,13 +187,13 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
                     }
                 } 
                 else if (spinStateRef.current === 'SPINNING') {
-                    if (coverage < 40) { // 驟降，準備停止
+                    if (coverage < 10) { // 門檻降至 10%，確保最後一輪也接近停止
                         nextStatus = 'STABILIZING';
                         stateStartTimeRef.current = now;
                     }
                 }
                 else if (spinStateRef.current === 'STABILIZING') {
-                    if (coverage > motionCoverageMin) { // 又開始晃了
+                    if (coverage > 15) { // 如果位移回升 (如最後一輪又動了或是中獎動畫開始)，回到 SPINNING 重新計時
                         nextStatus = 'SPINNING';
                         stateStartTimeRef.current = now;
                     } else if (now - stateStartTimeRef.current > motionDelay) {
