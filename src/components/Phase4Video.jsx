@@ -37,8 +37,14 @@ const Phase4Video = ({
 
         const updateTime = () => setCurrentTime(video.currentTime);
         const updateDuration = () => setDuration(video.duration);
-        const handlePlay = () => setIsPlaying(true);
-        const handlePause = () => setIsPlaying(false);
+        const handlePlay = () => {
+            setIsPlaying(true);
+            setIsAutoDetecting(true);
+        };
+        const handlePause = () => {
+            setIsPlaying(false);
+            setIsAutoDetecting(false);
+        };
 
         video.addEventListener('timeupdate', updateTime);
         video.addEventListener('loadedmetadata', updateDuration);
@@ -51,7 +57,7 @@ const Phase4Video = ({
             video.removeEventListener('play', handlePlay);
             video.removeEventListener('pause', handlePause);
         };
-    }, [videoSrc, videoRef]);
+    }, [videoSrc, videoRef, setIsAutoDetecting]);
 
     const togglePlay = () => {
         if (!videoRef.current) return;
@@ -218,10 +224,10 @@ const Phase4Video = ({
                                         <span className="text-[10px] font-mono text-slate-400">{formatTime(duration)}</span>
                                     </div>
                                     <button 
-                                        onClick={() => setIsAutoDetecting(!isAutoDetecting)}
+                                        onClick={togglePlay}
                                         className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${isAutoDetecting ? 'bg-rose-600 text-white animate-pulse' : 'bg-slate-700 text-slate-300'}`}
                                     >
-                                        {isAutoDetecting ? '偵測中...' : '啟動偵測'}
+                                        {isAutoDetecting ? '偵測進行中...' : '啟動偵測'}
                                     </button>
                                 </div>
 
