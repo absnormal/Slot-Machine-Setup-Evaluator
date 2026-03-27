@@ -12,6 +12,7 @@ const Phase4Video = ({
     reelROI, setReelROI,
     winROI, setWinROI,
     balanceROI, setBalanceROI,
+    betROI, setBetROI,
     captureCurrentFrame,
     onTransferToPhase3,
     setTemplateMessage,
@@ -24,7 +25,7 @@ const Phase4Video = ({
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
     const [dragState, setDragState] = useState(null);
-    const [roiMode, setRoiMode] = useState('reel'); // 'reel' | 'win' | 'balance'
+    const [roiMode, setRoiMode] = useState('reel'); // 'reel', 'win', 'balance', 'bet'
     const containerRef = useRef(null);
     const listEndRef = useRef(null);
 
@@ -97,6 +98,7 @@ const Phase4Video = ({
         let targetROI, setTargetROI;
         if (roiMode === 'win') { targetROI = winROI; setTargetROI = setWinROI; }
         else if (roiMode === 'balance') { targetROI = balanceROI; setTargetROI = setBalanceROI; }
+        else if (roiMode === 'bet') { targetROI = betROI; setTargetROI = setBetROI; }
         else { targetROI = reelROI; setTargetROI = setReelROI; }
 
         const isOverHandle = pos.x >= targetROI.x + targetROI.w - handleSize && pos.x <= targetROI.x + targetROI.w &&
@@ -154,21 +156,21 @@ const Phase4Video = ({
     };
 
     return (
-        <div className="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden mb-8 animate-in fade-in slide-in-from-top-4 duration-500">
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden mb-8 animate-in fade-in slide-in-from-top-4 duration-500">
             {/* Minimized Header / Toggle Bar */}
             <div
-                className={`p-4 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors ${!isPhase4Minimized ? 'bg-slate-800' : 'bg-white'}`}
+                className="p-5 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors bg-white"
                 onClick={() => setIsPhase4Minimized(!isPhase4Minimized)}
             >
                 <div className="flex items-center gap-3">
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-lg ${!isPhase4Minimized ? 'bg-amber-500 text-white shadow-amber-500/20' : 'bg-indigo-100 text-indigo-600'}`}>
+                    <div className="w-10 h-10 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center shadow-sm">
                         {isPhase4Minimized ? <Video size={20} /> : <Scan size={20} />}
                     </div>
                     <div>
-                        <h2 className={`text-lg font-bold ${!isPhase4Minimized ? 'text-white' : 'text-slate-800'}`}>
+                        <h2 className="text-lg font-bold text-slate-800">
                             Phase 4: 影片動態自動擷取
                         </h2>
-                        <p className={`text-xs ${!isPhase4Minimized ? 'text-slate-400' : 'text-slate-500'}`}>
+                        <p className="text-xs text-slate-500">
                             {isPhase4Minimized ? '格點動態偵測模式 (已最小化)' : '基於盤面格點位移覆蓋率 (Coverage) 偵測轉動與停止'}
                         </p>
                     </div>
@@ -177,12 +179,14 @@ const Phase4Video = ({
                     {!isPhase4Minimized && (
                         <button
                             onClick={(e) => { e.stopPropagation(); setShowDebug(!showDebug); }}
-                            className={`p-2 rounded-lg transition-colors flex items-center gap-2 text-xs font-bold ${showDebug ? 'bg-amber-500 text-white' : 'bg-slate-700 text-slate-300 hover:text-white'}`}
+                            className={`p-2 rounded-lg transition-all active:scale-95 flex items-center gap-2 text-xs font-bold shadow-sm ${showDebug ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
                         >
                             <Settings2 size={16} /> 除錯儀表板: {showDebug ? 'ON' : 'OFF'}
                         </button>
                     )}
-                    {isPhase4Minimized ? <ChevronDown className="text-slate-400" /> : <ChevronUp className="text-white/60" />}
+                    <div className="cursor-pointer p-1 hover:bg-slate-100 rounded-full transition-colors">
+                        {isPhase4Minimized ? <ChevronDown className="text-slate-400" /> : <ChevronUp className="text-slate-400" />}
+                    </div>
                 </div>
             </div>
 
@@ -190,12 +194,12 @@ const Phase4Video = ({
             <div className={`p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 ${isPhase4Minimized ? 'hidden' : ''}`}>
                 <div className="lg:col-span-8 space-y-4">
                     {!videoSrc ? (
-                        <div className="aspect-video bg-slate-100 rounded-2xl border-2 border-dashed border-slate-300 flex flex-col items-center justify-center p-12 transition-all hover:bg-slate-50 hover:border-amber-300 group">
+                        <div className="aspect-video bg-slate-100 rounded-xl border-2 border-dashed border-slate-300 flex flex-col items-center justify-center p-12 transition-all hover:bg-slate-50 hover:border-indigo-300 group">
                             <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center shadow-md mb-6 group-hover:scale-110 transition-transform">
-                                <Video size={32} className="text-amber-500" />
+                                <Video size={32} className="text-indigo-500" />
                             </div>
                             <h3 className="text-xl font-bold text-slate-700 mb-2">上傳影片以開始偵測</h3>
-                            <label className="bg-amber-500 hover:bg-amber-600 text-white px-8 py-3 rounded-xl font-bold shadow-lg shadow-amber-200 cursor-pointer transition-all active:scale-95 mt-4">
+                            <label className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-xl font-bold shadow-lg shadow-indigo-500/20 cursor-pointer transition-all active:scale-95 mt-4">
                                 選擇影片檔案
                                 <input type="file" accept="video/*" className="hidden" onChange={handleVideoUpload} />
                             </label>
@@ -207,21 +211,31 @@ const Phase4Video = ({
                                 <div className="absolute top-4 right-4 z-40 bg-slate-900/80 backdrop-blur-md p-1 rounded-lg border border-white/20 shadow-xl flex gap-1">
                                     <button
                                         onClick={() => setRoiMode('reel')}
-                                        className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${roiMode === 'reel' ? 'bg-amber-500 text-white' : 'text-slate-400 hover:text-white'}`}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm active:scale-95 ${roiMode === 'reel' ? 'bg-amber-500 text-white ring-2 ring-amber-300 ring-offset-2' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}`}
                                     >
-                                        盤面
+                                        <div className={`w-2 h-2 rounded-full ${roiMode === 'reel' ? 'bg-white' : 'bg-amber-400 animate-pulse'}`}></div>
+                                        REEL
                                     </button>
                                     <button
                                         onClick={() => setRoiMode('win')}
-                                        className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${roiMode === 'win' ? 'bg-emerald-500 text-white' : 'text-slate-400 hover:text-white'}`}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm active:scale-95 ${roiMode === 'win' ? 'bg-emerald-500 text-white ring-2 ring-emerald-300 ring-offset-2' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}`}
                                     >
-                                        贏分
+                                        <div className={`w-2 h-2 rounded-full ${roiMode === 'win' ? 'bg-white' : 'bg-emerald-400 animate-pulse'}`}></div>
+                                        WIN
                                     </button>
                                     <button
                                         onClick={() => setRoiMode('balance')}
-                                        className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${roiMode === 'balance' ? 'bg-sky-500 text-white' : 'text-slate-400 hover:text-white'}`}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm active:scale-95 ${roiMode === 'balance' ? 'bg-sky-500 text-white ring-2 ring-sky-300 ring-offset-2' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}`}
                                     >
-                                        總分
+                                        <div className={`w-2 h-2 rounded-full ${roiMode === 'balance' ? 'bg-white' : 'bg-sky-400 animate-pulse'}`}></div>
+                                        BALANCE
+                                    </button>
+                                    <button
+                                        onClick={() => setRoiMode('bet')}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm active:scale-95 ${roiMode === 'bet' ? 'bg-cyan-500 text-white ring-2 ring-cyan-300 ring-offset-2' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}`}
+                                    >
+                                        <div className={`w-2 h-2 rounded-full ${roiMode === 'bet' ? 'bg-white' : 'bg-cyan-400 animate-pulse'}`}></div>
+                                        BET
                                     </button>
                                 </div>
 
@@ -287,6 +301,22 @@ const Phase4Video = ({
                                         {roiMode === 'balance' && <div className="absolute -right-1 -bottom-1 w-4 h-4 bg-sky-500 rounded-full border-2 border-white pointer-events-auto cursor-nwse-resize shadow-md" />}
                                         <div className="absolute -top-5 left-0 bg-sky-500 text-white text-[10px] px-1 rounded shadow-sm">總分</div>
                                     </div>
+
+                                    {/* 4. BET ROI (Cyan) */}
+                                    <div
+                                        className={`absolute border-2 border-cyan-400 transition-opacity ${roiMode === 'bet' ? 'opacity-100 pointer-events-auto cursor-move bg-cyan-400/10' : 'opacity-40 pointer-events-none'}`}
+                                        style={{
+                                            left: `${betROI.x}%`,
+                                            top: `${betROI.y}%`,
+                                            width: `${betROI.w}%`,
+                                            height: `${betROI.h}%`,
+                                            zIndex: roiMode === 'bet' ? 20 : 10
+                                        }}
+                                        onMouseDown={(e) => { e.stopPropagation(); handleMouseDown(e); }}
+                                    >
+                                        {roiMode === 'bet' && <div className="absolute -right-1 -bottom-1 w-4 h-4 bg-cyan-500 rounded-full border-2 border-white pointer-events-auto cursor-nwse-resize shadow-md" />}
+                                        <div className="absolute -top-5 left-0 bg-cyan-500 text-white text-[10px] px-1 rounded shadow-sm">押分</div>
+                                    </div>
                                 </div>
 
                                 <div className="w-full bg-slate-900/90 backdrop-blur p-3 px-5 flex items-center gap-4 border-t border-white/10">
@@ -303,7 +333,7 @@ const Phase4Video = ({
                                             input.onchange = handleVideoUpload;
                                             input.click();
                                         }}
-                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg text-xs font-bold transition-all border border-white/5"
+                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-800 rounded-lg text-xs font-bold transition-all border border-slate-200 active:scale-95"
                                     >
                                         <div className="w-4 h-4 flex items-center justify-center">
                                             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m16 13 5.23 3.41c.33.22.77-.02.77-.41V8c0-.39-.44-.63-.77-.41L16 11V5c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2z" /></svg>
@@ -312,15 +342,9 @@ const Phase4Video = ({
                                     </button>
                                     <div className="flex-1 flex items-center gap-3">
                                         <span className="text-[10px] font-mono text-slate-400">{formatTime(currentTime)}</span>
-                                        <input type="range" min="0" max={duration || 0} step="0.1" value={currentTime} onChange={handleSeek} className="flex-1 h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-500" />
+                                        <input type="range" min="0" max={duration || 0} step="0.1" value={currentTime} onChange={handleSeek} className="flex-1 h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500" />
                                         <span className="text-[10px] font-mono text-slate-400">{formatTime(duration)}</span>
                                     </div>
-                                    <button
-                                        onClick={togglePlay}
-                                        className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${isAutoDetecting ? 'bg-rose-600 text-white animate-pulse' : 'bg-slate-700 text-slate-300'}`}
-                                    >
-                                        {isAutoDetecting ? '偵測進行中...' : '啟動偵測'}
-                                    </button>
                                 </div>
 
                                 {showDebug && (
@@ -381,19 +405,19 @@ const Phase4Video = ({
                                     <label className="text-[11px] font-bold text-slate-500 flex justify-between">
                                         位移靈敏度 (DIFF) <span>{sensitivity}%</span>
                                     </label>
-                                    <input type="range" min="1" max="50" value={sensitivity} onChange={(e) => setSensitivity(parseInt(e.target.value))} className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-amber-500" />
+                                    <input type="range" min="1" max="50" value={sensitivity} onChange={(e) => setSensitivity(parseInt(e.target.value))} className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-500" />
                                 </div>
                                 <div className="space-y-1.5">
                                     <label className="text-[11px] font-bold text-slate-500 flex justify-between">
                                         覆蓋率門檻 (COVERAGE) <span>{motionCoverageMin}%</span>
                                     </label>
-                                    <input type="range" min="10" max="95" value={motionCoverageMin} onChange={(e) => setMotionCoverageMin(parseInt(e.target.value))} className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-amber-500" />
+                                    <input type="range" min="10" max="95" value={motionCoverageMin} onChange={(e) => setMotionCoverageMin(parseInt(e.target.value))} className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-500" />
                                 </div>
                                 <div className="space-y-1.5">
                                     <label className="text-[11px] font-bold text-slate-500 flex justify-between">
                                         判定延遲 (DELAY) <span>{motionDelay}ms</span>
                                     </label>
-                                    <input type="range" min="100" max="1000" step="50" value={motionDelay} onChange={(e) => setMotionDelay(parseInt(e.target.value))} className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-amber-500" />
+                                    <input type="range" min="100" max="1000" step="50" value={motionDelay} onChange={(e) => setMotionDelay(parseInt(e.target.value))} className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-500" />
                                 </div>
                                 <div className="space-y-1.5">
                                     <label className="text-[11px] font-bold text-slate-500 flex justify-between">
@@ -407,11 +431,11 @@ const Phase4Video = ({
                 </div>
 
                 <div className="lg:col-span-4 flex flex-col h-[600px]">
-                    <div className="bg-slate-50 rounded-2xl border border-slate-200 flex flex-col h-full overflow-hidden">
+                    <div className="bg-slate-50 rounded-xl border border-slate-200 flex flex-col h-full overflow-hidden shadow-sm">
                         <div className="p-4 border-b bg-white flex items-center justify-between sticky top-0 z-10 shadow-sm">
                             <h3 className="font-bold text-slate-800 flex items-center gap-2 text-sm">
-                                <History size={16} className="text-amber-500" /> 自動擷取歷史庫
-                                <span className="bg-amber-100 text-amber-600 px-2 py-0.5 rounded-full text-[10px]">{capturedImages.length}</span>
+                                <History size={16} className="text-indigo-500" /> 自動擷取歷史庫
+                                <span className="bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full text-[10px]">{capturedImages.length}</span>
                             </h3>
                             {capturedImages.length > 0 && (
                                 <button onClick={clearAllCaptures} className="text-slate-400 hover:text-rose-500 p-1 transition-colors" title="清除全部">
@@ -428,7 +452,7 @@ const Phase4Video = ({
                                 </div>
                             ) : (
                                 capturedImages.map((img, idx) => (
-                                    <div key={img.id} className="group relative bg-white rounded-xl border border-slate-200 p-2 shadow-sm hover:border-amber-300 transition-all hover:shadow-md animate-in slide-in-from-bottom-2">
+                                    <div key={img.id} className="group relative bg-white rounded-xl border border-slate-200 p-2 shadow-sm hover:border-indigo-300 transition-all hover:shadow-md animate-in slide-in-from-bottom-2">
                                         <div className="flex gap-3">
                                             <div className="w-20 h-14 bg-slate-100 rounded-lg overflow-hidden shrink-0">
                                                 <img src={img.previewUrl} className="w-full h-full object-cover" />
@@ -443,7 +467,7 @@ const Phase4Video = ({
                                                     <span className="text-[10px] font-mono text-slate-500">{img.timestamp}s</span>
                                                 </div>
                                                 {/* OCR 數據展示 */}
-                                                <div className="grid grid-cols-2 gap-1 mt-1.5 pt-1.5 border-t border-slate-50">
+                                                <div className="grid grid-cols-3 gap-1 mt-1.5 pt-1.5 border-t border-slate-50">
                                                     <div className="flex flex-col">
                                                         <span className="text-[8px] text-slate-400 font-medium lowercase">win</span>
                                                         <span className={`text-[10px] font-bold ${img.extractedWin === "..." ? "text-slate-300 animate-pulse" : "text-emerald-600"}`}>
@@ -451,6 +475,12 @@ const Phase4Video = ({
                                                         </span>
                                                     </div>
                                                     <div className="flex flex-col">
+                                                        <span className="text-[8px] text-slate-400 font-medium lowercase">bet</span>
+                                                        <span className={`text-[10px] font-bold ${img.extractedBet === "..." ? "text-slate-300 animate-pulse" : "text-cyan-600"}`}>
+                                                            {img.extractedBet || "0"}
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex flex-col text-right">
                                                         <span className="text-[8px] text-slate-400 font-medium lowercase">total</span>
                                                         <span className={`text-[10px] font-bold ${img.extractedBalance === "..." ? "text-slate-300 animate-pulse" : "text-sky-600"}`}>
                                                             {img.extractedBalance || "0"}
@@ -472,12 +502,36 @@ const Phase4Video = ({
                             <button
                                 onClick={onTransferToPhase3}
                                 disabled={capturedImages.length === 0}
-                                className={`w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg ${capturedImages.length === 0 ? 'bg-slate-100 text-slate-400 cursor-not-allowed shadow-none' : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-emerald-200'}`}
+                                className={`w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg ${capturedImages.length === 0 ? 'bg-slate-100 text-slate-400 cursor-not-allowed shadow-none' : 'bg-emerald-600/10 text-emerald-600 border border-emerald-200 hover:bg-emerald-100'}`}
                             >
                                 <Send size={18} /> 送往 Phase 3 批量辨識
                             </button>
+
+                            <button
+                                onClick={togglePlay}
+                                className={`w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg ${isAutoDetecting ? 'bg-rose-600 text-white animate-pulse' : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-emerald-200'}`}
+                            >
+                                {isAutoDetecting ? (
+                                    <>
+                                        <div className="w-2 h-2 bg-white rounded-full animate-ping" />
+                                        偵測運行中 (點擊停用)
+                                    </>
+                                ) : (
+                                    <>
+                                        <Play size={18} fill="currentColor" /> 啟動感傳自動偵測
+                                    </>
+                                )}
+                            </button>
+
+                            <button
+                                onClick={captureCurrentFrame}
+                                className="w-full py-2.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-all bg-slate-100 text-slate-600 hover:bg-slate-200 border border-slate-200 active:scale-95"
+                            >
+                                <Sparkles size={16} className="text-amber-500" /> 手動擷取即時影格
+                            </button>
+
                             <p className="text-[9px] text-slate-400 text-center">
-                                將自動擷取的影格傳送至 Phase 3 進行批量連線辨識
+                                自動擷取基於格點動態，擷取後將同步進行本地 OCR 數值辨識
                             </p>
                         </div>
                     </div>

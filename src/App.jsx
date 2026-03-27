@@ -160,6 +160,7 @@ function App() {
         reelROI, setReelROI,
         winROI, setWinROI,
         balanceROI, setBalanceROI,
+        betROI, setBetROI,
         captureCurrentFrame,
         debugData
     } = useVideoProcessor({ setTemplateMessage, template });
@@ -630,6 +631,7 @@ function App() {
                     reelROI={reelROI} setReelROI={setReelROI}
                     winROI={winROI} setWinROI={setWinROI}
                     balanceROI={balanceROI} setBalanceROI={setBalanceROI}
+                    betROI={betROI} setBetROI={setBetROI}
                     captureCurrentFrame={captureCurrentFrame}
                     onTransferToPhase3={handleTransferPhase4ToPhase3}
                     setTemplateMessage={setTemplateMessage}

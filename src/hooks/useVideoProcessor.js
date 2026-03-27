@@ -37,6 +37,13 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
             return saved ? JSON.parse(saved) : { x: 10, y: 85, w: 25, h: 8 };
         } catch (e) { return { x: 10, y: 85, w: 25, h: 8 }; }
     });
+    
+    const [betROI, setBetROI] = useState(() => {
+        const saved = localStorage.getItem('slot_phase4_bet_roi');
+        try {
+            return saved ? JSON.parse(saved) : { x: 75, y: 85, w: 20, h: 8 };
+        } catch (e) { return { x: 75, y: 85, w: 20, h: 8 }; }
+    });
 
     // 持久化儲存 ROI 區域 (僅在啟動偵測時同步)
     useEffect(() => {
@@ -44,6 +51,7 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
             if (reelROI) localStorage.setItem('slot_phase4_roi', JSON.stringify(reelROI));
             if (winROI) localStorage.setItem('slot_phase4_win_roi', JSON.stringify(winROI));
             if (balanceROI) localStorage.setItem('slot_phase4_balance_roi', JSON.stringify(balanceROI));
+            if (betROI) localStorage.setItem('slot_phase4_bet_roi', JSON.stringify(betROI));
         }
     }, [isAutoDetecting]);
 
@@ -64,6 +72,23 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
     const lastFrameRef = useRef(null);
     const isProcessingRef = useRef(false);
     const requestRef = useRef(null);
+    const ocrWorkerRef = useRef(null);
+
+    // 初始化 OCR Worker
+    useEffect(() => {
+        let worker = null;
+        (async () => {
+            worker = await createWorker('eng');
+            await worker.setParameters({
+                tessedit_char_whitelist: '0123456789.',
+                tessedit_pageseg_mode: '7',
+            });
+            ocrWorkerRef.current = worker;
+        })();
+        return () => {
+            if (worker) worker.terminate();
+        };
+    }, []);
 
     // 狀態機控制
     const spinStateRef = useRef('IDLE'); // IDLE, SPINNING, STABILIZING
@@ -103,22 +128,25 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
             const ctx = cropCanvas.getContext('2d');
             ctx.drawImage(fullCanvas, cx, cy, cw, ch, 0, 0, cw * scale, ch * scale);
 
-            // 影像增強：轉為灰階並二值化
+            // 影像增強：自適應二值化概念 (轉灰度後根據平均亮度調整門檻)
             const imgData = ctx.getImageData(0, 0, cw * scale, ch * scale);
-            for (let i = 0; i < imgData.data.length; i += 4) {
-                const gray = imgData.data[i] * 0.3 + imgData.data[i + 1] * 0.59 + imgData.data[i + 2] * 0.11;
-                const v = gray > 140 ? 255 : 0; // 調高門檻，讓背景更乾淨
-                imgData.data[i] = imgData.data[i + 1] = imgData.data[i + 2] = v;
+            const data = imgData.data;
+            let totalGray = 0;
+            for (let i = 0; i < data.length; i += 4) {
+                totalGray += (data[i] * 0.3 + data[i + 1] * 0.59 + data[i + 2] * 0.11);
+            }
+            const avgGray = totalGray / (cw * scale * ch * scale);
+            const threshold = Math.max(100, Math.min(160, avgGray + 20)); // 動態門檻
+
+            for (let i = 0; i < data.length; i += 4) {
+                const gray = data[i] * 0.3 + data[i + 1] * 0.59 + data[i + 2] * 0.11;
+                const v = gray > threshold ? 255 : 0;
+                data[i] = data[i + 1] = data[i + 2] = v;
             }
             ctx.putImageData(imgData, 0, 0);
 
-            const worker = await createWorker('eng');
-            await worker.setParameters({
-                tessedit_char_whitelist: '0123456789.',
-                tessedit_pageseg_mode: '7', // 加強單行辨識
-            });
-            const { data: { text } } = await worker.recognize(cropCanvas);
-            await worker.terminate();
+            if (!ocrWorkerRef.current) return "...";
+            const { data: { text } } = await ocrWorkerRef.current.recognize(cropCanvas);
 
             // 後處理：只保留數字與小數點，移除所有英文字母或雜訊
             const cleaned = text.trim()
@@ -150,22 +178,39 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
             previewUrl,
             timestamp: video.currentTime.toFixed(2),
             extractedWin: "...",
-            extractedBalance: "..."
+            extractedBalance: "...",
+            extractedBet: "..."
         };
 
         setCapturedImages(prev => [...prev, newImg]);
 
-        // 異步執行本地 OCR
+        // 異步執行本地 OCR (並行辨識以提升速度)
         (async () => {
-            const winText = await recognizeData(canvas, winROI);
-            const balanceText = await recognizeData(canvas, balanceROI);
-            setCapturedImages(prev => prev.map(img =>
-                img.id === captureId ? { ...img, extractedWin: winText, extractedBalance: balanceText } : img
-            ));
+            try {
+                const [winText, balanceText, betText] = await Promise.all([
+                    recognizeData(canvas, winROI),
+                    recognizeData(canvas, balanceROI),
+                    recognizeData(canvas, betROI)
+                ]);
+                
+                setCapturedImages(prev => prev.map(img =>
+                    img.id === captureId ? { 
+                        ...img, 
+                        extractedWin: winText, 
+                        extractedBalance: balanceText, 
+                        extractedBet: betText 
+                    } : img
+                ));
+            } catch (err) {
+                console.error("OCR Batch Error:", err);
+                setCapturedImages(prev => prev.map(img =>
+                    img.id === captureId ? { ...img, extractedWin: "Err", extractedBalance: "Err", extractedBet: "Err" } : img
+                ));
+            }
         })();
 
         return newImg;
-    }, [winROI, balanceROI]);
+    }, [winROI, balanceROI, betROI]);
 
     const removeCapturedImage = (id) => setCapturedImages(prev => prev.filter(img => img.id !== id));
     const clearAllCaptures = () => setCapturedImages([]);
@@ -408,6 +453,7 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
         reelROI, setReelROI,
         winROI, setWinROI,
         balanceROI, setBalanceROI,
+        betROI, setBetROI,
         captureCurrentFrame,
         debugData
     };
