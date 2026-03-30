@@ -1,7 +1,15 @@
 // === 特殊符號判定輔助函式 ===
 export const isScatterSymbol = (sym) => sym && sym.toUpperCase().includes('SCATTER');
 export const isCollectSymbol = (sym) => sym && sym.toUpperCase().includes('COLLECT');
-export const isWildSymbol = (sym) => sym && sym.toUpperCase().includes('WILD');
+export const isDynamicMultiplierSymbol = (sym) => {
+    if (!sym || typeof sym !== 'string') return false;
+    return /^x\d+(?:\.\d+)?$/i.test(sym) || /^WILD_x\d+(?:\.\d+)?$/i.test(sym) || /^xN$/i.test(sym);
+};
+
+export const isWildSymbol = (sym) => {
+    if (!sym || typeof sym !== 'string') return false;
+    return sym.toUpperCase().includes('WILD') || isDynamicMultiplierSymbol(sym);
+};
 
 // JP 符號需透過 template.jpConfig 來判定
 export const isJpSymbol = (sym, jpConfig = {}) => sym && typeof sym === 'string' && Object.keys(jpConfig || {}).includes(sym.toUpperCase());
@@ -71,6 +79,7 @@ export const getCollectValue = (sym) => {
 
 export const getBaseSymbol = (sym, jpConfig = {}) => {
     if (!sym || typeof sym !== 'string') return sym;
+    if (isDynamicMultiplierSymbol(sym) && sym.toUpperCase() !== 'XN') return 'xN';
     let base = sym;
     if (isDoubleSymbol(base)) {
         base = base.slice(0, -7); // strip '_double'

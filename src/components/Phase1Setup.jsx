@@ -37,6 +37,7 @@ export default function Phase1Setup(props) {
         hasJackpot, setHasJackpot, jpConfig, setJpConfig, buildErrorMsg, handleBuildTemplate,
         showPtModal, setShowPtModal,
         hasDoubleSymbol, setHasDoubleSymbol,
+        hasDynamicMultiplier, setHasDynamicMultiplier,
         multiplierCalcType, setMultiplierCalcType,
         hasApiKey
     } = props;
@@ -560,6 +561,33 @@ export default function Phase1Setup(props) {
                                     </div>
                                 </div>
 
+                                {/* Q3-1: Dynamic Multiplier */}
+                                <div className="ml-6 border-l-2 border-indigo-200 pl-4 py-2 mt-2">
+                                    <div className="bg-indigo-50/50 p-4 rounded-lg border border-indigo-100 shadow-sm animate-in fade-in slide-in-from-left-4 duration-300">
+                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                            <div>
+                                                <p className="text-sm font-bold text-indigo-900">3-1. 此遊戲是否有動態乘倍符號?</p>
+                                                <p className="text-xs text-indigo-700 mt-1">動態乘倍符號：視作WILD且共用賠率，連線贏分乘以該數字</p>
+                                                <p className="text-xs text-indigo-700 mt-0.5">若有，賠付表資料設定會有"xN"符號，賠率預設為0</p>
+                                            </div>
+                                            <div className="flex bg-white border border-indigo-200 p-0.5 rounded-lg shrink-0 shadow-sm">
+                                                <button
+                                                    onClick={() => setHasDynamicMultiplier(true)}
+                                                    className={`px-4 py-1.5 text-sm font-bold rounded-md transition-all ${hasDynamicMultiplier ? 'bg-indigo-600 text-white shadow-sm' : 'text-indigo-400 hover:text-indigo-600'}`}
+                                                >
+                                                    有
+                                                </button>
+                                                <button
+                                                    onClick={() => setHasDynamicMultiplier(false)}
+                                                    className={`px-4 py-1.5 text-sm font-bold rounded-md transition-all ${!hasDynamicMultiplier ? 'bg-indigo-600 text-white shadow-sm' : 'text-indigo-400 hover:text-indigo-600'}`}
+                                                >
+                                                    無
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
                                 {/* Q4: Cash Collect Feature */}
                                 <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm transition-all hover:border-indigo-300">
                                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -592,11 +620,11 @@ export default function Phase1Setup(props) {
                                 {/* Conditional Q5 & Q6 for Cash Collect */}
                                 {hasCashCollectFeature && (
                                     <div className="pl-6 border-l-2 border-indigo-200 space-y-4 animate-in fade-in slide-in-from-left-4 duration-300">
-                                        {/* Q5 */}
+                                        {/* Q4-1 */}
                                         <div className="bg-indigo-50/50 p-4 rounded-lg border border-indigo-100 shadow-sm">
                                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                                                 <div>
-                                                    <p className="text-sm font-bold text-indigo-900">5. 收集金幣是否需要 COLLECT 符號?</p>
+                                                    <p className="text-sm font-bold text-indigo-900">4-1. 收集金幣是否需要 COLLECT 符號?</p>
                                                 </div>
                                                 <div className="flex bg-white border border-indigo-200 p-0.5 rounded-lg shrink-0 shadow-sm">
                                                     <button
@@ -615,11 +643,11 @@ export default function Phase1Setup(props) {
                                             </div>
                                         </div>
 
-                                        {/* Q6 */}
+                                        {/* Q4-2 */}
                                         <div className="bg-indigo-50/50 p-4 rounded-lg border border-indigo-100 shadow-sm">
                                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
                                                 <div>
-                                                    <p className="text-sm font-bold text-indigo-900">6. 收集金幣中是否有 JP 符號?</p>
+                                                    <p className="text-sm font-bold text-indigo-900">4-2. 收集金幣中是否有 JP 符號?</p>
                                                     <p className="text-xs text-indigo-700 mt-1">若有，除了新增 Jackpot 倍率設定之外，還要在下方賠付表額外加入所有 JP 符號 (賠率皆設定0)</p>
                                                 </div>
                                                 <div className="flex bg-white border border-indigo-200 p-0.5 rounded-lg shrink-0 shadow-sm">

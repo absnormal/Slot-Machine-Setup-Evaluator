@@ -1,7 +1,7 @@
 import React from 'react';
 import { LayoutGrid, ChevronDown, ChevronUp, MousePointer2, RefreshCw, Paintbrush, Keyboard, Trash2, Zap, Trophy } from 'lucide-react';
 import ResultView from './ResultView';
-import { getBaseSymbol, getCashValue, isCashSymbol, isJpSymbol, formatShorthandValue, isDoubleSymbol, getSymbolMultiplier, getCollectValue, getSymbolDisplayImage } from '../utils/symbolUtils';
+import { getBaseSymbol, getCashValue, isCashSymbol, isJpSymbol, formatShorthandValue, isDoubleSymbol, getSymbolMultiplier, getCollectValue, getSymbolDisplayImage, isDynamicMultiplierSymbol } from '../utils/symbolUtils';
 
 const Phase2Manual = ({
     template,
@@ -31,7 +31,10 @@ const Phase2Manual = ({
         if (cashValueInput && activeBrush) {
             const isDouble = activeBrush.toLowerCase().endsWith('_double');
             let baseBrush = getBaseSymbol(activeBrush, template?.jpConfig);
-            const newSymbol = `${baseBrush}_${cashValueInput}${isDouble ? '_double' : ''}`;
+            let newSymbol = `${baseBrush}_${cashValueInput}${isDouble ? '_double' : ''}`;
+            if (template?.hasDynamicMultiplier && isDynamicMultiplierSymbol(activeBrush)) {
+                newSymbol = `x${cashValueInput}`;
+            }
             handleCellChange(modalCell.row, modalCell.col, newSymbol);
         }
         setShowCashModal(false);
@@ -42,13 +45,19 @@ const Phase2Manual = ({
 
         const isCash = isCashSymbol(activeBrush, template?.jpConfig);
         const isJP = isJpSymbol(activeBrush, template?.jpConfig);
+        const isDynamic = template?.hasDynamicMultiplier && isDynamicMultiplierSymbol(activeBrush);
 
-        // If it's a regular CASH symbol (not a fixed-value JP), open the modal
-        if (isCash && !isJP) {
+        // If it's a regular CASH symbol (not a fixed-value JP), or a dynamic multiplier, open the modal
+        if ((isCash && !isJP) || isDynamic) {
             setModalCell({ row: r, col: c });
             // If the cell already has a value, use it as default
-            const currentVal = getCashValue(panelGrid[r][c], template?.jpConfig);
-            setCashValueInput(currentVal > 0 ? formatShorthandValue(currentVal) : '');
+            if (isDynamic) {
+                const currentVal = getSymbolMultiplier(panelGrid[r][c]);
+                setCashValueInput(currentVal > 1 ? String(currentVal) : '');
+            } else {
+                const currentVal = getCashValue(panelGrid[r][c], template?.jpConfig);
+                setCashValueInput(currentVal > 0 ? formatShorthandValue(currentVal) : '');
+            }
             setShowCashModal(true);
         } else {
             handleCellChange(r, c, activeBrush);
@@ -117,16 +126,18 @@ const Phase2Manual = ({
                                                         return hasImage || isBase;
                                                     }).map(sym => {
                                                         const isCash = isCashSymbol(sym, template?.jpConfig);
+                                                        const isDynamic = template?.hasDynamicMultiplier && isDynamicMultiplierSymbol(sym);
                                                         const baseSym = getBaseSymbol(sym, template?.jpConfig);
                                                         const isActive = getBaseSymbol(activeBrush, template?.jpConfig) === baseSym &&
                                                             isDoubleSymbol(activeBrush) === isDoubleSymbol(sym) &&
                                                             getSymbolMultiplier(activeBrush) === getSymbolMultiplier(sym);
+                                                        const brushDisplayImg = getSymbolDisplayImage(sym, template?.symbolImages, template?.jpConfig);
 
                                                         return (
                                                             <button
                                                                 key={sym}
                                                                 onClick={() => {
-                                                                    if (isCash && !isJpSymbol(sym, template?.jpConfig)) {
+                                                                    if ((isCash && !isJpSymbol(sym, template?.jpConfig)) || isDynamic) {
                                                                         if (!isActive) {
                                                                             setActiveBrush(sym);
                                                                         }
@@ -135,14 +146,19 @@ const Phase2Manual = ({
                                                                     }
                                                                 }}
                                                                 className={`relative w-[48px] h-[48px] sm:w-[52px] sm:h-[52px] rounded-lg border-2 flex items-center justify-center transition-all ${isActive ? 'border-indigo-400 bg-indigo-500/20 shadow-[0_0_10px_rgba(99,102,241,0.3)] scale-105 z-10' : 'border-slate-600 bg-slate-800 hover:border-slate-500 hover:bg-slate-700'}`}
-                                                                title={isCash ? "點擊選擇金幣畫筆" : sym}
+                                                                title={isCash ? "點擊選擇金幣畫筆" : (isDynamic ? "點擊設定乘倍數值" : sym)}
                                                             >
-                                                                {template?.symbolImages?.[sym] || template?.symbolImages?.[baseSym] ? (
+                                                                {brushDisplayImg ? (
                                                                     <React.Fragment>
-                                                                        <img src={template.symbolImages[sym] || template.symbolImages[baseSym]} className="max-w-full max-h-full object-contain p-1" alt={sym} />
+                                                                        <img src={brushDisplayImg} className={`max-w-full max-h-full object-contain p-1 ${(isActive && (isCash || isDynamic)) ? 'opacity-80' : ''}`} alt={sym} />
                                                                         {isActive && isCash && getCashValue(activeBrush, template?.jpConfig) > 0 && (
                                                                             <div className="absolute inset-0 flex items-center justify-center font-black text-white drop-shadow-[0_2px_3px_rgba(0,0,0,1)] text-[10px] z-20 pointer-events-none">
                                                                                 {isJpSymbol(activeBrush, template?.jpConfig) ? getCashValue(activeBrush, template?.jpConfig) + 'x' : formatShorthandValue(getCashValue(activeBrush, template?.jpConfig))}
+                                                                            </div>
+                                                                        )}
+                                                                        {isDynamic && (
+                                                                            <div className="absolute inset-0 flex items-center justify-center font-black text-white drop-shadow-[0_2px_3px_rgba(0,0,0,1)] text-[10px] z-20 pointer-events-none">
+                                                                                {(isActive && getSymbolMultiplier(activeBrush) > 1) ? `x${getSymbolMultiplier(activeBrush)}` : 'xN'}
                                                                             </div>
                                                                         )}
                                                                         {sym.toLowerCase().endsWith('_double') && (
@@ -153,7 +169,7 @@ const Phase2Manual = ({
                                                                     </React.Fragment>
                                                                 ) : (
                                                                     <span className="text-[10px] sm:text-xs font-black leading-tight text-center px-1 text-slate-200">
-                                                                        {isCash ? (isActive && getCashValue(activeBrush, template?.jpConfig) > 0 ? `💰${isJpSymbol(activeBrush, template?.jpConfig) ? getCashValue(activeBrush, template?.jpConfig) + 'x' : formatShorthandValue(getCashValue(activeBrush, template?.jpConfig))}` : '💰設定') : sym}
+                                                                        {isCash ? (isActive && getCashValue(activeBrush, template?.jpConfig) > 0 ? `💰${isJpSymbol(activeBrush, template?.jpConfig) ? getCashValue(activeBrush, template?.jpConfig) + 'x' : formatShorthandValue(getCashValue(activeBrush, template?.jpConfig))}` : '💰設定') : (isDynamic ? (isActive && getSymbolMultiplier(activeBrush) > 1 ? `x${getSymbolMultiplier(activeBrush)}` : 'xN') : sym)}
                                                                         {sym.toLowerCase().endsWith('_double') && <div className="text-[8px] text-indigo-400 mt-0.5">DOUBLE</div>}
                                                                     </span>
                                                                 )}
@@ -340,15 +356,18 @@ const Phase2Manual = ({
                                                                         symbol ? (
                                                                             (() => {
                                                                                 const displayImg = getSymbolDisplayImage(symbol, template?.symbolImages, template?.jpConfig);
+                                                                                const isCellDynamic = template?.hasDynamicMultiplier && isDynamicMultiplierSymbol(symbol);
+                                                                                const multVal = isCellDynamic ? getSymbolMultiplier(symbol) : 1;
+                                                                                
                                                                                 return displayImg ? (
                                                                                     <React.Fragment>
-                                                                                        <img src={displayImg} className={`max-w-full max-h-full object-contain p-1.5 drop-shadow-md pointer-events-none select-none ${(isGridSymCash || isGridSymCollect) ? 'opacity-80' : ''}`} draggable={false} alt={symbol} />
+                                                                                        <img src={displayImg} className={`max-w-full max-h-full object-contain p-1.5 drop-shadow-md pointer-events-none select-none ${(isGridSymCash || isGridSymCollect || isCellDynamic) ? 'opacity-80' : ''}`} draggable={false} alt={symbol} />
                                                                                         {cashVal > 0 && <div className="absolute inset-0 flex items-center justify-center font-black text-white drop-shadow-[0_2px_3px_rgba(0,0,0,1)] text-sm sm:text-base z-20 pointer-events-none">{isJpSymbol(symbol, template?.jpConfig) ? cashVal + 'x' : formatShorthandValue(cashVal)}</div>}
-                                                                                        {/* Removed 2X badge */}
+                                                                                        {isCellDynamic && <div className="absolute inset-0 flex items-center justify-center font-black text-white drop-shadow-[0_2px_3px_rgba(0,0,0,1)] text-sm sm:text-base z-20 pointer-events-none">{multVal > 1 ? `x${multVal}` : 'xN'}</div>}
                                                                                     </React.Fragment>
                                                                                 ) : (
                                                                                     <span className="z-10 pointer-events-none select-none drop-shadow-md text-sm sm:text-xl flex flex-col items-center">
-                                                                                        {(isGridSymCash || isGridSymCollect) && cashVal > 0 ? `💰${isJpSymbol(symbol, template?.jpConfig) ? cashVal + 'x' : formatShorthandValue(cashVal)}` : baseSym}
+                                                                                        {(isGridSymCash || isGridSymCollect) && cashVal > 0 ? `💰${isJpSymbol(symbol, template?.jpConfig) ? cashVal + 'x' : formatShorthandValue(cashVal)}` : (isCellDynamic ? (multVal > 1 ? `x${multVal}` : 'xN') : baseSym)}
                                                                                         {symbol.toLowerCase().endsWith('_double') && <span className="text-[8px] sm:text-[10px] text-indigo-300 font-black mt-1">DOUBLE</span>}
                                                                                     </span>
                                                                                 );
@@ -383,12 +402,12 @@ const Phase2Manual = ({
                                 <Zap className="text-indigo-400" size={20} />
                             </div>
                             <div>
-                                <h3 className="text-white font-bold">設定金幣數值</h3>
+                                <h3 className="text-white font-bold">{(template?.hasDynamicMultiplier && isDynamicMultiplierSymbol(activeBrush)) ? "設定乘倍數值" : "設定金幣數值"}</h3>
                             </div>
                         </div>
                         <div className="p-6 space-y-4">
                             <div>
-                                <label className="block text-slate-400 text-xs font-bold mb-2 uppercase tracking-wider">實際面額</label>
+                                <label className="block text-slate-400 text-xs font-bold mb-2 uppercase tracking-wider">{(template?.hasDynamicMultiplier && isDynamicMultiplierSymbol(activeBrush)) ? "乘倍倍數" : "實際面額"}</label>
                                 <div className="relative">
                                     <input
                                         autoFocus
@@ -400,7 +419,7 @@ const Phase2Manual = ({
                                             if (e.key === 'Escape') setShowCashModal(false);
                                         }}
                                         className="w-full bg-slate-900 border border-slate-700 rounded-xl p-4 text-white text-2xl font-black focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
-                                        placeholder="例如:10、3.5M、2.5K"
+                                        placeholder={(template?.hasDynamicMultiplier && isDynamicMultiplierSymbol(activeBrush)) ? "例如: 5、10、100" : "例如:10、3.5M、2.5K"}
                                     />
                                 </div>
                             </div>

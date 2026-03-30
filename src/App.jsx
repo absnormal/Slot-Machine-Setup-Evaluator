@@ -76,6 +76,7 @@ function App() {
         hasJackpot, setHasJackpot, hasMultiplierReel, setHasMultiplierReel,
         requiresCollectToWin, setRequiresCollectToWin,
         hasDoubleSymbol, setHasDoubleSymbol,
+        hasDynamicMultiplier, setHasDynamicMultiplier,
         multiplierCalcType, setMultiplierCalcType,
         lineImages, setLineImages, activeLineImageId, setActiveLineImageId,
         activeLineImage, imageSrc, imageObj,
@@ -224,7 +225,7 @@ function App() {
 
         const result = await saveTemplateToCloud({
             templateName, generatedName, platformName, gameName, gridRows, gridCols, lineMode, extractResults,
-            paytableInput, ptResultItems, jpConfig, hasJackpot, hasMultiplierReel, requiresCollectToWin, hasDoubleSymbol, multiplierCalcType,
+            paytableInput, ptResultItems, jpConfig, hasJackpot, hasMultiplierReel, requiresCollectToWin, hasDoubleSymbol, hasDynamicMultiplier, multiplierCalcType,
             localUserId, actualForceId
         });
 
@@ -273,6 +274,8 @@ function App() {
 
             if (data.hasDoubleSymbol !== undefined) setHasDoubleSymbol(parseBool(data.hasDoubleSymbol));
             else setHasDoubleSymbol(false);
+            if (data.hasDynamicMultiplier !== undefined) setHasDynamicMultiplier(parseBool(data.hasDynamicMultiplier));
+            else setHasDynamicMultiplier(false);
             if (data.multiplierCalcType !== undefined) setMultiplierCalcType(data.multiplierCalcType);
             else setMultiplierCalcType('product');
 
@@ -327,6 +330,7 @@ function App() {
             hasMultiplierReel,
             requiresCollectToWin,
             hasDoubleSymbol,
+            hasDynamicMultiplier,
             multiplierCalcType
         };
 
@@ -402,6 +406,8 @@ function App() {
 
                 if (data.hasDoubleSymbol !== undefined) setHasDoubleSymbol(parseBool(data.hasDoubleSymbol));
                 else setHasDoubleSymbol(false);
+                if (data.hasDynamicMultiplier !== undefined) setHasDynamicMultiplier(parseBool(data.hasDynamicMultiplier));
+                else setHasDynamicMultiplier(false);
                 if (data.multiplierCalcType !== undefined) setMultiplierCalcType(data.multiplierCalcType);
                 else setMultiplierCalcType('product');
 
@@ -620,6 +626,7 @@ function App() {
                     hasMultiplierReel={hasMultiplierReel} setHasMultiplierReel={setHasMultiplierReel}
                     requiresCollectToWin={requiresCollectToWin} setRequiresCollectToWin={setRequiresCollectToWin}
                     hasDoubleSymbol={hasDoubleSymbol} setHasDoubleSymbol={setHasDoubleSymbol}
+                    hasDynamicMultiplier={hasDynamicMultiplier} setHasDynamicMultiplier={setHasDynamicMultiplier}
                     multiplierCalcType={multiplierCalcType} setMultiplierCalcType={setMultiplierCalcType}
                     lineImages={lineImages} removeLineImage={removeLineImage} activeLineImageId={activeLineImageId} setActiveLineImageId={setActiveLineImageId} handleLineImageUpload={handleLineImageUpload}
                     isPtProcessing={isPtProcessing} handlePtExtract={handlePtExtract} ptImages={ptImages} removePtImage={removePtImage} clearPtAll={clearPtAll} handlePtFileChange={handlePtFileChange} handlePtDrop={handlePtDrop}

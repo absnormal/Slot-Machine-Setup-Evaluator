@@ -33,6 +33,7 @@ export function useTemplateBuilder({
     const [hasMultiplierReel, setHasMultiplierReel] = useState(false);
     const [requiresCollectToWin, setRequiresCollectToWin] = useState(true);
     const [hasDoubleSymbol, setHasDoubleSymbol] = useState(false);
+    const [hasDynamicMultiplier, setHasDynamicMultiplier] = useState(false);
     const [multiplierCalcType, setMultiplierCalcType] = useState('sum'); // 'product' or 'sum'
     const prevHasDoubleSymbol = useRef(hasDoubleSymbol);
 
@@ -664,6 +665,7 @@ export function useTemplateBuilder({
                 hasMultiplierReel: data.hasMultiplierReel || false,
                 requiresCollectToWin: data.requiresCollectToWin !== undefined ? data.requiresCollectToWin : true,
                 hasDoubleSymbol: data.hasDoubleSymbol || false,
+                hasDynamicMultiplier: data.hasDynamicMultiplier || false,
                 multiplierCalcType: data.multiplierCalcType || 'product'
             };
 
@@ -671,6 +673,7 @@ export function useTemplateBuilder({
             setHasMultiplierReel(parseBool(data.hasMultiplierReel || false));
             setRequiresCollectToWin(parseBool(data.requiresCollectToWin !== undefined ? data.requiresCollectToWin : true));
             setHasDoubleSymbol(parseBool(data.hasDoubleSymbol || false));
+            setHasDynamicMultiplier(parseBool(data.hasDynamicMultiplier || false));
             setMultiplierCalcType(data.multiplierCalcType || 'product');
 
             if (setIsPhase2Minimized) setIsPhase2Minimized(false);
@@ -758,6 +761,7 @@ export function useTemplateBuilder({
                 hasMultiplierReel,
                 requiresCollectToWin,
                 hasDoubleSymbol,
+                hasDynamicMultiplier,
                 multiplierCalcType
             };
 
@@ -838,6 +842,7 @@ export function useTemplateBuilder({
         setHasMultiplierReel(false);
         setRequiresCollectToWin(true);
         setHasDoubleSymbol(false);
+        setHasDynamicMultiplier(false);
         setMultiplierCalcType('product');
         setLineImages([]);
         setActiveLineImageId(null);
@@ -874,6 +879,7 @@ export function useTemplateBuilder({
         hasMultiplierReel, setHasMultiplierReel,
         requiresCollectToWin, setRequiresCollectToWin,
         hasDoubleSymbol, setHasDoubleSymbol,
+        hasDynamicMultiplier, setHasDynamicMultiplier,
         lineImages, setLineImages,
         activeLineImageId, setActiveLineImageId,
         activeLineImage, imageSrc, imageObj,

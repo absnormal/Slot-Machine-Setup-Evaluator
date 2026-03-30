@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { toPx, toPct, fetchWithRetry, resizeImageBase64 } from '../utils/helpers';
-import { isCashSymbol, isCollectSymbol } from '../utils/symbolUtils';
+import { isCashSymbol, isCollectSymbol, isDynamicMultiplierSymbol } from '../utils/symbolUtils';
 import { apiKey } from '../utils/constants';
 
 const CACHE_KEYS = {
@@ -478,6 +478,10 @@ export function useGeminiVision({
             }
         }
 
+        const dynamicMultiplierRule = template?.hasDynamicMultiplier
+            ? "xN RULE: There is a generic multiplier wild symbol in this game. If you see a symbol containing a multiplier value (e.g., '5x', '10X'), extract it and output exactly in the format 'x{value}' (e.g., 'x5', 'x10'). Do NOT ignore the number. "
+            : "";
+
         const multiplierRule = template.hasMultiplierReel
             ? `The LAST column (Reel ${template.cols}) is a MULTIPLIER REEL. In Image 2, there might be a bar with multiple multiplier values (e.g. x1, x2, x3, x5). YOU MUST ONLY extract the "Highlighted" or "Activated" value (usually indicated by being brighter, yellow/gold color, or having a distinct frame vs the dimmed/dark green inactive ones). Output ONLY the format 'xN' (e.g., if you see '5x' or '5', output 'x5') for the center cell (Row ${Math.floor(template.rows / 2) + 1}). Top and bottom cells of this reel are empty, output "". `
             : "";
@@ -507,7 +511,7 @@ export function useGeminiVision({
         const fixedPrefixParts = [
             { text: referenceText },
             ...referenceImages,
-            { text: `Grid: ${template.rows}R x ${template.cols}C. Symbols: [${availableSymbols.join(',')}]. ${pickRule}${cashRule}${multiplierRule}${betRule}${confusableWarning}JP names as-is. Dimmed/grayed cells: identify by shape. Truly unrecognizable cells: \"\". VISUAL EFFECTS: Some cells may be partially obscured by animation effects (sparkles, fire, glow, lightning, smoke, particle trails, shine, win-line highlights). These are NOT part of the symbol. Look THROUGH the effects and identify the underlying symbol based on its visible outline, color, and shape. Winning cells are often the ones with effects, so they are important — do NOT leave them empty just because of visual noise. IMPORTANT: The image has RED grid lines drawn on it to show exact cell boundaries. Analyze each cell INDIVIDUALLY within its red-bordered area. Do NOT let adjacent cell content influence your identification. Scan Row 1 left-to-right first, then Row 2, then Row 3, etc. Always identify each cell as a WHOLE tile/symbol. Do NOT decompose a single tile into sub-parts. For complex symbols (like Mahjong tiles with multiple bars/dots), match the ENTIRE tile pattern against reference images as one unit. If a cell clearly contains a visible symbol or value, you MUST identify it — do not skip it. Return a JSON object with \"grid\" (${template.rows}x${template.cols} 2D array) and \"bet\" (number).` }
+            { text: `Grid: ${template.rows}R x ${template.cols}C. Symbols: [${availableSymbols.join(',')}]. ${pickRule}${cashRule}${multiplierRule}${dynamicMultiplierRule}${betRule}${confusableWarning}JP names as-is. Dimmed/grayed cells: identify by shape. Truly unrecognizable cells: \"\". VISUAL EFFECTS: Some cells may be partially obscured by animation effects (sparkles, fire, glow, lightning, smoke, particle trails, shine, win-line highlights). These are NOT part of the symbol. Look THROUGH the effects and identify the underlying symbol based on its visible outline, color, and shape. Winning cells are often the ones with effects, so they are important — do NOT leave them empty just because of visual noise. IMPORTANT: The image has RED grid lines drawn on it to show exact cell boundaries. Analyze each cell INDIVIDUALLY within its red-bordered area. Do NOT let adjacent cell content influence your identification. Scan Row 1 left-to-right first, then Row 2, then Row 3, etc. Always identify each cell as a WHOLE tile/symbol. Do NOT decompose a single tile into sub-parts. For complex symbols (like Mahjong tiles with multiple bars/dots), match the ENTIRE tile pattern against reference images as one unit. If a cell clearly contains a visible symbol or value, you MUST identify it — do not skip it. Return a JSON object with \"grid\" (${template.rows}x${template.cols} 2D array) and \"bet\" (number).` }
         ];
 
         for (let i = 0; i < toProcess.length; i++) {
@@ -673,7 +677,7 @@ export function useGeminiVision({
 
                         if (isMultiplierCol) {
                             sym = (r === midRow) ? detectedMultiplier : '';
-                        } else if (sym && !availableSymbols.includes(sym) && !isCashSymbol(sym, template?.jpConfig) && !isCollectSymbol(sym)) {
+                        } else if (sym && !availableSymbols.includes(sym) && !isCashSymbol(sym, template?.jpConfig) && !isCollectSymbol(sym) && !(template?.hasDynamicMultiplier && isDynamicMultiplierSymbol(sym))) {
                             sym = '';
                         }
                         rowArr.push(sym);

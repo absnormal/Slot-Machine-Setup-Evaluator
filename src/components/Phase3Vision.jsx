@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { BrainCircuit, ChevronDown, ChevronUp, X, Upload, ImageIcon, Trash2, ChevronLeft, ChevronRight, ListChecks, Loader2, StopCircle, AlertCircle, Trophy } from 'lucide-react';
 import ResultView from './ResultView';
-import { getBaseSymbol, getCashValue, isCashSymbol, formatShorthandValue, isJpSymbol, getCollectValue, getSymbolDisplayImage } from '../utils/symbolUtils';
+import { getBaseSymbol, getCashValue, isCashSymbol, formatShorthandValue, isJpSymbol, getCollectValue, getSymbolDisplayImage, isDynamicMultiplierSymbol, getSymbolMultiplier } from '../utils/symbolUtils';
 
 export default function Phase3Vision({
     template,
@@ -261,14 +261,17 @@ export default function Phase3Vision({
                                                             const cashVal = isGridSymCash ? getCashValue(symbol, template?.jpConfig) : (isGridSymCollect ? getCollectValue(symbol) : 0);
 
                                                             const displayImg = getSymbolDisplayImage(symbol, template?.symbolImages, template?.jpConfig);
+                                                            const isCellDynamic = template?.hasDynamicMultiplier && isDynamicMultiplierSymbol(symbol);
+                                                            const multVal = isCellDynamic ? getSymbolMultiplier(symbol) : 1;
 
                                                             return (
                                                                 <div key={cIndex} className={cellClass}>
                                                                     {symbol ? (
                                                                         displayImg ? (
                                                                             <React.Fragment>
-                                                                                <img src={displayImg} className={`max-w-full max-h-full object-contain p-1 drop-shadow-md ${(isGridSymCash || isGridSymCollect) ? 'opacity-80' : ''}`} alt={symbol} />
+                                                                                <img src={displayImg} className={`max-w-full max-h-full object-contain p-1 drop-shadow-md ${(isGridSymCash || isGridSymCollect || isCellDynamic) ? 'opacity-80' : ''}`} alt={symbol} />
                                                                                 {cashVal > 0 && <div className="absolute inset-0 flex items-center justify-center font-black text-white drop-shadow-[0_1px_2px_rgba(0,0,0,1)] text-[10px] z-20 pointer-events-none">{isJpSymbol(symbol, template?.jpConfig) ? cashVal + 'x' : formatShorthandValue(cashVal)}</div>}
+                                                                                {isCellDynamic && <div className="absolute inset-0 flex items-center justify-center font-black text-white drop-shadow-[0_1px_2px_rgba(0,0,0,1)] text-[10px] z-20 pointer-events-none">{multVal > 1 ? `x${multVal}` : 'xN'}</div>}
                                                                                 {symbol.toLowerCase().endsWith('_double') && (
                                                                                     <div className="absolute top-0 right-0 bg-indigo-600 text-white text-[6px] font-black px-0.5 rounded-bl shadow-sm border-l border-b border-indigo-400 z-30">
                                                                                         2X
@@ -277,7 +280,7 @@ export default function Phase3Vision({
                                                                             </React.Fragment>
                                                                         ) : (
                                                                             <div className="flex flex-col items-center">
-                                                                                <span>{(isGridSymCash || isGridSymCollect) && cashVal > 0 ? `💰${isJpSymbol(symbol, template?.jpConfig) ? cashVal + 'x' : formatShorthandValue(cashVal)}` : baseSym}</span>
+                                                                                <span>{(isGridSymCash || isGridSymCollect) && cashVal > 0 ? `💰${isJpSymbol(symbol, template?.jpConfig) ? cashVal + 'x' : formatShorthandValue(cashVal)}` : (isCellDynamic ? (multVal > 1 ? `x${multVal}` : 'xN') : baseSym)}</span>
                                                                                 {symbol.toLowerCase().endsWith('_double') && <span className="text-[6px] text-indigo-400 font-bold -mt-1">DBL</span>}
                                                                             </div>
                                                                         )
