@@ -6,6 +6,7 @@ import { getBaseSymbol, getCashValue, isCashSymbol, formatShorthandValue, isJpSy
 export default function Phase3Vision({
     template,
     isPhase3Minimized, setIsPhase3Minimized,
+    onToggle,
     visionImages, activeVisionId, setActiveVisionId, removeVisionImage, handleVisionImageUpload,
     activeVisionImg, visionContainerRef, visionCanvasRef,
     handleVisionMouseDown, handleVisionMouseMove, handleVisionMouseUp,
@@ -29,7 +30,7 @@ export default function Phase3Vision({
         <div className={`bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden transition-all duration-300 ${!template ? 'opacity-60 pointer-events-none' : ''}`}>
             <div
                 className="flex items-center justify-between p-5 cursor-pointer hover:bg-slate-50 transition-colors"
-                onClick={() => template && setIsPhase3Minimized(!isPhase3Minimized)}
+                onClick={() => template && onToggle()}
             >
                 <div className="flex items-center space-x-2">
                     <BrainCircuit className="text-indigo-500" size={20} />

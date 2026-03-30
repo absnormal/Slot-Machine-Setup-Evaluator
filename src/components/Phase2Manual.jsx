@@ -6,6 +6,7 @@ import { getBaseSymbol, getCashValue, isCashSymbol, isJpSymbol, formatShorthandV
 const Phase2Manual = ({
     template,
     isPhase2Minimized, setIsPhase2Minimized,
+    onToggle,
     handleRandomizePanel,
     panelInputMode, setPanelInputMode,
     activeBrush, setActiveBrush,
@@ -58,7 +59,7 @@ const Phase2Manual = ({
             <div
                 className="flex items-center justify-between p-5"
             >
-                <div className="flex items-center space-x-2 cursor-pointer group" onClick={() => template && setIsPhase2Minimized(!isPhase2Minimized)}>
+                <div className="flex items-center space-x-2 cursor-pointer group" onClick={() => template && onToggle()}>
                     <LayoutGrid className="text-indigo-500 group-hover:scale-110 transition-transform" size={20} />
                     <h2 className="text-xl font-semibold text-slate-800">Phase 2: 手動盤面設定與結算 <span className="text-sm font-normal text-slate-400 ml-2">(透過畫筆或鍵盤微調盤面)</span></h2>
                 </div>
@@ -70,7 +71,7 @@ const Phase2Manual = ({
                         <ChevronDown size={14} /> 返回 AI 辨識 (↓)
                     </button>
                     <div className="w-px h-6 bg-slate-200 mx-1"></div>
-                    <div className="cursor-pointer p-1 hover:bg-slate-100 rounded-full transition-colors" onClick={() => template && setIsPhase2Minimized(!isPhase2Minimized)}>
+                    <div className="cursor-pointer p-1 hover:bg-slate-100 rounded-full transition-colors" onClick={() => template && onToggle()}>
                         {isPhase2Minimized ? <ChevronDown className="text-slate-400" /> : <ChevronUp className="text-slate-400" />}
                     </div>
                 </div>

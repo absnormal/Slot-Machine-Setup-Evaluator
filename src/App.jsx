@@ -137,7 +137,8 @@ function App() {
         setActiveVisionId, setVisionImages, handleVisionMouseDown, handleVisionMouseMove, handleVisionMouseUp,
         handleVisionImageUpload, removeVisionImage, performAIVisionBatchMatching, cancelVisionProcessing,
         goToPrevVisionImage, goToNextVisionImage,
-        hasBetBox, setHasBetBox
+        hasBetBox, setHasBetBox,
+        setVisionP1, setVisionP1Bet
     } = useGeminiVision({
         template,
         availableSymbols,
@@ -186,10 +187,15 @@ function App() {
             });
         }));
 
+        // 同步 Phase 4 的 ROI 框選位置到 Phase 3
+        setVisionP1({ ...reelROI });
+        setVisionP1Bet({ ...betROI });
+        setHasBetBox(true);
+
         setVisionImages(prev => [...prev, ...transformed]);
         setIsPhase4Minimized(true);
         setIsPhase3Minimized(false);
-        setTemplateMessage(`✅ 已成功從影片匯入 ${capturedImages.length} 張截圖至 Phase 3`);
+        setTemplateMessage(`✅ 已成功從影片匯入 ${capturedImages.length} 張截圖至 Phase 3（已同步盤面與 BET 框選位置）`);
         
         // [自動開啟] 傳送完成後直接進入第一張新圖片的辨識介面
         if (transformed.length > 0) {
@@ -197,7 +203,7 @@ function App() {
         }
         
         clearAllCaptures();
-    }, [capturedImages, setVisionImages, setTemplateMessage, clearAllCaptures, setActiveVisionId]);
+    }, [capturedImages, setVisionImages, setTemplateMessage, clearAllCaptures, setActiveVisionId, reelROI, betROI, setVisionP1, setVisionP1Bet, setHasBetBox]);
 
 
 
@@ -526,6 +532,55 @@ function App() {
 
     const hasApiKey = !!(customApiKey.trim() || apiKey);
 
+    // --- 手風琴 (Accordion) 切換邏輯 ---
+    const handlePhaseToggle = useCallback((phaseKey) => {
+        const isCurrentlyMinimized = {
+            phase1: isTemplateMinimized,
+            phase2: isPhase2Minimized,
+            phase3: isPhase3Minimized,
+            phase4: isPhase4Minimized,
+        }[phaseKey];
+
+        if (isCurrentlyMinimized) {
+            setIsTemplateMinimized(phaseKey !== 'phase1');
+            setIsPhase2Minimized(phaseKey !== 'phase2');
+            setIsPhase3Minimized(phaseKey !== 'phase3');
+            setIsPhase4Minimized(phaseKey !== 'phase4');
+        } else {
+            if (phaseKey === 'phase1') setIsTemplateMinimized(true);
+            else if (phaseKey === 'phase2') setIsPhase2Minimized(true);
+            else if (phaseKey === 'phase3') setIsPhase3Minimized(true);
+            else if (phaseKey === 'phase4') setIsPhase4Minimized(true);
+        }
+    }, [isTemplateMinimized, isPhase2Minimized, isPhase3Minimized, isPhase4Minimized]);
+
+    // --- 上下方向鍵切換 Phase ---
+    useEffect(() => {
+        const phases = ['phase1', 'phase2', 'phase3', 'phase4'];
+        const handleKeyDown = (e) => {
+            if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return;
+            if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+
+            e.preventDefault();
+
+            // 找出目前展開的 Phase
+            const minimizedMap = { phase1: isTemplateMinimized, phase2: isPhase2Minimized, phase3: isPhase3Minimized, phase4: isPhase4Minimized };
+            const currentIdx = phases.findIndex(p => !minimizedMap[p]);
+
+            let nextIdx;
+            if (e.key === 'ArrowDown') {
+                nextIdx = currentIdx < 0 ? 0 : Math.min(currentIdx + 1, phases.length - 1);
+            } else {
+                nextIdx = currentIdx < 0 ? phases.length - 1 : Math.max(currentIdx - 1, 0);
+            }
+
+            handlePhaseToggle(phases[nextIdx]);
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [isTemplateMinimized, isPhase2Minimized, isPhase3Minimized, isPhase4Minimized, handlePhaseToggle]);
+
     useEffect(() => {
         if (cloudError) {
             const timer = setTimeout(() => setCloudError(''), 4000);
@@ -548,6 +603,7 @@ function App() {
                     handleClearTemplate={handleClearTemplate}
                     templateMessage={templateMessage}
                     isTemplateMinimized={isTemplateMinimized} setIsTemplateMinimized={setIsTemplateMinimized}
+                    onToggle={() => handlePhaseToggle('phase1')}
                     template={template} templateError={templateError}
                     showCloudModal={showCloudModal} setShowCloudModal={setShowCloudModal}
                     handleImportLocalTemplate={handleImportLocalTemplate} handleExportLocalTemplate={handleExportLocalTemplate}
@@ -582,6 +638,7 @@ function App() {
                 <Phase2Manual
                     template={template}
                     isPhase2Minimized={isPhase2Minimized} setIsPhase2Minimized={setIsPhase2Minimized}
+                    onToggle={() => handlePhaseToggle('phase2')}
                     handleRandomizePanel={handleRandomizePanel}
                     panelInputMode={panelInputMode} setPanelInputMode={setPanelInputMode}
                     activeBrush={activeBrush} setActiveBrush={setActiveBrush}
@@ -602,6 +659,7 @@ function App() {
                 <Phase3Vision
                     template={template}
                     isPhase3Minimized={isPhase3Minimized} setIsPhase3Minimized={setIsPhase3Minimized}
+                    onToggle={() => handlePhaseToggle('phase3')}
                     visionImages={visionImages} activeVisionId={activeVisionId} setActiveVisionId={setActiveVisionId}
                     removeVisionImage={removeVisionImage} handleVisionImageUpload={handleVisionImageUpload}
                     activeVisionImg={activeVisionImg} visionContainerRef={visionContainerRef} visionCanvasRef={visionCanvasRef}
@@ -621,6 +679,7 @@ function App() {
 
                 <Phase4Video
                     isPhase4Minimized={isPhase4Minimized} setIsPhase4Minimized={setIsPhase4Minimized}
+                    onToggle={() => handlePhaseToggle('phase4')}
                     videoSrc={videoSrc} videoRef={videoRef} handleVideoUpload={handleVideoUpload}
                     isAutoDetecting={isAutoDetecting} setIsAutoDetecting={setIsAutoDetecting}
                     sensitivity={sensitivity} setSensitivity={setSensitivity}

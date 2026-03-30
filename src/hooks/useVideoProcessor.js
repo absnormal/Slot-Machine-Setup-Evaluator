@@ -145,13 +145,40 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
             }
             ctx.putImageData(imgData, 0, 0);
 
+            // 形態學侵蝕 (Erosion)：消除中文字等細筆畫雜訊，只保留粗大的數字筆畫
+            const w = cw * scale, h = ch * scale;
+            const eroded = ctx.getImageData(0, 0, w, h);
+            const eData = eroded.data;
+            const src = new Uint8Array(w * h);
+            for (let i = 0; i < w * h; i++) src[i] = data[i * 4]; // 取 R channel (已二值化)
+
+            const kernelSize = Math.max(1, Math.floor(scale * 0.8));
+            for (let y = kernelSize; y < h - kernelSize; y++) {
+                for (let x = kernelSize; x < w - kernelSize; x++) {
+                    let minVal = 255;
+                    for (let ky = -kernelSize; ky <= kernelSize; ky++) {
+                        for (let kx = -kernelSize; kx <= kernelSize; kx++) {
+                            minVal = Math.min(minVal, src[(y + ky) * w + (x + kx)]);
+                        }
+                    }
+                    const idx = (y * w + x) * 4;
+                    eData[idx] = eData[idx + 1] = eData[idx + 2] = minVal;
+                }
+            }
+            ctx.putImageData(eroded, 0, 0);
+
             if (!ocrWorkerRef.current) return "...";
             const { data: { text } } = await ocrWorkerRef.current.recognize(cropCanvas);
 
             // 後處理：只保留數字與小數點，移除所有英文字母或雜訊
             const cleaned = text.trim()
-                .replace(/[^0-9.,]/g, '') // 移除英文字母
-                .replace(/,/g, '');      // 移除千分位逗號，統一數據格式
+                .replace(/[^0-9.,]/g, '') // 移除非數字字元
+                .replace(/,/g, '')        // 移除千分位逗號
+                .replace(/^\.+|\.+$/g, '') // 移除開頭/結尾的孤立小數點
+                .replace(/\.{2,}/g, '.');  // 連續多個小數點合併為一個
+
+            // 過濾掉疑似雜訊的過短結果 (單一數字很可能是中文字筆畫誤判)
+            if (cleaned.length === 1 && cleaned !== '0') return "0";
 
             return cleaned || "0";
         } catch (err) {

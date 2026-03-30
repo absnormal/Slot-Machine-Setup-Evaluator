@@ -3,6 +3,7 @@ import { Video, Scan, Play, Pause, Trash2, Send, Settings2, Sparkles, ChevronDow
 
 const Phase4Video = ({
     isPhase4Minimized, setIsPhase4Minimized,
+    onToggle,
     videoSrc, videoRef, handleVideoUpload,
     isAutoDetecting, setIsAutoDetecting,
     sensitivity, setSensitivity,
@@ -160,7 +161,7 @@ const Phase4Video = ({
             {/* Minimized Header / Toggle Bar */}
             <div
                 className="p-5 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors bg-white"
-                onClick={() => setIsPhase4Minimized(!isPhase4Minimized)}
+                onClick={onToggle}
             >
                 <div className="flex items-center gap-3">
                     <div className="w-10 h-10 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center shadow-sm">

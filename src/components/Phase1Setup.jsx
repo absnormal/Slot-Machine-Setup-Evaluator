@@ -5,6 +5,7 @@ export default function Phase1Setup(props) {
     const {
         templateMessage,
         isTemplateMinimized, setIsTemplateMinimized,
+        onToggle,
         template, templateError,
         showCloudModal, setShowCloudModal,
         handleImportLocalTemplate, handleExportLocalTemplate,
@@ -45,7 +46,7 @@ export default function Phase1Setup(props) {
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden transition-all duration-300">
                 <div
                     className="flex items-center justify-between p-5 cursor-pointer hover:bg-slate-50 transition-colors"
-                    onClick={() => setIsTemplateMinimized(!isTemplateMinimized)}
+                    onClick={onToggle}
                 >
                     <div className="flex items-center space-x-2">
                         <Settings className="text-indigo-500" size={20} />
