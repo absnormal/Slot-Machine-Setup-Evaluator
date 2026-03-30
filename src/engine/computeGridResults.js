@@ -60,29 +60,29 @@ export function computeGridResults(template, targetGrid, betAmount) {
                 const hasMultiplierAtAll = (template.multiplierCalcType === 'sum' ? (m => m > 0) : (m => m > 1));
 
                 for (let col = 0; col < evalTemplate.cols; col++) {
-                    let matchCount = 0;
+                    let targetCount = 0;   // 該行中 targetSymbol 本身的數量
+                    let wildCount = 0;     // 該行中 WILD 的數量
                     const colCoords = [];
                     for (let row = 0; row < evalTemplate.rows; row++) {
                         const sym = safeGrid[row][col];
                         if (!sym) continue;
-                        if (sym === targetSymbol || isWildSymbol(sym)) {
-                            matchCount++;
+                        const base = getBaseSymbol(sym, evalTemplate.jpConfig);
+                        if (base === targetSymbol && !isWildSymbol(sym)) {
+                            targetCount++;
+                            colCoords.push({ row, col });
+                        } else if (isWildSymbol(sym)) {
+                            wildCount++;
                             colCoords.push({ row, col });
                         }
                     }
-                    if (matchCount === 0) break;
+                    // 該行完全沒有匹配 → 中斷
+                    if (targetCount === 0 && wildCount === 0) break;
                     
-                    // All Ways matching cumulative units
-                    let colMatchUnits = 0;
-                    for (let row = 0; row < evalTemplate.rows; row++) {
-                        const sym = safeGrid[row][col];
-                        if (getBaseSymbol(sym, evalTemplate.jpConfig) === targetSymbol || isWildSymbol(sym)) {
-                            colMatchUnits += getSymbolCount(sym);
-                        }
-                    }
-
-                    consecutiveReels += (colMatchUnits / matchCount); // Average units per physical matching symbol in this column
-                    ways *= matchCount;
+                    // Ways 計算規則：
+                    // 若該行有 targetSymbol → 只算 targetSymbol 的數量 (WILD 不額外加 way)
+                    // 若該行只有 WILD → 算 WILD 的數量
+                    const colWays = targetCount > 0 ? targetCount : wildCount;
+                    ways *= colWays;
                     winCoords.push(...colCoords);
                     
                     // xN Multiplier logic for All Ways
