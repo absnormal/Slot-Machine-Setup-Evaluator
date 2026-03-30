@@ -498,22 +498,12 @@ function App() {
         setIsPhase3Minimized(false);
     }, [activeVisionId, panelGrid, betInput, setVisionImages, setVisionBetInput, setIsPhase2Minimized, setIsPhase3Minimized, setTemplateMessage]);
 
-    // 快捷鍵監聽 (方向鍵上: 傳送, 方向鍵下: 返回, Enter: 執行各階段主動作)
+    // 快捷鍵監聽 (Enter: 執行各階段主動作)
     useEffect(() => {
         const handleKeyDown = (e) => {
             if (['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return;
 
-            if (e.key === 'ArrowUp') {
-                if (!isPhase3Minimized && visionGrid) {
-                    e.preventDefault();
-                    handleTransferVisionToManual();
-                }
-            } else if (e.key === 'ArrowDown') {
-                if (!isPhase2Minimized) {
-                    e.preventDefault();
-                    handleReturnToVision();
-                }
-            } else if (e.key === 'Enter') {
+            if (e.key === 'Enter') {
                 // Phase 1: 建立模板
                 if (!isTemplateMinimized) {
                     e.preventDefault();
@@ -577,7 +567,7 @@ function App() {
         }
     }, [isTemplateMinimized, isPhase2Minimized, isPhase3Minimized, isPhase4Minimized]);
 
-    // --- 上下方向鍵切換 Phase ---
+    // --- 上下方向鍵切換 Phase 與盤面傳送 ---
     useEffect(() => {
         const phases = ['phase1', 'phase2', 'phase3', 'phase4'];
         const handleKeyDown = (e) => {
@@ -597,12 +587,27 @@ function App() {
                 nextIdx = currentIdx < 0 ? phases.length - 1 : Math.max(currentIdx - 1, 0);
             }
 
+            const currentPhase = phases[currentIdx];
+            const nextPhase = phases[nextIdx];
+
+            // 若為 Phase 2 往下切換至 Phase 3，執行盤面傳送與切換
+            if (currentPhase === 'phase2' && nextPhase === 'phase3' && e.key === 'ArrowDown') {
+                handleReturnToVision();
+                return;
+            }
+            
+            // 若為 Phase 3 往上切換至 Phase 2，執行盤面傳送與切換
+            if (currentPhase === 'phase3' && nextPhase === 'phase2' && e.key === 'ArrowUp') {
+                handleTransferVisionToManual();
+                return;
+            }
+
             handlePhaseToggle(phases[nextIdx]);
         };
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [isTemplateMinimized, isPhase2Minimized, isPhase3Minimized, isPhase4Minimized, handlePhaseToggle]);
+    }, [isTemplateMinimized, isPhase2Minimized, isPhase3Minimized, isPhase4Minimized, handlePhaseToggle, handleTransferVisionToManual, handleReturnToVision]);
 
     useEffect(() => {
         if (cloudError) {
