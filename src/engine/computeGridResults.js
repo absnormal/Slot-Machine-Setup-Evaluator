@@ -60,29 +60,20 @@ export function computeGridResults(template, targetGrid, betAmount) {
                 const hasMultiplierAtAll = (template.multiplierCalcType === 'sum' ? (m => m > 0) : (m => m > 1));
 
                 for (let col = 0; col < evalTemplate.cols; col++) {
-                    let targetCount = 0;   // 該行中 targetSymbol 本身的數量
-                    let wildCount = 0;     // 該行中 WILD 的數量
+                    let matchCount = 0;
                     const colCoords = [];
                     for (let row = 0; row < evalTemplate.rows; row++) {
                         const sym = safeGrid[row][col];
                         if (!sym) continue;
                         const base = getBaseSymbol(sym, evalTemplate.jpConfig);
-                        if (base === targetSymbol && !isWildSymbol(sym)) {
-                            targetCount++;
-                            colCoords.push({ row, col });
-                        } else if (isWildSymbol(sym)) {
-                            wildCount++;
+                        if (base === targetSymbol || isWildSymbol(sym)) {
+                            matchCount++;
                             colCoords.push({ row, col });
                         }
                     }
-                    // 該行完全沒有匹配 → 中斷
-                    if (targetCount === 0 && wildCount === 0) break;
+                    if (matchCount === 0) break;
                     
-                    // Ways 計算規則：
-                    // 若該行有 targetSymbol → 只算 targetSymbol 的數量 (WILD 不額外加 way)
-                    // 若該行只有 WILD → 算 WILD 的數量
-                    const colWays = targetCount > 0 ? targetCount : wildCount;
-                    ways *= colWays;
+                    ways *= matchCount;
                     winCoords.push(...colCoords);
                     
                     // xN Multiplier logic for All Ways

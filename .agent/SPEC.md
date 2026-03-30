@@ -245,8 +245,9 @@ App.jsx (頂層狀態管理與 Phase 間的膠水邏輯)
 
 ### 6.3 All Ways 模式 (`allways`)
 1. 對每種賠付表符號，逐行前進：
-   - 統計每行中匹配（含 WILD）的格子數 → 作為 `ways` 累乘值。
-   - **WILD Ways 規則**：若該行已有 `targetSymbol` 本身，WILD **不額外加 way**（WILD 在該行是多餘的）。只有在該行完全沒有 `targetSymbol` 時，WILD 才貢獻 ways。
+   - 統計每行中匹配（target 本身 + WILD）的格子數 → 作為該行的 `ways` 數。
+   - `ways = 各行 ways 的連乘積`。
+   - WILD 在同一行中與 target 本身都**各算一條路線**（標準 All Ways 行為）。
    - 若某行完全無匹配格子則中斷。
 2. **必須至少有一格是 `targetSymbol` 本身**（非 WILD 替代），否則不算該符號的連線。純 WILD 連線只走 WILD 自身的賠率。
 3. `payoutMult × bet × ways × lineMultiplier`。
