@@ -33,7 +33,7 @@ export function useTemplateBuilder({
     const [hasMultiplierReel, setHasMultiplierReel] = useState(false);
     const [requiresCollectToWin, setRequiresCollectToWin] = useState(true);
     const [hasDoubleSymbol, setHasDoubleSymbol] = useState(false);
-    const [multiplierCalcType, setMultiplierCalcType] = useState('product'); // 'product' or 'sum'
+    const [multiplierCalcType, setMultiplierCalcType] = useState('sum'); // 'product' or 'sum'
     const prevHasDoubleSymbol = useRef(hasDoubleSymbol);
 
     // Auto-reformat paytable input when doubling is toggled

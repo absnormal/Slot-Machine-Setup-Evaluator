@@ -1,5 +1,8 @@
 import React from 'react';
 import { Settings, CheckCircle2, ChevronDown, ChevronUp, AlertCircle, FolderOpen, Cloud, Save, Upload, ListChecks, LayoutGrid, FileText, ImagePlus, X, PenTool, Crop, Check, Image as ImageIcon, Trash2, Plus, LayoutList, Trophy, Loader2 } from 'lucide-react';
+import step1Img from '../assets/guide/step1.jpg';
+import step2Img from '../assets/guide/step2.jpg';
+import step3Img from '../assets/guide/step3.jpg';
 
 export default function Phase1Setup(props) {
     const {
@@ -39,6 +42,7 @@ export default function Phase1Setup(props) {
     } = props;
 
     const [showNamingGuide, setShowNamingGuide] = React.useState(false);
+    const [hasCashCollectFeature, setHasCashCollectFeature] = React.useState(false);
 
     return (
         <>
@@ -134,20 +138,33 @@ export default function Phase1Setup(props) {
                         </div>
 
                         <div className="bg-slate-50 p-5 rounded-xl border border-slate-200">
-                            <div className="flex items-center justify-between mb-4 border-b border-slate-200 pb-3">
-                                <label className="text-base font-bold text-slate-800">連線模式設定</label>
-                                <div className="flex bg-slate-200 p-1 rounded-lg">
-                                    <button
-                                        onClick={() => setLineMode('paylines')}
-                                        className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-bold rounded-md transition-all ${lineMode === 'paylines' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                                    >
-                                        <ListChecks size={16} /><span>固定線獎 (Paylines)</span>
+                            <div className="mb-4 border-b border-slate-200 pb-4">
+                                <label className="text-base font-bold text-slate-800 mb-3 block">連線模式設定</label>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <button onClick={() => setLineMode('paylines')} className={`p-3 rounded-xl border-2 text-left transition-all ${lineMode === 'paylines' ? 'border-indigo-500 bg-indigo-50 shadow-md' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
+                                        <p className="text-sm font-bold mb-2 flex items-center gap-1.5"><ListChecks size={14} className="text-indigo-500" /> 固定線獎 (Paylines)</p>
+                                        <div className="bg-slate-900 rounded-lg p-2 mb-2">
+                                            <div className="grid grid-cols-5 gap-0.5">
+                                                {Array(15).fill(0).map((_,i) => (
+                                                    <div key={i} className={`h-6 rounded-sm ${i>=5&&i<10 ? 'bg-yellow-400/80 ring-1 ring-yellow-300' : 'bg-slate-700'}`} />
+                                                ))}
+                                            </div>
+                                            <div className="text-[9px] text-yellow-300 text-center mt-1 font-bold">← Line 1：中間一排全連 →</div>
+                                        </div>
+                                        <p className="text-[11px] text-slate-500">依固定路徑判定連線，需設定每條線的 Row 位置</p>
                                     </button>
-                                    <button
-                                        onClick={() => setLineMode('allways')}
-                                        className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-bold rounded-md transition-all ${lineMode === 'allways' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                                    >
-                                        <LayoutGrid size={16} /><span>All Ways</span>
+                                    <button onClick={() => setLineMode('allways')} className={`p-3 rounded-xl border-2 text-left transition-all ${lineMode === 'allways' ? 'border-indigo-500 bg-indigo-50 shadow-md' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
+                                        <p className="text-sm font-bold mb-2 flex items-center gap-1.5"><LayoutGrid size={14} className="text-emerald-500" /> All Ways</p>
+                                        <div className="bg-slate-900 rounded-lg p-2 mb-2">
+                                            <div className="grid grid-cols-5 gap-0.5">
+                                                {Array(15).fill(0).map((_,i) => {
+                                                    const hl = [0,5,10,1,6,2];
+                                                    return <div key={i} className={`h-6 rounded-sm ${hl.includes(i) ? 'bg-emerald-400/80 ring-1 ring-emerald-300' : 'bg-slate-700'}`} />;
+                                                })}
+                                            </div>
+                                            <div className="text-[9px] text-emerald-300 text-center mt-1 font-bold">← 相鄰 Reel 同符號即中獎 →</div>
+                                        </div>
+                                        <p className="text-[11px] text-slate-500">左到右相鄰 Reel 有相同符號即贏，不限位置</p>
                                     </button>
                                 </div>
                             </div>
@@ -316,40 +333,33 @@ export default function Phase1Setup(props) {
 
                                                 <div className="flex-1 relative flex flex-col p-4 overflow-y-auto custom-scrollbar">
                                                     {!imageSrc ? (
-                                                        <div className="m-auto text-center w-full max-w-md">
-                                                            <div className="w-20 h-20 bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4 border-2 border-dashed border-slate-600">
-                                                                <ImageIcon size={32} className="text-slate-400" />
+                                                        <div className="m-auto w-full text-center flex flex-col items-center">
+                                                            <div className="w-full max-w-md">
+                                                                <label htmlFor="slot-image-upload" className="cursor-pointer bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-lg font-semibold transition inline-flex items-center space-x-2 shadow-lg w-full justify-center">
+                                                                    <Upload size={18} />
+                                                                    <span>上傳老虎機連線圖 (可多選)</span>
+                                                                    <input id="slot-image-upload" type="file" className="hidden" multiple accept="image/*" onChange={handleLineImageUpload} />
+                                                                </label>
+                                                                <p className="mt-4 text-slate-400 text-sm leading-relaxed mb-8">
+                                                                    支援一次上傳多張連線圖進行分批提取 (JFIF/JPG/PNG)<br />
+                                                                    或在上方點擊「瀏覽雲端模板庫」直接套用
+                                                                </p>
                                                             </div>
-                                                            <label htmlFor="slot-image-upload" className="cursor-pointer bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-lg font-semibold transition inline-flex items-center space-x-2 shadow-lg w-full justify-center">
-                                                                <Upload size={18} />
-                                                                <span>上傳老虎機連線圖 (可多選)</span>
-                                                                <input id="slot-image-upload" type="file" className="hidden" multiple accept="image/*" onChange={handleLineImageUpload} />
-                                                            </label>
-                                                            <p className="mt-4 text-slate-400 text-sm leading-relaxed">
-                                                                支援一次上傳多張連線圖進行分批提取 (JFIF/JPG/PNG)<br />
-                                                                或在上方點擊「瀏覽雲端模板庫」直接套用
-                                                            </p>
 
-                                                            <div className="mt-6 border border-slate-700/50 rounded-xl p-4 bg-slate-900/50 shadow-inner text-left">
-                                                                <span className="text-xs text-slate-400 font-bold mb-3 flex items-center justify-center gap-1.5"><ImageIcon size={14} /> 線獎圖上傳範例參考 (40 Sparkling Crown)</span>
-                                                                <div className="w-full bg-[#000000] rounded-lg border border-slate-700 p-4 grid grid-cols-3 sm:grid-cols-6 gap-3 opacity-90 select-none shadow-[0_0_15px_rgba(0,0,0,0.5)]">
+                                                            <div className="w-full max-w-5xl border border-slate-700/50 rounded-xl p-6 bg-slate-900/50 shadow-inner text-left">
+                                                                <span className="text-sm text-slate-400 font-bold mb-4 flex items-center justify-center gap-1.5">操作步驟說明</span>
+                                                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
                                                                     {[
-                                                                        { id: '01', line: [1, 1, 1, 1, 1] }, { id: '02', line: [0, 0, 0, 0, 0] }, { id: '03', line: [2, 2, 2, 2, 2] },
-                                                                        { id: '04', line: [3, 3, 3, 3, 3] }, { id: '05', line: [0, 1, 2, 1, 0] }, { id: '06', line: [2, 1, 0, 1, 2] }
-                                                                    ].map((item) => (
-                                                                        <div key={item.id} className="flex gap-1.5 items-center justify-center">
-                                                                            <span className="text-[#fcd34d] text-[10px] font-mono font-bold tracking-widest">{item.id}</span>
-                                                                            <div className="grid grid-cols-5 gap-[1px] bg-[#78350f] p-[1px] rounded-[2px] shadow-sm">
-                                                                                {Array.from({ length: 20 }).map((_, i) => {
-                                                                                    const row = Math.floor(i / 5); const col = i % 5; const isLine = item.line[col] === row;
-                                                                                    return <div key={i} className={`w-[6px] h-[4px] ${isLine ? 'bg-[#fde68a]' : 'bg-black'}`}></div>
-                                                                                })}
-                                                                            </div>
+                                                                        { num: 1, src: step1Img },
+                                                                        { num: 2, src: step2Img },
+                                                                        { num: 3, src: step3Img },
+                                                                    ].map(s => (
+                                                                        <div key={s.num} className="bg-slate-800 rounded-xl border-2 border-slate-600 overflow-hidden shadow-2xl relative group hover:border-indigo-400 transition-colors">
+                                                                            <img src={s.src} alt={`Step ${s.num}`} className="w-full h-auto object-cover block group-hover:scale-105 transition-transform duration-500" />
                                                                         </div>
                                                                     ))}
                                                                 </div>
                                                             </div>
-
                                                         </div>
                                                     ) : (
                                                         <div className="relative w-full max-w-4xl mx-auto my-auto shrink-0">
@@ -470,51 +480,235 @@ export default function Phase1Setup(props) {
                             )}
                         </div>
 
-                        {/* 全域進階設定 (例如：收集機制、雙重符號) */}
-                        <div className="bg-indigo-50/50 p-4 rounded-xl border border-indigo-100 flex items-center gap-8 shadow-sm">
-                            <label className="flex items-center gap-2.5 cursor-pointer group">
-                                <input
-                                    type="checkbox"
-                                    checked={requiresCollectToWin}
-                                    onChange={e => setRequiresCollectToWin(e.target.checked)}
-                                    className="w-5 h-5 text-indigo-600 border-indigo-300 rounded focus:ring-indigo-500 transition-all group-hover:scale-110"
-                                />
-                                <span className="text-sm font-bold text-slate-700 group-hover:text-indigo-600 transition-colors">💰 收集金幣必須包含 COLLECT 符號</span>
-                            </label>
-                            <div className="w-px h-6 bg-indigo-200"></div>
-                            <label className="flex items-center gap-2.5 cursor-pointer group">
-                                <input
-                                    type="checkbox"
-                                    checked={hasDoubleSymbol}
-                                    onChange={e => setHasDoubleSymbol(e.target.checked)}
-                                    className="w-5 h-5 text-indigo-600 border-indigo-300 rounded focus:ring-indigo-500 transition-all group-hover:scale-110"
-                                />
-                                <span className="text-sm font-bold text-indigo-700 group-hover:text-indigo-800 transition-colors">👥 啟用雙重符號功能</span>
-                            </label>
-                            <div className="w-px h-6 bg-indigo-200"></div>
-                            <div className="flex items-center gap-3">
-                                <span className="text-sm font-bold text-slate-700">✖️ 乘倍符號計算方式:</span>
-                                <div className="flex bg-white border border-indigo-200 p-0.5 rounded-lg shadow-sm">
-                                    <button
-                                        onClick={() => setMultiplierCalcType('product')}
-                                        className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${multiplierCalcType === 'product' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                                        title="連線中的所有倍率相乘"
-                                    >
-                                        乘倍積 (Product)
-                                    </button>
-                                    <button
-                                        onClick={() => setMultiplierCalcType('sum')}
-                                        className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${multiplierCalcType === 'sum' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                                        title="連線中的所有倍率相加"
-                                    >
-                                        乘倍和 (Sum)
-                                    </button>
+                        {/* 全域進階設定 (Q&A Checklist Flow) */}
+                        <div className="bg-slate-50 p-5 rounded-xl border border-slate-200 mt-6 shadow-sm">
+                            <div className="flex items-center gap-2 mb-6 border-b border-slate-200 pb-3">
+                                <Settings className="text-indigo-600" size={20} />
+                                <h3 className="text-base font-bold text-slate-800">特殊遊戲設定 (Q&A)</h3>
+                            </div>
+
+                            <div className="space-y-6">
+                                {/* Q1: Double Symbol */}
+                                <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm transition-all hover:border-indigo-300">
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                        <div>
+                                            <p className="text-sm font-bold text-slate-800">1. 此遊戲有無雙重符號?</p>
+                                            <p className="text-xs text-slate-500 mt-1">雙重符號：1格符號作為2連線計算</p>
+                                        </div>
+                                        <div className="flex bg-slate-100 p-1 rounded-lg shrink-0">
+                                            <button
+                                                onClick={() => setHasDoubleSymbol(true)}
+                                                className={`px-4 py-1.5 text-sm font-bold rounded-md transition-all ${hasDoubleSymbol ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                            >
+                                                有
+                                            </button>
+                                            <button
+                                                onClick={() => setHasDoubleSymbol(false)}
+                                                className={`px-4 py-1.5 text-sm font-bold rounded-md transition-all ${!hasDoubleSymbol ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                            >
+                                                無
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
+
+                                {/* Q2: Full-Grid Multiplier (moved from bottom) */}
+                                <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm transition-all hover:border-indigo-300">
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                        <div>
+                                            <p className="text-sm font-bold text-slate-800">2. 此遊戲有無全盤乘倍機制?</p>
+                                            <p className="text-xs text-slate-500 mt-1">將盤面贏分乘以某固定值。可以是單個格子 (EX. 迦羅寶石)，也可以是一排乘倍選亮的 (EX. 超級麻將)</p>
+                                        </div>
+                                        <div className="flex bg-slate-100 p-1 rounded-lg shrink-0">
+                                            <button
+                                                onClick={() => setHasMultiplierReel(true)}
+                                                className={`px-4 py-1.5 text-sm font-bold rounded-md transition-all ${hasMultiplierReel ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                            >
+                                                有
+                                            </button>
+                                            <button
+                                                onClick={() => setHasMultiplierReel(false)}
+                                                className={`px-4 py-1.5 text-sm font-bold rounded-md transition-all ${!hasMultiplierReel ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                            >
+                                                無
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Q3: Multiplier Calc Type */}
+                                <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm transition-all hover:border-indigo-300">
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                        <div>
+                                            <p className="text-sm font-bold text-slate-800">3. 此遊戲有無單筆連線的乘倍機制?</p>
+                                            <p className="text-xs text-slate-500 mt-1">若有，需要在下方賠付表新增各xN符號設定，賠率皆設定0。EX. WILD_x2、WILD_x3</p>
+                                        </div>
+                                        <div className="flex bg-slate-100 p-1 rounded-lg shrink-0">
+                                            <button
+                                                onClick={() => setMultiplierCalcType('product')}
+                                                className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${multiplierCalcType === 'product' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                            >
+                                                有 (相乘)
+                                            </button>
+                                            <button
+                                                onClick={() => setMultiplierCalcType('sum')}
+                                                className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${multiplierCalcType === 'sum' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                            >
+                                                有 (相加) 或 無
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Q4: Cash Collect Feature */}
+                                <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm transition-all hover:border-indigo-300">
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                        <div>
+                                            <p className="text-sm font-bold text-slate-800">4. 此遊戲有無收集現金獎設定?</p>
+                                        </div>
+                                        <div className="flex bg-slate-100 p-1 rounded-lg shrink-0">
+                                            <button
+                                                onClick={() => {
+                                                    setHasCashCollectFeature(true);
+                                                }}
+                                                className={`px-4 py-1.5 text-sm font-bold rounded-md transition-all ${hasCashCollectFeature ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                            >
+                                                有
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    setHasCashCollectFeature(false);
+                                                    setRequiresCollectToWin(true);
+                                                    setHasJackpot(false);
+                                                }}
+                                                className={`px-4 py-1.5 text-sm font-bold rounded-md transition-all ${!hasCashCollectFeature ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                            >
+                                                無
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Conditional Q5 & Q6 for Cash Collect */}
+                                {hasCashCollectFeature && (
+                                    <div className="pl-6 border-l-2 border-indigo-200 space-y-4 animate-in fade-in slide-in-from-left-4 duration-300">
+                                        {/* Q5 */}
+                                        <div className="bg-indigo-50/50 p-4 rounded-lg border border-indigo-100 shadow-sm">
+                                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                                <div>
+                                                    <p className="text-sm font-bold text-indigo-900">5. 收集金幣是否需要 COLLECT 符號?</p>
+                                                </div>
+                                                <div className="flex bg-white border border-indigo-200 p-0.5 rounded-lg shrink-0 shadow-sm">
+                                                    <button
+                                                        onClick={() => setRequiresCollectToWin(true)}
+                                                        className={`px-4 py-1.5 text-sm font-bold rounded-md transition-all ${requiresCollectToWin ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                                    >
+                                                        有
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setRequiresCollectToWin(false)}
+                                                        className={`px-4 py-1.5 text-sm font-bold rounded-md transition-all ${!requiresCollectToWin ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                                    >
+                                                        無
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Q6 */}
+                                        <div className="bg-indigo-50/50 p-4 rounded-lg border border-indigo-100 shadow-sm">
+                                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+                                                <div>
+                                                    <p className="text-sm font-bold text-indigo-900">6. 收集金幣中是否有 JP 符號?</p>
+                                                    <p className="text-xs text-indigo-700 mt-1">若有，除了新增 Jackpot 倍率設定之外，還要在下方賠付表額外加入所有 JP 符號 (賠率皆設定0)</p>
+                                                </div>
+                                                <div className="flex bg-white border border-indigo-200 p-0.5 rounded-lg shrink-0 shadow-sm">
+                                                    <button
+                                                        onClick={() => setHasJackpot(true)}
+                                                        className={`px-4 py-1.5 text-sm font-bold rounded-md transition-all ${hasJackpot ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                                    >
+                                                        有
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setHasJackpot(false)}
+                                                        className={`px-4 py-1.5 text-sm font-bold rounded-md transition-all ${!hasJackpot ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                                    >
+                                                        無
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            {/* JP Configuration (Shown if Q6 is YES) */}
+                                            {hasJackpot && (
+                                                <div className="bg-white p-4 rounded-lg border border-indigo-100 shadow-inner mt-4 animate-in fade-in slide-in-from-top-2">
+                                                    <h4 className="text-sm font-bold text-slate-800 flex items-center gap-2 mb-3">
+                                                        <Trophy size={16} className="text-amber-500" /> Jackpot 倍率設定
+                                                    </h4>
+                                                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                                                        {Object.entries(jpConfig).map(([jpName, jpMult], idx) => (
+                                                            <div key={idx} className="flex flex-col bg-slate-50 border border-slate-200 rounded-lg p-3 hover:border-indigo-300 transition-colors shadow-sm relative group">
+                                                                <input
+                                                                    type="text"
+                                                                    value={jpName}
+                                                                    onChange={(e) => {
+                                                                        const newName = e.target.value.toUpperCase();
+                                                                        setJpConfig(prev => {
+                                                                            const newConfig = {};
+                                                                            Object.keys(prev).forEach(k => {
+                                                                                if (k === jpName) newConfig[newName] = prev[k];
+                                                                                else newConfig[k] = prev[k];
+                                                                            });
+                                                                            return newConfig;
+                                                                        });
+                                                                    }}
+                                                                    className="w-full text-sm font-bold text-slate-700 outline-none uppercase border-b border-transparent hover:border-slate-300 focus:border-indigo-400 bg-transparent mb-2 placeholder:font-normal placeholder:lowercase placeholder:text-slate-300 pb-1"
+                                                                    placeholder="JP分類"
+                                                                />
+                                                                <input
+                                                                    type="number"
+                                                                    step="any"
+                                                                    value={jpMult}
+                                                                    onChange={(e) => {
+                                                                        setJpConfig(prev => ({ ...prev, [jpName]: e.target.value }));
+                                                                    }}
+                                                                    className="w-full text-lg font-black text-amber-600 outline-none bg-white border border-slate-200 hover:border-amber-300 px-2 py-1.5 rounded focus:ring-1 focus:ring-amber-400 transition-colors"
+                                                                    placeholder="倍率"
+                                                                />
+                                                                <button
+                                                                    onClick={() => {
+                                                                        setJpConfig(prev => {
+                                                                            const newConfig = { ...prev };
+                                                                            delete newConfig[jpName];
+                                                                            return newConfig;
+                                                                        });
+                                                                    }}
+                                                                    className="absolute -top-2 -right-2 bg-rose-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity shadow-md hover:bg-rose-600 focus:outline-none"
+                                                                    disabled={Object.keys(jpConfig).length <= 1}
+                                                                >
+                                                                    <X size={12} />
+                                                                </button>
+                                                            </div>
+                                                        ))}
+                                                        <button
+                                                            onClick={() => {
+                                                                setJpConfig(prev => ({ ...prev, [`CUSTOM_${Object.keys(prev).length + 1}`]: "" }));
+                                                            }}
+                                                            className="flex flex-col items-center justify-center bg-transparent border-2 border-dashed border-slate-300 rounded-lg p-3 hover:bg-slate-100 hover:border-slate-400 hover:text-indigo-600 transition-colors text-slate-400 min-h-[95px] w-full"
+                                                        >
+                                                            <Plus size={24} className="mb-1" />
+                                                            <span className="text-xs font-bold">新增 JP</span>
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
 
                         {/* Step 2: 賠率設定 */}
-                        <div className="bg-slate-50 p-5 rounded-xl border border-slate-200">
+                        <div className="bg-slate-50 p-5 rounded-xl border border-slate-200 mt-6">
                             <div className="flex flex-col">
                                 <div className="flex items-center justify-between mb-4 border-b border-slate-200 pb-3">
                                     <div className="flex items-center gap-2">
@@ -744,112 +938,6 @@ export default function Phase1Setup(props) {
                                 )}
                             </div>
                         </div>
-
-                        {/* Step 3: Jackpot (JP) 倍率設定 */}
-                        <div className="bg-slate-50 p-5 rounded-xl border border-slate-200 mt-6">
-                            <div className="flex flex-col">
-                                <div className="flex items-center justify-between mb-4 border-b border-slate-200 pb-3">
-                                    <div className="flex flex-col">
-                                        <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
-                                            <Trophy size={20} className="text-amber-500" /> Jackpot (JP) 倍率設定
-                                        </h3>
-                                        <p className="text-xs text-slate-500 mt-1">
-                                            啟用後即可設定各級別 JP (如 MINI, GRAND) 觸發收集時的面額倍率。可自行新增自訂大獎名稱，留空表示未使用。<br /><span className="text-indigo-500 font-bold">💡 若需要讓 Phase 3 AI 辨識 JP 符號，請在上方「賠付表資料設定 (圖片提取)」中新增對應名稱的符號行，並裁切該 JP 的特徵圖即可。</span>
-                                        </p>
-                                    </div>
-                                    <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-4">
-                                        <input
-                                            type="checkbox"
-                                            className="sr-only peer"
-                                            checked={hasJackpot}
-                                            onChange={(e) => setHasJackpot(e.target.checked)}
-                                        />
-                                        <div className="w-14 h-7 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[4px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-amber-500 shadow-inner"></div>
-                                    </label>
-                                </div>
-
-                                {hasJackpot && (
-                                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 animate-in fade-in slide-in-from-top-2 duration-300">
-                                        {Object.entries(jpConfig).map(([jpName, jpMult], idx) => (
-                                            <div key={idx} className="flex flex-col bg-white border border-slate-200 rounded-lg p-3 hover:border-indigo-300 transition-colors shadow-sm relative group">
-                                                <input
-                                                    type="text"
-                                                    value={jpName}
-                                                    onChange={(e) => {
-                                                        const newName = e.target.value.toUpperCase();
-                                                        setJpConfig(prev => {
-                                                            const newConfig = {};
-                                                            Object.keys(prev).forEach(k => {
-                                                                if (k === jpName) newConfig[newName] = prev[k];
-                                                                else newConfig[k] = prev[k];
-                                                            });
-                                                            return newConfig;
-                                                        });
-                                                    }}
-                                                    className="w-full text-sm font-bold text-slate-700 outline-none uppercase border-b border-transparent hover:border-slate-200 focus:border-indigo-300 mb-2 placeholder:font-normal placeholder:lowercase placeholder:text-slate-300 pb-1"
-                                                    placeholder="JP分類"
-                                                />
-                                                <input
-                                                    type="number"
-                                                    step="any"
-                                                    value={jpMult}
-                                                    onChange={(e) => {
-                                                        setJpConfig(prev => ({ ...prev, [jpName]: e.target.value }));
-                                                    }}
-                                                    className="w-full text-lg font-black text-amber-600 outline-none bg-amber-50 hover:bg-amber-100 px-2 py-1.5 rounded focus:ring-1 focus:ring-amber-300 transition-colors"
-                                                    placeholder="倍率"
-                                                />
-                                                <button
-                                                    onClick={() => {
-                                                        setJpConfig(prev => {
-                                                            const newConfig = { ...prev };
-                                                            delete newConfig[jpName];
-                                                            return newConfig;
-                                                        });
-                                                    }}
-                                                    className="absolute -top-2 -right-2 bg-rose-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity shadow-md hover:bg-rose-600 focus:outline-none"
-                                                    disabled={Object.keys(jpConfig).length <= 1}
-                                                >
-                                                    <X size={12} />
-                                                </button>
-                                            </div>
-                                        ))}
-                                        <button
-                                            onClick={() => {
-                                                setJpConfig(prev => ({ ...prev, [`CUSTOM_${Object.keys(prev).length + 1}`]: "" }));
-                                            }}
-                                            className="flex flex-col items-center justify-center bg-transparent border-2 border-dashed border-slate-300 rounded-lg p-3 hover:bg-slate-100 hover:border-slate-400 hover:text-indigo-600 transition-colors text-slate-400 min-h-[95px] w-full"
-                                        >
-                                            <Plus size={24} className="mb-1" />
-                                            <span className="text-xs font-bold">新增 JP</span>
-                                        </button>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-
-                        <div className="bg-slate-50 p-5 rounded-xl border border-slate-200 mt-6 flex items-center justify-between shadow-sm">
-                            <div className="flex flex-col">
-                                <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
-                                    ✨ 全盤乘倍
-                                </h3>
-                                <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                                    啟用後，只要主盤面有贏分，就會自動乘上該格取出的數字倍數。<br />
-                                    可以是單個格子 (EX. 迦羅寶石)，也可以是一排乘倍選亮的 (EX. 超級麻將)
-                                </p>
-                            </div>
-                            <label className="relative inline-flex items-center cursor-pointer shrink-0">
-                                <input
-                                    type="checkbox"
-                                    className="sr-only peer"
-                                    checked={hasMultiplierReel}
-                                    onChange={(e) => setHasMultiplierReel(e.target.checked)}
-                                />
-                                <div className="w-14 h-7 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[4px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-emerald-500 shadow-inner"></div>
-                            </label>
-                        </div>
-
-
                         {/* 建構結算模板大按鈕 */}
                         <button onClick={handleBuildTemplate} className="w-full mt-6 py-4 bg-slate-800 hover:bg-slate-900 text-white text-lg font-bold rounded-xl shadow-xl flex items-center justify-center gap-2 transition-all active:scale-[0.99]">
                             <CheckCircle2 size={24} />
