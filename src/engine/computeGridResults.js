@@ -87,6 +87,52 @@ export function computeGridResults(template, targetGrid, betAmount) {
                     });
                 }
 
+                // 扣除「純 WILD 路線」：計算每行中僅有 WILD 的數量之連乘積
+                // 若非 WILD 符號本身，需將純 WILD 路線從 ways 中扣除
+                let pureWildDeducted = false;
+                if (!isWildSymbol(targetSymbol)) {
+                    let pureWildWays = 1;
+                    let pureWildPossible = true;
+                    for (let col = 0; col < evalTemplate.cols; col++) {
+                        let wildOnlyCount = 0;
+                        let colHasAnyMatch = false;
+                        for (let row = 0; row < evalTemplate.rows; row++) {
+                            const sym = safeGrid[row][col];
+                            if (!sym) continue;
+                            const base = getBaseSymbol(sym, evalTemplate.jpConfig);
+                            if (base === targetSymbol || isWildSymbol(sym)) colHasAnyMatch = true;
+                            if (isWildSymbol(sym) && base !== targetSymbol) wildOnlyCount++;
+                        }
+                        if (!colHasAnyMatch) break; // 同步中斷點
+                        if (wildOnlyCount === 0) { pureWildPossible = false; break; }
+                        pureWildWays *= wildOnlyCount;
+                    }
+                    if (pureWildPossible) {
+                        ways -= pureWildWays;
+                        pureWildDeducted = true;
+                    }
+                }
+
+                // 過濾 winCoords：若有扣除純 WILD 路線，且 target 僅存在於 1 個行，
+                // 則從該行移除 WILD 座標（因為所有合法路線都必須經過那唯一一個 target）
+                let finalWinCoords = winCoords;
+                if (pureWildDeducted) {
+                    const colsWithTarget = new Set();
+                    for (const coord of winCoords) {
+                        const sym = safeGrid[coord.row][coord.col];
+                        const base = getBaseSymbol(sym, evalTemplate.jpConfig);
+                        if (base === targetSymbol && !isWildSymbol(sym)) colsWithTarget.add(coord.col);
+                    }
+                    // 只有當 target 僅在 1 個行出現時，才從該行移除 WILD
+                    // 若 target 存在於 2+ 個行，WILD 仍可透過其他行的 target 形成合法路線
+                    if (colsWithTarget.size === 1) {
+                        finalWinCoords = winCoords.filter(coord => {
+                            const sym = safeGrid[coord.row][coord.col];
+                            return !(isWildSymbol(sym) && colsWithTarget.has(coord.col));
+                        });
+                    }
+                }
+
                 // Actually, the simpler way for All Ways is to sum up units for the 'count'
                 // and use 'matchCount' for the 'ways'.
                 // Recalculating consecutiveReels as cumulative units
@@ -147,7 +193,7 @@ export function computeGridResults(template, targetGrid, betAmount) {
                             multiplier: finalLineMult > 1 ? finalLineMult : null,
                             symbolsOnLine: [],
                             positions: [`${reelsReached} 連 × ${ways} Ways`],
-                            winCoords
+                            winCoords: finalWinCoords
                         });
                         totalWin = parseFloat((totalWin + payout).toFixed(8));
                     }

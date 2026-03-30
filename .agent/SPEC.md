@@ -245,12 +245,16 @@ App.jsx (頂層狀態管理與 Phase 間的膠水邏輯)
 
 ### 6.3 All Ways 模式 (`allways`)
 1. 對每種賠付表符號，逐行前進：
-   - 統計每行中匹配（target 本身 + WILD）的格子數 → 作為該行的 `ways` 數。
-   - `ways = 各行 ways 的連乘積`。
-   - WILD 在同一行中與 target 本身都**各算一條路線**（標準 All Ways 行為）。
+   - 統計每行中匹配（target 本身 + WILD）的格子數 → 作為該行的 `matchCount`。
+   - `totalWays = 各行 matchCount 的連乘積`。
    - 若某行完全無匹配格子則中斷。
-2. **必須至少有一格是 `targetSymbol` 本身**（非 WILD 替代），否則不算該符號的連線。純 WILD 連線只走 WILD 自身的賠率。
-3. `payoutMult × bet × ways × lineMultiplier`。
+2. **扣除純 WILD 路線**（`pureWildWays`）：
+   - 另外計算每行中**僅 WILD**的數量之連乘積。
+   - `actualWays = totalWays - pureWildWays`。
+   - 若任何一行沒有 WILD（`wildOnlyCount === 0`），則 `pureWildWays = 0`，無需扣除。
+   - 此規則確保純 WILD 路線僅計入 WILD 自身的賠率，不會重複計入其他符號。
+3. **必須至少有一格是 `targetSymbol` 本身**（`hasTargetSymbol` 檢查），否則不算該符號的連線。
+4. `payoutMult × bet × actualWays × lineMultiplier`。
 
 ### 6.4 消除模式 (`symbolcount`)
 1. 統計盤面中每種符號的總數（含 WILD 替補、DOUBLE 算雙）。
