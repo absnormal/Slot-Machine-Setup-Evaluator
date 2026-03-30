@@ -120,6 +120,7 @@ export function computeGridResults(template, targetGrid, betAmount) {
                 
                 let totalUnits = 0;
                 let reelsReached = 0;
+                let hasTargetSymbol = false;
                 for (let col = 0; col < evalTemplate.cols; col++) {
                     let foundMatchInCol = false;
                     let maxUnitsInCol = 0; 
@@ -127,9 +128,8 @@ export function computeGridResults(template, targetGrid, betAmount) {
                         const sym = safeGrid[row][col];
                         if (getBaseSymbol(sym, evalTemplate.jpConfig) === targetSymbol || isWildSymbol(sym)) {
                             foundMatchInCol = true;
-                            // In All Ways, we take 1 match from each reel. If any is double, it contributes 2.
-                            // But usually, all matches in a reel contribute to ways, and the payoff is based on the "longest" connection.
                             maxUnitsInCol = Math.max(maxUnitsInCol, getSymbolCount(sym));
+                            if (getBaseSymbol(sym, evalTemplate.jpConfig) === targetSymbol) hasTargetSymbol = true;
                         }
                     }
                     if (!foundMatchInCol) break;
@@ -137,7 +137,7 @@ export function computeGridResults(template, targetGrid, betAmount) {
                     totalUnits += maxUnitsInCol;
                 }
 
-                if (reelsReached >= 2) {
+                if (reelsReached >= 2 && (isWildSymbol(targetSymbol) || hasTargetSymbol)) {
                     const payArray = evalTemplate.paytable[targetSymbol];
                     // Map totalUnits to paytable index (e.g. 5 units -> index 4)
                     const payIndex = Math.min(totalUnits - 1, payArray.length - 1);

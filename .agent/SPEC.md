@@ -247,7 +247,8 @@ App.jsx (頂層狀態管理與 Phase 間的膠水邏輯)
 1. 對每種賠付表符號，逐行前進：
    - 統計每行中匹配（含 WILD）的格子數 → 作為 `ways` 累乘值。
    - 若某行完全無匹配格子則中斷。
-2. `payoutMult × bet × ways × lineMultiplier`。
+2. **必須至少有一格是 `targetSymbol` 本身**（非 WILD 替代），否則不算該符號的連線。純 WILD 連線只走 WILD 自身的賠率。
+3. `payoutMult × bet × ways × lineMultiplier`。
 
 ### 6.4 消除模式 (`symbolcount`)
 1. 統計盤面中每種符號的總數（含 WILD 替補、DOUBLE 算雙）。
