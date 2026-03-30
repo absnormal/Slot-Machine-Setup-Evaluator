@@ -461,25 +461,42 @@ function App() {
 
     // --- 盤面傳遞功能 (Phase 3 -> Phase 2) ---
     const handleTransferVisionToManual = useCallback(() => {
-        if (!visionGrid) return;
-        setPanelGrid(JSON.parse(JSON.stringify(visionGrid)));
-        setBetInput(visionBetInput); // 同步押注金額到 Phase 2
+        if (!activeVisionImg || !activeVisionImg.grid) {
+            // 如果還沒辨識出盤面，依然允許畫面切換
+            setIsPhase3Minimized(true);
+            setIsPhase2Minimized(false);
+            return;
+        }
+
+        // 強制深拷貝產生全新陣列參考，確保 React 一定會重新渲染 panelGrid
+        const newGrid = activeVisionImg.grid.map(row => [...row]);
+        setPanelGrid(newGrid);
+
+        // 同步押注金額到 Phase 2
+        setBetInput(visionBetInput); 
+
         setIsPhase3Minimized(true);
         setIsPhase2Minimized(false);
-        setTemplateMessage('✅ 已將 AI 辨識盤面及押注傳送到 Phase 2');
+        setTemplateMessage('✅ 已將 AI 辨識盤面及押注狀態同步傳送至 Phase 2 手動區');
         setTimeout(() => setTemplateMessage(''), 3000);
-    }, [visionGrid, visionBetInput, setPanelGrid, setBetInput, setIsPhase3Minimized, setIsPhase2Minimized, setTemplateMessage]);
-    /* ... handleReturnToVision ... */
+    }, [activeVisionImg, visionBetInput, setPanelGrid, setBetInput, setIsPhase3Minimized, setIsPhase2Minimized, setTemplateMessage]);
+
+    // --- 盤面回傳功能 (Phase 2 -> Phase 3) ---
     const handleReturnToVision = useCallback(() => {
         if (activeVisionId) {
+            // 深拷貝當前 Phase 2 手動盤面的內容，並直接覆寫 Phase 3 的指定圖片狀態
+            const newGrid = panelGrid.map(row => [...row]);
             setVisionImages(prev => prev.map(img =>
-                img.id === activeVisionId ? { ...img, grid: JSON.parse(JSON.stringify(panelGrid)) } : img
+                img.id === activeVisionId ? { ...img, grid: newGrid } : img
             ));
             setVisionBetInput(betInput);
+            setTemplateMessage('✅ 已將手動盤面存回目前 AI 截圖 (Phase 3)');
+            setTimeout(() => setTemplateMessage(''), 3000);
         }
+        
         setIsPhase2Minimized(true);
         setIsPhase3Minimized(false);
-    }, [activeVisionId, panelGrid, betInput, setVisionImages, setVisionBetInput, setIsPhase2Minimized, setIsPhase3Minimized]);
+    }, [activeVisionId, panelGrid, betInput, setVisionImages, setVisionBetInput, setIsPhase2Minimized, setIsPhase3Minimized, setTemplateMessage]);
 
     // 快捷鍵監聽 (方向鍵上: 傳送, 方向鍵下: 返回, Enter: 執行各階段主動作)
     useEffect(() => {

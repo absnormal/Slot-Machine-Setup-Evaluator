@@ -80,7 +80,7 @@ const Phase2Manual = ({
                         <ChevronDown size={14} /> 返回 AI 辨識 (↓)
                     </button>
                     <div className="w-px h-6 bg-slate-200 mx-1"></div>
-                    <div className="cursor-pointer p-1 hover:bg-slate-100 rounded-full transition-colors" onClick={() => template && onToggle()}>
+                    <div className="cursor-pointer p-1 hover:bg-slate-100 rounded-full transition-colors" onClick={() => { if(template) { if(!isPhase2Minimized) { onReturn(); } else { onToggle(); } } }}>
                         {isPhase2Minimized ? <ChevronDown className="text-slate-400" /> : <ChevronUp className="text-slate-400" />}
                     </div>
                 </div>

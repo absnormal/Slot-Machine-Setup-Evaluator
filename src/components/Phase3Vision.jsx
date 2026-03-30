@@ -30,7 +30,7 @@ export default function Phase3Vision({
         <div className={`bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden transition-all duration-300 ${!template ? 'opacity-60 pointer-events-none' : ''}`}>
             <div
                 className="flex items-center justify-between p-5 cursor-pointer hover:bg-slate-50 transition-colors"
-                onClick={() => template && onToggle()}
+                onClick={() => { if(template) { if(!isPhase3Minimized) { onTransfer(); } else { onToggle(); } } }}
             >
                 <div className="flex items-center space-x-2">
                     <BrainCircuit className="text-indigo-500" size={20} />
