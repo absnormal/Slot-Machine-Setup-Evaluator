@@ -627,6 +627,28 @@ export function useTemplateBuilder({
                 }
             });
 
+            // === Q&A 自動注入特殊符號 (若使用者未手動定義) ===
+            const maxCols = Math.max(...Object.values(paytable).map(p => p.length), 5);
+            const zeroPays = Array(maxCols).fill(0);
+
+            // Q3-1: 動態乘倍 → 注入 xN
+            if ((data.hasDynamicMultiplier || false) && !paytable['xN']) {
+                paytable['xN'] = [...zeroPays];
+            }
+            // Q4-2: JP → 注入 JP 符號
+            const loadedJpConfig = data.jpConfig || jpConfig || {};
+            if (data.hasJackpot || Object.values(loadedJpConfig).some(v => v !== '')) {
+                Object.keys(loadedJpConfig).forEach(jpKey => {
+                    if (jpKey.trim() !== '' && !paytable[jpKey.toUpperCase()]) {
+                        paytable[jpKey.toUpperCase()] = [...zeroPays];
+                    }
+                });
+            }
+            // 保底: WILD
+            if (!Object.keys(paytable).some(k => isWildSymbol(k))) {
+                paytable['WILD'] = [...zeroPays];
+            }
+
             const symbolImages = {};
             const symbolImagesAll = {};
             (data.ptResultItems || []).forEach(item => {
@@ -727,6 +749,28 @@ export function useTemplateBuilder({
                 if (pays.some(isNaN)) throw new Error(`賠付表第 ${index + 1} 行 (${symbol}) 格式錯誤：賠率必須為數字`);
                 paytable[symbol] = pays;
             });
+
+            // === Q&A 自動注入特殊符號 (若使用者未手動定義) ===
+            const maxCols = Math.max(...Object.values(paytable).map(p => p.length), 5);
+            const zeroPays = Array(maxCols).fill(0);
+
+            // Q3-1: 動態乘倍 → 注入 xN
+            if (hasDynamicMultiplier && !paytable['xN']) {
+                paytable['xN'] = [...zeroPays];
+            }
+            // Q4-2: JP → 注入 JP 符號
+            if (hasJackpot) {
+                Object.keys(jpConfig).forEach(jpKey => {
+                    if (jpKey.trim() !== '' && jpConfig[jpKey] !== '' && !paytable[jpKey.toUpperCase()]) {
+                        paytable[jpKey.toUpperCase()] = [...zeroPays];
+                    }
+                });
+            }
+            // 保底: WILD
+            if (!Object.keys(paytable).some(k => isWildSymbol(k))) {
+                paytable['WILD'] = [...zeroPays];
+            }
+
 
             const symbolImages = {};
             const symbolImagesAll = {};

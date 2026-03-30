@@ -81,22 +81,23 @@ App.jsx (頂層狀態管理與 Phase 間的膠水邏輯)
 - 若 `lineMode === 'paylines'`，需有 `extractResults`（每條線路的行座標陣列）。
 - 若 `lineMode === 'allways'`，`linesCount` 自動計算為 `Math.pow(rows, cols)`。
 
-### 2.3 Q&A 設定問題（於 Phase1Setup.jsx 的問卷區）
+### 2.3 Q&A 設定問題（於 Phase1Setup.jsx 的問卷區「特殊遊戲設定 (Q&A)」）
 
-| 題號 | 狀態名 | 預設值 | 說明 |
-|---|---|---|---|
-| 1 | `hasJackpot` | `false` | 是否有累積獎金 (JP)。若有，展開 JP 面額設定 (MINI/MINOR/MAJOR/GRAND)。 |
-| 2 | `hasMultiplierReel` | `false` | 是否有全盤乘倍（專用乘倍滾輪列）。若有，盤面最右方自動加一行乘倍列。 |
-| 3 | `hasDoubleSymbol` | `false` | 是否有 DOUBLE 符號（一格算兩格）。 |
-| 3-1 | `hasDynamicMultiplier` | `false` | 是否有動態乘倍符號 `xN`。 |
-| 4 | `requiresCollectToWin` | `true` | CASH 是否需要 COLLECT 才得分。`false` 表示自動收集（漁機模式）。 |
-| 4-1 | (附屬 Q4) | — | 收集計算是否顯示 Total Win。 |
-| 4-2 | (附屬 Q4) | — | 其他收集設定。 |
-| 5 | `multiplierCalcType` | `product` | 乘倍計算方式。`product` = 相乘，`sum` = 相加。 |
+| 題號 | 問題文字 | 狀態名 | 預設值 | 說明 |
+|---|---|---|---|---|
+| 1 | 此遊戲有無雙重符號? | `hasDoubleSymbol` | `false` | 雙重符號：1格符號作為2連線計算 |
+| 2 | 此遊戲有無全盤乘倍機制? | `hasMultiplierReel` | `false` | 若有，盤面最右方自動加一行乘倍列。描述：可以是單個格子也可以是一排乘倍 |
+| 3 | 此遊戲有無單筆連線的乘倍機制? | `multiplierCalcType` | `product` | 三選一：有(相乘) / 有(相加) / 無。若有，需在賠付表新增 xN 符號，賠率設 0 |
+| 3-1 | 此遊戲是否有動態乘倍符號? | `hasDynamicMultiplier` | `false` | 附屬於 Q3，縮排顯示。備註見下方 |
+| 4 | 此遊戲有無收集現金獎設定? | `hasCashCollectFeature` (本地UI狀態) | `false` | 若選「無」，自動重置 `requiresCollectToWin=true` 與 `hasJackpot=false` |
+| 4-1 | 收集金幣是否需要 COLLECT 符號? | `requiresCollectToWin` | `true` | 附屬於 Q4，僅 Q4 為「有」時顯示 |
+| 4-2 | 收集金幣中是否有 JP 符號? | `hasJackpot` | `false` | 附屬於 Q4，僅 Q4 為「有」時顯示。若有，展開 JP 面額設定 (MINI/MINOR/MAJOR/GRAND) |
 
-#### 動態乘倍符號 (Q3-1) 備註文字
-> 動態乘倍符號：視作 WILD 且共用賠率，連線贏分乘以該數字。  
-> 若有，賠付表資料設定會有 "xN" 符號，賠率預設為 0。
+> **注意**：Q4 的 `hasCashCollectFeature` 是一個 UI 層級的開關 state（控制 Q4-1/Q4-2 的顯示/隱藏），並不直接存入 template 物件。真正存入 template 的是 Q4-1 (`requiresCollectToWin`) 和 Q4-2 (`hasJackpot`)。
+
+#### Q3-1 動態乘倍符號備註文字（實際顯示於畫面）
+> 動態乘倍符號：視作 WILD 且共用賠率，連線贏分乘以該數字  
+> 若有，賠付表資料設定會有 "xN" 符號，賠率預設為 0
 
 ### 2.4 線獎資料提取
 - **圖片模式** (`linesTabMode === 'image'`)：上傳線獎圖片，框選起終點，透過 Canvas 色彩分析提取。
@@ -106,7 +107,17 @@ App.jsx (頂層狀態管理與 Phase 間的膠水邏輯)
 - **圖片模式** (`paytableMode === 'image'`)：上傳賠率表截圖，透過 Gemini AI OCR 自動辨識符號名稱與賠率。
 - **純文字模式** (`paytableMode === 'text'`)：手動輸入，格式為 `符號名 賠率1 賠率2 … 賠率N`。
 - AI OCR 完成後，會自動建立 `ptResultItems`（含符號名、賠率欄位 match1~match10、縮圖 thumbUrls）。
-- 若賠付表中沒有 `WILD` 符號，系統會**自動補上**一筆 `WILD 0 0 0 0 0`。
+
+#### Q&A 自動注入賠付表符號規則
+建立模板時（`handleBuildTemplate` 及 `performAutoBuild`），系統會根據 Q&A 設定**自動注入**以下特殊符號（若使用者未手動定義）：
+
+| Q&A 條件 | 自動注入符號 | 賠率 | 說明 |
+|---|---|---|---|
+| Q3-1 `hasDynamicMultiplier === true` | `xN` | 全 0 | 動態乘倍視作 WILD，賠率為 0 |
+| Q4-2 `hasJackpot === true` | `jpConfig` 中所有非空 key (MINI/MINOR/MAJOR/GRAND) | 全 0 | JP 符號僅作為 CASH 收集計算，不走線獎 |
+| 賠付表中沒有任何 WILD | `WILD` | 全 0 | 保底（始終生效）|
+
+> **注意**：若使用者已在賠付表文字中手動定義了同名符號，則**不覆寫**，以使用者輸入為準。零賠率的欄位數量會自動對齊現有賠付表中最長的行。
 
 ### 2.6 符號縮圖裁切
 - `ptResultItems` 中的每個符號可存放 `thumbUrls`（標準縮圖陣列）與 `doubleThumbUrls`（DOUBLE 版本縮圖）。
