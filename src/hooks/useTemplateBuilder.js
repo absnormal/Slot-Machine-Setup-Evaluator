@@ -1,11 +1,17 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { toPx, toPct, fetchWithRetry, ptFileToBase64, resizeImageBase64, parseBool } from '../utils/helpers';
+import { parseBool } from '../utils/helpers';
 import { isCashSymbol, isCollectSymbol, isWildSymbol } from '../utils/symbolUtils';
-import { buildPaytablePrompt, buildPaytableGenerationConfig } from '../config/promptTemplates';
+import { useCanvasLineExtractor } from './useCanvasLineExtractor';
+import { usePaytableProcessor } from './usePaytableProcessor';
+
 const defaultPaytable = "";
 const defaultJpConfig = { "MINI": "", "MINOR": "", "MAJOR": "", "GRAND": "" };
 
-// Hook definition for Phase 1 Template Builder logic
+/**
+ * Phase 1 模板建構核心 Hook（組合版）
+ * 組合 useCanvasLineExtractor + usePaytableProcessor，
+ * 本身只保留：config state、build 邏輯、reset 邏輯
+ */
 export function useTemplateBuilder({
     customApiKey,
     apiKey,
@@ -14,10 +20,9 @@ export function useTemplateBuilder({
     setIsPhase3Minimized,
     setIsTemplateMinimized,
     isTemplateMinimized,
-    linesMode, // from App.jsx if needed, or we manage it here? Wait, App.jsx uses linesMode = 'image' | 'text' but wait, App.jsx has linesMode? 
-    // Ah, wait, linesMode vs lineMode! App.jsx has lineMode='paylines'|'allways', and linesMode was used in the UI for tabs. 
+    linesMode,
 }) {
-    // 1-0. Basic Template State
+    // === Basic Template State ===
     const [lineMode, setLineMode] = useState('paylines');
     const [linesTextInput, setLinesTextInput] = useState('');
     const [paytableMode, setPaytableMode] = useState('image');
@@ -35,13 +40,36 @@ export function useTemplateBuilder({
     const [requiresCollectToWin, setRequiresCollectToWin] = useState(true);
     const [hasDoubleSymbol, setHasDoubleSymbol] = useState(false);
     const [hasDynamicMultiplier, setHasDynamicMultiplier] = useState(false);
-    const [multiplierCalcType, setMultiplierCalcType] = useState('sum'); // 'product' or 'sum'
+    const [multiplierCalcType, setMultiplierCalcType] = useState('sum');
     const prevHasDoubleSymbol = useRef(hasDoubleSymbol);
+
+    // Grid dimensions
+    const [patternRows, setPatternRows] = useState(6);
+    const [patternCols, setPatternCols] = useState(5);
+    const [gridRows, setGridRows] = useState(3);
+    const [gridCols, setGridCols] = useState(5);
+    const [threshold, setThreshold] = useState(100);
+    const [startIndex, setStartIndex] = useState(1);
+    const [extractResults, setExtractResults] = useState([]);
+    const [linesTabMode, setLinesTabMode] = useState('image');
+
+    // === Sub-Hook: Canvas Line Extractor ===
+    const canvasExtractor = useCanvasLineExtractor({
+        gridRows, gridCols, patternRows, patternCols, startIndex,
+        isTemplateMinimized, linesTabMode,
+        setExtractResults, setTemplateError, setTemplateMessage,
+    });
+
+    // === Sub-Hook: Paytable Processor ===
+    const paytableProcessor = usePaytableProcessor({
+        customApiKey, apiKey, hasDoubleSymbol,
+        setTemplateMessage, setTemplateError,
+    });
 
     // Auto-reformat paytable input when doubling is toggled
     useEffect(() => {
         if (prevHasDoubleSymbol.current !== hasDoubleSymbol) {
-            setPtResultItems(prev => {
+            paytableProcessor.setPtResultItems(prev => {
                 const formattedLines = prev.map(item => {
                     const base = `${item.name} ${item.match1} ${item.match2} ${item.match3} ${item.match4} ${item.match5}`;
                     if (hasDoubleSymbol) {
@@ -56,516 +84,7 @@ export function useTemplateBuilder({
         }
     }, [hasDoubleSymbol]);
 
-    // 1-1. Panel Line Image Recognition State
-    const [lineImages, setLineImages] = useState([]);
-    const [activeLineImageId, setActiveLineImageId] = useState(null);
-    const activeLineImage = lineImages.find(img => img.id === activeLineImageId);
-    const imageSrc = activeLineImage?.previewUrl || null;
-    const imageObj = activeLineImage?.obj || null;
-
-    const [patternRows, setPatternRows] = useState(6);
-    const [patternCols, setPatternCols] = useState(5);
-    const [gridRows, setGridRows] = useState(3);
-    const [gridCols, setGridCols] = useState(5);
-    const [threshold, setThreshold] = useState(100);
-    const [startIndex, setStartIndex] = useState(1);
-    const [p1, setP1] = useState({ x: 8, y: 2, w: 16, h: 8 });
-    const [pEnd, setPEnd] = useState({ x: 82, y: 90, w: 16, h: 8 });
-    const [extractResults, setExtractResults] = useState([]);
-    const [dragState, setDragState] = useState(null);
-
-    const canvasRef = useRef(null);
-    const containerRef = useRef(null);
-    const [layoutStyle, setLayoutStyle] = useState({ leftHeight: '400px', wrapperHeight: 'auto' });
-    const [canvasSize, setCanvasSize] = useState({ w: 800, h: 500 });
-    const [linesTabMode, setLinesTabMode] = useState('image'); // local renamed from linesMode to avoid conflict
-
-    // 1-2. Paytable AI Vision State
-    const [ptImages, setPtImages] = useState([]);
-    const [isPtProcessing, setIsPtProcessing] = useState(false);
-    const [ptResultItems, setPtResultItems] = useState([]);
-    const [ptCropState, setPtCropState] = useState({ active: false, itemIndex: null, selectedImageId: null, startX: 0, startY: 0, endX: 0, endY: 0, isDragging: false });
-    const [ptEnlargedImg, setPtEnlargedImg] = useState(null);
-    const ptCropImageRef = useRef(null);
-
-    // Methods for 1-1
-    const handleLineImageUpload = (e) => {
-        const files = Array.from(e.target.files);
-        if (files.length === 0) return;
-        let loadedCount = 0;
-        const newImgs = [];
-        files.forEach(file => {
-            const reader = new FileReader();
-            reader.onload = (evt) => {
-                const img = new Image();
-                img.onload = () => {
-                    newImgs.push({ id: Math.random().toString(36).substring(7), file, previewUrl: evt.target.result, obj: img });
-                    loadedCount++;
-                    if (loadedCount === files.length) {
-                        setLineImages(prev => {
-                            const updated = [...prev, ...newImgs];
-                            if (!activeLineImageId && updated.length > 0) setActiveLineImageId(updated[0].id);
-                            return updated;
-                        });
-                    }
-                };
-                img.src = evt.target.result;
-            };
-            reader.readAsDataURL(file);
-        });
-        e.target.value = '';
-    };
-
-    const removeLineImage = (id) => {
-        setLineImages(prev => {
-            const filtered = prev.filter(img => img.id !== id);
-            if (activeLineImageId === id) setActiveLineImageId(filtered.length > 0 ? filtered[0].id : null);
-            return filtered;
-        });
-    };
-
-    const analyzeImage = () => {
-        if (!imageObj) return;
-        const offCanvas = document.createElement('canvas');
-        offCanvas.width = imageObj.width;
-        offCanvas.height = imageObj.height;
-        const ctx = offCanvas.getContext('2d');
-        ctx.drawImage(imageObj, 0, 0);
-        const imgData = ctx.getImageData(0, 0, imageObj.width, imageObj.height).data;
-
-        const x1 = (p1.x / 100) * imageObj.width, y1 = (p1.y / 100) * imageObj.height;
-        const w1 = (p1.w / 100) * imageObj.width, h1 = (p1.h / 100) * imageObj.height;
-        const x2 = (pEnd.x / 100) * imageObj.width, y2 = (pEnd.y / 100) * imageObj.height;
-        const w2 = (pEnd.w / 100) * imageObj.width, h2 = (pEnd.h / 100) * imageObj.height;
-
-        const stepX = patternCols > 1 ? (x2 - x1) / (patternCols - 1) : 0;
-        const stepY = patternRows > 1 ? (y2 - y1) / (patternRows - 1) : 0;
-        const stepW = patternCols > 1 ? (w2 - w1) / (patternCols - 1) : 0;
-        const stepH = patternRows > 1 ? (h2 - h1) / (patternRows - 1) : 0;
-
-        const newResults = [];
-
-        for (let r = 0; r < patternRows; r++) {
-            for (let c = 0; c < patternCols; c++) {
-                const patternIndex = r * patternCols + c + startIndex;
-                const patX = x1 + c * stepX, patY = y1 + r * stepY;
-                const patW = w1 + c * stepW, patH = h1 + r * stepH;
-
-                const lineData = [];
-                for (let gc = 0; gc < gridCols; gc++) {
-                    let maxScore = threshold;
-                    let bestRow = 0;
-                    for (let gr = 0; gr < gridRows; gr++) {
-                        const cellW = patW / gridCols;
-                        const cellH = patH / gridRows;
-                        const sampX = Math.floor(patX + gc * cellW + cellW / 2);
-                        const sampY = Math.floor(patY + gr * cellH + cellH / 2);
-                        if (sampX < 0 || sampX >= imageObj.width || sampY < 0 || sampY >= imageObj.height) continue;
-
-                        const idx = (sampY * imageObj.width + sampX) * 4;
-                        const R = imgData[idx], G = imgData[idx + 1], B = imgData[idx + 2];
-                        const yellowScore = (R + G) - B;
-
-                        if (yellowScore > maxScore) {
-                            maxScore = yellowScore;
-                            bestRow = gr + 1;
-                        }
-                    }
-                    lineData.push(bestRow);
-                }
-                newResults.push({ id: patternIndex, data: lineData });
-            }
-        }
-
-        setExtractResults(prev => {
-            const merged = [...prev];
-            newResults.forEach(nr => {
-                const existingIdx = merged.findIndex(r => r.id === nr.id);
-                if (existingIdx >= 0) merged[existingIdx] = nr;
-                else merged.push(nr);
-            });
-            merged.sort((a, b) => a.id - b.id);
-            return merged;
-        });
-
-        setTemplateError('');
-        if (setTemplateMessage) setTemplateMessage('✅ 當前圖片連線已成功合併提取！');
-        if (setTemplateMessage) setTimeout(() => setTemplateMessage(''), 3000);
-    };
-
-    const getMousePos = (e, ref) => {
-        if (!ref.current || !imageObj) return { x: 0, y: 0 };
-        const canvas = ref.current;
-        const rect = canvas.getBoundingClientRect();
-        const scaleX = imageObj.width / rect.width;
-        const scaleY = imageObj.height / rect.height;
-        return { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleY };
-    };
-
-    const handleMouseDown = (e) => {
-        if (!imageObj || linesTabMode !== 'image') return;
-        const pos = getMousePos(e, canvasRef);
-        const getPxRect = (obj) => ({
-            x: toPx(obj.x, imageObj.width), y: toPx(obj.y, imageObj.height),
-            w: toPx(obj.w, imageObj.width), h: toPx(obj.h, imageObj.height)
-        });
-        const r1 = getPxRect(p1);
-        const rEnd = getPxRect(pEnd);
-        const handleSizePx = Math.max(12, Math.floor(imageObj.width / 60));
-        const isOverHandle = (x, y, rect) => x >= rect.x + rect.w - handleSizePx * 1.5 && x <= rect.x + rect.w + handleSizePx * 1.5 && y >= rect.y + rect.h - handleSizePx * 1.5 && y <= rect.y + rect.h + handleSizePx * 1.5;
-        const isOverRect = (x, y, rect) => x >= rect.x && x <= rect.x + rect.w && y >= rect.y && y <= rect.y + rect.h;
-
-        if (isOverHandle(pos.x, pos.y, r1)) setDragState({ type: 'p1', action: 'resize', startX: pos.x, startY: pos.y, initObj: { ...p1 } });
-        else if (isOverHandle(pos.x, pos.y, rEnd)) setDragState({ type: 'pEnd', action: 'resize', startX: pos.x, startY: pos.y, initObj: { ...pEnd } });
-        else if (isOverRect(pos.x, pos.y, r1)) setDragState({ type: 'p1', action: 'move', startX: pos.x, startY: pos.y, initObj: { ...p1 } });
-        else if (isOverRect(pos.x, pos.y, rEnd)) setDragState({ type: 'pEnd', action: 'move', startX: pos.x, startY: pos.y, initObj: { ...pEnd } });
-    };
-
-    const handleMouseMove = (e) => {
-        if (!dragState || !imageObj || linesTabMode !== 'image') return;
-        const pos = getMousePos(e, canvasRef);
-        const dxPct = toPct(pos.x - dragState.startX, imageObj.width);
-        const dyPct = toPct(pos.y - dragState.startY, imageObj.height);
-
-        if (dragState.action === 'move') {
-            const newObj = { ...dragState.initObj, x: dragState.initObj.x + dxPct, y: dragState.initObj.y + dyPct };
-            if (dragState.type === 'p1') setP1(newObj); else setPEnd(newObj);
-        } else if (dragState.action === 'resize') {
-            const newW = Math.max(2, dragState.initObj.w + dxPct);
-            const newH = Math.max(2, dragState.initObj.h + dyPct);
-            if (dragState.type === 'p1') {
-                setP1({ ...dragState.initObj, w: newW, h: newH });
-                setPEnd(prev => ({ ...prev, w: newW, h: newH }));
-            } else {
-                setPEnd({ ...dragState.initObj, w: newW, h: newH });
-                setP1(prev => ({ ...prev, w: newW, h: newH }));
-            }
-        }
-    };
-
-    const handleMouseUp = () => setDragState(null);
-
-    // Canvas drawing for 1-1
-    const draw = useCallback(() => {
-        const canvas = canvasRef.current;
-        if (!canvas || !imageObj || linesTabMode !== 'image') return;
-        const ctx = canvas.getContext('2d');
-
-        canvas.width = imageObj.width;
-        canvas.height = imageObj.height;
-        ctx.drawImage(imageObj, 0, 0, imageObj.width, imageObj.height);
-
-        const getRect = (obj) => ({
-            x: toPx(obj.x, imageObj.width), y: toPx(obj.y, imageObj.height),
-            w: toPx(obj.w, imageObj.width), h: toPx(obj.h, imageObj.height)
-        });
-        const r1 = getRect(p1);
-        const rEnd = getRect(pEnd);
-        const baseThickness = Math.max(2, Math.floor(imageObj.width / 400));
-        const handleSize = Math.max(12, Math.floor(imageObj.width / 60));
-        const fontSize = Math.max(14, Math.floor(imageObj.width / 35));
-
-        const drawInnerGrid = (context, rect, gRows, gCols, color) => {
-            if (gRows <= 1 && gCols <= 1) return;
-            context.strokeStyle = color;
-            context.lineWidth = baseThickness;
-            context.beginPath();
-            const cellW = rect.w / gCols;
-            const cellH = rect.h / gRows;
-            for (let c = 1; c < gCols; c++) {
-                const lx = rect.x + c * cellW;
-                context.moveTo(lx, rect.y);
-                context.lineTo(lx, rect.y + rect.h);
-            }
-            for (let r = 1; r < gRows; r++) {
-                const ly = rect.y + r * cellH;
-                context.moveTo(rect.x, ly);
-                context.lineTo(rect.x + rect.w, ly);
-            }
-            context.stroke();
-        };
-
-        ctx.lineWidth = baseThickness;
-        ctx.strokeStyle = '#6366f1';
-        ctx.strokeRect(r1.x, r1.y, r1.w, r1.h);
-        drawInnerGrid(ctx, r1, gridRows, gridCols, 'rgba(99, 102, 241, 0.6)');
-        ctx.fillStyle = '#6366f1';
-        ctx.font = `bold ${fontSize}px sans-serif`;
-        ctx.fillText(`${startIndex.toString().padStart(2, '0')} (Start)`, r1.x, r1.y - fontSize * 0.3);
-        ctx.fillRect(r1.x + r1.w - handleSize, r1.y + r1.h - handleSize, handleSize, handleSize);
-
-        ctx.strokeStyle = '#ef4444';
-        ctx.strokeRect(rEnd.x, rEnd.y, rEnd.w, rEnd.h);
-        drawInnerGrid(ctx, rEnd, gridRows, gridCols, 'rgba(239, 68, 68, 0.6)');
-        ctx.fillStyle = '#ef4444';
-        const endIndex = startIndex + patternRows * patternCols - 1;
-        ctx.fillText(`${endIndex} (End)`, rEnd.x, rEnd.y - fontSize * 0.3);
-        ctx.fillRect(rEnd.x + rEnd.w - handleSize, rEnd.y + rEnd.h - handleSize, handleSize, handleSize);
-
-        ctx.strokeStyle = 'rgba(16, 185, 129, 0.8)';
-        ctx.lineWidth = baseThickness;
-
-        const stepX = patternCols > 1 ? (rEnd.x - r1.x) / (patternCols - 1) : 0;
-        const stepY = patternRows > 1 ? (rEnd.y - r1.y) / (patternRows - 1) : 0;
-        const stepW = patternCols > 1 ? (rEnd.w - r1.w) / (patternCols - 1) : 0;
-        const stepH = patternRows > 1 ? (rEnd.h - r1.h) / (patternRows - 1) : 0;
-
-        for (let r = 0; r < patternRows; r++) {
-            for (let c = 0; c < patternCols; c++) {
-                if ((r === 0 && c === 0) || (r === patternRows - 1 && c === patternCols - 1)) continue;
-                const curX = r1.x + c * stepX;
-                const curY = r1.y + r * stepY;
-                const curW = r1.w + c * stepW;
-                const curH = r1.h + r * stepH;
-                const patternIndex = r * patternCols + c + startIndex;
-
-                ctx.strokeStyle = 'rgba(16, 185, 129, 0.8)';
-                ctx.lineWidth = baseThickness;
-                ctx.strokeRect(curX, curY, curW, curH);
-
-                ctx.fillStyle = '#10b981';
-                ctx.font = `bold ${fontSize}px sans-serif`;
-                ctx.fillText(patternIndex.toString().padStart(2, '0'), curX, curY - fontSize * 0.3);
-                drawInnerGrid(ctx, { x: curX, y: curY, w: curW, h: curH }, gridRows, gridCols, 'rgba(16, 185, 129, 0.4)');
-            }
-        }
-    }, [imageObj, p1, pEnd, patternRows, patternCols, gridRows, gridCols, startIndex, linesTabMode]);
-
-    useEffect(() => {
-        if (!isTemplateMinimized && linesTabMode === 'image') requestAnimationFrame(draw);
-    }, [draw, isTemplateMinimized, linesTabMode]);
-
-    // Methods for 1-2 (Paytable)
-    const handlePaytableTextChange = (newText) => {
-        setPaytableInput(newText);
-        const validLines = newText.split('\n').filter(l => l.trim() !== '');
-
-        setPtResultItems(prevItems => {
-            return validLines.map((line, index) => {
-                const parts = line.trim().split(/\s+/);
-                const name = parts[0] || '';
-                const m1 = parts.length > 1 ? parseFloat(parts[1]) || 0 : 0;
-                const m2 = parts.length > 2 ? parseFloat(parts[2]) || 0 : 0;
-                const m3 = parts.length > 3 ? parseFloat(parts[3]) || 0 : 0;
-                const m4 = parts.length > 4 ? parseFloat(parts[4]) || 0 : 0;
-                const m5 = parts.length > 5 ? parseFloat(parts[5]) || 0 : 0;
-                const m6 = parts.length > 6 ? parseFloat(parts[6]) || 0 : 0;
-                const m7 = parts.length > 7 ? parseFloat(parts[7]) || 0 : 0;
-                const m8 = parts.length > 8 ? parseFloat(parts[8]) || 0 : 0;
-                const m9 = parts.length > 9 ? parseFloat(parts[9]) || 0 : 0;
-                const m10 = parts.length > 10 ? parseFloat(parts[10]) || 0 : 0;
-
-                let thumbUrls = [];
-                let doubleThumbUrls = [];
-                const existingByName = prevItems.find(p => p.name === name);
-                if (existingByName) {
-                    if (existingByName.thumbUrls && existingByName.thumbUrls.length > 0) thumbUrls = existingByName.thumbUrls;
-                    if (existingByName.doubleThumbUrls && existingByName.doubleThumbUrls.length > 0) doubleThumbUrls = existingByName.doubleThumbUrls;
-                } else if (prevItems[index]) {
-                    if (prevItems[index].thumbUrls && prevItems[index].thumbUrls.length > 0) thumbUrls = prevItems[index].thumbUrls;
-                    if (prevItems[index].doubleThumbUrls && prevItems[index].doubleThumbUrls.length > 0) doubleThumbUrls = prevItems[index].doubleThumbUrls;
-                }
-                return { name, match1: m1, match2: m2, match3: m3, match4: m4, match5: m5, match6: m6, match7: m7, match8: m8, match9: m9, match10: m10, thumbUrls, doubleThumbUrls };
-            });
-        });
-    };
-
-    const handlePtTableChange = (index, field, value) => {
-        setPtResultItems(prev => {
-            const newItems = [...prev];
-            newItems[index] = { ...newItems[index], [field]: value };
-            const formattedLines = newItems.map(item => {
-                const base = `${item.name} ${item.match1} ${item.match2} ${item.match3} ${item.match4} ${item.match5}`;
-                if (hasDoubleSymbol) {
-                    return `${base} ${item.match6 || 0} ${item.match7 || 0} ${item.match8 || 0} ${item.match9 || 0} ${item.match10 || 0}`;
-                }
-                return base;
-            });
-            setPaytableInput(formattedLines.join('\n'));
-            return newItems;
-        });
-    };
-
-    const handlePtTableDelete = (index) => {
-        setPtResultItems(prev => {
-            const newItems = prev.filter((_, i) => i !== index);
-            const formattedLines = newItems.map(item => {
-                const base = `${item.name} ${item.match1} ${item.match2} ${item.match3} ${item.match4} ${item.match5}`;
-                if (hasDoubleSymbol) {
-                    return `${base} ${item.match6 || 0} ${item.match7 || 0} ${item.match8 || 0} ${item.match9 || 0} ${item.match10 || 0}`;
-                }
-                return base;
-            });
-            setPaytableInput(formattedLines.join('\n'));
-            return newItems;
-        });
-    };
-
-    const handleAddPtRow = () => {
-        setPtResultItems(prev => {
-            const newItems = [...prev, { name: '新符號', match1: 0, match2: 0, match3: 0, match4: 0, match5: 0, match6: 0, match7: 0, match8: 0, match9: 0, match10: 0, thumbUrls: [], doubleThumbUrls: [] }];
-            const formattedLines = newItems.map(item => {
-                const base = `${item.name} ${item.match1} ${item.match2} ${item.match3} ${item.match4} ${item.match5}`;
-                if (hasDoubleSymbol) {
-                    return `${base} ${item.match6 || 0} ${item.match7 || 0} ${item.match8 || 0} ${item.match9 || 0} ${item.match10 || 0}`;
-                }
-                return base;
-            });
-            setPaytableInput(formattedLines.join('\n'));
-            return newItems;
-        });
-    };
-
-    const handleRemoveThumb = (itemIndex, thumbIndex, isDouble = false) => {
-        setPtResultItems(prev => {
-            const newItems = [...prev];
-            const targetField = isDouble ? 'doubleThumbUrls' : 'thumbUrls';
-            if (newItems[itemIndex][targetField]) {
-                newItems[itemIndex][targetField].splice(thumbIndex, 1);
-            }
-            return newItems;
-        });
-    };
-
-    const processPtFiles = async (files) => {
-        setTemplateError("");
-        const newImages = [];
-        for (let file of files) {
-            if (!file.type.startsWith('image/')) continue;
-            try {
-                const base64 = await ptFileToBase64(file);
-                newImages.push({
-                    id: Math.random().toString(36).substring(7),
-                    file,
-                    previewUrl: URL.createObjectURL(file),
-                    base64: base64
-                });
-            } catch (err) {
-                console.warn("Error reading pt file:", err);
-            }
-        }
-        setPtImages(prev => [...prev, ...newImages]);
-    };
-
-    const handlePtFileChange = (e) => {
-        const files = Array.from(e.target.files);
-        processPtFiles(files);
-        e.target.value = '';
-    };
-
-    const handlePtDrop = (e) => {
-        e.preventDefault();
-        const files = Array.from(e.dataTransfer.files).filter(file => file.type.startsWith('image/'));
-        processPtFiles(files);
-    };
-
-    const removePtImage = (id) => {
-        setPtImages(prev => {
-            const filtered = prev.filter(img => img.id !== id);
-            const removed = prev.find(img => img.id === id);
-            if (removed) URL.revokeObjectURL(removed.previewUrl);
-            return filtered;
-        });
-    };
-
-    const clearPtAll = () => {
-        ptImages.forEach(img => URL.revokeObjectURL(img.previewUrl));
-        setPtImages([]);
-        setPtResultItems([]);
-        setTemplateError("");
-    };
-
-    const handlePtExtract = async () => {
-        if (ptImages.length === 0) {
-            setTemplateError("請先上傳至少一張賠率表圖片");
-            return;
-        }
-
-        const effectiveApiKey = customApiKey.trim() || apiKey;
-        const modelName = customApiKey.trim() ? "gemini-2.5-flash" : "gemini-2.5-flash-preview-09-2025";
-
-        setIsPtProcessing(true);
-        setTemplateError("");
-        if (setTemplateMessage) setTemplateMessage("AI 正在分析賠率表中...");
-
-        try {
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${effectiveApiKey}`;
-            const imageParts = ptImages.map(img => ({
-                inlineData: { mimeType: img.file.type, data: img.base64 }
-            }));
-
-            const promptText = buildPaytablePrompt();
-
-            const payload = {
-                contents: [{ role: "user", parts: [{ text: promptText }, ...imageParts] }],
-                generationConfig: buildPaytableGenerationConfig()
-            };
-
-            const result = await fetchWithRetry(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-
-            const jsonText = result.candidates?.[0]?.content?.parts?.[0]?.text;
-            if (!jsonText) throw new Error("無法從 AI 取得有效回應，請確認 API Key 是否正確。");
-
-            let parsedData = JSON.parse(jsonText);
-
-            if (parsedData && !Array.isArray(parsedData)) {
-                const possibleArray = Object.values(parsedData).find(val => Array.isArray(val));
-                if (possibleArray) {
-                    parsedData = possibleArray;
-                } else {
-                    parsedData = [parsedData];
-                }
-            }
-
-            if (!parsedData || parsedData.length === 0) {
-                throw new Error("AI 無法從圖片中辨識出賠率資料。請確認圖片清晰且包含完整的賠率數字。");
-            }
-
-            parsedData = parsedData.map(item => ({
-                ...item,
-                name: String(item.name || '未命名').replace(/\s+/g, ''),
-                match1: Number(item.match1) || 0,
-                match2: Number(item.match2) || 0,
-                match3: Number(item.match3) || 0,
-                match4: Number(item.match4) || 0,
-                match5: Number(item.match5) || 0,
-                match6: Number(item.match6) || 0,
-                match7: Number(item.match7) || 0,
-                match8: Number(item.match8) || 0,
-                match9: Number(item.match9) || 0,
-                match10: Number(item.match10) || 0
-            }));
-
-            const hasWild = parsedData.some(item => isWildSymbol(item.name));
-            if (!hasWild) {
-                parsedData.push({ name: 'WILD', match1: 0, match2: 0, match3: 0, match4: 0, match5: 0 });
-            }
-
-            setPtResultItems(parsedData.map(item => ({ ...item, thumbUrls: [], doubleThumbUrls: [] })));
-
-            const formattedLines = parsedData.map(item => {
-                const base = `${item.name} ${item.match1} ${item.match2} ${item.match3} ${item.match4} ${item.match5}`;
-                if (hasDoubleSymbol) {
-                    return `${base} ${item.match6 || 0} ${item.match7 || 0} ${item.match8 || 0} ${item.match9 || 0} ${item.match10 || 0}`;
-                }
-                return base;
-            });
-            setPaytableInput(formattedLines.join('\n'));
-            if (setTemplateMessage) setTemplateMessage("✅ 賠率表提取完成！可點擊清單手動擷取特徵縮圖。");
-
-        } catch (err) {
-            console.warn(err);
-            setTemplateError(`賠率分析失敗：${err.message || '未知錯誤'}`);
-            if (setTemplateMessage) setTemplateMessage("");
-        } finally {
-            setIsPtProcessing(false);
-        }
-    };
-
+    // === Build Logic ===
     const performAutoBuild = useCallback((data) => {
         try {
             const loadedLineMode = data.lineMode || (!data.extractResults || data.extractResults.length === 0 ? 'allways' : 'paylines');
@@ -588,15 +107,13 @@ export function useTemplateBuilder({
                 }
             });
 
-            // === Q&A 自動注入特殊符號 (若使用者未手動定義) ===
+            // Q&A 自動注入特殊符號
             const maxCols = Math.max(...Object.values(paytable).map(p => p.length), 5);
             const zeroPays = Array(maxCols).fill(0);
 
-            // Q3-1: 動態乘倍 → 注入 xN
             if ((data.hasDynamicMultiplier || false) && !paytable['xN']) {
                 paytable['xN'] = [...zeroPays];
             }
-            // Q4-2: JP → 注入 JP 符號
             const loadedJpConfig = data.jpConfig || jpConfig || {};
             if (data.hasJackpot || Object.values(loadedJpConfig).some(v => v !== '')) {
                 Object.keys(loadedJpConfig).forEach(jpKey => {
@@ -605,7 +122,6 @@ export function useTemplateBuilder({
                     }
                 });
             }
-            // 保底: WILD
             if (!Object.keys(paytable).some(k => isWildSymbol(k))) {
                 paytable['WILD'] = [...zeroPays];
             }
@@ -620,8 +136,6 @@ export function useTemplateBuilder({
                     symbolImages[item.name] = item.thumbUrl;
                     symbolImagesAll[item.name] = [item.thumbUrl];
                 }
-
-                // Double symbols
                 if (data.hasDoubleSymbol || hasDoubleSymbol) {
                     const doubleName = `${item.name}_double`;
                     if (item.doubleThumbUrls && item.doubleThumbUrls.length > 0) {
@@ -711,15 +225,13 @@ export function useTemplateBuilder({
                 paytable[symbol] = pays;
             });
 
-            // === Q&A 自動注入特殊符號 (若使用者未手動定義) ===
+            // Q&A 自動注入特殊符號
             const maxCols = Math.max(...Object.values(paytable).map(p => p.length), 5);
             const zeroPays = Array(maxCols).fill(0);
 
-            // Q3-1: 動態乘倍 → 注入 xN
             if (hasDynamicMultiplier && !paytable['xN']) {
                 paytable['xN'] = [...zeroPays];
             }
-            // Q4-2: JP → 注入 JP 符號
             if (hasJackpot) {
                 Object.keys(jpConfig).forEach(jpKey => {
                     if (jpKey.trim() !== '' && jpConfig[jpKey] !== '' && !paytable[jpKey.toUpperCase()]) {
@@ -727,15 +239,13 @@ export function useTemplateBuilder({
                     }
                 });
             }
-            // 保底: WILD
             if (!Object.keys(paytable).some(k => isWildSymbol(k))) {
                 paytable['WILD'] = [...zeroPays];
             }
 
-
             const symbolImages = {};
             const symbolImagesAll = {};
-            ptResultItems.forEach(item => {
+            paytableProcessor.ptResultItems.forEach(item => {
                 if (item.thumbUrls && item.thumbUrls.length > 0) {
                     symbolImages[item.name] = item.thumbUrls[0];
                     symbolImagesAll[item.name] = item.thumbUrls;
@@ -743,7 +253,6 @@ export function useTemplateBuilder({
                     symbolImages[item.name] = item.thumbUrl;
                     symbolImagesAll[item.name] = [item.thumbUrl];
                 }
-
                 if (hasDoubleSymbol) {
                     const doubleName = `${item.name}_double`;
                     if (item.doubleThumbUrls && item.doubleThumbUrls.length > 0) {
@@ -784,56 +293,7 @@ export function useTemplateBuilder({
         }
     };
 
-    // Derived states
-    useEffect(() => {
-        const updateHeight = () => {
-            if (!containerRef.current) return;
-            const rect = containerRef.current.getBoundingClientRect();
-            if (rect.width === 0) return;
-
-            let desiredHeight = 400;
-            const isDesktop = window.innerWidth >= 1280;
-
-            if (imageObj) {
-                const imgRatio = imageObj.width / imageObj.height;
-                desiredHeight = rect.width / imgRatio;
-                const maxH = typeof window !== 'undefined' ? window.innerHeight * 0.85 : 1000;
-                desiredHeight = Math.max(400, Math.min(desiredHeight, maxH));
-            }
-
-            if (isDesktop) {
-                setLayoutStyle({ leftHeight: '100%', wrapperHeight: `${desiredHeight}px` });
-            } else {
-                setLayoutStyle({ leftHeight: `${desiredHeight}px`, wrapperHeight: 'auto' });
-            }
-        };
-
-        if (!isTemplateMinimized && linesTabMode === 'image') {
-            updateHeight();
-            setTimeout(updateHeight, 50);
-        }
-
-        window.addEventListener('resize', updateHeight);
-        return () => window.removeEventListener('resize', updateHeight);
-    }, [imageObj, isTemplateMinimized, linesTabMode]);
-
-    useEffect(() => {
-        if (!containerRef.current) return;
-        const observer = new ResizeObserver((entries) => {
-            for (let entry of entries) {
-                const { width, height } = entry.contentRect;
-                if (width > 0 && height > 0) {
-                    setCanvasSize(prev => {
-                        if (prev.w === width && prev.h === height) return prev;
-                        return { w: width, h: height };
-                    });
-                }
-            }
-        });
-        observer.observe(containerRef.current);
-        return () => observer.disconnect();
-    }, [isTemplateMinimized, linesTabMode]);
-
+    // === Reset ===
     const resetTemplateBuilder = useCallback(() => {
         setLineMode('paylines');
         setLinesTextInput('');
@@ -849,28 +309,41 @@ export function useTemplateBuilder({
         setHasDoubleSymbol(false);
         setHasDynamicMultiplier(false);
         setMultiplierCalcType('product');
-        setLineImages([]);
-        setActiveLineImageId(null);
         setPatternRows(6);
         setPatternCols(5);
         setGridRows(3);
         setGridCols(5);
         setThreshold(100);
         setStartIndex(1);
-        setP1({ x: 8, y: 2, w: 16, h: 8 });
-        setPEnd({ x: 82, y: 90, w: 16, h: 8 });
         setExtractResults([]);
         setLinesTabMode('image');
-        setPtImages([]);
-        setIsPtProcessing(false);
-        setPtResultItems([]);
-        setPtCropState({ active: false, itemIndex: null, selectedImageId: null, startX: 0, startY: 0, endX: 0, endY: 0, isDragging: false });
-        setPtEnlargedImg(null);
+
+        // Reset sub-hooks
+        canvasExtractor.setLineImages([]);
+        canvasExtractor.setActiveLineImageId(null);
+        canvasExtractor.setP1({ x: 8, y: 2, w: 16, h: 8 });
+        canvasExtractor.setPEnd({ x: 82, y: 90, w: 16, h: 8 });
+
+        paytableProcessor.setPtImages([]);
+        paytableProcessor.setIsPtProcessing(false);
+        paytableProcessor.setPtResultItems([]);
+        paytableProcessor.setPtCropState({ active: false, itemIndex: null, selectedImageId: null, startX: 0, startY: 0, endX: 0, endY: 0, isDragging: false });
+        paytableProcessor.setPtEnlargedImg(null);
+
         if (setTemplateMessage) setTemplateMessage('✅ 已清除當前所有模板設定');
         if (setTemplateMessage) setTimeout(() => setTemplateMessage(''), 3000);
     }, [setTemplateMessage]);
 
+    // === Wrapper functions that bind setPaytableInput ===
+    const wrappedHandlePaytableTextChange = (newText) => paytableProcessor.handlePaytableTextChange(newText, setPaytableInput);
+    const wrappedHandlePtTableChange = (index, field, value) => paytableProcessor.handlePtTableChange(index, field, value, setPaytableInput);
+    const wrappedHandlePtTableDelete = (index) => paytableProcessor.handlePtTableDelete(index, setPaytableInput);
+    const wrappedHandleAddPtRow = () => paytableProcessor.handleAddPtRow(setPaytableInput);
+    const wrappedHandlePtExtract = () => paytableProcessor.handlePtExtract(setPaytableInput);
+
+    // === Return: 對外介面保持不變 ===
     return {
+        // Config state
         lineMode, setLineMode,
         linesTextInput, setLinesTextInput,
         paytableMode, setPaytableMode,
@@ -885,30 +358,56 @@ export function useTemplateBuilder({
         requiresCollectToWin, setRequiresCollectToWin,
         hasDoubleSymbol, setHasDoubleSymbol,
         hasDynamicMultiplier, setHasDynamicMultiplier,
-        lineImages, setLineImages,
-        activeLineImageId, setActiveLineImageId,
-        activeLineImage, imageSrc, imageObj,
+
+        // Grid dimensions
         patternRows, setPatternRows,
         patternCols, setPatternCols,
         gridRows, setGridRows,
         gridCols, setGridCols,
         threshold, setThreshold,
         startIndex, setStartIndex,
-        p1, setP1, pEnd, setPEnd,
         extractResults, setExtractResults,
-        dragState, setDragState,
-        canvasRef, containerRef, layoutStyle, canvasSize,
         linesTabMode, setLinesTabMode,
-        ptImages, setPtImages,
-        isPtProcessing, setIsPtProcessing,
-        ptResultItems, setPtResultItems,
-        ptCropState, setPtCropState,
-        ptEnlargedImg, setPtEnlargedImg,
-        ptCropImageRef,
-        handleLineImageUpload, removeLineImage, analyzeImage,
-        handleMouseDown, handleMouseMove, handleMouseUp, draw,
-        handlePaytableTextChange, handlePtTableChange, handlePtTableDelete, handleAddPtRow, handleRemoveThumb,
-        handlePtFileChange, handlePtDrop, processPtFiles, removePtImage, clearPtAll, handlePtExtract,
-        performAutoBuild, handleBuildTemplate
+
+        // Canvas extractor (forwarded)
+        lineImages: canvasExtractor.lineImages, setLineImages: canvasExtractor.setLineImages,
+        activeLineImageId: canvasExtractor.activeLineImageId, setActiveLineImageId: canvasExtractor.setActiveLineImageId,
+        activeLineImage: canvasExtractor.activeLineImage,
+        imageSrc: canvasExtractor.imageSrc,
+        imageObj: canvasExtractor.imageObj,
+        p1: canvasExtractor.p1, setP1: canvasExtractor.setP1,
+        pEnd: canvasExtractor.pEnd, setPEnd: canvasExtractor.setPEnd,
+        dragState: canvasExtractor.dragState, setDragState: canvasExtractor.setDragState,
+        canvasRef: canvasExtractor.canvasRef, containerRef: canvasExtractor.containerRef,
+        layoutStyle: canvasExtractor.layoutStyle, canvasSize: canvasExtractor.canvasSize,
+        handleLineImageUpload: canvasExtractor.handleLineImageUpload,
+        removeLineImage: canvasExtractor.removeLineImage,
+        analyzeImage: canvasExtractor.analyzeImage,
+        handleMouseDown: canvasExtractor.handleMouseDown,
+        handleMouseMove: canvasExtractor.handleMouseMove,
+        handleMouseUp: canvasExtractor.handleMouseUp,
+        draw: canvasExtractor.draw,
+
+        // Paytable processor (forwarded)
+        ptImages: paytableProcessor.ptImages, setPtImages: paytableProcessor.setPtImages,
+        isPtProcessing: paytableProcessor.isPtProcessing, setIsPtProcessing: paytableProcessor.setIsPtProcessing,
+        ptResultItems: paytableProcessor.ptResultItems, setPtResultItems: paytableProcessor.setPtResultItems,
+        ptCropState: paytableProcessor.ptCropState, setPtCropState: paytableProcessor.setPtCropState,
+        ptEnlargedImg: paytableProcessor.ptEnlargedImg, setPtEnlargedImg: paytableProcessor.setPtEnlargedImg,
+        ptCropImageRef: paytableProcessor.ptCropImageRef,
+        handlePaytableTextChange: wrappedHandlePaytableTextChange,
+        handlePtTableChange: wrappedHandlePtTableChange,
+        handlePtTableDelete: wrappedHandlePtTableDelete,
+        handleAddPtRow: wrappedHandleAddPtRow,
+        handleRemoveThumb: paytableProcessor.handleRemoveThumb,
+        handlePtFileChange: paytableProcessor.handlePtFileChange,
+        handlePtDrop: paytableProcessor.handlePtDrop,
+        processPtFiles: paytableProcessor.processPtFiles,
+        removePtImage: paytableProcessor.removePtImage,
+        clearPtAll: paytableProcessor.clearPtAll,
+        handlePtExtract: wrappedHandlePtExtract,
+
+        // Build
+        performAutoBuild, handleBuildTemplate, resetTemplateBuilder
     };
 }

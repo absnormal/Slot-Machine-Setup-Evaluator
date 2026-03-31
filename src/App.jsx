@@ -1,36 +1,34 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { Play, Settings, AlertCircle, CheckCircle2, Trophy, Coins, ChevronDown, ChevronUp, Image as ImageIcon, Upload, Cloud, Download, X, Trash2, FileText, ImagePlus, Copy, Loader2, Crop, LayoutList, MousePointer2, LayoutGrid, Save, FolderOpen, RefreshCw, Plus, Paintbrush, Keyboard, Zap, Key, Database, BrainCircuit, ListChecks, ChevronLeft, ChevronRight, StopCircle } from 'lucide-react';
-
-// === 模組匯入 ===
-import { GAS_URL, apiKey } from './utils/constants';
-import { toPx, toPct, fetchWithRetry, ptFileToBase64, resizeImageBase64, parseBool } from './utils/helpers';
-import { isScatterSymbol, isCollectSymbol, isWildSymbol, isCashSymbol, isJpSymbol, getCashValue, getBaseSymbol } from './utils/symbolUtils';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { apiKey } from './utils/constants';
 import { computeGridResults } from './engine/computeGridResults';
 
-import { useLightbox } from './hooks/useLightbox';
-import { useCanvasDrag } from './hooks/useCanvasDrag';
 import AppHeader from './components/AppHeader';
 import ToastMessage from './components/ToastMessage';
 import SettingsModal from './components/SettingsModal';
 import CloudModal from './components/CloudModal';
-import ResultView from './components/ResultView';
+import ErrorBoundary from './components/ErrorBoundary';
+import Phase1Setup from './components/Phase1Setup';
+import Phase2Manual from './components/Phase2Manual';
+import Phase3Vision from './components/Phase3Vision';
+import Phase4Video from './components/Phase4Video';
+
+// Modals (從 App.jsx 抽離)
+import PtConfirmModal from './components/modals/PtConfirmModal';
+import BuildErrorModal from './components/modals/BuildErrorModal';
+import PtCropModal from './components/modals/PtCropModal';
+import OverwriteConfirmModal from './components/modals/OverwriteConfirmModal';
+
+// Hooks
 import { useCloud } from './hooks/useCloud';
 import { useGeminiVision } from './hooks/useGeminiVision';
 import { useTemplateBuilder } from './hooks/useTemplateBuilder';
 import { useSlotEngine } from './hooks/useSlotEngine';
 import { useVideoProcessor } from './hooks/useVideoProcessor';
-import Phase1Setup from './components/Phase1Setup';
-import ErrorBoundary from './components/ErrorBoundary';
-import Phase2Manual from './components/Phase2Manual';
-import Phase3Vision from './components/Phase3Vision';
-import Phase4Video from './components/Phase4Video';
+import { useTemplateIO } from './hooks/useTemplateIO';
 import useAppStore from './stores/useAppStore';
-function App() {
-    // --- 預設資料清空 ---
-    const defaultPaytable = "";
-    const defaultJpConfig = { "MINI": "", "MINOR": "", "MAJOR": "", "GRAND": "" };
 
-    // --- Zustand Store (取代 prop drilling) ---
+function App() {
+    // --- Zustand Store ---
     const customApiKey = useAppStore(s => s.customApiKey);
     const setCustomApiKey = useAppStore(s => s.setCustomApiKey);
     const showSettingsModal = useAppStore(s => s.showSettingsModal);
@@ -57,32 +55,24 @@ function App() {
     const showCloudModal = useAppStore(s => s.showCloudModal);
     const setShowCloudModal = useAppStore(s => s.setShowCloudModal);
 
-
-    // --- Google Sheets 雲端狀態管理 ---
+    // --- Google Sheets 雲端 ---
+    const cloudInstance = useCloud();
     const {
-        cloudTemplates, setCloudTemplates,
-        isLoadingCloud, isBackgroundSyncing,
+        cloudTemplates, isLoadingCloud, isBackgroundSyncing,
         isSaving, deletingId, setDeletingId, downloadingId,
         cloudError, setCloudError,
-        cloudMessage, setCloudMessage,
-        fetchCloudTemplates, saveTemplateToCloud, getTemplateData,
-        handleForceRefreshCloud, handleDeleteTemplate
-    } = useCloud();
+        cloudMessage,
+        fetchCloudTemplates, handleForceRefreshCloud, handleDeleteTemplate
+    } = cloudInstance;
 
-    const [showOverwriteConfirm, setShowOverwriteConfirm] = useState(false);
-    const [pendingOverwriteData, setPendingOverwriteData] = useState(null);
-    const [templateName, setTemplateName] = useState('');
-
-    const [localUserId] = useState(() => {
-        let uid = localStorage.getItem('slot_local_uid');
-        if (!uid) { uid = Math.random().toString(36).substring(2, 15); localStorage.setItem('slot_local_uid', uid); }
-        return uid;
-    });
-
-    const [platformName, setPlatformName] = useState('');
-    const [gameName, setGameName] = useState('');
     const [linesMode, setLinesMode] = useState('image');
 
+    // --- Template Builder ---
+    const templateBuilder = useTemplateBuilder({
+        customApiKey, apiKey, setTemplateMessage,
+        setIsPhase2Minimized, setIsPhase3Minimized, setIsTemplateMinimized,
+        isTemplateMinimized, linesMode
+    });
 
     const {
         lineMode, setLineMode, linesTextInput, setLinesTextInput,
@@ -110,29 +100,36 @@ function App() {
         handlePaytableTextChange, handlePtTableChange, handlePtTableDelete, handleAddPtRow, handleRemoveThumb,
         handlePtFileChange, handlePtDrop, processPtFiles, removePtImage, clearPtAll, handlePtExtract,
         performAutoBuild, handleBuildTemplate, resetTemplateBuilder
-    } = useTemplateBuilder({
-        customApiKey,
-        apiKey,
-        setTemplateMessage,
-        setIsPhase2Minimized,
-        setIsPhase3Minimized,
-        setIsTemplateMinimized,
-        isTemplateMinimized,
-        linesMode
+    } = templateBuilder;
+
+    // --- Template IO (匯入/匯出/雲端存取) ---
+    const templateIO = useTemplateIO({
+        setGridRows, setGridCols, setLineMode, setExtractResults,
+        setPaytableInput, setPtResultItems, setPaytableMode,
+        setJpConfig, setHasJackpot, setHasMultiplierReel,
+        setRequiresCollectToWin, setHasDoubleSymbol,
+        setHasDynamicMultiplier, setMultiplierCalcType,
+        setLineImages, setActiveLineImageId, setLinesTextInput,
+        setTemplateError,
+        performAutoBuild, resetTemplateBuilder,
+        useCloudInstance: cloudInstance,
+        platformName: undefined, gameName: undefined,
+        gridRows, gridCols, lineMode, extractResults,
+        paytableInput, ptResultItems, jpConfig,
+        hasJackpot, hasMultiplierReel, requiresCollectToWin,
+        hasDoubleSymbol, hasDynamicMultiplier, multiplierCalcType,
     });
 
-    const handleClearTemplate = useCallback(() => {
-        if (!window.confirm('確定要清除當前所有模板設定與提取結果嗎？')) return;
-        setPlatformName('');
-        setGameName('');
-        setTemplateName('');
-        resetTemplateBuilder();
-    }, [resetTemplateBuilder]);
+    const {
+        platformName, setPlatformName, gameName, setGameName,
+        templateName, setTemplateName, defaultSaveName, localUserId,
+        loadCloudTemplate, handleImportLocalTemplate, handleExportLocalTemplate,
+        handleClearTemplate, handleSaveToCloud,
+        showOverwriteConfirm, setShowOverwriteConfirm,
+        pendingOverwriteData, activeSaveAction,
+    } = templateIO;
 
-
-    const { lightboxState, handleLbDragStart, handleLbResizeStart } = useLightbox(ptEnlargedImg);
-
-
+    // --- Slot Engine (Phase 2) ---
     const {
         panelGrid, setPanelGrid, betInput, setBetInput,
         calcResults, setCalcResults, calculateError, setCalculateError,
@@ -143,8 +140,7 @@ function App() {
         getSafeGrid, handleGridPaste, handleCellChange, computeGridResultsCb
     } = useSlotEngine({ template });
 
-
-    // --- 狀態管理: Phase 3 (AI 視覺批次辨識結算) ---
+    // --- Phase 3 (AI 視覺批次辨識) ---
     const visionCanvasRef = useRef(null);
     const visionContainerRef = useRef(null);
 
@@ -157,16 +153,11 @@ function App() {
         hasBetBox, setHasBetBox,
         setVisionP1, setVisionP1Bet
     } = useGeminiVision({
-        template,
-        availableSymbols,
-        customApiKey,
-        setTemplateMessage,
-        setTemplateError,
-        visionCanvasRef,
-        isPhase3Minimized
+        template, availableSymbols, customApiKey, setTemplateMessage, setTemplateError,
+        visionCanvasRef, isPhase3Minimized
     });
 
-    // --- 狀態管理: Phase 4 (影片自動辨識截圖) ---
+    // --- Phase 4 (影片自動辨識截圖) ---
     const {
         videoSrc, videoRef, handleVideoUpload,
         isAutoDetecting, setIsAutoDetecting,
@@ -175,286 +166,51 @@ function App() {
         motionDelay, setMotionDelay,
         vLineThreshold, setVLineThreshold,
         capturedImages, removeCapturedImage, clearAllCaptures,
-        reelROI, setReelROI,
-        winROI, setWinROI,
-        balanceROI, setBalanceROI,
-        betROI, setBetROI,
-        captureCurrentFrame,
-        debugData
+        reelROI, setReelROI, winROI, setWinROI,
+        balanceROI, setBalanceROI, betROI, setBetROI,
+        captureCurrentFrame, debugData
     } = useVideoProcessor({ setTemplateMessage, template });
 
+    // --- Phase 間數據傳遞 ---
     const handleTransferPhase4ToPhase3 = useCallback(async () => {
         if (capturedImages.length === 0) return;
 
-        // 轉換為 Phase 3 需要的格式 (需帶有 HTML Image 對象)
         const transformed = await Promise.all(capturedImages.map(imgData => {
             return new Promise((resolve) => {
                 const img = new Image();
                 img.onload = () => {
                     resolve({
-                        id: imgData.id,
-                        file: imgData.file,
-                        previewUrl: imgData.previewUrl,
-                        obj: img, // Phase 3 畫 canvas 需要原始對象
-                        grid: null,
-                        error: ''
+                        id: imgData.id, file: imgData.file, previewUrl: imgData.previewUrl,
+                        obj: img, grid: null, error: ''
                     });
                 };
                 img.src = imgData.previewUrl;
             });
         }));
 
-        // 同步 Phase 4 的 ROI 框選位置到 Phase 3
         setVisionP1({ ...reelROI });
         setVisionP1Bet({ ...betROI });
         setHasBetBox(true);
-
         setVisionImages(prev => [...prev, ...transformed]);
         setIsPhase4Minimized(true);
         setIsPhase3Minimized(false);
         setTemplateMessage(`✅ 已成功從影片匯入 ${capturedImages.length} 張截圖至 Phase 3（已同步盤面與 BET 框選位置）`);
-        
-        // [自動開啟] 傳送完成後直接進入第一張新圖片的辨識介面
-        if (transformed.length > 0) {
-            setActiveVisionId(transformed[0].id);
-        }
-        
+
+        if (transformed.length > 0) setActiveVisionId(transformed[0].id);
         clearAllCaptures();
     }, [capturedImages, setVisionImages, setTemplateMessage, clearAllCaptures, setActiveVisionId, reelROI, betROI, setVisionP1, setVisionP1Bet, setHasBetBox]);
 
-
-
-    const defaultSaveName = [platformName, gameName].filter(Boolean).join('-') || `模板 ${gridRows}x${gridCols}`;
-
-    useEffect(() => {
-        if (showCloudModal) fetchCloudTemplates();
-    }, [showCloudModal, fetchCloudTemplates]);
-
-    const [activeSaveAction, setActiveSaveAction] = useState(null); // 'initial', 'FORCE_NEW', or ID
-
-    const handleSaveToCloud = async (forceOverwriteId = null) => {
-        const isEvent = forceOverwriteId && typeof forceOverwriteId === 'object' && forceOverwriteId.nativeEvent;
-        const actualForceId = isEvent ? null : forceOverwriteId;
-
-        setActiveSaveAction(actualForceId || 'initial');
-        const generatedName = [platformName, gameName].filter(Boolean).join('-');
-
-        const result = await saveTemplateToCloud({
-            templateName, generatedName, platformName, gameName, gridRows, gridCols, lineMode, extractResults,
-            paytableInput, ptResultItems, jpConfig, hasJackpot, hasMultiplierReel, requiresCollectToWin, hasDoubleSymbol, hasDynamicMultiplier, multiplierCalcType,
-            localUserId, actualForceId
-        });
-
-        if (result && result.conflict) {
-            setPendingOverwriteData({ existing: result.existing, newName: result.newName });
-            setShowOverwriteConfirm(true);
-        } else if (result && result.success) {
-            setTemplateName('');
-            setTemplateError('');
-            if (showOverwriteConfirm) setShowOverwriteConfirm(false);
-        }
-        setActiveSaveAction(null);
-    };
-
-
-
-
-
-
-
-
-
-    const loadCloudTemplate = async (templateMeta) => {
-        try {
-            const data = await getTemplateData(templateMeta.id);
-
-            if (data.platformName !== undefined) setPlatformName(data.platformName);
-            if (data.gameName !== undefined) setGameName(data.gameName);
-            if (data.gridRows) setGridRows(data.gridRows);
-            if (data.gridCols) setGridCols(data.gridCols);
-            setLineMode(data.lineMode || (!data.extractResults || data.extractResults.length === 0 ? 'allways' : 'paylines'));
-            if (data.extractResults) setExtractResults(data.extractResults);
-            if (data.paytableInput) setPaytableInput(data.paytableInput);
-            if (data.jpConfig) {
-                setJpConfig(data.jpConfig);
-                setHasJackpot(Object.keys(data.jpConfig).some(k => data.jpConfig[k] !== ''));
-            } else {
-                setJpConfig(defaultJpConfig);
-                setHasJackpot(false);
-            }
-            if (data.hasMultiplierReel !== undefined) setHasMultiplierReel(parseBool(data.hasMultiplierReel));
-            else setHasMultiplierReel(false);
-
-            if (data.requiresCollectToWin !== undefined) setRequiresCollectToWin(parseBool(data.requiresCollectToWin));
-            else setRequiresCollectToWin(true);
-
-            if (data.hasDoubleSymbol !== undefined) setHasDoubleSymbol(parseBool(data.hasDoubleSymbol));
-            else setHasDoubleSymbol(false);
-            if (data.hasDynamicMultiplier !== undefined) setHasDynamicMultiplier(parseBool(data.hasDynamicMultiplier));
-            else setHasDynamicMultiplier(false);
-            if (data.multiplierCalcType !== undefined) setMultiplierCalcType(data.multiplierCalcType);
-            else setMultiplierCalcType('product');
-
-            if (data.ptResultItems) {
-                const processedItems = data.ptResultItems.map(item => {
-                    const newItem = {
-                        ...item,
-                        thumbUrls: item.thumbUrls || (item.thumbUrl ? [item.thumbUrl] : []),
-                        doubleThumbUrls: item.doubleThumbUrls || []
-                    };
-                    // 確保 match6~10 存在，避免儲存回雲端時遺失
-                    for (let i = 6; i <= 10; i++) {
-                        if (newItem[`match${i}`] === undefined) newItem[`match${i}`] = 0;
-                    }
-                    return newItem;
-                });
-                setPtResultItems(processedItems);
-                setPaytableMode('image');
-            } else {
-                setPaytableMode('text');
-            }
-
-            setLineImages([]);
-            setActiveLineImageId(null);
-            setShowCloudModal(false);
-
-            setTemplateMessage('☁️ 雲端模板載入成功！已自動為您建構並進入結算畫面。');
-            setTimeout(() => setTemplateMessage(''), 4000);
-
-            performAutoBuild(data);
-        } catch (err) {
-            // Error mapped to cloudError automatically
-        }
-    };
-    const handleExportLocalTemplate = () => {
-        setTemplateMessage('');
-        if (extractResults.length === 0 && !paytableInput) {
-            setTemplateError('沒有可匯出的資料！');
-            return;
-        }
-
-        const data = {
-            version: "1.2",
-            platformName,
-            gameName,
-            gridRows,
-            gridCols,
-            extractResults,
-            paytableInput,
-            ptResultItems,
-            jpConfig,
-            hasMultiplierReel,
-            requiresCollectToWin,
-            hasDoubleSymbol,
-            hasDynamicMultiplier,
-            multiplierCalcType
-        };
-
-        const jsonStr = JSON.stringify(data, null, 2);
-        const blob = new Blob([jsonStr], { type: "application/json" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-
-        const prefix = [platformName, gameName].filter(Boolean).join('-');
-        const safePrefix = prefix.replace(/[\/\\:*?"<>|]/g, '_');
-        a.download = safePrefix ? `${safePrefix}.json` : `slot_template_${gridRows}x${gridCols}_${extractResults.length}lines.json`;
-
-        a.click();
-        URL.revokeObjectURL(url);
-        setTemplateError('');
-        setTemplateMessage('✅ 本地模板已成功下載！');
-        setTimeout(() => setTemplateMessage(''), 3000);
-    };
-
-    const handleImportLocalTemplate = (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-
-        const reader = new FileReader();
-        reader.onload = (evt) => {
-            try {
-                const data = JSON.parse(evt.target.result);
-
-                if (data.platformName !== undefined) setPlatformName(data.platformName);
-                if (data.gameName !== undefined) setGameName(data.gameName);
-
-                if (data.gridRows) setGridRows(data.gridRows);
-                if (data.gridCols) setGridCols(data.gridCols);
-
-                if (data.extractResults) {
-                    setExtractResults(data.extractResults);
-                    setLinesTextInput(data.extractResults.map(r => r.data.join(' ')).join('\n'));
-                }
-
-                if (data.jpConfig) {
-                    setJpConfig(data.jpConfig);
-                    setHasJackpot(Object.keys(data.jpConfig).some(k => data.jpConfig[k] !== ''));
-                } else {
-                    setJpConfig(defaultJpConfig);
-                    setHasJackpot(false);
-                }
-
-                if (data.paytableInput) setPaytableInput(data.paytableInput);
-                if (data.ptResultItems) {
-                    const processedItems = data.ptResultItems.map(item => {
-                        const newItem = {
-                            ...item,
-                            thumbUrls: item.thumbUrls || (item.thumbUrl ? [item.thumbUrl] : []),
-                            doubleThumbUrls: item.doubleThumbUrls || []
-                        };
-                        for (let i = 6; i <= 10; i++) {
-                            if (newItem[`match${i}`] === undefined) newItem[`match${i}`] = 0;
-                        }
-                        return newItem;
-                    });
-                    setPtResultItems(processedItems);
-                    setPaytableMode('image');
-                } else {
-                    setPaytableMode('text');
-                }
-
-                if (data.hasMultiplierReel !== undefined) setHasMultiplierReel(parseBool(data.hasMultiplierReel));
-                else setHasMultiplierReel(false);
-
-                if (data.requiresCollectToWin !== undefined) setRequiresCollectToWin(parseBool(data.requiresCollectToWin));
-                else setRequiresCollectToWin(true);
-
-                if (data.hasDoubleSymbol !== undefined) setHasDoubleSymbol(parseBool(data.hasDoubleSymbol));
-                else setHasDoubleSymbol(false);
-                if (data.hasDynamicMultiplier !== undefined) setHasDynamicMultiplier(parseBool(data.hasDynamicMultiplier));
-                else setHasDynamicMultiplier(false);
-                if (data.multiplierCalcType !== undefined) setMultiplierCalcType(data.multiplierCalcType);
-                else setMultiplierCalcType('product');
-
-                setLineImages([]);
-                setActiveLineImageId(null);
-
-                setTemplateMessage('✅ 本地模板載入成功！已自動為您建構並進入結算畫面。');
-                setTimeout(() => setTemplateMessage(''), 4000);
-
-                performAutoBuild(data);
-            } catch (err) {
-                setTemplateError("匯入失敗：檔案格式錯誤，請確定是有效的 JSON 模板檔案。");
-            }
-        };
-        reader.readAsText(file);
-        e.target.value = '';
-    };
-
-
+    // --- Vision 結算 ---
     const [visionCalcResults, setVisionCalcResults] = useState(null);
     const [visionCalculateError, setVisionCalculateError] = useState('');
     const [visionBetInput, setVisionBetInput] = useState(100);
 
-    // 同步當前圖片的辨識 BET
     useEffect(() => {
         if (activeVisionImg && typeof activeVisionImg.bet === 'number') {
             setVisionBetInput(activeVisionImg.bet);
         }
     }, [activeVisionId, activeVisionImg]);
 
-    // 排程更新圖片內的 BET (避免在渲染期間更新)
     const handleVisionBetInputChange = (newBet) => {
         setVisionBetInput(newBet);
         if (activeVisionId) {
@@ -475,32 +231,24 @@ function App() {
         setVisionCalculateError(error);
     }, [visionGrid, visionBetInput, computeGridResultsCb]);
 
-    // --- 盤面傳遞功能 (Phase 3 -> Phase 2) ---
+    // --- 盤面傳遞 (Phase 3 ↔ Phase 2) ---
     const handleTransferVisionToManual = useCallback(() => {
         if (!activeVisionImg || !activeVisionImg.grid) {
-            // 如果還沒辨識出盤面，依然允許畫面切換
             setIsPhase3Minimized(true);
             setIsPhase2Minimized(false);
             return;
         }
-
-        // 強制深拷貝產生全新陣列參考，確保 React 一定會重新渲染 panelGrid
         const newGrid = activeVisionImg.grid.map(row => [...row]);
         setPanelGrid(newGrid);
-
-        // 同步押注金額到 Phase 2
-        setBetInput(visionBetInput); 
-
+        setBetInput(visionBetInput);
         setIsPhase3Minimized(true);
         setIsPhase2Minimized(false);
         setTemplateMessage('✅ 已將 AI 辨識盤面及押注狀態同步傳送至 Phase 2 手動區');
         setTimeout(() => setTemplateMessage(''), 3000);
     }, [activeVisionImg, visionBetInput, setPanelGrid, setBetInput, setIsPhase3Minimized, setIsPhase2Minimized, setTemplateMessage]);
 
-    // --- 盤面回傳功能 (Phase 2 -> Phase 3) ---
     const handleReturnToVision = useCallback(() => {
         if (activeVisionId) {
-            // 深拷貝當前 Phase 2 手動盤面的內容，並直接覆寫 Phase 3 的指定圖片狀態
             const newGrid = panelGrid.map(row => [...row]);
             setVisionImages(prev => prev.map(img =>
                 img.id === activeVisionId ? { ...img, grid: newGrid } : img
@@ -509,32 +257,25 @@ function App() {
             setTemplateMessage('✅ 已將手動盤面存回目前 AI 截圖 (Phase 3)');
             setTimeout(() => setTemplateMessage(''), 3000);
         }
-        
         setIsPhase2Minimized(true);
         setIsPhase3Minimized(false);
     }, [activeVisionId, panelGrid, betInput, setVisionImages, setVisionBetInput, setIsPhase2Minimized, setIsPhase3Minimized, setTemplateMessage]);
 
-    // 快捷鍵監聽 (Enter: 執行各階段主動作)
+    // --- 快捷鍵 (Enter) ---
     useEffect(() => {
         const handleKeyDown = (e) => {
             if (['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return;
-
             if (e.key === 'Enter') {
-                // Phase 1: 建立模板
                 if (!isTemplateMinimized) {
                     e.preventDefault();
                     handleBuildTemplate();
-                }
-                // Phase 2: 更新資產
-                else if (!isPhase2Minimized) {
+                } else if (!isPhase2Minimized) {
                     e.preventDefault();
                     const winAmount = calcResults?.totalWin || 0;
                     setTotalBalance(prev => prev + winAmount);
                     setTemplateMessage(`💰 已將贏分 ${winAmount.toLocaleString()} 加入總資產`);
                     setTimeout(() => setTemplateMessage(''), 3000);
-                }
-                // Phase 3: 更新資產
-                else if (!isPhase3Minimized) {
+                } else if (!isPhase3Minimized) {
                     e.preventDefault();
                     const winAmount = visionCalcResults?.totalWin || 0;
                     setTotalBalance(prev => prev + winAmount);
@@ -543,28 +284,20 @@ function App() {
                 }
             }
         };
-
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [isTemplateMinimized, isPhase2Minimized, isPhase3Minimized, visionGrid, calcResults, visionCalcResults, handleTransferVisionToManual, handleReturnToVision, handleBuildTemplate]);
+    }, [isTemplateMinimized, isPhase2Minimized, isPhase3Minimized, visionGrid, calcResults, visionCalcResults, handleBuildTemplate]);
 
-    const hasApiKey = !!(customApiKey.trim() || apiKey);
-
-
-
-    // --- 上下方向鍵切換 Phase 與盤面傳送 ---
+    // --- 快捷鍵 (方向鍵切換 Phase) ---
     useEffect(() => {
         const phases = ['phase1', 'phase2', 'phase3', 'phase4'];
         const handleKeyDown = (e) => {
             if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return;
             if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
-
             e.preventDefault();
 
-            // 找出目前展開的 Phase
             const minimizedMap = { phase1: isTemplateMinimized, phase2: isPhase2Minimized, phase3: isPhase3Minimized, phase4: isPhase4Minimized };
             const currentIdx = phases.findIndex(p => !minimizedMap[p]);
-
             let nextIdx;
             if (e.key === 'ArrowDown') {
                 nextIdx = currentIdx < 0 ? 0 : Math.min(currentIdx + 1, phases.length - 1);
@@ -575,24 +308,18 @@ function App() {
             const currentPhase = phases[currentIdx];
             const nextPhase = phases[nextIdx];
 
-            // 若為 Phase 2 往下切換至 Phase 3，執行盤面傳送與切換
-            if (currentPhase === 'phase2' && nextPhase === 'phase3' && e.key === 'ArrowDown') {
-                handleReturnToVision();
-                return;
-            }
-            
-            // 若為 Phase 3 往上切換至 Phase 2，執行盤面傳送與切換
-            if (currentPhase === 'phase3' && nextPhase === 'phase2' && e.key === 'ArrowUp') {
-                handleTransferVisionToManual();
-                return;
-            }
-
+            if (currentPhase === 'phase2' && nextPhase === 'phase3' && e.key === 'ArrowDown') { handleReturnToVision(); return; }
+            if (currentPhase === 'phase3' && nextPhase === 'phase2' && e.key === 'ArrowUp') { handleTransferVisionToManual(); return; }
             handlePhaseToggle(phases[nextIdx]);
         };
-
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [isTemplateMinimized, isPhase2Minimized, isPhase3Minimized, isPhase4Minimized, handlePhaseToggle, handleTransferVisionToManual, handleReturnToVision]);
+
+    // --- 雲端 Modal 開啟自動載入 ---
+    useEffect(() => {
+        if (showCloudModal) fetchCloudTemplates();
+    }, [showCloudModal, fetchCloudTemplates]);
 
     useEffect(() => {
         if (cloudError) {
@@ -601,6 +328,9 @@ function App() {
         }
     }, [cloudError, setCloudError]);
 
+    const hasApiKey = !!(customApiKey.trim() || apiKey);
+
+    // ========== RENDER ==========
     return (
         <div className="min-h-screen bg-slate-50 text-slate-800 p-6 font-sans relative">
 
@@ -722,187 +452,40 @@ function App() {
 
             </div>
 
-            {/* 確認 Modal */}
-            {
-                showPtModal && (
-                    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4" style={{ zIndex: 99999 }}>
-                        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
-                            <div className="p-5 border-b flex items-center gap-2 bg-slate-50"><AlertCircle className="text-amber-500" /><h2 className="text-xl font-bold">AI 分析前確認事項</h2></div>
-                            <div className="p-6 text-sm text-slate-700 space-y-4">
-                                <ol className="list-decimal pl-5 space-y-2">
-                                    <li>確認賠率圖<strong className="text-rose-600">預設BET為 1</strong>。</li>
-                                    <li>AI 分析可能有誤，完成後請<strong className="text-indigo-600">人工比對表格</strong>並修正。<br /><span className="text-slate-500 text-xs mt-1 inline-block">【點開上傳圖片ICON可以方便人工比對表格】</span></li>
-                                    <li>(可選) 手動擷取縮圖供動畫預覽使用。</li>
-                                </ol>
-                            </div>
-                            <div className="p-4 border-t bg-slate-50 flex justify-end gap-3">
-                                <button onClick={() => setShowPtModal(false)} className="px-4 py-2 text-slate-600">取消</button>
-                                <button onClick={() => { setShowPtModal(false); handlePtExtract(); }} className="px-6 py-2 bg-indigo-600 text-white font-bold rounded-lg shadow-md">確認並分析</button>
-                            </div>
-                        </div>
-                    </div>
-                )
-            }
+            {/* === Modals (抽離為獨立元件) === */}
+            <PtConfirmModal
+                show={showPtModal}
+                onCancel={() => setShowPtModal(false)}
+                onConfirm={() => { setShowPtModal(false); handlePtExtract(); }}
+            />
 
-            {/* 新增：建構資料不足/錯誤 提示 Modal */}
-            {
-                buildErrorMsg && (
-                    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4" style={{ zIndex: 99999 }}>
-                        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in duration-200">
-                            <div className="p-5 border-b flex items-center gap-2 bg-rose-50">
-                                <AlertCircle className="text-rose-500" size={24} />
-                                <h2 className="text-xl font-bold text-slate-800">資料不足或格式錯誤</h2>
-                            </div>
-                            <div className="p-6 text-slate-700 leading-relaxed font-medium">
-                                {buildErrorMsg}
-                            </div>
-                            <div className="p-4 border-t bg-slate-50 flex justify-end">
-                                <button onClick={() => setBuildErrorMsg('')} className="px-6 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-lg shadow-md transition-colors">
-                                    我知道了
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )
-            }
+            <BuildErrorModal
+                message={buildErrorMsg}
+                onClose={() => setBuildErrorMsg('')}
+            />
 
-            {/* 擷取 Modal */}
-            {
-                ptCropState.active && (
-                    <div className="fixed inset-0 flex items-center justify-center bg-black/90 backdrop-blur-sm p-4" style={{ zIndex: 99999 }}>
-                        <div className="bg-slate-900 rounded-xl shadow-2xl w-full max-w-4xl flex flex-col border border-slate-700 h-[80vh]">
-                            <div className="flex flex-col border-b border-slate-700 shrink-0">
-                                <div className="flex items-center justify-between p-4">
-                                    <h3 className="text-white font-bold flex items-center gap-2">
-                                        手動擷取: <span className="text-indigo-400">{ptCropState.isDouble ? '雙重 ' : ''}{ptResultItems[ptCropState.itemIndex]?.name}</span>
-                                    </h3>
-                                    <div className="flex gap-2">
-                                        <button onClick={() => {
-                                            const img = ptCropImageRef.current;
-                                            const rect = img.getBoundingClientRect();
-                                            const sX = img.naturalWidth / rect.width, sY = img.naturalHeight / rect.height;
+            <PtCropModal
+                ptCropState={ptCropState}
+                setPtCropState={setPtCropState}
+                ptImages={ptImages}
+                ptResultItems={ptResultItems}
+                setPtResultItems={setPtResultItems}
+                ptCropImageRef={ptCropImageRef}
+                ptEnlargedImg={ptEnlargedImg}
+                setPtEnlargedImg={setPtEnlargedImg}
+            />
 
-                                            const startX = Math.min(ptCropState.startX, ptCropState.endX);
-                                            const startY = Math.min(ptCropState.startY, ptCropState.endY);
-                                            const cW = Math.abs(ptCropState.startX - ptCropState.endX) * sX;
-                                            const cH = Math.abs(ptCropState.startY - ptCropState.endY) * sY;
-
-                                            // 防呆：如果只有點一下沒有拖曳寬高，則不進行擷取
-                                            if (cW <= 0 || cH <= 0) {
-                                                setPtCropState(p => ({ ...p, active: false }));
-                                                return;
-                                            }
-
-                                            const canvas = document.createElement('canvas');
-
-                                            // 壓縮補強：限制最大尺寸並使用 JPEG 0.7
-                                            const MAX_THUMB_SIZE = 128;
-                                            let targetW = cW;
-                                            let targetH = cH;
-                                            if (cW > MAX_THUMB_SIZE || cH > MAX_THUMB_SIZE) {
-                                                if (cW > cH) {
-                                                    targetW = MAX_THUMB_SIZE;
-                                                    targetH = (cH / cW) * MAX_THUMB_SIZE;
-                                                } else {
-                                                    targetH = MAX_THUMB_SIZE;
-                                                    targetW = (cW / cH) * MAX_THUMB_SIZE;
-                                                }
-                                            }
-
-                                            canvas.width = targetW;
-                                            canvas.height = targetH;
-                                            const ctx = canvas.getContext('2d');
-                                            // 使用複寫方式繪製並縮放
-                                            ctx.drawImage(img, startX * sX, startY * sY, cW, cH, 0, 0, targetW, targetH);
-
-                                            const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.7);
-
-                                            // 修改：將擷取到的圖片推入 thumbUrls 陣列中
-                                            setPtResultItems(prev => {
-                                                const arr = [...prev];
-                                                const targetField = ptCropState.isDouble ? 'doubleThumbUrls' : 'thumbUrls';
-                                                if (!arr[ptCropState.itemIndex][targetField]) {
-                                                    arr[ptCropState.itemIndex][targetField] = [];
-                                                }
-                                                arr[ptCropState.itemIndex][targetField].push(compressedDataUrl);
-                                                return arr;
-                                            });
-                                            setPtCropState(p => ({ ...p, active: false }));
-                                        }} className="bg-indigo-600 hover:bg-indigo-500 transition-colors text-white px-4 py-1.5 rounded font-bold shadow-md flex items-center gap-1">
-                                            <Plus size={16} /> 增加特徵圖
-                                        </button>
-                                        <button onClick={() => setPtCropState(p => ({ ...p, active: false }))} className="text-slate-400 hover:text-white p-1 transition-colors ml-2"><X /></button>
-                                    </div>
-                                </div>
-
-                                {/* 多圖切換區塊 */}
-                                {ptImages.length > 1 && (
-                                    <div className="flex gap-2 px-4 pb-3 overflow-x-auto custom-scrollbar">
-                                        {ptImages.map((img, idx) => (
-                                            <button
-                                                key={img.id}
-                                                onClick={() => setPtCropState(p => ({ ...p, selectedImageId: img.id, startX: 0, startY: 0, endX: 0, endY: 0, isDragging: false }))}
-                                                className={`relative w-14 h-14 shrink-0 rounded-lg border-2 overflow-hidden transition-all ${ptCropState.selectedImageId === img.id ? 'border-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.5)]' : 'border-slate-700 opacity-50 hover:opacity-100 hover:border-slate-500'}`}
-                                                title={`切換至圖片 ${idx + 1}`}
-                                            >
-                                                <img src={img.previewUrl} className="w-full h-full object-cover" />
-                                                <span className="absolute bottom-0 right-0 bg-black/80 text-white text-[10px] px-1.5 font-bold rounded-tl-md">{idx + 1}</span>
-                                            </button>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* 移除 items-center justify-center，改為在內層使用 m-auto，防止頂部被切斷 */}
-                            <div className="flex-1 bg-black overflow-auto flex p-4">
-                                <div className="relative inline-block m-auto shrink-0">
-                                    <img
-                                        ref={ptCropImageRef}
-                                        src={ptImages.find(img => img.id === ptCropState.selectedImageId)?.previewUrl}
-                                        draggable={false}
-                                        className="max-h-[70vh] max-w-full block cursor-crosshair shadow-2xl"
-                                        onMouseDown={(e) => {
-                                            const r = e.target.getBoundingClientRect();
-                                            setPtCropState(p => ({ ...p, startX: e.clientX - r.left, startY: e.clientY - r.top, endX: e.clientX - r.left, endY: e.clientY - r.top, isDragging: true }));
-                                        }}
-                                        onMouseMove={(e) => {
-                                            if (!ptCropState.isDragging) return;
-                                            const r = e.target.getBoundingClientRect();
-                                            setPtCropState(p => ({ ...p, endX: e.clientX - r.left, endY: e.clientY - r.top }));
-                                        }}
-                                        onMouseUp={() => setPtCropState(p => ({ ...p, isDragging: false }))}
-                                        onMouseLeave={() => setPtCropState(p => ({ ...p, isDragging: false }))}
-                                    />
-                                    {(ptCropState.isDragging || (Math.abs(ptCropState.startX - ptCropState.endX) > 0 && Math.abs(ptCropState.startY - ptCropState.endY) > 0)) && (
-                                        <div className="absolute border-2 border-indigo-500 bg-indigo-500/30 pointer-events-none" style={{ left: Math.min(ptCropState.startX, ptCropState.endX), top: Math.min(ptCropState.startY, ptCropState.endY), width: Math.abs(ptCropState.startX - ptCropState.endX), height: Math.abs(ptCropState.startY - ptCropState.endY) }} />
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                )
-            }
-
-            {/* 放大檢視 (Lightbox) */}
-            {
-                ptEnlargedImg && (
-                    <div
-                        className="fixed flex flex-col bg-slate-900/95 backdrop-blur-md rounded-xl shadow-[0_10px_40px_rgba(0,0,0,0.6)] border border-slate-700"
-                        style={{ zIndex: 9999, left: `${lightboxState.x}px`, top: `${lightboxState.y}px`, width: `${lightboxState.w}px`, height: `${lightboxState.h}px` }}
-                    >
-                        <div className="flex justify-between items-center p-3 pb-2 cursor-move border-b border-slate-800 hover:bg-slate-800/50 rounded-t-xl transition-colors" onMouseDown={handleLbDragStart}>
-                            <span className="text-white/80 text-sm font-bold flex items-center gap-1.5 select-none pointer-events-none"><ImageIcon size={16} className="text-indigo-400" /> 原圖預覽對照</span>
-                            <button className="text-white/60 hover:text-white p-1 transition-colors hover:bg-rose-500 rounded-lg cursor-pointer z-[101]" onClick={(e) => { e.stopPropagation(); setPtEnlargedImg(null); }} onMouseDown={e => e.stopPropagation()}><X size={18} /></button>
-                        </div>
-                        <div className="flex-1 overflow-hidden flex items-center justify-center p-2 relative bg-black/40">
-                            <img src={ptEnlargedImg} alt="Enlarged" className="max-w-full max-h-full object-contain drop-shadow-md pointer-events-none select-none" draggable={false} />
-                        </div>
-                        <div className="absolute bottom-0 right-0 w-8 h-8 cursor-se-resize flex justify-end items-end p-2 text-slate-500 hover:text-indigo-400" onMouseDown={handleLbResizeStart} title="拖曳以縮放視窗">
-                            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="3" fill="none" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 24 24 24 24 16"></polyline><line x1="14" y1="14" x2="24" y2="24"></line></svg>
-                        </div>
-                    </div>
-                )
-            }
+            <OverwriteConfirmModal
+                show={showOverwriteConfirm}
+                pendingOverwriteData={pendingOverwriteData}
+                onOverwrite={(id) => handleSaveToCloud(id)}
+                onForceNew={() => handleSaveToCloud('FORCE_NEW')}
+                onCancel={() => setShowOverwriteConfirm(false)}
+                isSaving={isSaving}
+                activeSaveAction={activeSaveAction}
+                platformName={platformName}
+                gameName={gameName}
+            />
 
             <CloudModal
                 show={showCloudModal}
@@ -919,49 +502,6 @@ function App() {
                 setDeletingId={setDeletingId}
                 currentPlatformName={platformName}
             />
-
-            {/* 覆蓋確認 Modal */}
-            {showOverwriteConfirm && pendingOverwriteData && (
-                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4" style={{ zIndex: 100000 }}>
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
-                        <div className="p-6 text-center">
-                            <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                                <Cloud size={32} />
-                            </div>
-                            <h3 className="text-xl font-bold text-slate-800 mb-2">偵測到重複模板</h3>
-                            <p className="text-slate-500 mb-6">
-                                雲端已存在 <span className="font-bold text-indigo-600">[{platformName} - {gameName}]</span> 的模板資料。<br />
-                                您要覆蓋既有模板，還是另存為新模板？
-                            </p>
-                            <div className="space-y-3">
-                                <button
-                                    onClick={() => handleSaveToCloud(pendingOverwriteData.existing.id)}
-                                    disabled={isSaving}
-                                    className={`w-full py-3 text-white font-bold rounded-xl transition-colors shadow-lg flex items-center justify-center gap-2 ${isSaving ? 'bg-indigo-400 cursor-not-allowed shadow-none' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200'}`}
-                                >
-                                    {isSaving && activeSaveAction === pendingOverwriteData.existing.id ? <Loader2 className="animate-spin" size={20} /> : null}
-                                    {isSaving && activeSaveAction === pendingOverwriteData.existing.id ? '處理中...' : '覆蓋更新 (取代舊有)'}
-                                </button>
-                                <button
-                                    onClick={() => handleSaveToCloud('FORCE_NEW')}
-                                    disabled={isSaving}
-                                    className={`w-full py-3 font-bold rounded-xl border transition-colors flex items-center justify-center gap-2 ${isSaving ? 'bg-slate-50 text-slate-400 border-slate-100 cursor-not-allowed' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'}`}
-                                >
-                                    {isSaving && activeSaveAction === 'FORCE_NEW' ? <Loader2 className="animate-spin" size={20} /> : null}
-                                    {isSaving && activeSaveAction === 'FORCE_NEW' ? '另存中...' : '另存為新模板'}
-                                </button>
-                                <button
-                                    onClick={() => setShowOverwriteConfirm(false)}
-                                    disabled={isSaving}
-                                    className="w-full py-3 text-slate-400 font-bold hover:text-slate-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                    取消
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
 
             <SettingsModal
                 show={showSettingsModal}
@@ -980,4 +520,3 @@ function App() {
 }
 
 export default App;
-

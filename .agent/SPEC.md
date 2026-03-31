@@ -1,6 +1,6 @@
 # 老虎機線獎辨識工具 — 完整功能規範書
 
-> **版本**: 2026-03-30  
+> **版本**: 2026-03-31 (P3 架構重構後)  
 > **目的**: 記錄本工具的所有功能、行為規範與細部規則，**任何改動前必須先比對此文件，確保不會破壞既有行為**。
 
 ---
@@ -27,28 +27,58 @@
 ## 1. 架構總覽
 
 ```
-App.jsx (頂層狀態管理與 Phase 間的膠水邏輯)
-├── hooks/useTemplateBuilder.js  — Phase 1 模板建立核心 Hook
-├── hooks/useSlotEngine.js       — Phase 2 結算引擎 Hook
-├── hooks/useGeminiVision.js     — Phase 3 AI 辨識 Hook
-├── hooks/useVideoProcessor.js   — Phase 4 影片偵測 Hook
-├── hooks/useCloud.js            — 雲端 CRUD Hook
-├── hooks/useLightbox.js         — 圖片放大燈箱
-├── hooks/useCanvasDrag.js       — Canvas 拖曳操作
-├── engine/computeGridResults.js — 結算計算純函式
-├── utils/symbolUtils.js         — 符號分類/判斷輔助函式
-├── utils/helpers.js             — 通用工具
-├── utils/constants.js           — GAS_URL / apiKey 常數
+App.jsx (~430 行，Phase 間膠水邏輯 + 快捷鍵)
+├── hooks/
+│   ├── useTemplateBuilder.js    — Phase 1 模板建立 (組合 Hook, ~310 行)
+│   │   ├── useCanvasLineExtractor.js — Canvas 線獎圖片提取 (~280 行)
+│   │   └── usePaytableProcessor.js   — 賠率表 AI OCR + 表格管理 (~240 行)
+│   ├── useTemplateIO.js         — 模板匯入/匯出/雲端存取統一 Hook
+│   ├── useSlotEngine.js         — Phase 2 結算引擎 Hook
+│   ├── useGeminiVision.js       — Phase 3 AI 辨識 Hook
+│   ├── useVideoProcessor.js     — Phase 4 影片偵測 Hook
+│   ├── useCloud.js              — 雲端 CRUD Hook
+│   ├── useLightbox.js           — 圖片放大燈箱
+│   └── useCanvasDrag.js         — Canvas 拖曳操作
+├── engine/computeGridResults.js — 結算計算純函式 (45 個單元測試)
+├── stores/useAppStore.js        — Zustand 全域狀態 (Phase 折疊、訊息、設定)
+├── config/promptTemplates.js    — AI Prompt 模板
+├── utils/
+│   ├── symbolUtils.js           — 符號分類/判斷輔助函式
+│   ├── helpers.js               — 通用工具
+│   └── constants.js             — GAS_URL / apiKey 常數
 └── components/
-    ├── Phase1Setup.jsx   — Phase 1 設定介面
-    ├── Phase2Manual.jsx  — Phase 2 手動盤面
-    ├── Phase3Vision.jsx  — Phase 3 AI 辨識
-    ├── Phase4Video.jsx   — Phase 4 影片偵測
-    ├── ResultView.jsx    — 結算結果面板（Phase 2 和 Phase 3 共用）
-    ├── CloudModal.jsx    — 雲端模板庫彈窗
-    ├── AppHeader.jsx     — 頂部標頭
-    ├── SettingsModal.jsx — 設定彈窗（API Key）
-    └── ToastMessage.jsx  — Toast 訊息元件
+    ├── Phase1Setup.jsx           — Phase 1 設定介面
+    ├── Phase2Manual.jsx          — Phase 2 手動盤面 (~260 行)
+    ├── Phase3Vision.jsx          — Phase 3 AI 辨識
+    ├── Phase4Video.jsx           — Phase 4 影片偵測
+    ├── ResultView.jsx            — 結算結果面板（Phase 2/3 共用）
+    ├── CloudModal.jsx            — 雲端模板庫彈窗
+    ├── AppHeader.jsx             — 頂部標頭
+    ├── SettingsModal.jsx         — 設定彈窗（API Key）
+    ├── ToastMessage.jsx          — Toast 訊息元件
+    ├── ErrorBoundary.jsx         — 錯誤邊界（各 Phase 獨立包覆）
+    ├── phase2/
+    │   └── BrushToolbar.jsx      — 畫筆工具列 + 符號選擇器
+    └── modals/
+        ├── PtConfirmModal.jsx    — AI 賠率分析前確認
+        ├── BuildErrorModal.jsx   — 建構錯誤提示
+        ├── PtCropModal.jsx       — 符號縮圖擷取 + Lightbox
+        ├── OverwriteConfirmModal.jsx — 雲端覆蓋確認
+        └── CashValueModal.jsx    — 金幣/乘倍數值輸入
+```
+
+### Hook 組合關係
+
+```
+App.jsx
+  ├─ useTemplateBuilder()      ← 組合下方兩個子 Hook，對外介面不變
+  │    ├─ useCanvasLineExtractor()  ← Canvas 圖片上傳/繪圖/拖拽/色彩分析
+  │    └─ usePaytableProcessor()    ← 賠率表文字/表格同步、AI OCR、縮圖
+  ├─ useTemplateIO()           ← 模板載入/匯出/雲端存取（消除重複 setState 序列）
+  ├─ useSlotEngine()           ← Phase 2 結算
+  ├─ useGeminiVision()         ← Phase 3 AI 辨識
+  ├─ useVideoProcessor()       ← Phase 4 影片偵測
+  └─ useCloud()                ← 雲端 CRUD
 ```
 
 ### 手風琴（Accordion）折疊機制
@@ -57,7 +87,7 @@ App.jsx (頂層狀態管理與 Phase 間的膠水邏輯)
 - 當點擊某個 Phase 標題列時：
   - 若它目前為「折疊」→ 展開它，並折疊其他所有 Phase。
   - 若它目前為「展開」→ 僅折疊它自己。
-- 此邏輯定義在 `App.jsx` 的 `handlePhaseToggle` 中。
+- 此邏輯定義在 Zustand store (`useAppStore`) 的 `handlePhaseToggle` 中。
 
 ---
 
@@ -471,18 +501,35 @@ localUserId (creatorId), actualForceId
 | 4 | `useTemplateBuilder.js` | `resetTemplateBuilder()` | 重置新狀態 |
 | 5 | `useTemplateBuilder.js` | `return { ... }` | 匯出新狀態與 setter |
 | 6 | `App.jsx` | `useTemplateBuilder()` 解構 | 接收新狀態 |
-| 7 | `App.jsx` | `handleSaveToCloud()` 呼叫處 | 傳入新欄位 |
-| 8 | `App.jsx` | `handleExportLocalTemplate()` 的 `data` | 包含新欄位 |
-| 9 | `App.jsx` | `handleImportLocalTemplate()` | 設為 state + fallback |
-| 10 | `App.jsx` | `loadCloudTemplate()` | 設 state + fallback |
-| 11 | `useCloud.js` | `saveTemplateToCloud` 的**參數解構** | 接收新欄位 |
-| 12 | `useCloud.js` | `saveTemplateToCloud` 的 `newTemplate` 物件 | 包含新欄位 |
-| 13 | `Phase1Setup.jsx` | Q&A 區域 | 新增對應的 toggle / 輸入 |
+| 7 | `useTemplateIO.js` | `applyTemplateData()` | 設定新欄位 state + fallback |
+| 8 | `useTemplateIO.js` | `handleExportLocalTemplate()` 的 `data` | 包含新欄位 |
+| 9 | `useTemplateIO.js` | `handleSaveToCloud()` 呼叫處 | 傳入新欄位 |
+| 10 | `useCloud.js` | `saveTemplateToCloud` 的**參數解構** | 接收新欄位 |
+| 11 | `useCloud.js` | `saveTemplateToCloud` 的 `newTemplate` 物件 | 包含新欄位 |
+| 12 | `Phase1Setup.jsx` | Q&A 區域 | 新增對應的 toggle / 輸入 |
+
+> ⚠️ **P3 重構後的重要變化**：模板匯入/匯出/雲端載入的邏輯已從 `App.jsx` 集中至 `useTemplateIO.js`。
+> `applyTemplateData()` 是雲端載入和本地匯入的**共用入口**，新增欄位只需改這一處。
+
+### ✅ 新增 Paytable 處理邏輯的 Checklist
+
+| # | 檔案 | 說明 |
+|---|---|---|
+| 1 | `usePaytableProcessor.js` | 賠率表 AI OCR、文字/表格同步、縮圖管理 |
+| 2 | `useTemplateBuilder.js` | 透過 wrapper 函數綁定 `setPaytableInput` 後轉發 |
+
+### ✅ 新增 Canvas 線獎提取邏輯的 Checklist
+
+| # | 檔案 | 說明 |
+|---|---|---|
+| 1 | `useCanvasLineExtractor.js` | 圖片上傳、Canvas 繪圖、拖拽、色彩分析 |
+| 2 | `useTemplateBuilder.js` | 直接轉發子 hook 的 return 值，無額外包裝 |
 
 ### ❌ 常見錯誤
 
 1. **`setXxx is not a function`**：Custom Hook 新增了 state，卻忘記在 `return { ... }` 匯出 setter。
 2. **`ReferenceError: xxx is not defined`**：`useCloud.js` 的 `saveTemplateToCloud` 參數宣告處忘記解構新欄位。
-3. **雲端載入後新欄位被重置為 false**：`loadCloudTemplate` 或 `performAutoBuild` 中沒有正確讀取 `data.newField`，或舊版雲端資料不含此欄位且沒寫 fallback。
+3. **雲端載入後新欄位被重置為 false**：`useTemplateIO.js` 的 `applyTemplateData` 中沒有正確讀取 `data.newField`，或舊版雲端資料不含此欄位且沒寫 fallback。
 4. **方向鍵失效**：存在多個 `useEffect` 都在監聽 `keydown` 事件，後者的 `e.preventDefault()` 蓋掉前者。應確保只有一個統一的方向鍵監聽器。
-5. **传送盤面後 React 不重新渲染**：深拷貝時使用 `JSON.parse(JSON.stringify())` 可能轉換失敗。建議使用 `.map(row => [...row])` 做淺層展開式深拷貝。
+5. **傳送盤面後 React 不重新渲染**：深拷貝時使用 `JSON.parse(JSON.stringify())` 可能轉換失敗。建議使用 `.map(row => [...row])` 做淺層展開式深拷貝。
+6. **usePaytableProcessor 的函數需要 `setPaytableInput`**：由於 `paytableInput` 狀態保留在 `useTemplateBuilder` 中，`usePaytableProcessor` 的 `handlePtTableChange` 等函數需要透過參數接收 `setPaytableInput`。`useTemplateBuilder` 中使用 wrapper 函數綁定此依賴。
