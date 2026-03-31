@@ -66,6 +66,7 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
         lastTrigger: '',
         error: null
     });
+    const debugThrottleRef = useRef(0); // 節流 debug setState
 
     // --- 核心引用 ---
     const videoRef = useRef(null);
@@ -258,8 +259,8 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
 
         try {
             const video = videoRef.current;
-            const rows = template?.GridRows || 3;
-            const cols = template?.GridCols || 5;
+            const rows = template?.rows || 3;
+            const cols = template?.cols || 5;
 
             // 1. 初始化掃描 Canvas (效能優化)
             if (!scanCanvasRef.current) {
@@ -296,8 +297,6 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
 
             // 4. 格點位移比對
             if (lastFrameRef.current && lastFrameRef.current.length === binarized.length) {
-                const cols = template?.GridCols || template?.grid?.cols || 5;
-                const rows = template?.GridRows || template?.grid?.rows || 3;
                 const cellW = Math.floor(targetW / cols);
                 const cellH = Math.floor(targetH / rows);
 
@@ -375,8 +374,8 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
                         if (now - lastBigWinTimeRef.current < 500) {
                             nextStatus = 'IDLE';
                         } 
-                        // [靈敏度優化] 調降啟動覆蓋率門檻 (80% -> 40%) 並放寬偵測窗口 (150ms -> 200ms)
-                        else if (coverage > 40) {
+                        // [靈敏度優化] 使用 motionCoverageMin 作為啟動門檻
+                        else if (coverage > motionCoverageMin * 0.6) {
                             const timeDiff = now - firstMotionTimeRef.current;
                             if (timeDiff < 200 && !isLineHidden) {
                                 nextStatus = 'SPINNING';
@@ -405,16 +404,19 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
 
                 spinStateRef.current = nextStatus;
 
-                // 強制更新除錯面板
-                setDebugData({
-                    diff: avgDiff.toFixed(1),
-                    coverage: coverage.toFixed(1),
-                    vLineRate: vLineMotionRate.toFixed(1),
-                    ratio: motionRatio.toFixed(2),
-                    isBigWin: isLineHidden,
-                    status: nextStatus,
-                    error: null
-                });
+                // 節流更新除錯面板 (每 100ms 最多更新一次，減少 re-render)
+                if (now - debugThrottleRef.current > 100) {
+                    debugThrottleRef.current = now;
+                    setDebugData({
+                        diff: avgDiff.toFixed(1),
+                        coverage: coverage.toFixed(1),
+                        vLineRate: vLineMotionRate.toFixed(1),
+                        ratio: motionRatio.toFixed(2),
+                        isBigWin: isLineHidden,
+                        status: nextStatus,
+                        error: null
+                    });
+                }
             }
 
             lastFrameRef.current = binarized;

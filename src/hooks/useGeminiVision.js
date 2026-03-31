@@ -2,6 +2,12 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { toPx, toPct, fetchWithRetry, resizeImageBase64 } from '../utils/helpers';
 import { isCashSymbol, isCollectSymbol, isDynamicMultiplierSymbol } from '../utils/symbolUtils';
 import { apiKey } from '../utils/constants';
+import {
+    buildCashRule, buildDynamicMultiplierRule, buildMultiplierReelRule,
+    buildBetRule, buildPickRule, buildConfusableWarning,
+    buildVisionSystemPrompt, buildVisionGenerationConfig,
+    buildMultiplierImagePrompt, buildBetImagePrompt
+} from '../config/promptTemplates';
 
 const CACHE_KEYS = {
     MAIN: 'SLOT_P3_CACHE_MAIN',
@@ -468,50 +474,17 @@ export function useGeminiVision({
         }
 
         const hasCashOrCollect = availableSymbols.some(sym => isCashSymbol(sym, template.jpConfig) || isCollectSymbol(sym));
-        let cashRule = "Ignore small multiplier amounts on coins. Match base symbols only. (Do NOT ignore standard symbols that are numbers, e.g., '7', '10', '9'). ";
-
-        if (hasCashOrCollect) {
-            if (collectShowsTotalWin) {
-                cashRule = "CASH/COLLECT RULES: In this specific game, coin symbols disappear from the grid upon collection, and the summarized win value is displayed directly on the COLLECT symbol itself! If you see a shape that matches a COLLECT symbol from reference images AND it has a numeric value displayed on it, you MUST output it as COLLECT_{full_numeric_value} (e.g., if you see a fisherman with 1500000, output COLLECT_1500000). Do NOT use CASH_ prefix for this. For any empty grid cells left behind by vanished coins, you MUST output \"\" (empty string). Any standalone coins remaining should be CASH_{value}. Convert K=1000, M=1000000. ";
-            } else {
-                cashRule = "CASH/COLLECT RULES: If a cell contains a coin/token/gem with a numeric value displayed on it, you MUST identify it — do NOT leave it empty. First, check if the shape matches a COLLECT symbol from the reference images. If it is a COLLECT symbol AND has a numeric value (e.g. COLLECT_500 or 1.5M), format it as COLLECT_{full_numeric_value} (e.g., 1.5M → COLLECT_1500000, 500 → COLLECT_500). DO NOT mistake COLLECT symbols as CASH. If it matches COLLECT but has NO explicit number, return the COLLECT symbol name exactly as listed. If it does not match COLLECT but has a standalone numeric value, return it as CASH_{full_numeric_value}. Convert K=1000, M=1000000, B=1000000000. If the symbol functions as BOTH WILD and CASH, you MUST use the format CASH_WILD_{value} (e.g. CASH_WILD_500). ";
-            }
-        }
-
-        const dynamicMultiplierRule = template?.hasDynamicMultiplier
-            ? "xN RULE: There is a generic multiplier wild symbol in this game. If you see a symbol containing a multiplier value (e.g., '5x', '10X'), extract it and output exactly in the format 'x{value}' (e.g., 'x5', 'x10'). Do NOT ignore the number. "
-            : "";
-
-        const multiplierRule = template.hasMultiplierReel
-            ? `The LAST column (Reel ${template.cols}) is a MULTIPLIER REEL. In Image 2, there might be a bar with multiple multiplier values (e.g. x1, x2, x3, x5). YOU MUST ONLY extract the "Highlighted" or "Activated" value (usually indicated by being brighter, yellow/gold color, or having a distinct frame vs the dimmed/dark green inactive ones). Output ONLY the format 'xN' (e.g., if you see '5x' or '5', output 'x5') for the center cell (Row ${Math.floor(template.rows / 2) + 1}). Top and bottom cells of this reel are empty, output "". `
-            : "";
-
-        const betRule = hasBetBox
-            ? `Image 3 is identifying the BET amount. YOU MUST extract the numeric value ONLY (e.g., if you see "$1,000" or "1000", output 1000). Return it in the "bet" field of your JSON response.`
-            : "";
-
-        const pickRule = template.hasMultiplierReel
-            ? `Rules: For columns 1 to ${template.cols - 1}, pick closest symbol from list only. For the LAST column, do NOT use the list, extract the raw text if any. `
-            : `Rules: Pick closest symbol from list only. `;
-
-        // 動態偵測易混淆符號對並生成警告
-        const confusablePairs = [
-            ['二條', '五條'], ['二筒', '五筒'],
-            ['二條', '二條'], ['二筒', '五條'],
-            ['WILD_元寶', 'SCATTER_錢幣'],
-            ['橘子', '檸檬']
-        ];
-        const activeConfusables = confusablePairs.filter(
-            ([a, b]) => availableSymbols.includes(a) && availableSymbols.includes(b)
-        );
-        const confusableWarning = activeConfusables.length > 0
-            ? `CONFUSABLE PAIRS WARNING: The following symbols look very similar. You MUST compare each cell carefully against the reference images before deciding: ${activeConfusables.map(([a, b]) => `${a} vs ${b}`).join(', ')}. Count the exact number of bars/dots/strokes to distinguish them. `
-            : '';
+        const cashRule = buildCashRule(hasCashOrCollect, collectShowsTotalWin);
+        const dynamicMultiplierRule = buildDynamicMultiplierRule(template?.hasDynamicMultiplier);
+        const multiplierRule = buildMultiplierReelRule(template);
+        const betRule = buildBetRule(hasBetBox);
+        const pickRule = buildPickRule(template);
+        const confusableWarning = buildConfusableWarning(availableSymbols);
 
         const fixedPrefixParts = [
             { text: referenceText },
             ...referenceImages,
-            { text: `Grid: ${template.rows}R x ${template.cols}C. Symbols: [${availableSymbols.join(',')}]. ${pickRule}${cashRule}${multiplierRule}${dynamicMultiplierRule}${betRule}${confusableWarning}JP names as-is. Dimmed/grayed cells: identify by shape. Truly unrecognizable cells: \"\". VISUAL EFFECTS: Some cells may be partially obscured by animation effects (sparkles, fire, glow, lightning, smoke, particle trails, shine, win-line highlights). These are NOT part of the symbol. Look THROUGH the effects and identify the underlying symbol based on its visible outline, color, and shape. Winning cells are often the ones with effects, so they are important — do NOT leave them empty just because of visual noise. IMPORTANT: The image has RED grid lines drawn on it to show exact cell boundaries. Analyze each cell INDIVIDUALLY within its red-bordered area. Do NOT let adjacent cell content influence your identification. Scan Row 1 left-to-right first, then Row 2, then Row 3, etc. Always identify each cell as a WHOLE tile/symbol. Do NOT decompose a single tile into sub-parts. For complex symbols (like Mahjong tiles with multiple bars/dots), match the ENTIRE tile pattern against reference images as one unit. If a cell clearly contains a visible symbol or value, you MUST identify it — do not skip it. Return a JSON object with \"grid\" (${template.rows}x${template.cols} 2D array) and \"bet\" (number).` }
+            { text: buildVisionSystemPrompt(template, availableSymbols, pickRule, cashRule, multiplierRule, dynamicMultiplierRule, betRule, confusableWarning) }
         ];
 
         for (let i = 0; i < toProcess.length; i++) {
@@ -582,7 +555,7 @@ export function useGeminiVision({
 
                     currentParts.push({ text: "Image 2: Multiplier Cell (Center cell of the last column)\n" });
                     currentParts.push({ inlineData: { mimeType: resized2.mimeType, data: resized2.base64 } });
-                    currentParts.push({ text: "Please extract the symbols from Image 1 for the main grid, and strictly extract the multiplier value for the center cell of the last column (Column " + template.cols + ") from Image 2. Output ONLY the format \"xN\", for example, \"5x\" or \"5\" should be returned as \"x5\". Empty cells in the last column should be \"\"." });
+                    currentParts.push({ text: buildMultiplierImagePrompt(template) });
                 }
 
                 if (hasBetBox) {
@@ -601,7 +574,7 @@ export function useGeminiVision({
 
                     currentParts.push({ text: "Image 3: BET Area\n" });
                     currentParts.push({ inlineData: { mimeType: resized3.mimeType, data: resized3.base64 } });
-                    currentParts.push({ text: "Please extract the numeric BET amount from Image 3." });
+                    currentParts.push({ text: buildBetImagePrompt() });
                 }
 
                 const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${effectiveApiKey}`;
@@ -611,24 +584,7 @@ export function useGeminiVision({
                         role: "user",
                         parts: currentParts
                     }],
-                    generationConfig: {
-                        temperature: 0,
-                        responseMimeType: "application/json",
-                        responseSchema: {
-                            type: "OBJECT",
-                            properties: {
-                                grid: {
-                                    type: "ARRAY",
-                                    items: {
-                                        type: "ARRAY",
-                                        items: { type: "STRING" }
-                                    }
-                                },
-                                bet: { type: "NUMBER" }
-                            },
-                            required: ["grid"]
-                        }
-                    }
+                    generationConfig: buildVisionGenerationConfig()
                 };
 
                 const result = await fetchWithRetry(url, {

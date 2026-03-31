@@ -20,36 +20,43 @@ import { useTemplateBuilder } from './hooks/useTemplateBuilder';
 import { useSlotEngine } from './hooks/useSlotEngine';
 import { useVideoProcessor } from './hooks/useVideoProcessor';
 import Phase1Setup from './components/Phase1Setup';
+import ErrorBoundary from './components/ErrorBoundary';
 import Phase2Manual from './components/Phase2Manual';
 import Phase3Vision from './components/Phase3Vision';
 import Phase4Video from './components/Phase4Video';
+import useAppStore from './stores/useAppStore';
 function App() {
     // --- 預設資料清空 ---
     const defaultPaytable = "";
     const defaultJpConfig = { "MINI": "", "MINOR": "", "MAJOR": "", "GRAND": "" };
 
-    // --- 本機金鑰設定 ---
-    const [customApiKey, setCustomApiKey] = useState(() => localStorage.getItem('gemini_api_key') || '');
-    const [showSettingsModal, setShowSettingsModal] = useState(false);
+    // --- Zustand Store (取代 prop drilling) ---
+    const customApiKey = useAppStore(s => s.customApiKey);
+    const setCustomApiKey = useAppStore(s => s.setCustomApiKey);
+    const showSettingsModal = useAppStore(s => s.showSettingsModal);
+    const setShowSettingsModal = useAppStore(s => s.setShowSettingsModal);
 
-    const [localUserId] = useState(() => {
-        let uid = localStorage.getItem('slot_local_uid');
-        if (!uid) { uid = Math.random().toString(36).substring(2, 15); localStorage.setItem('slot_local_uid', uid); }
-        return uid;
-    });
+    const isTemplateMinimized = useAppStore(s => s.isTemplateMinimized);
+    const isPhase2Minimized = useAppStore(s => s.isPhase2Minimized);
+    const isPhase3Minimized = useAppStore(s => s.isPhase3Minimized);
+    const isPhase4Minimized = useAppStore(s => s.isPhase4Minimized);
+    const setIsTemplateMinimized = useAppStore(s => s.setIsTemplateMinimized);
+    const setIsPhase2Minimized = useAppStore(s => s.setIsPhase2Minimized);
+    const setIsPhase3Minimized = useAppStore(s => s.setIsPhase3Minimized);
+    const setIsPhase4Minimized = useAppStore(s => s.setIsPhase4Minimized);
+    const handlePhaseToggle = useAppStore(s => s.handlePhaseToggle);
 
-    // --- 狀態管理: Phase 1 (基本資訊與模板) ---
-    const [platformName, setPlatformName] = useState('');
-    const [gameName, setGameName] = useState('');
+    const templateMessage = useAppStore(s => s.templateMessage);
+    const setTemplateMessage = useAppStore(s => s.setTemplateMessage);
 
-    const [linesMode, setLinesMode] = useState('image');
+    const totalBalance = useAppStore(s => s.totalBalance);
+    const setTotalBalance = useAppStore(s => s.setTotalBalance);
+    const isBalanceExpanded = useAppStore(s => s.isBalanceExpanded);
+    const setIsBalanceExpanded = useAppStore(s => s.setIsBalanceExpanded);
 
-    const [isTemplateMinimized, setIsTemplateMinimized] = useState(false);
-    const [isPhase2Minimized, setIsPhase2Minimized] = useState(true);
-    const [isPhase3Minimized, setIsPhase3Minimized] = useState(true);
-    const [isPhase4Minimized, setIsPhase4Minimized] = useState(true);
+    const showCloudModal = useAppStore(s => s.showCloudModal);
+    const setShowCloudModal = useAppStore(s => s.setShowCloudModal);
 
-    const [templateMessage, setTemplateMessage] = useState('');
 
     // --- Google Sheets 雲端狀態管理 ---
     const {
@@ -62,10 +69,19 @@ function App() {
         handleForceRefreshCloud, handleDeleteTemplate
     } = useCloud();
 
-    const [showCloudModal, setShowCloudModal] = useState(false);
-    const [templateName, setTemplateName] = useState('');
     const [showOverwriteConfirm, setShowOverwriteConfirm] = useState(false);
     const [pendingOverwriteData, setPendingOverwriteData] = useState(null);
+    const [templateName, setTemplateName] = useState('');
+
+    const [localUserId] = useState(() => {
+        let uid = localStorage.getItem('slot_local_uid');
+        if (!uid) { uid = Math.random().toString(36).substring(2, 15); localStorage.setItem('slot_local_uid', uid); }
+        return uid;
+    });
+
+    const [platformName, setPlatformName] = useState('');
+    const [gameName, setGameName] = useState('');
+    const [linesMode, setLinesMode] = useState('image');
 
 
     const {
@@ -532,40 +548,9 @@ function App() {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [isTemplateMinimized, isPhase2Minimized, isPhase3Minimized, visionGrid, calcResults, visionCalcResults, handleTransferVisionToManual, handleReturnToVision, handleBuildTemplate]);
 
-    const [totalBalance, setTotalBalance] = useState(() => {
-        const saved = localStorage.getItem('slot_total_balance');
-        return saved ? parseFloat(saved) : 0;
-    });
-
-    const [isBalanceExpanded, setIsBalanceExpanded] = useState(false);
-
-    useEffect(() => {
-        localStorage.setItem('slot_total_balance', totalBalance.toString());
-    }, [totalBalance]);
-
     const hasApiKey = !!(customApiKey.trim() || apiKey);
 
-    // --- 手風琴 (Accordion) 切換邏輯 ---
-    const handlePhaseToggle = useCallback((phaseKey) => {
-        const isCurrentlyMinimized = {
-            phase1: isTemplateMinimized,
-            phase2: isPhase2Minimized,
-            phase3: isPhase3Minimized,
-            phase4: isPhase4Minimized,
-        }[phaseKey];
 
-        if (isCurrentlyMinimized) {
-            setIsTemplateMinimized(phaseKey !== 'phase1');
-            setIsPhase2Minimized(phaseKey !== 'phase2');
-            setIsPhase3Minimized(phaseKey !== 'phase3');
-            setIsPhase4Minimized(phaseKey !== 'phase4');
-        } else {
-            if (phaseKey === 'phase1') setIsTemplateMinimized(true);
-            else if (phaseKey === 'phase2') setIsPhase2Minimized(true);
-            else if (phaseKey === 'phase3') setIsPhase3Minimized(true);
-            else if (phaseKey === 'phase4') setIsPhase4Minimized(true);
-        }
-    }, [isTemplateMinimized, isPhase2Minimized, isPhase3Minimized, isPhase4Minimized]);
 
     // --- 上下方向鍵切換 Phase 與盤面傳送 ---
     useEffect(() => {
@@ -627,6 +612,7 @@ function App() {
 
                 <AppHeader onOpenSettings={() => setShowSettingsModal(true)} />
 
+                <ErrorBoundary label="Phase 1: 模板設定">
                 <Phase1Setup
                     handleClearTemplate={handleClearTemplate}
                     templateMessage={templateMessage}
@@ -663,7 +649,9 @@ function App() {
                     showPtModal={showPtModal} setShowPtModal={setShowPtModal}
                     hasApiKey={hasApiKey}
                 />
+                </ErrorBoundary>
 
+                <ErrorBoundary label="Phase 2: 手動結算">
                 <Phase2Manual
                     template={template}
                     isPhase2Minimized={isPhase2Minimized} setIsPhase2Minimized={setIsPhase2Minimized}
@@ -684,7 +672,9 @@ function App() {
                     setTemplateMessage={setTemplateMessage}
                     isBalanceExpanded={isBalanceExpanded} setIsBalanceExpanded={setIsBalanceExpanded}
                 />
+                </ErrorBoundary>
 
+                <ErrorBoundary label="Phase 3: AI 辨識">
                 <Phase3Vision
                     template={template}
                     isPhase3Minimized={isPhase3Minimized} setIsPhase3Minimized={setIsPhase3Minimized}
@@ -705,7 +695,9 @@ function App() {
                     setTemplateMessage={setTemplateMessage}
                     isBalanceExpanded={isBalanceExpanded} setIsBalanceExpanded={setIsBalanceExpanded}
                 />
+                </ErrorBoundary>
 
+                <ErrorBoundary label="Phase 4: 影片偵測">
                 <Phase4Video
                     isPhase4Minimized={isPhase4Minimized} setIsPhase4Minimized={setIsPhase4Minimized}
                     onToggle={() => handlePhaseToggle('phase4')}
@@ -726,6 +718,7 @@ function App() {
                     template={template}
                     debugData={debugData}
                 />
+                </ErrorBoundary>
 
             </div>
 

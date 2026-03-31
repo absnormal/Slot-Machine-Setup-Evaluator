@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { toPx, toPct, fetchWithRetry, ptFileToBase64, resizeImageBase64, parseBool } from '../utils/helpers';
 import { isCashSymbol, isCollectSymbol, isWildSymbol } from '../utils/symbolUtils';
+import { buildPaytablePrompt, buildPaytableGenerationConfig } from '../config/promptTemplates';
 const defaultPaytable = "";
 const defaultJpConfig = { "MINI": "", "MINOR": "", "MAJOR": "", "GRAND": "" };
 
@@ -493,51 +494,11 @@ export function useTemplateBuilder({
                 inlineData: { mimeType: img.file.type, data: img.base64 }
             }));
 
-            const promptText = `
-            請仔細分析圖片中的「老虎機賠率表 (Paytable)」。
-            任務目標：辨識出圖片中【每一個】圖案符號，以及它對應的連線數量(通常為 5, 4, 3, 2連線，或是雙重符號遊戲中的 10, 9, 8, 7, 6連線)所獲得的「賠率分數」。
-
-            命名規則：
-            1. 若符號上有寫 "WILD"、"百搭"、或取代其他圖案的功能，請統一命名為 "WILD"。
-            2. 若符號上有寫 "SCATTER" 字樣，請統一在名稱中包含 "SCATTER" (例如: 星星SCATTER)。
-            3. 若符號有「收集」其他符號分數的功能(如漁夫)，請在名稱中包含 "COLLECT" (若同時也是百搭，請命名為 WILD_COLLECT)。
-            4. 若符號是帶有數字的現金/金幣，請統一命名為 "CASH" (不用加上數字，這裡是賠率表提取)。
-            5. 若為英文字母或數字，請直接使用：A, K, Q, J, 10, 9。
-            6. 若為一般圖案，請根據外觀用「繁體中文」直觀命名 (例如: 金龍, 西瓜, 皇冠)。
-            7. 符號名稱 (name) 必須是連續字串，不可包含空白或特殊符號。
-
-            數值規則：
-            1. 提取對應的賠率數字。如果某個連線數量(例如 2 連線)沒有標示數字，請補 0。
-            2. match1 (1連線) 的賠率請一律填寫 0。
-
-            請嚴格按照 JSON Schema 回傳陣列 (Array)，包含所有辨識到的符號，絕對不可回傳空陣列或忽略任何圖案！
-          `;
+            const promptText = buildPaytablePrompt();
 
             const payload = {
                 contents: [{ role: "user", parts: [{ text: promptText }, ...imageParts] }],
-                generationConfig: {
-                    responseMimeType: "application/json",
-                    responseSchema: {
-                        type: "ARRAY",
-                        items: {
-                            type: "OBJECT",
-                            properties: {
-                                name: { type: "STRING", description: "符號名稱" },
-                                match1: { type: "NUMBER", description: "1連線賠率" },
-                                match2: { type: "NUMBER", description: "2連線賠率" },
-                                match3: { type: "NUMBER", description: "3連線賠率" },
-                                match4: { type: "NUMBER", description: "4連線賠率" },
-                                match5: { type: "NUMBER", description: "5連線賠率" },
-                                match6: { type: "NUMBER", description: "6連線賠率" },
-                                match7: { type: "NUMBER", description: "7連線賠率" },
-                                match8: { type: "NUMBER", description: "8連線賠率" },
-                                match9: { type: "NUMBER", description: "9連線賠率" },
-                                match10: { type: "NUMBER", description: "10連線賠率" }
-                            },
-                            required: ["name", "match1", "match2", "match3", "match4", "match5"]
-                        }
-                    }
-                }
+                generationConfig: buildPaytableGenerationConfig()
             };
 
             const result = await fetchWithRetry(url, {
