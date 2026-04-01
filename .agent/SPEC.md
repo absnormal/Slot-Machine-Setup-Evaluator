@@ -34,7 +34,9 @@ App.jsx (~430 行，Phase 間膠水邏輯 + 快捷鍵)
 │   │   └── usePaytableProcessor.js   — 賠率表 AI OCR + 表格管理 (~240 行)
 │   ├── useTemplateIO.js         — 模板匯入/匯出/雲端存取統一 Hook
 │   ├── useSlotEngine.js         — Phase 2 結算引擎 Hook
-│   ├── useGeminiVision.js       — Phase 3 AI 辨識 Hook
+│   ├── useGeminiVision.js       — Phase 3 AI 辨識 (組合 Hook, ~270 行)
+│   │   ├── useVisionImageManager.js  — 圖片清單 CRUD 與切換
+│   │   └── useVisionBatchProcessor.js— AI 批次辨識與進度控制
 │   ├── useVideoProcessor.js     — Phase 4 影片偵測 Hook
 │   ├── useCloud.js              — 雲端 CRUD Hook
 │   ├── useLightbox.js           — 圖片放大燈箱
@@ -76,7 +78,9 @@ App.jsx
   │    └─ usePaytableProcessor()    ← 賠率表文字/表格同步、AI OCR、縮圖
   ├─ useTemplateIO()           ← 模板載入/匯出/雲端存取（消除重複 setState 序列）
   ├─ useSlotEngine()           ← Phase 2 結算
-  ├─ useGeminiVision()         ← Phase 3 AI 辨識
+  ├─ useGeminiVision()         ← 組合下方兩個子 Hook，負責 ROI 與 Canvas 繪圖
+  │    ├─ useVisionImageManager()   ← 圖片上傳/切換/管理
+  │    └─ useVisionBatchProcessor() ← Gemini API 批次辨識與進度
   ├─ useVideoProcessor()       ← Phase 4 影片偵測
   └─ useCloud()                ← 雲端 CRUD
 ```

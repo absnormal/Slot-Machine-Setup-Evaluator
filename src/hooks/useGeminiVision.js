@@ -1,13 +1,7 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
-import { toPx, toPct, fetchWithRetry, resizeImageBase64 } from '../utils/helpers';
-import { isCashSymbol, isCollectSymbol, isDynamicMultiplierSymbol } from '../utils/symbolUtils';
-import { apiKey } from '../utils/constants';
-import {
-    buildCashRule, buildDynamicMultiplierRule, buildMultiplierReelRule,
-    buildBetRule, buildPickRule, buildConfusableWarning,
-    buildVisionSystemPrompt, buildVisionGenerationConfig,
-    buildMultiplierImagePrompt, buildBetImagePrompt
-} from '../config/promptTemplates';
+import { useState, useEffect } from 'react';
+import { toPx, toPct } from '../utils/helpers';
+import { useVisionImageManager } from './useVisionImageManager';
+import { useVisionBatchProcessor } from './useVisionBatchProcessor';
 
 const CACHE_KEYS = {
     MAIN: 'SLOT_P3_CACHE_MAIN',
@@ -34,25 +28,44 @@ export function useGeminiVision({
     visionCanvasRef,
     isPhase3Minimized
 }) {
-    const [visionImages, setVisionImages] = useState([]);
-    const [activeVisionId, setActiveVisionId] = useState(null);
+    const imageManager = useVisionImageManager(isPhase3Minimized);
+    const {
+        visionImages, setVisionImages,
+        activeVisionId, setActiveVisionId,
+        activeVisionImg, visionImageObj, visionImageSrc, visionGrid, visionError,
+        handleVisionImageUpload, removeVisionImage, goToPrevVisionImage, goToNextVisionImage
+    } = imageManager;
 
     const [visionP1, setVisionP1] = useState(() => loadCache(CACHE_KEYS.MAIN, { x: 10, y: 10, w: 80, h: 80 }));
     const [visionP1Mult, setVisionP1Mult] = useState(() => loadCache(CACHE_KEYS.MULT, { x: 92, y: 45, w: 6, h: 10 }));
     const [visionP1Bet, setVisionP1Bet] = useState(() => loadCache(CACHE_KEYS.BET, { x: 80, y: 92, w: 15, h: 5 }));
-    const [isVisionProcessing, setIsVisionProcessing] = useState(false);
-    const isVisionCanceled = useRef(false);
-    const [isVisionStopping, setIsVisionStopping] = useState(false);
-    const [visionBatchProgress, setVisionBatchProgress] = useState({ current: 0, total: 0 });
     const [hasBetBox, setHasBetBox] = useState(false);
     const [collectShowsTotalWin, setCollectShowsTotalWin] = useState(false);
     const [visionDragState, setVisionDragState] = useState(null);
 
-    const activeVisionImg = visionImages.find(img => img.id === activeVisionId) || null;
-    const visionImageObj = activeVisionImg?.obj || null;
-    const visionImageSrc = activeVisionImg?.previewUrl || null;
-    const visionGrid = activeVisionImg?.grid || null;
-    const visionError = activeVisionImg?.error || null;
+    const batchProcessor = useVisionBatchProcessor({
+        visionImages,
+        setVisionImages,
+        setActiveVisionId,
+        template,
+        availableSymbols,
+        customApiKey,
+        visionP1,
+        visionP1Mult,
+        visionP1Bet,
+        hasBetBox,
+        collectShowsTotalWin,
+        setTemplateMessage,
+        setTemplateError
+    });
+
+    const {
+        isVisionProcessing,
+        isVisionStopping,
+        visionBatchProgress,
+        performAIVisionBatchMatching,
+        cancelVisionProcessing
+    } = batchProcessor;
 
     // Canvas drawing effect
     useEffect(() => {
@@ -334,358 +347,6 @@ export function useGeminiVision({
     };
 
     const handleVisionMouseUp = () => setVisionDragState(null);
-
-    const handleVisionImageUpload = (e) => {
-        const files = Array.from(e.target.files);
-        if (files.length === 0) return;
-
-        let loadedCount = 0;
-        const newImgs = [];
-
-        files.forEach(file => {
-            const reader = new FileReader();
-            reader.onload = (evt) => {
-                const img = new Image();
-                img.onload = () => {
-                    newImgs.push({
-                        id: Math.random().toString(36).substring(7),
-                        file,
-                        previewUrl: evt.target.result,
-                        obj: img,
-                        grid: null,
-                        error: ''
-                    });
-                    loadedCount++;
-                    if (loadedCount === files.length) {
-                        setVisionImages(prev => {
-                            const updated = [...prev, ...newImgs];
-                            if (!activeVisionId && updated.length > 0) {
-                                setActiveVisionId(updated[0].id);
-                            }
-                            return updated;
-                        });
-                    }
-                };
-                img.src = evt.target.result;
-            };
-            reader.readAsDataURL(file);
-        });
-        e.target.value = '';
-    };
-
-    const removeVisionImage = (id) => {
-        setVisionImages(prev => {
-            if (id === 'ALL') {
-                setActiveVisionId(null);
-                return [];
-            }
-            const filtered = prev.filter(img => img.id !== id);
-            if (activeVisionId === id) {
-                setActiveVisionId(filtered.length > 0 ? filtered[0].id : null);
-            }
-            return filtered;
-        });
-    };
-
-    const goToPrevVisionImage = useCallback(() => {
-        if (!activeVisionId || visionImages.length === 0) return;
-        const curIdx = visionImages.findIndex(img => img.id === activeVisionId);
-        if (curIdx > 0) {
-            setActiveVisionId(visionImages[curIdx - 1].id);
-        }
-    }, [activeVisionId, visionImages]);
-
-    const goToNextVisionImage = useCallback(() => {
-        if (!activeVisionId || visionImages.length === 0) return;
-        const curIdx = visionImages.findIndex(img => img.id === activeVisionId);
-        if (curIdx >= 0 && curIdx < visionImages.length - 1) {
-            setActiveVisionId(visionImages[curIdx + 1].id);
-        }
-    }, [activeVisionId, visionImages]);
-
-    useEffect(() => {
-        const handleKeyDown = (e) => {
-            if (['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return;
-            if (isPhase3Minimized) return;
-
-            if (e.key === 'ArrowLeft') {
-                goToPrevVisionImage();
-            } else if (e.key === 'ArrowRight') {
-                goToNextVisionImage();
-            }
-        };
-
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [goToPrevVisionImage, goToNextVisionImage, isPhase3Minimized]);
-
-    const performAIVisionBatchMatching = async () => {
-        if (visionImages.length === 0 || !template) {
-            setTemplateError("請先上傳截圖，並確保已經完成 Phase 1 模板設定！");
-            return;
-        }
-
-        // 儲存選取框位置到快取
-        try {
-            localStorage.setItem(CACHE_KEYS.MAIN, JSON.stringify(visionP1));
-            localStorage.setItem(CACHE_KEYS.MULT, JSON.stringify(visionP1Mult));
-            localStorage.setItem(CACHE_KEYS.BET, JSON.stringify(visionP1Bet));
-        } catch (e) {
-            console.warn("Failed to save vision box cache:", e);
-        }
-
-        const effectiveApiKey = customApiKey.trim() || apiKey;
-        const modelName = "gemini-3.1-flash-lite-preview";
-
-        let toProcess = visionImages.filter(img => !img.grid);
-        if (toProcess.length === 0) {
-            toProcess = visionImages;
-        }
-
-        setIsVisionProcessing(true);
-        setIsVisionStopping(false);
-        isVisionCanceled.current = false;
-        setVisionBatchProgress({ current: 0, total: toProcess.length });
-        setTemplateMessage(`AI 準備批次處理 ${toProcess.length} 張盤面中...`);
-
-        let currentVisionImages = [...visionImages];
-
-        const referenceImages = [];
-        let referenceText = "Symbol references:\n";
-        let partIndex = 1;
-
-        for (const symbol in template.symbolImagesAll) {
-            const urls = template.symbolImagesAll[symbol];
-            if (urls && urls.length > 0) {
-                referenceText += `- ${symbol}: img ${urls.map((_, i) => partIndex + i).join(',')}\n`;
-                for (const url of urls) {
-                    try {
-                        const resized = await resizeImageBase64(url, 256, 0.7);
-                        referenceImages.push({
-                            inlineData: { mimeType: resized.mimeType, data: resized.base64 }
-                        });
-                    } catch {
-                        const b64 = url.split(',')[1];
-                        if (b64) referenceImages.push({ inlineData: { mimeType: "image/png", data: b64 } });
-                    }
-                    partIndex++;
-                }
-            }
-        }
-
-        const hasCashOrCollect = availableSymbols.some(sym => isCashSymbol(sym, template.jpConfig) || isCollectSymbol(sym));
-        const cashRule = buildCashRule(hasCashOrCollect, collectShowsTotalWin);
-        const dynamicMultiplierRule = buildDynamicMultiplierRule(template?.hasDynamicMultiplier);
-        const multiplierRule = buildMultiplierReelRule(template);
-        const betRule = buildBetRule(hasBetBox);
-        const pickRule = buildPickRule(template);
-        const confusableWarning = buildConfusableWarning(availableSymbols);
-
-        const fixedPrefixParts = [
-            { text: referenceText },
-            ...referenceImages,
-            { text: buildVisionSystemPrompt(template, availableSymbols, pickRule, cashRule, multiplierRule, dynamicMultiplierRule, betRule, confusableWarning) }
-        ];
-
-        for (let i = 0; i < toProcess.length; i++) {
-            if (isVisionCanceled.current) {
-                setTemplateMessage("已停止批量辨識");
-                break;
-            }
-
-            const targetImg = toProcess[i];
-            const imgIndex = currentVisionImages.findIndex(img => img.id === targetImg.id);
-
-            setActiveVisionId(targetImg.id);
-            setVisionBatchProgress({ current: i + 1, total: toProcess.length });
-
-            try {
-                const offCanvas1 = document.createElement('canvas');
-                const rx1 = (visionP1.x / 100) * targetImg.obj.width;
-                const ry1 = (visionP1.y / 100) * targetImg.obj.height;
-                const rw1 = (visionP1.w / 100) * targetImg.obj.width;
-                const rh1 = (visionP1.h / 100) * targetImg.obj.height;
-                offCanvas1.width = rw1;
-                offCanvas1.height = rh1;
-                const ctx1 = offCanvas1.getContext('2d');
-                ctx1.drawImage(targetImg.obj, rx1, ry1, rw1, rh1, 0, 0, rw1, rh1);
-
-                // 繪製紅色格線標記，幫助 AI 識別格子邊界
-                const displayCols = template.hasMultiplierReel ? template.cols - 1 : template.cols;
-                const cellW = rw1 / displayCols;
-                const cellH = rh1 / template.rows;
-                ctx1.strokeStyle = 'rgba(255, 0, 0, 0.6)';
-                ctx1.lineWidth = Math.max(2, Math.floor(Math.min(rw1, rh1) / 200));
-                for (let c = 1; c < displayCols; c++) {
-                    ctx1.beginPath();
-                    ctx1.moveTo(c * cellW, 0);
-                    ctx1.lineTo(c * cellW, rh1);
-                    ctx1.stroke();
-                }
-                for (let r = 1; r < template.rows; r++) {
-                    ctx1.beginPath();
-                    ctx1.moveTo(0, r * cellH);
-                    ctx1.lineTo(rw1, r * cellH);
-                    ctx1.stroke();
-                }
-
-                const raw1 = offCanvas1.toDataURL('image/jpeg', 0.75).split(',')[1];
-                const resized1 = await resizeImageBase64(`data:image/jpeg;base64,${raw1}`, 768, 0.75);
-
-                const currentParts = [
-                    ...fixedPrefixParts,
-                    { text: "ANALYZE NOW:\n" },
-                    { text: "Image 1: Main Grid (Columns 1 to " + (template.hasMultiplierReel ? template.cols - 1 : template.cols) + ")\n" },
-                    { inlineData: { mimeType: resized1.mimeType, data: resized1.base64 } }
-                ];
-
-                if (template.hasMultiplierReel) {
-                    const offCanvas2 = document.createElement('canvas');
-                    const rx2 = (visionP1Mult.x / 100) * targetImg.obj.width;
-                    const ry2 = (visionP1Mult.y / 100) * targetImg.obj.height;
-                    const rw2 = (visionP1Mult.w / 100) * targetImg.obj.width;
-                    const rh2 = (visionP1Mult.h / 100) * targetImg.obj.height;
-                    offCanvas2.width = rw2;
-                    offCanvas2.height = rh2;
-                    const ctx2 = offCanvas2.getContext('2d');
-                    ctx2.drawImage(targetImg.obj, rx2, ry2, rw2, rh2, 0, 0, rw2, rh2);
-
-                    const raw2 = offCanvas2.toDataURL('image/jpeg', 0.5).split(',')[1];
-                    const resized2 = await resizeImageBase64(`data:image/jpeg;base64,${raw2}`, 320, 0.5);
-
-                    currentParts.push({ text: "Image 2: Multiplier Cell (Center cell of the last column)\n" });
-                    currentParts.push({ inlineData: { mimeType: resized2.mimeType, data: resized2.base64 } });
-                    currentParts.push({ text: buildMultiplierImagePrompt(template) });
-                }
-
-                if (hasBetBox) {
-                    const offCanvas3 = document.createElement('canvas');
-                    const rx3 = (visionP1Bet.x / 100) * targetImg.obj.width;
-                    const ry3 = (visionP1Bet.y / 100) * targetImg.obj.height;
-                    const rw3 = (visionP1Bet.w / 100) * targetImg.obj.width;
-                    const rh3 = (visionP1Bet.h / 100) * targetImg.obj.height;
-                    offCanvas3.width = rw3;
-                    offCanvas3.height = rh3;
-                    const ctx3 = offCanvas3.getContext('2d');
-                    ctx3.drawImage(targetImg.obj, rx3, ry3, rw3, rh3, 0, 0, rw3, rh3);
-
-                    const raw3 = offCanvas3.toDataURL('image/jpeg', 0.5).split(',')[1];
-                    const resized3 = await resizeImageBase64(`data:image/jpeg;base64,${raw3}`, 320, 0.5);
-
-                    currentParts.push({ text: "Image 3: BET Area\n" });
-                    currentParts.push({ inlineData: { mimeType: resized3.mimeType, data: resized3.base64 } });
-                    currentParts.push({ text: buildBetImagePrompt() });
-                }
-
-                const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${effectiveApiKey}`;
-
-                const payload = {
-                    contents: [{
-                        role: "user",
-                        parts: currentParts
-                    }],
-                    generationConfig: buildVisionGenerationConfig()
-                };
-
-                const result = await fetchWithRetry(url, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-
-                const jsonText = result.candidates?.[0]?.content?.parts?.[0]?.text;
-                if (!jsonText) throw new Error("無法從 AI 取得有效回應，請確認 API Key 是否正確。");
-
-                const responseData = JSON.parse(jsonText);
-                let parsedGrid = responseData.grid;
-                let recognizedBet = responseData.bet || null;
-
-                if (!Array.isArray(parsedGrid) || parsedGrid.length === 0 || !Array.isArray(parsedGrid[0])) {
-                    const possibleGrid = Object.values(responseData).find(val => Array.isArray(val) && Array.isArray(val[0]));
-                    if (possibleGrid) parsedGrid = possibleGrid;
-                    else throw new Error("AI 回傳的格式不正確，無法解析為二維盤面陣列。");
-                }
-
-                const safeGrid = [];
-                const midRow = Math.floor(template.rows / 2);
-                let detectedMultiplier = '';
-
-                // First pass to detect multiplier if any in the last column
-                if (template.hasMultiplierReel) {
-                    for (let r = 0; r < template.rows; r++) {
-                        const sym = parsedGrid[r]?.[template.cols - 1];
-                        if (sym) {
-                            const strSym = String(sym);
-                            const match = strSym.match(/(\d+(?:\.\d+)?)/);
-                            if (match) {
-                                detectedMultiplier = "x" + match[0];
-                                break;
-                            }
-                        }
-                    }
-                }
-
-                for (let r = 0; r < template.rows; r++) {
-                    const rowArr = [];
-                    for (let c = 0; c < template.cols; c++) {
-                        let sym = parsedGrid[r]?.[c] || '';
-                        const isMultiplierCol = template.hasMultiplierReel && c === template.cols - 1;
-
-                        if (isMultiplierCol) {
-                            sym = (r === midRow) ? detectedMultiplier : '';
-                        } else if (sym && !availableSymbols.includes(sym) && !isCashSymbol(sym, template?.jpConfig) && !isCollectSymbol(sym) && !(template?.hasDynamicMultiplier && isDynamicMultiplierSymbol(sym))) {
-                            sym = '';
-                        }
-                        rowArr.push(sym);
-                    }
-                    safeGrid.push(rowArr);
-                }
-
-                console.log(`%c=== AI 辨識結果 (圖片: ${targetImg.file?.name || '未知'}) ===`, 'color: #4f46e5; font-weight: bold; font-size: 14px;');
-                if (hasBetBox && recognizedBet !== null) {
-                    console.log(`%c👉 辨識押注: ${recognizedBet}`, 'color: #10b981; font-weight: bold;');
-                }
-                console.table(safeGrid);
-
-                currentVisionImages[imgIndex] = {
-                    ...currentVisionImages[imgIndex],
-                    grid: safeGrid,
-                    bet: (hasBetBox && recognizedBet !== null) ? recognizedBet : currentVisionImages[imgIndex].bet,
-                    error: ''
-                };
-                setVisionImages([...currentVisionImages]);
-
-            } catch (err) {
-                console.warn("AI 辨識錯誤:", err);
-                currentVisionImages[imgIndex] = { ...currentVisionImages[imgIndex], error: "辨識失敗：" + err.message };
-                setVisionImages([...currentVisionImages]);
-            }
-
-            if (i < toProcess.length - 1) {
-                if (isVisionCanceled.current) {
-                    setTemplateMessage("已停止批量辨識");
-                    break;
-                }
-                await new Promise(res => setTimeout(res, 1500));
-            }
-        }
-
-        setIsVisionProcessing(false);
-        setIsVisionStopping(false);
-        setVisionBatchProgress({ current: 0, total: 0 });
-
-        if (!isVisionCanceled.current) {
-            setTemplateMessage(`✅ 批次辨識完成！共處理 ${toProcess.length} 張圖片。`);
-            setTimeout(() => setTemplateMessage(''), 5000);
-        } else {
-            setTimeout(() => setTemplateMessage(''), 5000);
-        }
-    };
-
-    const cancelVisionProcessing = () => {
-        isVisionCanceled.current = true;
-        setIsVisionStopping(true);
-    };
 
     return {
         visionImages,

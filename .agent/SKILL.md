@@ -25,7 +25,9 @@ App.jsx (~430 行)
   │    └─ usePaytableProcessor()    ← 賠率表 AI + 表格
   ├─ useTemplateIO()           ← 模板匯入/匯出/雲端存取統一
   ├─ useSlotEngine()           ← Phase 2 結算
-  ├─ useGeminiVision()         ← Phase 3 AI 辨識
+  ├─ useGeminiVision()         ← 組合 Hook，負責 ROI 與 Canvas
+  │    ├─ useVisionImageManager()   ← 圖片清單 CRUD 與切換
+  │    └─ useVisionBatchProcessor() ← Gemini API 批次辨識與進度
   ├─ useVideoProcessor()       ← Phase 4 影片偵測
   └─ useCloud()                ← 雲端 CRUD
 ```
@@ -44,7 +46,9 @@ App.jsx (~430 行)
 | Hook | 用途 |
 |---|---|
 | `useSlotEngine.js` | Phase 2 結算引擎：盤面管理、符號畫筆、即時計算 |
-| `useGeminiVision.js` | Phase 3 AI 辨識：批次處理、ROI 框選、取消機制 |
+| `useGeminiVision.js` | Phase 3 **組合 Hook**：Canvas 繪圖、ROI 框選拖拽、保留對外介面 |
+| `useVisionImageManager.js` | 圖片上傳、切換預覽、方向鍵綁定 |
+| `useVisionBatchProcessor.js` | AI 批次辨識：組裝 prompt、API 呼叫、進度控制、取消機制 |
 | `useVideoProcessor.js` | Phase 4 影片偵測：Motion Detection 狀態機 (IDLE→SPINNING→SETTLING→CAPTURE) |
 
 ### 結算引擎 (`computeGridResults.js`)
