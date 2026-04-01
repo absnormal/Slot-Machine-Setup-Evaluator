@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Video, Scan, Play, Pause, Trash2, Send, Settings2, Sparkles, ChevronDown, ChevronUp, Image as ImageIcon, History, Clock, X, AlertCircle } from 'lucide-react';
+import { Video, Scan, Play, Pause, Trash2, Send, Settings2, Sparkles, ChevronDown, ChevronUp, Image as ImageIcon, History, Clock, X, AlertCircle, FlaskConical } from 'lucide-react';
 
 const Phase4Video = ({
     isPhase4Minimized, setIsPhase4Minimized,
@@ -19,7 +19,8 @@ const Phase4Video = ({
     setTemplateMessage,
     template,
     debugData,
-    vLineThreshold, setVLineThreshold
+    vLineThreshold, setVLineThreshold,
+    runCalibration
 }) => {
     const [isPlaying, setIsPlaying] = useState(false);
     const [showDebug, setShowDebug] = useState(true);
@@ -44,14 +45,8 @@ const Phase4Video = ({
 
         const updateTime = () => setCurrentTime(video.currentTime);
         const updateDuration = () => setDuration(video.duration);
-        const handlePlay = () => {
-            setIsPlaying(true);
-            setIsAutoDetecting(true);
-        };
-        const handlePause = () => {
-            setIsPlaying(false);
-            setIsAutoDetecting(false);
-        };
+        const handlePlay = () => setIsPlaying(true);
+        const handlePause = () => setIsPlaying(false);
 
         video.addEventListener('timeupdate', updateTime);
         video.addEventListener('loadedmetadata', updateDuration);
@@ -433,14 +428,34 @@ const Phase4Video = ({
 
                 <div className="lg:col-span-4 flex flex-col h-[600px]">
                     <div className="bg-slate-50 rounded-xl border border-slate-200 flex flex-col h-full overflow-hidden shadow-sm">
-                        <div className="p-4 border-b bg-white flex items-center justify-between sticky top-0 z-10 shadow-sm">
-                            <h3 className="font-bold text-slate-800 flex items-center gap-2 text-sm">
-                                <History size={16} className="text-indigo-500" /> 自動擷取歷史庫
+                        <div className="p-4 bg-emerald-50 border-b border-emerald-100 flex flex-col gap-3 sticky top-0 z-20 shadow-sm">
+                            <div className="flex items-start justify-between">
+                                <div>
+                                    <h3 className="font-bold text-emerald-800 flex items-center gap-2 text-sm">
+                                        <FlaskConical size={16} className="text-emerald-500" /> Ground Truth 參數推導
+                                    </h3>
+                                    <p className="text-[10px] text-emerald-700/80 mt-1 leading-relaxed">
+                                        關閉自動偵測時，點擊右下角「手動擷取」收集停輪時刻。<br/>累積數張後，點擊下方按鈕回推完美擷取的最佳參數。
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={runCalibration}
+                                disabled={capturedImages.length === 0}
+                                className={`w-full py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-sm ${capturedImages.length === 0 ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-emerald-600 text-white hover:bg-emerald-500 active:scale-95'}`}
+                            >
+                                <FlaskConical size={14} /> 從 ({capturedImages.length}) 張截圖精確推導參數
+                            </button>
+                        </div>
+
+                        <div className="px-4 py-2 border-b bg-white flex items-center justify-between sticky top-[138px] z-10 shadow-sm">
+                            <h3 className="font-bold text-slate-700 flex items-center gap-2 text-xs">
+                                <History size={14} className="text-indigo-500" /> 截圖歷史清單
                                 <span className="bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full text-[10px]">{capturedImages.length}</span>
                             </h3>
                             {capturedImages.length > 0 && (
                                 <button onClick={clearAllCaptures} className="text-slate-400 hover:text-rose-500 p-1 transition-colors" title="清除全部">
-                                    <Trash2 size={16} />
+                                    <Trash2 size={14} />
                                 </button>
                             )}
                         </div>
@@ -509,7 +524,12 @@ const Phase4Video = ({
                             </button>
 
                             <button
-                                onClick={togglePlay}
+                                onClick={() => {
+                                    setIsAutoDetecting(!isAutoDetecting);
+                                    if (!isAutoDetecting && videoRef.current && videoRef.current.paused) {
+                                        videoRef.current.play();
+                                    }
+                                }}
                                 className={`w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg ${isAutoDetecting ? 'bg-rose-600 text-white animate-pulse' : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-emerald-200'}`}
                             >
                                 {isAutoDetecting ? (

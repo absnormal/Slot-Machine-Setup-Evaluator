@@ -70,6 +70,7 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
 
     // --- 核心引用 ---
     const videoRef = useRef(null);
+    const frameRawHistory = useRef([]); // Ground Truth 背景紀錄
     const lastFrameRef = useRef(null);
     const isProcessingRef = useRef(false);
     const requestRef = useRef(null);
@@ -245,7 +246,7 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
 
     // 核心循環：格點位移偵測
     const processFrame = useCallback(() => {
-        if (!isAutoDetecting || !videoRef.current || videoRef.current.paused || videoRef.current.ended) {
+        if (!videoRef.current || videoRef.current.paused || videoRef.current.ended) {
             requestRef.current = requestAnimationFrame(processFrame);
             return;
         }
@@ -318,6 +319,8 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
 
                 let motionCells = 0;
                 let totalDiff = 0;
+                // [B-1] 逐列變化率追蹤
+                const colDiffSums = new Array(cols).fill(0);
 
                 for (let r = 0; r < rows; r++) {
                     for (let c = 0; c < cols; c++) {
@@ -342,6 +345,7 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
                             motionCells++;
                         }
                         totalDiff += cellDiffRate;
+                        colDiffSums[c] += cellDiffRate; // 累計到該列
                     }
                 }
 
@@ -350,6 +354,18 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
                 const motionRatio = coverage > 0 ? (vLineMotionRate / coverage) : 0;
                 const isLineHidden = motionRatio > vLineThreshold;
                 const now = Date.now();
+                // 逐列平均 diffRate
+                const colDiffs = colDiffSums.map(s => s / rows);
+
+                // ---- [Ground Truth 背景紀錄] ----
+                frameRawHistory.current.push({
+                    time: video.currentTime || 0,
+                    coverage,
+                    ratio: motionRatio,
+                    colDiffs
+                });
+                if (frameRawHistory.current.length > 6000) frameRawHistory.current.shift();
+                // ---------------------------------
 
                 // 紀錄 BIGWIN 時間用於冷卻
                 if (isLineHidden) {
@@ -359,50 +375,52 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
                 // 5. 狀態機邏輯
                 let nextStatus = spinStateRef.current;
 
-                // 只有位移完全消失才重置起始時間
-                if (coverage < 5) {
-                    firstMotionTimeRef.current = null;
-                }
+                if (isAutoDetecting) {
+                    // 只有位移完全消失才重置起始時間
+                    if (coverage < motionCoverageMin * 0.15) {
+                        firstMotionTimeRef.current = null;
+                    }
 
-                if (spinStateRef.current === 'IDLE') {
-                    if (coverage > 5) {
-                        if (firstMotionTimeRef.current === null) {
-                            firstMotionTimeRef.current = now;
-                        }
+                    if (spinStateRef.current === 'IDLE') {
+                        if (coverage > motionCoverageMin * 0.15) {
+                            if (firstMotionTimeRef.current === null) {
+                                firstMotionTimeRef.current = now;
+                            }
 
-                        // 若正在 BIGWIN 冷卻期 (0.5s)，禁止啟動
-                        if (now - lastBigWinTimeRef.current < 500) {
-                            nextStatus = 'IDLE';
-                        } 
-                        // [靈敏度優化] 使用 motionCoverageMin 作為啟動門檻
-                        else if (coverage > motionCoverageMin * 0.6) {
-                            const timeDiff = now - firstMotionTimeRef.current;
-                            if (timeDiff < 200 && !isLineHidden) {
-                                nextStatus = 'SPINNING';
-                                stateStartTimeRef.current = now;
+                            // 若正在 BIGWIN 冷卻期 (0.5s)，禁止啟動
+                            if (now - lastBigWinTimeRef.current < 500) {
+                                nextStatus = 'IDLE';
+                            } 
+                            // [靈敏度優化] 使用 motionCoverageMin 作為啟動門檻
+                            else if (coverage > motionCoverageMin * 0.6) {
+                                const timeDiff = now - firstMotionTimeRef.current;
+                                if (timeDiff < 200 && !isLineHidden) {
+                                    nextStatus = 'SPINNING';
+                                    stateStartTimeRef.current = now;
+                                }
                             }
                         }
                     }
-                }
-                else if (spinStateRef.current === 'SPINNING') {
-                    if (coverage < 10) { 
-                        nextStatus = 'STABILIZING';
-                        stateStartTimeRef.current = now;
+                    else if (spinStateRef.current === 'SPINNING') {
+                        if (coverage < motionCoverageMin * 0.4) { 
+                            nextStatus = 'STABILIZING';
+                            stateStartTimeRef.current = now;
+                        }
                     }
-                }
-                else if (spinStateRef.current === 'STABILIZING') {
-                    // [穩定調優] 只有位移很高 (30%+) 且「不是中獎線特效」時，才判定為重新動起來回到 SPINNING
-                    if (coverage > 30 && !isLineHidden) { 
-                        nextStatus = 'SPINNING';
-                        stateStartTimeRef.current = now;
-                    } else if (now - stateStartTimeRef.current > motionDelay) {
-                        captureCurrentFrame();
-                        setTemplateMessage("✅ 自動擷取成功");
-                        nextStatus = 'IDLE';
+                    else if (spinStateRef.current === 'STABILIZING') {
+                        // [穩定調優] 只有位移回彈超過門檻的 70% 且「不是中獎線特效」時，才判定為重新動起來回到 SPINNING
+                        if (coverage > motionCoverageMin * 0.7 && !isLineHidden) { 
+                            nextStatus = 'SPINNING';
+                            stateStartTimeRef.current = now;
+                        } else if (now - stateStartTimeRef.current > motionDelay) {
+                            captureCurrentFrame();
+                            setTemplateMessage("✅ 自動擷取成功");
+                            nextStatus = 'IDLE';
+                        }
                     }
-                }
 
-                spinStateRef.current = nextStatus;
+                    spinStateRef.current = nextStatus;
+                }
 
                 // 節流更新除錯面板 (每 100ms 最多更新一次，減少 re-render)
                 if (now - debugThrottleRef.current > 100) {
@@ -471,6 +489,91 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
         };
     }, [isAutoDetecting, processFrame]);
 
+    // --- 🧪 從手動截圖反推最佳參數 (Ground Truth) ---
+    const runCalibration = useCallback(() => {
+        if (!capturedImages || capturedImages.length === 0) {
+            setTemplateMessage("⚠️ 請先手動擷取至少一張截圖作為基準");
+            return;
+        }
+
+        const log = frameRawHistory.current;
+        if (log.length === 0) {
+            setTemplateMessage("⚠️ 背景數據不足，請播放影片以收集動態軌跡");
+            return;
+        }
+
+        // ====== B-2: 裂谷切分 + P95 統計推導 ======
+        const derivedCoverages = [];
+        const allSpinningRatios = [];
+        let validCaptures = 0;
+
+        capturedImages.forEach(img => {
+            const t = parseFloat(img.timestamp);
+            if (isNaN(t)) return;
+
+            // 取出 [t - 3s, t + 0.1s] 的歷史軌跡
+            const slice = log.filter(d => d.time >= t - 3 && d.time <= t + 0.1);
+            if (slice.length < 3) return;
+
+            validCaptures++;
+
+            // 山峰：前 3 秒內的最高 coverage
+            const spinningPeak = Math.max(...slice.map(d => d.coverage));
+
+            // 平地：截圖當下（±0.15s）的 coverage
+            const nearCapture = slice.filter(d => Math.abs(d.time - t) <= 0.15);
+            const stoppedLevel = nearCapture.length > 0
+                ? nearCapture.reduce((s, d) => s + d.coverage, 0) / nearCapture.length
+                : slice[slice.length - 1].coverage;
+
+            // 裂谷切分：取落差的 30% 處作為門檻
+            const derived = stoppedLevel + (spinningPeak - stoppedLevel) * 0.3;
+            derivedCoverages.push(derived);
+
+            // 收集轉動期的 ratio（用於 vLineThreshold 推導）
+            // 暫用 spinningPeak * 0.5 作為粗略判斷「正在轉動」的標準
+            const spinThreshold = spinningPeak * 0.5;
+            slice.forEach(d => {
+                if (d.coverage > spinThreshold) {
+                    allSpinningRatios.push(d.ratio);
+                }
+            });
+        });
+
+        if (derivedCoverages.length === 0) {
+            setTemplateMessage("⚠️ 無法找到對應影片時間的軌跡紀錄（需至少 3 幀數據）");
+            return;
+        }
+
+        // === motionCoverageMin：取中位數（抗極端值）===
+        derivedCoverages.sort((a, b) => a - b);
+        const mid = Math.floor(derivedCoverages.length / 2);
+        const medianCoverage = derivedCoverages.length % 2 === 0
+            ? (derivedCoverages[mid - 1] + derivedCoverages[mid]) / 2
+            : derivedCoverages[mid];
+        const proposedCoverage = Math.max(5, Math.min(90, Math.round(medianCoverage)));
+
+        // === vLineThreshold：取 P95 × 1.3 安全係數 ===
+        let proposedVLine = 0.25; // 預設
+        if (allSpinningRatios.length > 5) {
+            allSpinningRatios.sort((a, b) => a - b);
+            const p95Idx = Math.floor(allSpinningRatios.length * 0.95);
+            const p95Ratio = allSpinningRatios[p95Idx];
+            proposedVLine = Math.max(0.05, Math.min(1.0, Number((p95Ratio * 1.3).toFixed(2))));
+        }
+
+        // 應用參數（只動域值，不碰 sensitivity 和 motionDelay）
+        setMotionCoverageMin(proposedCoverage);
+        setVLineThreshold(proposedVLine);
+
+        setTemplateMessage(
+            `🧪 推導完成 (${validCaptures} 張有效)｜` +
+            `Coverage門檻: ${proposedCoverage}%｜` +
+            `VLine門檻: ${proposedVLine}`
+        );
+
+    }, [capturedImages, setTemplateMessage]);
+
     return {
         videoSrc, videoRef, handleVideoUpload,
         isAutoDetecting, setIsAutoDetecting,
@@ -484,6 +587,7 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
         balanceROI, setBalanceROI,
         betROI, setBetROI,
         captureCurrentFrame,
-        debugData
+        debugData,
+        runCalibration
     };
 }

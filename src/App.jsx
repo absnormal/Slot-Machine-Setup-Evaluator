@@ -168,7 +168,7 @@ function App() {
         capturedImages, removeCapturedImage, clearAllCaptures,
         reelROI, setReelROI, winROI, setWinROI,
         balanceROI, setBalanceROI, betROI, setBetROI,
-        captureCurrentFrame, debugData
+        captureCurrentFrame, debugData, runCalibration
     } = useVideoProcessor({ setTemplateMessage, template });
 
     // --- Phase 間數據傳遞 ---
@@ -447,6 +447,7 @@ function App() {
                     setTemplateMessage={setTemplateMessage}
                     template={template}
                     debugData={debugData}
+                    runCalibration={runCalibration}
                 />
                 </ErrorBoundary>
 
