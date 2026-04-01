@@ -179,9 +179,6 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
                 .replace(/^\.+|\.+$/g, '') // 移除開頭/結尾的孤立小數點
                 .replace(/\.{2,}/g, '.');  // 連續多個小數點合併為一個
 
-            // 過濾掉疑似雜訊的過短結果 (單一數字很可能是中文字筆畫誤判)
-            if (cleaned.length === 1 && cleaned !== '0') return "0";
-
             return cleaned || "0";
         } catch (err) {
             console.error("OCR Error:", err);
@@ -447,14 +444,17 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
         requestRef.current = requestAnimationFrame(processFrame);
     }, [isAutoDetecting, reelROI, template, sensitivity, motionCoverageMin, motionDelay, vLineThreshold, captureCurrentFrame, setTemplateMessage]);
 
+    // 背景紀錄迴圈：只要有影片就啟動 processFrame（內部狀態機由 isAutoDetecting 控制）
     useEffect(() => {
+        if (!videoSrc) return;
+
         if (isAutoDetecting) {
-            // [Startup Optimization] 全面狀態重置：直接跳過斜率判定，進入 SPINNING 模式等待停輪
-            spinStateRef.current = 'SPINNING';
+            // [Startup] 重置狀態機，從 IDLE 開始等待真正的轉動訊號
+            spinStateRef.current = 'IDLE';
             stateStartTimeRef.current = Date.now();
             firstMotionTimeRef.current = null;
             lastBigWinTimeRef.current = 0;
-            lastFrameRef.current = null;
+            lastFrameRef.current = null; // 強制清除參考幀，避免與舊數據比較導致誤觸發
 
             // 啟動瞬間立即擷取一幀並二值化作為參考基底，消除首次循環跳過
             if (videoRef.current && videoRef.current.readyState >= 2) {
@@ -480,14 +480,16 @@ export function useVideoProcessor({ setTemplateMessage, template }) {
                 }
                 lastFrameRef.current = binarized;
             }
-            requestRef.current = requestAnimationFrame(processFrame);
-        } else {
-            if (requestRef.current) cancelAnimationFrame(requestRef.current);
         }
+
+        // 無論 isAutoDetecting 是否開啟，都啟動 processFrame 迴圈（背景紀錄用）
+        if (requestRef.current) cancelAnimationFrame(requestRef.current);
+        requestRef.current = requestAnimationFrame(processFrame);
+
         return () => {
             if (requestRef.current) cancelAnimationFrame(requestRef.current);
         };
-    }, [isAutoDetecting, processFrame]);
+    }, [isAutoDetecting, processFrame, videoSrc]);
 
     // --- 🧪 從手動截圖反推最佳參數 (Ground Truth) ---
     const runCalibration = useCallback(() => {

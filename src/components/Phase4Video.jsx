@@ -426,7 +426,7 @@ const Phase4Video = ({
                     )}
                 </div>
 
-                <div className="lg:col-span-4 flex flex-col h-[600px]">
+                <div className="lg:col-span-4 flex flex-col">
                     <div className="bg-slate-50 rounded-xl border border-slate-200 flex flex-col h-full overflow-hidden shadow-sm">
                         <div className="p-4 bg-emerald-50 border-b border-emerald-100 flex flex-col gap-3 sticky top-0 z-20 shadow-sm">
                             <div className="flex items-start justify-between">
@@ -460,7 +460,7 @@ const Phase4Video = ({
                             )}
                         </div>
 
-                        <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
+                        <div className="overflow-y-auto p-4 space-y-3 custom-scrollbar" style={{ maxHeight: '460px' }}>
                             {capturedImages.length === 0 ? (
                                 <div className="flex flex-col items-center justify-center h-full text-slate-300 opacity-60">
                                     <History size={48} className="mb-4 stroke-[1px]" />
