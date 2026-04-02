@@ -208,8 +208,8 @@ function App() {
         setTemplateMessage(`✅ 已成功從影片匯入 ${capturedImages.length} 張截圖至 Phase 3（已同步盤面與 BET 框選位置）`);
 
         if (transformed.length > 0) setActiveVisionId(transformed[0].id);
-        clearAllCaptures();
-    }, [capturedImages, setVisionImages, setTemplateMessage, clearAllCaptures, setActiveVisionId, reelROI, betROI, setVisionP1, setVisionP1Bet, setHasBetBox]);
+        // 不再清空 Phase 4 紀錄
+    }, [capturedImages, setVisionImages, setTemplateMessage, setActiveVisionId, reelROI, betROI, setVisionP1, setVisionP1Bet, setHasBetBox]);
 
     // --- Vision 結算 ---
     const [visionCalcResults, setVisionCalcResults] = useState(null);
