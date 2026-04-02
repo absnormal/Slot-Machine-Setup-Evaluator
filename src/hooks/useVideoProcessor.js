@@ -81,7 +81,7 @@ export function useVideoProcessor({ setTemplateMessage, template, motionCoverage
         (async () => {
             worker = await createWorker('eng');
             await worker.setParameters({
-                tessedit_char_whitelist: '0123456789.',
+                tessedit_char_whitelist: '0123456789.,',
                 tessedit_pageseg_mode: '7',
             });
             ocrWorkerRef.current = worker;
@@ -106,6 +106,7 @@ export function useVideoProcessor({ setTemplateMessage, template, motionCoverage
     const stableCanvasRef = useRef(null);      // STABILIZING 期間的穩定幀快照
     const lastSnapshotTimeRef = useRef(0);     // 上次快照時間
     const lastCaptureTimeRef = useRef(0);      // 上次截圖時間（防止派彩入帳觸發重複截圖）
+    const hasSeenFirstSignalRef = useRef(false); // 是否真實驗證過至少一次 WIN/BAL 訊號
 
     // Canvas 緩存
     const scanCanvasRef = useRef(null);
@@ -147,7 +148,11 @@ export function useVideoProcessor({ setTemplateMessage, template, motionCoverage
                 totalGray += (data[i] * 0.3 + data[i + 1] * 0.59 + data[i + 2] * 0.11);
             }
             const avgGray = totalGray / (cw * scale * ch * scale);
-            const threshold = Math.max(100, Math.min(160, avgGray + 20)); // 動態門檻
+            
+            // 根據是否為「暴戾版(WIN/BAL)」或「溫和版(BET)」調整門檻
+            // 暴戾版提高門檻 (消除更多發光毛邊)；溫和版門檻較寬鬆 (避免削掉小標點)
+            const thresholdOffset = useFixedDecimal ? 30 : 15;
+            const threshold = Math.max(100, Math.min(180, avgGray + thresholdOffset));
 
             for (let i = 0; i < data.length; i += 4) {
                 const gray = data[i] * 0.3 + data[i + 1] * 0.59 + data[i + 2] * 0.11;
@@ -156,27 +161,31 @@ export function useVideoProcessor({ setTemplateMessage, template, motionCoverage
             }
             ctx.putImageData(imgData, 0, 0);
 
-            // 形態學侵蝕 (Erosion)：消除中文字等細筆畫雜訊，只保留粗大的數字筆畫
-            const w = cw * scale, h = ch * scale;
-            const eroded = ctx.getImageData(0, 0, w, h);
-            const eData = eroded.data;
-            const src = new Uint8Array(w * h);
-            for (let i = 0; i < w * h; i++) src[i] = data[i * 4]; // 取 R channel (已二值化)
-
-            const kernelSize = Math.max(1, Math.floor(scale * 0.8));
-            for (let y = kernelSize; y < h - kernelSize; y++) {
-                for (let x = kernelSize; x < w - kernelSize; x++) {
-                    let minVal = 255;
-                    for (let ky = -kernelSize; ky <= kernelSize; ky++) {
-                        for (let kx = -kernelSize; kx <= kernelSize; kx++) {
-                            minVal = Math.min(minVal, src[(y + ky) * w + (x + kx)]);
+            // 形態學侵蝕 (Erosion)：消除邊緣光暈，把數字變瘦，把 0, 6, 8 的洞撐開
+            // 暴戾版：加強侵蝕 (kernelSize = scale)；溫和版：關閉侵蝕 (kernelSize = 0)
+            const kernelSize = useFixedDecimal ? Math.max(1, Math.floor(scale * 1.0)) : 0;
+            
+            if (kernelSize > 0) {
+                const w = cw * scale, h = ch * scale;
+                const eroded = ctx.getImageData(0, 0, w, h);
+                const eData = eroded.data;
+                const src = new Uint8Array(w * h);
+                for (let i = 0; i < w * h; i++) src[i] = data[i * 4]; // 取出二值化圖
+                
+                for (let y = kernelSize; y < h - kernelSize; y++) {
+                    for (let x = kernelSize; x < w - kernelSize; x++) {
+                        let minVal = 255;
+                        for (let ky = -kernelSize; ky <= kernelSize; ky++) {
+                            for (let kx = -kernelSize; kx <= kernelSize; kx++) {
+                                minVal = Math.min(minVal, src[(y + ky) * w + (x + kx)]);
+                            }
                         }
+                        const idx = (y * w + x) * 4;
+                        eData[idx] = eData[idx + 1] = eData[idx + 2] = minVal;
                     }
-                    const idx = (y * w + x) * 4;
-                    eData[idx] = eData[idx + 1] = eData[idx + 2] = minVal;
                 }
+                ctx.putImageData(eroded, 0, 0);
             }
-            ctx.putImageData(eroded, 0, 0);
 
             if (!ocrWorkerRef.current) return "...";
             const { data: { text } } = await ocrWorkerRef.current.recognize(cropCanvas);
@@ -402,8 +411,22 @@ export function useVideoProcessor({ setTemplateMessage, template, motionCoverage
 
             const winDiffResult = computeHighContrastDiff(winROI, lastWinFrameRef, winBalCanvasRef);
             const balDiffResult = computeHighContrastDiff(balanceROI, lastBalanceFrameRef, balCanvasRef);
-            const isWinChanged = winDiffResult.changed;
-            const isBalanceChanged = balDiffResult.changed;
+            let isWinChanged = winDiffResult.changed;
+            let isBalanceChanged = balDiffResult.changed;
+
+            // ---- 開機暖機機制 (200ms) ----
+            // 影片剛播放或改變進度時，解碼器與緩衝會產生破圖或光影跳動 (造成巨大的 ROI 假差異)
+            // 暖機期間強制過濾這些雜訊，不觸發狀態跳轉，也不解鎖截圖防護
+            // (縮短至 200ms，足以濾除前 6~12 幀的解碼異常，且不會錯過使用者的快手操作)
+            if (isAutoDetecting && (Date.now() - stateStartTimeRef.current < 200)) {
+                isWinChanged = false;
+                isBalanceChanged = false;
+            }
+
+            // 紀錄是否已經開出過有效的 WIN 或 BAL 訊號，用於壓制開場的無效保底截圖
+            if (isWinChanged || isBalanceChanged) {
+                hasSeenFirstSignalRef.current = true;
+            }
 
             // 4. 格點位移比對（盤面覆蓋率，作為輔助/保底訊號）
             if (lastFrameRef.current && lastFrameRef.current.length === binarized.length) {
@@ -561,7 +584,8 @@ export function useVideoProcessor({ setTemplateMessage, template, motionCoverage
                             winConfirmTimeRef.current = null;
                         }
                         // 主訊號 2：BALANCE 變化 → 用「快照」截圖（扣款前的盤面）
-                        else if (isBalanceChanged) {
+                        // 注意：如果正處於 WIN 的 50ms 等待確認期間，忽略 BAL 的跳動（防止贏分和餘額同時跳動時被 BAL 搶走）
+                        else if (isBalanceChanged && winConfirmTimeRef.current === null) {
                             const snapshotToUse = stableCanvasRef.current || null;
                             captureCurrentFrame(snapshotToUse, '💳 BAL');
                             lastCaptureTimeRef.current = now;
@@ -578,9 +602,15 @@ export function useVideoProcessor({ setTemplateMessage, template, motionCoverage
                         }
                         // 保底：motionDelay 到期 → 用快照或 live
                         else if (now - stateStartTimeRef.current > motionDelay) {
-                            captureCurrentFrame(stableCanvasRef.current || null, '⏱️ 保底');
-                            lastCaptureTimeRef.current = now;
-                            setTemplateMessage("✅ 自動擷取成功（保底）");
+                            if (hasSeenFirstSignalRef.current) {
+                                captureCurrentFrame(stableCanvasRef.current || null, '⏱️ 保底');
+                                lastCaptureTimeRef.current = now;
+                                setTemplateMessage("✅ 自動擷取成功（保底）");
+                            } else {
+                                // 開場時尚未抓到任何真實訊號，純粹因為畫面浮動造成的假轉動
+                                // 直接略過這次截圖，保持安靜
+                                setTemplateMessage("⏳ 等待首次有效訊號（無視閒置浮動）");
+                            }
                             nextStatus = 'IDLE';
                             winConfirmTimeRef.current = null;
                             stableCanvasRef.current = null;
@@ -638,63 +668,14 @@ export function useVideoProcessor({ setTemplateMessage, template, motionCoverage
             spinStateRef.current = 'IDLE';
             stateStartTimeRef.current = Date.now();
             firstMotionTimeRef.current = null;
+            hasSeenFirstSignalRef.current = false; // 重置有感訊號旗標
             lastBigWinTimeRef.current = 0;
             winConfirmTimeRef.current = null;
             lastFrameRef.current = null; // 強制清除參考幀，避免與舊數據比較導致誤觸發
             lastWinFrameRef.current = null;
             lastBalanceFrameRef.current = null;
 
-            // 啟動瞬間立即擷取一幀作為參考基底，消除首次循環跳過
-            if (videoRef.current && videoRef.current.readyState >= 2) {
-                const video = videoRef.current;
-                const canvas = document.createElement('canvas');
-                const targetW = 320;
-                const targetH = Math.round(targetW * (reelROI.h / reelROI.w));
-                canvas.width = targetW;
-                canvas.height = targetH;
 
-                const sourceX = (reelROI.x / 100) * video.videoWidth;
-                const sourceY = (reelROI.y / 100) * video.videoHeight;
-                const sourceW = (reelROI.w / 100) * video.videoWidth;
-                const sourceH = (reelROI.h / 100) * video.videoHeight;
-
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(video, sourceX, sourceY, sourceW, sourceH, 0, 0, targetW, targetH);
-                const data = ctx.getImageData(0, 0, targetW, targetH).data;
-                const binarized = new Uint8Array(targetW * targetH);
-                for (let i = 0; i < data.length; i += 4) {
-                    const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
-                    binarized[i / 4] = avg > 120 ? 255 : 0;
-                }
-                lastFrameRef.current = binarized;
-
-                // 同時擷取 WIN/BALANCE ROI 初始幀（原始 RGB，不做二值化）
-                const captureROIInitial = (roiDef, lastRef) => {
-                    if (!roiDef) return;
-                    const roiCanvas = document.createElement('canvas');
-                    const roiW = 80;
-                    const roiH = Math.max(1, Math.round(roiW * (roiDef.h / roiDef.w)));
-                    roiCanvas.width = roiW;
-                    roiCanvas.height = roiH;
-                    const rCtx = roiCanvas.getContext('2d');
-                    const sx = (roiDef.x / 100) * video.videoWidth;
-                    const sy = (roiDef.y / 100) * video.videoHeight;
-                    const sw = (roiDef.w / 100) * video.videoWidth;
-                    const sh = (roiDef.h / 100) * video.videoHeight;
-                    if (sw <= 1 || sh <= 1) return;
-                    rCtx.drawImage(video, sx, sy, sw, sh, 0, 0, roiW, roiH);
-                    const roiData = rCtx.getImageData(0, 0, roiW, roiH).data;
-                    const rgb = new Uint8Array(roiW * roiH * 3);
-                    for (let i = 0; i < roiW * roiH; i++) {
-                        rgb[i * 3] = roiData[i * 4];
-                        rgb[i * 3 + 1] = roiData[i * 4 + 1];
-                        rgb[i * 3 + 2] = roiData[i * 4 + 2];
-                    }
-                    lastRef.current = rgb;
-                };
-                captureROIInitial(winROI, lastWinFrameRef);
-                captureROIInitial(balanceROI, lastBalanceFrameRef);
-            }
         }
 
         // 無論 isAutoDetecting 是否開啟，都啟動 processFrame 迴圈（背景紀錄用）
