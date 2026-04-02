@@ -26,6 +26,9 @@ export function useTemplateIO({
     paytableInput, ptResultItems, jpConfig,
     hasJackpot, hasMultiplierReel, requiresCollectToWin,
     hasDoubleSymbol, hasDynamicMultiplier, multiplierCalcType,
+    // Phase 4 偵測參數（模板持久化）
+    motionCoverageMin, vLineThreshold, ocrDecimalPlaces,
+    setMotionCoverageMin, setVLineThreshold, setOcrDecimalPlaces,
 }) {
     const setTemplateMessage = useAppStore(s => s.setTemplateMessage);
     const setShowCloudModal = useAppStore(s => s.setShowCloudModal);
@@ -113,10 +116,15 @@ export function useTemplateIO({
         // Clear line images
         setLineImages([]);
         setActiveLineImageId(null);
+
+        // Phase 4 偵測參數（向後兼容：舊模板無此欄位則保持預設）
+        if (data.motionCoverageMin !== undefined) setMotionCoverageMin(data.motionCoverageMin);
+        if (data.vLineThreshold !== undefined) setVLineThreshold(parseFloat(data.vLineThreshold));
+        if (data.ocrDecimalPlaces !== undefined) setOcrDecimalPlaces(parseInt(data.ocrDecimalPlaces, 10));
     }, [setGridRows, setGridCols, setLineMode, setExtractResults, setPaytableInput, setPtResultItems,
         setPaytableMode, setJpConfig, setHasJackpot, setHasMultiplierReel, setRequiresCollectToWin,
         setHasDoubleSymbol, setHasDynamicMultiplier, setMultiplierCalcType, setLineImages,
-        setActiveLineImageId, setLinesTextInput]);
+        setActiveLineImageId, setLinesTextInput, setMotionCoverageMin, setVLineThreshold, setOcrDecimalPlaces]);
 
     /**
      * 從雲端載入模板
@@ -174,7 +182,8 @@ export function useTemplateIO({
             gridRows, gridCols, extractResults,
             paytableInput, ptResultItems,
             jpConfig, hasMultiplierReel, requiresCollectToWin,
-            hasDoubleSymbol, hasDynamicMultiplier, multiplierCalcType
+            hasDoubleSymbol, hasDynamicMultiplier, multiplierCalcType,
+            motionCoverageMin, vLineThreshold, ocrDecimalPlaces
         };
 
         const jsonStr = JSON.stringify(data, null, 2);
@@ -194,7 +203,7 @@ export function useTemplateIO({
         setTimeout(() => setTemplateMessage(''), 3000);
     }, [platformNameState, gameNameState, gridRows, gridCols, extractResults, paytableInput, ptResultItems,
         jpConfig, hasMultiplierReel, requiresCollectToWin, hasDoubleSymbol, hasDynamicMultiplier,
-        multiplierCalcType, setTemplateMessage, setTemplateError]);
+        multiplierCalcType, motionCoverageMin, vLineThreshold, ocrDecimalPlaces, setTemplateMessage, setTemplateError]);
 
     /**
      * 清除模板
@@ -224,7 +233,8 @@ export function useTemplateIO({
             paytableInput, ptResultItems, jpConfig,
             hasJackpot, hasMultiplierReel, requiresCollectToWin,
             hasDoubleSymbol, hasDynamicMultiplier, multiplierCalcType,
-            localUserId, actualForceId
+            localUserId, actualForceId,
+            motionCoverageMin, vLineThreshold, ocrDecimalPlaces
         });
 
         if (result && result.conflict) {
@@ -239,6 +249,7 @@ export function useTemplateIO({
     }, [platformNameState, gameNameState, templateName, gridRows, gridCols, lineMode, extractResults,
         paytableInput, ptResultItems, jpConfig, hasJackpot, hasMultiplierReel, requiresCollectToWin,
         hasDoubleSymbol, hasDynamicMultiplier, multiplierCalcType, localUserId,
+        motionCoverageMin, vLineThreshold, ocrDecimalPlaces,
         useCloudInstance, setTemplateError, showOverwriteConfirm]);
 
     const defaultSaveName = [platformNameState, gameNameState].filter(Boolean).join('-') || `模板 ${gridRows}x${gridCols}`;

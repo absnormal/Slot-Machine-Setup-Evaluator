@@ -102,6 +102,12 @@ function App() {
         performAutoBuild, handleBuildTemplate, resetTemplateBuilder
     } = templateBuilder;
 
+
+    // --- Phase 4 偵測參數（拉升至 App 層級，以便模板 IO 存取）---
+    const [motionCoverageMin, setMotionCoverageMin] = useState(60);
+    const [vLineThreshold, setVLineThreshold] = useState(0.25);
+    const [ocrDecimalPlaces, setOcrDecimalPlaces] = useState(0);
+
     // --- Template IO (匯入/匯出/雲端存取) ---
     const templateIO = useTemplateIO({
         setGridRows, setGridCols, setLineMode, setExtractResults,
@@ -118,6 +124,8 @@ function App() {
         paytableInput, ptResultItems, jpConfig,
         hasJackpot, hasMultiplierReel, requiresCollectToWin,
         hasDoubleSymbol, hasDynamicMultiplier, multiplierCalcType,
+        motionCoverageMin, vLineThreshold, ocrDecimalPlaces,
+        setMotionCoverageMin, setVLineThreshold, setOcrDecimalPlaces,
     });
 
     const {
@@ -162,14 +170,17 @@ function App() {
         videoSrc, videoRef, handleVideoUpload,
         isAutoDetecting, setIsAutoDetecting,
         sensitivity, setSensitivity,
-        motionCoverageMin, setMotionCoverageMin,
         motionDelay, setMotionDelay,
-        vLineThreshold, setVLineThreshold,
         capturedImages, removeCapturedImage, clearAllCaptures,
         reelROI, setReelROI, winROI, setWinROI,
         balanceROI, setBalanceROI, betROI, setBetROI,
         captureCurrentFrame, debugData, runCalibration
-    } = useVideoProcessor({ setTemplateMessage, template });
+    } = useVideoProcessor({ 
+        setTemplateMessage, template, 
+        motionCoverageMin, setMotionCoverageMin, 
+        vLineThreshold, setVLineThreshold,
+        ocrDecimalPlaces, setOcrDecimalPlaces
+    });
 
     // --- Phase 間數據傳遞 ---
     const handleTransferPhase4ToPhase3 = useCallback(async () => {
@@ -437,6 +448,7 @@ function App() {
                     motionCoverageMin={motionCoverageMin} setMotionCoverageMin={setMotionCoverageMin}
                     motionDelay={motionDelay} setMotionDelay={setMotionDelay}
                     vLineThreshold={vLineThreshold} setVLineThreshold={setVLineThreshold}
+                    ocrDecimalPlaces={ocrDecimalPlaces} setOcrDecimalPlaces={setOcrDecimalPlaces}
                     capturedImages={capturedImages} removeCapturedImage={removeCapturedImage} clearAllCaptures={clearAllCaptures}
                     reelROI={reelROI} setReelROI={setReelROI}
                     winROI={winROI} setWinROI={setWinROI}

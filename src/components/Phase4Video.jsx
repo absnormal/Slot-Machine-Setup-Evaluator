@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Video, Scan, Play, Pause, Trash2, Send, Settings2, Sparkles, ChevronDown, ChevronUp, Image as ImageIcon, History, Clock, X, AlertCircle, FlaskConical } from 'lucide-react';
 
 const Phase4Video = ({
@@ -20,6 +20,7 @@ const Phase4Video = ({
     template,
     debugData,
     vLineThreshold, setVLineThreshold,
+    ocrDecimalPlaces, setOcrDecimalPlaces,
     runCalibration
 }) => {
     const [isPlaying, setIsPlaying] = useState(false);
@@ -30,6 +31,38 @@ const Phase4Video = ({
     const [roiMode, setRoiMode] = useState('reel'); // 'reel', 'win', 'balance', 'bet'
     const containerRef = useRef(null);
     const listEndRef = useRef(null);
+
+    // OCR 數值交叉驗證
+    const captureValidation = useMemo(() => {
+        const parseNum = (v) => {
+            if (!v || v === '...' || v === 'Err') return null;
+            // OCR 端已處理千分號，這裡直接 parseFloat
+            const n = parseFloat(String(v));
+            return isNaN(n) ? null : n;
+        };
+        return capturedImages.map((img, idx) => {
+            if (idx === 0) return null; // 第一張沒有前一張可比
+            const prev = capturedImages[idx - 1];
+            const prevTotal = parseNum(prev.extractedBalance);
+            const prevWin = parseNum(prev.extractedWin);
+            const curTotal = parseNum(img.extractedBalance);
+            const curBet = parseNum(img.extractedBet);
+            if (prevTotal === null || curTotal === null || curBet === null) return null;
+
+            let expected;
+            const prevSource = prev.triggerSource || '';
+            if (prevSource.includes('WIN')) {
+                // WIN → 任何：期望 = 前總分 + 前贏分 - BET
+                if (prevWin === null) return null;
+                expected = prevTotal + prevWin - curBet;
+            } else {
+                // BAL/保底/手動 → 任何：期望 = 前總分 - BET
+                expected = prevTotal - curBet;
+            }
+            const diff = Math.abs(curTotal - expected);
+            return { expected, diff, ok: diff < 0.01 };
+        });
+    }, [capturedImages]);
 
     // 自動滾動清單到底部 (侷限在容器內)
     useEffect(() => {
@@ -387,6 +420,20 @@ const Phase4Video = ({
                                                 </div>
                                             </div>
                                         </div>
+                                        <div className="pt-1 mt-1 border-t border-white/5 space-y-1">
+                                            <div className="flex justify-between items-center text-[10px]">
+                                                <span className="text-slate-500">💰 WIN:</span>
+                                                <span className={`px-1 rounded-sm text-[9px] font-black ${debugData.isWinChanged ? 'bg-green-500 text-white animate-pulse' : 'bg-slate-700 text-slate-500'}`}>
+                                                    {debugData.isWinChanged ? '●' : '○'} {debugData.winDiff ?? 0}px
+                                                </span>
+                                            </div>
+                                            <div className="flex justify-between items-center text-[10px]">
+                                                <span className="text-slate-500">💳 BAL:</span>
+                                                <span className={`px-1 rounded-sm text-[9px] font-black ${debugData.isBalChanged ? 'bg-blue-500 text-white animate-pulse' : 'bg-slate-700 text-slate-500'}`}>
+                                                    {debugData.isBalChanged ? '●' : '○'} {debugData.balDiff ?? 0}px
+                                                </span>
+                                            </div>
+                                        </div>
                                         {debugData.error && (
                                             <div className="bg-rose-500/20 border border-rose-500/50 text-rose-300 p-1 mt-2 rounded flex items-center gap-1">
                                                 <AlertCircle size={10} /> {debugData.error}
@@ -420,6 +467,20 @@ const Phase4Video = ({
                                         線條消失門檻 (RATIO) <span>{vLineThreshold}</span>
                                     </label>
                                     <input type="range" min="0.1" max="1.0" step="0.05" value={vLineThreshold} onChange={(e) => setVLineThreshold(parseFloat(e.target.value))} className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-rose-500" />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <label className="text-[11px] font-bold text-slate-500 flex justify-between">
+                                        OCR 小數位數 <span>{ocrDecimalPlaces === 0 ? '整數' : `${ocrDecimalPlaces}位`}</span>
+                                    </label>
+                                    <select 
+                                        value={ocrDecimalPlaces} 
+                                        onChange={(e) => setOcrDecimalPlaces(parseInt(e.target.value))}
+                                        className="w-full h-[22px] bg-slate-100 text-slate-700 text-xs rounded border-none cursor-pointer focus:ring-0 px-2"
+                                    >
+                                        <option value={0}>0 (整數)</option>
+                                        <option value={1}>1 位小數</option>
+                                        <option value={2}>2 位小數</option>
+                                    </select>
                                 </div>
                             </div>
                         </div>
@@ -460,7 +521,7 @@ const Phase4Video = ({
                             )}
                         </div>
 
-                        <div className="overflow-y-auto p-4 space-y-3 custom-scrollbar" style={{ maxHeight: '460px' }}>
+                        <div className="overflow-y-auto p-4 space-y-3 custom-scrollbar" style={{ height: '460px' }}>
                             {capturedImages.length === 0 ? (
                                 <div className="flex flex-col items-center justify-center h-full text-slate-300 opacity-60">
                                     <History size={48} className="mb-4 stroke-[1px]" />
@@ -468,15 +529,24 @@ const Phase4Video = ({
                                 </div>
                             ) : (
                                 capturedImages.map((img, idx) => (
-                                    <div key={img.id} className="group relative bg-white rounded-xl border border-slate-200 p-2 shadow-sm hover:border-indigo-300 transition-all hover:shadow-md animate-in slide-in-from-bottom-2">
-                                        <div className="flex gap-3">
-                                            <div className="w-20 h-14 bg-slate-100 rounded-lg overflow-hidden shrink-0">
-                                                <img src={img.previewUrl} className="w-full h-full object-cover" />
+                                    <div key={img.id} className="group relative bg-white rounded-xl border border-slate-200 p-2 shadow-sm hover:border-indigo-300 transition-all hover:shadow-md animate-in slide-in-from-bottom-2 min-h-[80px] overflow-hidden">
+                                        <div className="flex gap-3 h-full items-center">
+                                            <div className="w-24 h-16 bg-slate-900 rounded-lg overflow-hidden shrink-0 flex items-center justify-center">
+                                                <img src={img.thumbUrl || img.previewUrl} className="w-full h-full object-contain" />
                                             </div>
                                             <div className="flex-1 min-w-0 pr-6">
                                                 <div className="flex items-center justify-between">
-                                                    <span className="text-[10px] font-bold text-slate-800 truncate max-w-[100px]">{img.file.name}</span>
-                                                    <span className="text-[10px] text-slate-400">#{idx + 1}</span>
+                                                    <span className="text-[10px] font-bold text-slate-800 truncate max-w-[80px]">{img.file.name}</span>
+                                                    <div className="flex items-center gap-1">
+                                                        {img.triggerSource && img.triggerSource !== '手動' && (
+                                                            <span className={`text-[8px] px-1.5 py-0.5 rounded-full font-bold leading-none ${
+                                                                img.triggerSource.includes('WIN') ? 'bg-emerald-100 text-emerald-700' :
+                                                                img.triggerSource.includes('BAL') ? 'bg-blue-100 text-blue-700' :
+                                                                'bg-amber-100 text-amber-700'
+                                                            }`}>{img.triggerSource}</span>
+                                                        )}
+                                                        <span className="text-[10px] text-slate-400">#{idx + 1}</span>
+                                                    </div>
                                                 </div>
                                                 <div className="flex items-center gap-1 mt-0.5">
                                                     <Clock size={10} className="text-slate-400" />
@@ -503,6 +573,19 @@ const Phase4Video = ({
                                                         </span>
                                                     </div>
                                                 </div>
+                                                {/* 驗證結果 */}
+                                                {captureValidation[idx] && (
+                                                    <div className={`flex items-center justify-between mt-1 pt-1 border-t text-[8px] ${
+                                                        captureValidation[idx].ok 
+                                                            ? 'border-emerald-100 text-emerald-500' 
+                                                            : 'border-rose-100 text-rose-500 bg-rose-50 -mx-1 px-1 rounded'
+                                                    }`}>
+                                                        <span>{captureValidation[idx].ok ? '✓' : '✗'} 預期: {captureValidation[idx].expected}</span>
+                                                        {!captureValidation[idx].ok && (
+                                                            <span className="font-bold">差{captureValidation[idx].diff}</span>
+                                                        )}
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
                                         <button onClick={() => removeCapturedImage(img.id)} className="absolute top-2 right-2 text-slate-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all">
