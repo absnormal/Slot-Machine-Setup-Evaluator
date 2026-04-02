@@ -21,6 +21,7 @@ const Phase4Video = ({
     debugData,
     vLineThreshold, setVLineThreshold,
     ocrDecimalPlaces, setOcrDecimalPlaces,
+    gridRows: propGridRows, gridCols: propGridCols,
     runCalibration
 }) => {
     const [isPlaying, setIsPlaying] = useState(false);
@@ -167,8 +168,8 @@ const Phase4Video = ({
 
     // 渲染 ROI 內的格線 (2px amber-400)
     const renderGridLines = () => {
-        const rows = template?.GridRows || 3;
-        const cols = template?.GridCols || 5;
+        const rows = template?.rows || propGridRows || 3;
+        const cols = template?.cols || propGridCols || 5;
         const lines = [];
 
         for (let i = 1; i < cols; i++) {
@@ -290,11 +291,7 @@ const Phase4Video = ({
                                         }}
                                         onMouseDown={(e) => { e.stopPropagation(); handleMouseDown(e); }}
                                     >
-                                        <div className="absolute inset-0 grid grid-cols-5 grid-rows-3">
-                                            {[...Array(14)].map((_, i) => (
-                                                <div key={i} className="border-[0.5px] border-amber-400/30"></div>
-                                            ))}
-                                        </div>
+                                        {renderGridLines()}
                                         {roiMode === 'reel' && <div className="absolute -right-1 -bottom-1 w-4 h-4 bg-amber-500 rounded-full border-2 border-white pointer-events-auto cursor-nwse-resize shadow-md" />}
                                         <div className="absolute -top-5 left-0 bg-amber-500 text-white text-[10px] px-1 rounded shadow-sm">盤面</div>
                                     </div>

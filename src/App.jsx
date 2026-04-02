@@ -458,6 +458,7 @@ function App() {
                     onTransferToPhase3={handleTransferPhase4ToPhase3}
                     setTemplateMessage={setTemplateMessage}
                     template={template}
+                    gridRows={gridRows} gridCols={gridCols}
                     debugData={debugData}
                     runCalibration={runCalibration}
                 />

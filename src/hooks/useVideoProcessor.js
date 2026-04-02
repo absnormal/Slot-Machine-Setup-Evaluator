@@ -81,7 +81,6 @@ export function useVideoProcessor({ setTemplateMessage, template, motionCoverage
         (async () => {
             worker = await createWorker('eng');
             await worker.setParameters({
-                tessedit_char_whitelist: '0123456789.,',
                 tessedit_pageseg_mode: '7',
             });
             ocrWorkerRef.current = worker;
@@ -190,15 +189,24 @@ export function useVideoProcessor({ setTemplateMessage, template, motionCoverage
             if (!ocrWorkerRef.current) return "...";
             const { data: { text } } = await ocrWorkerRef.current.recognize(cropCanvas);
 
+            // 1. 為了對抗文字幻覺（例如 "押注 50" 被英文引擎印成 "93 50"），
+            // 我們只擷取輸入字串中的「最後一組連續數字區塊」
+            let validText = text;
+            const numberBlocks = text.match(/[0-9.,]+/g);
+            if (numberBlocks && numberBlocks.length > 0) {
+                validText = numberBlocks[numberBlocks.length - 1]; // 取最後一組
+            } else {
+                validText = "";
+            }
+
             // 後處理
             if (useFixedDecimal) {
                 // WIN / BALANCE：完全不依賴 OCR 辨識出來的標點符號，強行插入小數點
-                let digits = text.replace(/[^0-9]/g, '');
+                let digits = validText.replace(/[^0-9]/g, '');
                 let cleaned = "0";
                 
                 if (digits) {
                     if (ocrDecimalPlaces > 0) {
-                        // 若長度不足（例如只辨識到 '50'，但要 2 位小數 -> '0.50'）
                         if (digits.length <= ocrDecimalPlaces) {
                             digits = digits.padStart(ocrDecimalPlaces + 1, '0');
                         }
@@ -212,9 +220,8 @@ export function useVideoProcessor({ setTemplateMessage, template, motionCoverage
                 return cleaned || "0";
             } else {
                 // BET：使用原本的辨識方式（保留數字與小數點，處理連續小數點等）
-                const cleaned = text.trim()
-                    .replace(/[^0-9.,]/g, '') // 移除非數字字元
-                    .replace(/,/g, '')        // 移除千分位逗號（若這款遊戲押注有千分號則會移除）
+                const cleaned = validText
+                    .replace(/,/g, '')        // 移除千分位逗號
                     .replace(/^\.+|\.+$/g, '')// 移除開頭/結尾的孤立小數點
                     .replace(/\.{2,}/g, '.'); // 連續多個小數點合併為一個
                 return cleaned || "0";
