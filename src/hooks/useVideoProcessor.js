@@ -106,7 +106,7 @@ export function useVideoProcessor({ setTemplateMessage, template, motionCoverage
     const stableCanvasRef = useRef(null);      // STABILIZING 期間的穩定幀快照
     const lastSnapshotTimeRef = useRef(0);     // 上次快照時間
     const lastCaptureTimeRef = useRef(0);      // 上次截圖時間（防止派彩入帳觸發重複截圖）
-    const hasSeenFirstSignalRef = useRef(false); // 是否真實驗證過至少一次 WIN/BAL 訊號
+
 
     // Canvas 緩存
     const scanCanvasRef = useRef(null);
@@ -161,9 +161,9 @@ export function useVideoProcessor({ setTemplateMessage, template, motionCoverage
             }
             ctx.putImageData(imgData, 0, 0);
 
-            // 形態學侵蝕 (Erosion)：消除邊緣光暈，把數字變瘦，把 0, 6, 8 的洞撐開
-            // 暴戾版：加強侵蝕 (kernelSize = scale)；溫和版：關閉侵蝕 (kernelSize = 0)
-            const kernelSize = useFixedDecimal ? Math.max(1, Math.floor(scale * 1.0)) : 0;
+            // 形態學侵蝕 (Erosion)：消除邊緣光暈，讓邊界更銳利
+            // 暴戾版：輕微侵蝕 kernel=1（只清邊緣，不破壞數字筆畫）；溫和版：關閉侵蝕
+            const kernelSize = useFixedDecimal ? 1 : 0;
             
             if (kernelSize > 0) {
                 const w = cw * scale, h = ch * scale;
@@ -423,10 +423,7 @@ export function useVideoProcessor({ setTemplateMessage, template, motionCoverage
                 isBalanceChanged = false;
             }
 
-            // 紀錄是否已經開出過有效的 WIN 或 BAL 訊號，用於壓制開場的無效保底截圖
-            if (isWinChanged || isBalanceChanged) {
-                hasSeenFirstSignalRef.current = true;
-            }
+
 
             // 4. 格點位移比對（盤面覆蓋率，作為輔助/保底訊號）
             if (lastFrameRef.current && lastFrameRef.current.length === binarized.length) {
@@ -545,7 +542,15 @@ export function useVideoProcessor({ setTemplateMessage, template, motionCoverage
                         }
                     }
                     else if (spinStateRef.current === 'SPINNING') {
-                        if (coverage < motionCoverageMin * 0.4) {
+                        // 提前偵測：如果 WIN 已經開始跳字，直接進入確認窗口（跳過等待 STABILIZING）
+                        if (isWinChanged && winConfirmTimeRef.current === null) {
+                            winConfirmTimeRef.current = now;
+                            nextStatus = 'STABILIZING';
+                            stateStartTimeRef.current = now;
+                            stableCanvasRef.current = null;
+                            lastSnapshotTimeRef.current = 0;
+                        }
+                        else if (coverage < motionCoverageMin * 0.4) {
                             nextStatus = 'STABILIZING';
                             stateStartTimeRef.current = now;
                             winConfirmTimeRef.current = null;
@@ -573,10 +578,11 @@ export function useVideoProcessor({ setTemplateMessage, template, motionCoverage
                             winConfirmTimeRef.current = now;
                         }
 
-                        // 確認窗口完成：50ms 後且盤面已穩定 → 用 live 影格截圖（WIN 數字在畫面上）
+                        // 確認窗口完成：150ms 後立刻截圖（讓WIN數字動畫有時間穩定顯示）
+                        // WIN 訊號來自 OCR ROI，與盤面覆蓋率無關
+                        // 移除 coverage 門檻，避免線獎閃燈動畫把截圖永遠擋住
                         if (winConfirmTimeRef.current !== null &&
-                            now - winConfirmTimeRef.current > 50 &&
-                            coverage < motionCoverageMin * 0.4) {
+                            now - winConfirmTimeRef.current > 150) {
                             captureCurrentFrame(null, '💰 WIN');
                             lastCaptureTimeRef.current = now;
                             setTemplateMessage("✅ 自動擷取成功（贏分觸發）");
@@ -600,23 +606,10 @@ export function useVideoProcessor({ setTemplateMessage, template, motionCoverage
                             winConfirmTimeRef.current = null;
                             stableCanvasRef.current = null;
                         }
-                        // 保底：motionDelay 到期 → 用快照或 live
-                        else if (now - stateStartTimeRef.current > motionDelay) {
-                            if (hasSeenFirstSignalRef.current) {
-                                captureCurrentFrame(stableCanvasRef.current || null, '⏱️ 保底');
-                                lastCaptureTimeRef.current = now;
-                                setTemplateMessage("✅ 自動擷取成功（保底）");
-                            } else {
-                                // 開場時尚未抓到任何真實訊號，純粹因為畫面浮動造成的假轉動
-                                // 直接略過這次截圖，保持安靜
-                                setTemplateMessage("⏳ 等待首次有效訊號（無視閒置浮動）");
-                            }
-                            nextStatus = 'IDLE';
-                            winConfirmTimeRef.current = null;
-                            stableCanvasRef.current = null;
-                        }
+
                         // 假停輪偵測：盤面重新動起來
-                        else if (coverage > motionCoverageMin * 0.7 && !isLineHidden) {
+                        // 注意：如果正在確認 WIN 訊號，忽略 coverage 上升（線獎閃燈會誤觸發此條件）
+                        else if (coverage > motionCoverageMin * 0.7 && !isLineHidden && winConfirmTimeRef.current === null) {
                             nextStatus = 'SPINNING';
                             stateStartTimeRef.current = now;
                             winConfirmTimeRef.current = null;
@@ -668,7 +661,7 @@ export function useVideoProcessor({ setTemplateMessage, template, motionCoverage
             spinStateRef.current = 'IDLE';
             stateStartTimeRef.current = Date.now();
             firstMotionTimeRef.current = null;
-            hasSeenFirstSignalRef.current = false; // 重置有感訊號旗標
+
             lastBigWinTimeRef.current = 0;
             winConfirmTimeRef.current = null;
             lastFrameRef.current = null; // 強制清除參考幀，避免與舊數據比較導致誤觸發

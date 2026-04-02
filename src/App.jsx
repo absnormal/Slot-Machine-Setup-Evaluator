@@ -106,7 +106,7 @@ function App() {
     // --- Phase 4 偵測參數（拉升至 App 層級，以便模板 IO 存取）---
     const [motionCoverageMin, setMotionCoverageMin] = useState(60);
     const [vLineThreshold, setVLineThreshold] = useState(0.25);
-    const [ocrDecimalPlaces, setOcrDecimalPlaces] = useState(0);
+    const [ocrDecimalPlaces, setOcrDecimalPlaces] = useState(2);
 
     // --- Template IO (匯入/匯出/雲端存取) ---
     const templateIO = useTemplateIO({
