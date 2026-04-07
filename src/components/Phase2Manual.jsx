@@ -216,7 +216,7 @@ const Phase2Manual = ({
                                                                         symbol ? (
                                                                             (() => {
                                                                                 const displayImg = getSymbolDisplayImage(symbol, template?.symbolImages, template?.jpConfig);
-                                                                                const isCellDynamic = template?.hasDynamicMultiplier && isDynamicMultiplierSymbol(symbol);
+                                                                                const isCellDynamic = (template?.hasDynamicMultiplier || template?.hasMultiplierReel) && isDynamicMultiplierSymbol(symbol);
                                                                                 const multVal = isCellDynamic ? getSymbolMultiplier(symbol) : 1;
 
                                                                                 return displayImg ? (

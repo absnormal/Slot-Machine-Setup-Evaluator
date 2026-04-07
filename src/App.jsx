@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { apiKey } from './utils/constants';
 import { computeGridResults } from './engine/computeGridResults';
 
@@ -23,7 +23,9 @@ import { useCloud } from './hooks/useCloud';
 import { useGeminiVision } from './hooks/useGeminiVision';
 import { useTemplateBuilder } from './hooks/useTemplateBuilder';
 import { useSlotEngine } from './hooks/useSlotEngine';
-import { useVideoProcessor } from './hooks/useVideoProcessor';
+import { useKeyframeExtractor } from './hooks/useKeyframeExtractor';
+import { useAutoRecognition } from './hooks/useAutoRecognition';
+import { useReportGenerator } from './hooks/useReportGenerator';
 import { useTemplateIO } from './hooks/useTemplateIO';
 import useAppStore from './stores/useAppStore';
 
@@ -103,7 +105,7 @@ function App() {
     } = templateBuilder;
 
 
-    // --- Phase 4 偵測參數（拉升至 App 層級，以便模板 IO 存取）---
+    // --- Phase 4 偵測參數（保留供 templateIO 使用）---
     const [motionCoverageMin, setMotionCoverageMin] = useState(60);
     const [vLineThreshold, setVLineThreshold] = useState(0.25);
     const [ocrDecimalPlaces, setOcrDecimalPlaces] = useState(2);
@@ -165,37 +167,85 @@ function App() {
         visionCanvasRef, isPhase3Minimized
     });
 
-    // --- Phase 4 (影片自動辨識截圖) ---
-    const {
-        videoSrc, videoRef, handleVideoUpload,
-        isAutoDetecting, setIsAutoDetecting,
-        sensitivity, setSensitivity,
-        motionDelay, setMotionDelay,
-        capturedImages, removeCapturedImage, clearAllCaptures,
-        reelROI, setReelROI, winROI, setWinROI,
-        balanceROI, setBalanceROI, betROI, setBetROI,
-        captureCurrentFrame, debugData, runCalibration
-    } = useVideoProcessor({ 
-        setTemplateMessage, template, 
-        motionCoverageMin, setMotionCoverageMin, 
-        vLineThreshold, setVLineThreshold,
-        ocrDecimalPlaces, setOcrDecimalPlaces
+    // --- Phase 4 (影片智慧分析 — 新架構) ---
+    const videoRef = useRef(null);
+    const [videoSrc, setVideoSrc] = useState(null);
+    const handleVideoUpload = useCallback((e) => {
+        const file = e.target?.files?.[0];
+        if (!file) return;
+        if (videoSrc) URL.revokeObjectURL(videoSrc);
+        const url = URL.createObjectURL(file);
+        setVideoSrc(url);
+        setTemplateMessage(`📽️ 已載入影片：${file.name}`);
+        setTimeout(() => setTemplateMessage(''), 3000);
+    }, [videoSrc, setTemplateMessage]);
+
+    // ROI 狀態 (保留手動框選)
+    const ROI_CACHE_KEY = 'SLOT_P4_ROI_V2';
+    const loadCachedROI = (key, fallback) => {
+        try { const saved = JSON.parse(localStorage.getItem(ROI_CACHE_KEY))?.[key]; return saved || fallback; } catch { return fallback; }
+    };
+    const [reelROI, setReelROIRaw] = useState(() => loadCachedROI('reel', { x: 10, y: 15, w: 80, h: 55 }));
+    const [winROI, setWinROIRaw] = useState(() => loadCachedROI('win', { x: 38, y: 72, w: 24, h: 8 }));
+    const [balanceROI, setBalanceROIRaw] = useState(() => loadCachedROI('balance', { x: 5, y: 90, w: 24, h: 6 }));
+    const [betROI, setBetROIRaw] = useState(() => loadCachedROI('bet', { x: 70, y: 90, w: 24, h: 6 }));
+
+    // ROI 持久化
+    const saveROI = useCallback((key, val) => {
+        try {
+            const all = JSON.parse(localStorage.getItem(ROI_CACHE_KEY) || '{}');
+            all[key] = val;
+            localStorage.setItem(ROI_CACHE_KEY, JSON.stringify(all));
+        } catch {}
+    }, []);
+    const setReelROI = useCallback((v) => { setReelROIRaw(v); saveROI('reel', v); }, [saveROI]);
+    const setWinROI = useCallback((v) => { setWinROIRaw(v); saveROI('win', v); }, [saveROI]);
+    const setBalanceROI = useCallback((v) => { setBalanceROIRaw(v); saveROI('balance', v); }, [saveROI]);
+    const setBetROI = useCallback((v) => { setBetROIRaw(v); saveROI('bet', v); }, [saveROI]);
+
+    // 新 Phase 4 Hooks
+    const keyframeExtractor = useKeyframeExtractor({ setTemplateMessage });
+    const autoRecognition = useAutoRecognition({
+        template, availableSymbols, customApiKey,
+        setTemplateMessage, setTemplateError
     });
+    const reportGenerator = useReportGenerator();
+
+    // 統計數據
+    const phase4Stats = useMemo(() => reportGenerator.computeStats(keyframeExtractor.candidates), [keyframeExtractor.candidates, reportGenerator]);
+
+    // 辨識觸發器（封裝 updateCandidate + rois）
+    const handleRecognizeBatch = useCallback((decimalPlaces) => {
+        const rois = { reelROI, winROI, balanceROI, betROI };
+        autoRecognition.recognizeBatch(
+            keyframeExtractor.candidates,
+            keyframeExtractor.updateCandidate,
+            rois,
+            decimalPlaces ?? ocrDecimalPlaces
+        );
+    }, [autoRecognition, keyframeExtractor, reelROI, winROI, balanceROI, betROI, ocrDecimalPlaces]);
 
     // --- Phase 間數據傳遞 ---
     const handleTransferPhase4ToPhase3 = useCallback(async () => {
-        if (capturedImages.length === 0) return;
+        const kfCandidates = keyframeExtractor.candidates;
+        if (kfCandidates.length === 0) return;
 
-        const transformed = await Promise.all(capturedImages.map(imgData => {
+        const transformed = await Promise.all(kfCandidates.map(kf => {
             return new Promise((resolve) => {
+                const dataUrl = kf.canvas.toDataURL('image/jpeg', 0.8);
                 const img = new Image();
                 img.onload = () => {
                     resolve({
-                        id: imgData.id, file: imgData.file, previewUrl: imgData.previewUrl,
-                        obj: img, grid: null, error: ''
+                        id: kf.id,
+                        file: { name: `Spin-${kf.time.toFixed(1)}s` },
+                        previewUrl: dataUrl,
+                        obj: img,
+                        grid: kf.recognitionResult?.grid || null,
+                        bet: kf.recognitionResult?.betValue || null,
+                        error: ''
                     });
                 };
-                img.src = imgData.previewUrl;
+                img.src = dataUrl;
             });
         }));
 
@@ -205,11 +255,10 @@ function App() {
         setVisionImages(prev => [...prev, ...transformed]);
         setIsPhase4Minimized(true);
         setIsPhase3Minimized(false);
-        setTemplateMessage(`✅ 已成功從影片匯入 ${capturedImages.length} 張截圖至 Phase 3（已同步盤面與 BET 框選位置）`);
+        setTemplateMessage(`✅ 已從影片匯入 ${kfCandidates.length} 張關鍵幀至 Phase 3`);
 
         if (transformed.length > 0) setActiveVisionId(transformed[0].id);
-        // 不再清空 Phase 4 紀錄
-    }, [capturedImages, setVisionImages, setTemplateMessage, setActiveVisionId, reelROI, betROI, setVisionP1, setVisionP1Bet, setHasBetBox]);
+    }, [keyframeExtractor.candidates, setVisionImages, setTemplateMessage, setActiveVisionId, reelROI, betROI, setVisionP1, setVisionP1Bet, setHasBetBox]);
 
     // --- Vision 結算 ---
     const [visionCalcResults, setVisionCalcResults] = useState(null);
@@ -438,29 +487,46 @@ function App() {
                 />
                 </ErrorBoundary>
 
-                <ErrorBoundary label="Phase 4: 影片偵測">
+                <ErrorBoundary label="Phase 4: 影片智慧分析">
                 <Phase4Video
-                    isPhase4Minimized={isPhase4Minimized} setIsPhase4Minimized={setIsPhase4Minimized}
+                    isPhase4Minimized={isPhase4Minimized}
                     onToggle={() => handlePhaseToggle('phase4')}
-                    videoSrc={videoSrc} videoRef={videoRef} handleVideoUpload={handleVideoUpload}
-                    isAutoDetecting={isAutoDetecting} setIsAutoDetecting={setIsAutoDetecting}
-                    sensitivity={sensitivity} setSensitivity={setSensitivity}
-                    motionCoverageMin={motionCoverageMin} setMotionCoverageMin={setMotionCoverageMin}
-                    motionDelay={motionDelay} setMotionDelay={setMotionDelay}
-                    vLineThreshold={vLineThreshold} setVLineThreshold={setVLineThreshold}
-                    ocrDecimalPlaces={ocrDecimalPlaces} setOcrDecimalPlaces={setOcrDecimalPlaces}
-                    capturedImages={capturedImages} removeCapturedImage={removeCapturedImage} clearAllCaptures={clearAllCaptures}
+                    // Keyframe Extractor
+                    candidates={keyframeExtractor.candidates}
+                    isScanning={keyframeExtractor.isScanning}
+                    scanProgress={keyframeExtractor.scanProgress}
+                    scanStats={keyframeExtractor.scanStats}
+                    scanVideo={keyframeExtractor.scanVideo}
+                    startLiveDetection={keyframeExtractor.startLiveDetection}
+                    stopLiveDetection={keyframeExtractor.stopLiveDetection}
+                    removeCandidate={keyframeExtractor.removeCandidate}
+                    clearCandidates={keyframeExtractor.clearCandidates}
+                    addManualCandidate={keyframeExtractor.addManualCandidate}
+                    smartDedup={keyframeExtractor.smartDedup}
+                    confirmDedup={keyframeExtractor.confirmDedup}
+                    healBreaks={keyframeExtractor.healBreaks}
+                    // Auto Recognition
+                    isRecognizing={autoRecognition.isRecognizing}
+                    isStopping={autoRecognition.isStopping}
+                    recognitionProgress={autoRecognition.recognitionProgress}
+                    recognizeBatch={handleRecognizeBatch}
+                    cancelRecognition={autoRecognition.cancelRecognition}
+                    // Report
+                    stats={phase4Stats}
+                    exportCSV={(c) => reportGenerator.exportCSV(c, gameName || 'slot')}
+                    // ROI
                     reelROI={reelROI} setReelROI={setReelROI}
                     winROI={winROI} setWinROI={setWinROI}
                     balanceROI={balanceROI} setBalanceROI={setBalanceROI}
                     betROI={betROI} setBetROI={setBetROI}
-                    captureCurrentFrame={captureCurrentFrame}
+                    // Video
+                    videoSrc={videoSrc} videoRef={videoRef} handleVideoUpload={handleVideoUpload}
+                    // Transfer
                     onTransferToPhase3={handleTransferPhase4ToPhase3}
                     setTemplateMessage={setTemplateMessage}
                     template={template}
                     gridRows={gridRows} gridCols={gridCols}
-                    debugData={debugData}
-                    runCalibration={runCalibration}
+                    ocrDecimalPlaces={ocrDecimalPlaces} setOcrDecimalPlaces={setOcrDecimalPlaces}
                 />
                 </ErrorBoundary>
 
