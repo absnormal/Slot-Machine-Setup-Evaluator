@@ -16,11 +16,14 @@ import { createWorker } from 'tesseract.js';
  */
 
 // ── 常數 ──
-const SAMPLE_SIZE = 128;        // ROI 降採尺寸 (128x128)
-const DEDUP_THRESHOLD = 8;      // 去重 MAE 閾值（低於此值視為相同幀）
-const MIN_MOTION_RATIO = 0.25;  // 窗口中至少 25% 的幀有動態，才算「之前有動過」
-const STABLE_RATIO = 0.3;       // diff < μ×STABLE_RATIO 視為穩定
-const POST_STABLE_FRAMES = 2;   // 穩定後再等 N 幀才截圖（避免假停輪）
+const SAMPLE_SIZE = 128;               // ROI 降採尺寸 (128x128)
+const DEDUP_THRESHOLD = 8;             // 去重 MAE 閾值（低於此值視為相同幀）
+const MIN_MOTION_RATIO = 0.25;         // 窗口中至少 25% 的幀有動態，才算「之前有動過」
+const STABLE_RATIO = 0.3;              // diff < μ×STABLE_RATIO 視為穩定
+const POST_STABLE_FRAMES = 2;          // 穩定後再等 N 幀才截圖（避免假停輪）
+const ANIMATION_TIMEOUT_FRAMES = 3;    // 動畫備援：衰減後維持 3 幀（約 0.3s @10fps）即觸發
+const DECAY_RATIO = 0.3;               // MAE 降到旋轉高峰的 30% 以下視為「大幅衰減」
+const MIN_CONSECUTIVE = 2;             // 跑分緩衝：連續 N 次相同 OCR 才視為數字穩定
 
 /**
  * 取代 setTimeout 的不降速讓步函數，解決網頁在背景執行時被降速至 1FPS 的問題
@@ -144,94 +147,103 @@ function generateThumbUrl(canvas, roi) {
 }
 
 /**
- * Best-of-N 取樣策略
+ * Best-of-N 取樣策略（精確版）
  *
- * 盤面停止後，在 0~sampleWindow 秒內取樣 N 張快照：
- * 1. 裁切 WIN ROI → 快速 OCR 讀數字
- * 2. 過濾特效幀（亮度異常 / OCR 亂碼）
- * 3. 挑出贏分最大且連續出現 ≥2 次的幀 → 回傳最佳截圖時間
- * 4. 若沒有有效取樣 → fallback 用固定延遲
+ * 盤面停止後，在 0~sampleWindow 秒內每 0.1s 取樣一次 WIN OCR：
+ * 1. 連續 MIN_CONSECUTIVE 次讀到相同有效數字 → 判定跑分結束，立即回傳
+ * 2. 超過 sampleWindow 秒仍未穩定 → 超時截斷，回傳出現最多次的數字
+ * 3. OCR 全滅（無法辨識）→ 使用視覺高峰備案或 0.5s 盲截
  */
 async function bestOfNCapture(video, winROI, ocrWorker, reelStopTime, sampleWindow, step, decimalPlaces) {
-    const SAMPLE_INTERVAL = Math.max(0.05, Math.min(step, 0.15));  // 0.05 ~ 0.15 秒，高頻動態取樣
+    const SAMPLE_INTERVAL = Math.max(0.05, Math.min(step, 0.12));  // 0.05 ~ 0.12 秒，高頻取樣
     const maxT = Math.min(reelStopTime + sampleWindow, video.duration);
-    const samples = []; // { time, ocrValue, winDiff }
+    const samples = []; // { time, ocrValue }
+
+    let lastOcr = '';
+    let consecutiveCount = 0;
     let baseWinGray = null;
+    let maxWinDiff = 0;
+    let maxWinDiffTime = reelStopTime;
 
     for (let t = reelStopTime; t <= maxT; t += SAMPLE_INTERVAL) {
         video.currentTime = t;
         await waitForSeek(video);
         await yieldToMain(15);
 
-        // 視覺峰值追蹤
+        // 追蹤 WIN ROI 視覺高峰（OCR 全滅時的備案）
         const currentWinGray = extractROIGray(video, winROI);
         if (!baseWinGray && currentWinGray) baseWinGray = currentWinGray;
-        const winDiff = currentWinGray && baseWinGray ? computeMAE(baseWinGray, currentWinGray) : 0;
+        if (currentWinGray && baseWinGray) {
+            const winDiff = computeMAE(baseWinGray, currentWinGray);
+            if (winDiff > maxWinDiff) { maxWinDiff = winDiff; maxWinDiffTime = t; }
+        }
 
-        // 快速 OCR（如果有 worker）
+        // OCR
         let ocrValue = '';
         if (ocrWorker) {
             const tempCanvas = captureFullFrame(video);
             ocrValue = await cropAndOCR(tempCanvas, winROI, ocrWorker, decimalPlaces);
         }
 
-        samples.push({ time: t, ocrValue, winDiff });
+        samples.push({ time: t, ocrValue });
+
+        // ── 連續穩定值判定 ──
+        if (ocrValue !== '' && ocrValue !== '0') {
+            if (ocrValue === lastOcr) {
+                consecutiveCount++;
+                if (consecutiveCount >= MIN_CONSECUTIVE) {
+                    // ✅ 跑分動畫結束，數字穩定
+                    console.log(`✅ 跑分穩定! OCR="${ocrValue}" 連續 ${consecutiveCount + 1} 次 @ ${t.toFixed(2)}s`);
+                    return {
+                        captureTime: t,
+                        delayReason: 'ocr_stabilized',
+                        sampleCount: samples.length,
+                        bestOcrValue: ocrValue,
+                        isStabilized: true
+                    };
+                }
+            } else {
+                consecutiveCount = 1;
+                lastOcr = ocrValue;
+            }
+        } else {
+            // 讀到空值或 0，重置連續計數（跑分數字仍在變動）
+            consecutiveCount = 0;
+            lastOcr = '';
+        }
     }
 
-    // 挑最佳：找最大 + 穩定的 OCR 值
-    const validSamples = samples.filter(s => s.ocrValue !== '' && s.ocrValue !== '0' && s.ocrValue !== 'Err');
-    const maxDiffSample = samples.reduce((max, cur) => cur.winDiff > max.winDiff ? cur : max, samples[0] || { winDiff: 0 });
-    
-    console.log(`[Diagnostic] bestOfNCapture(0~${sampleWindow}s): 取樣 ${samples.length} 幀, 有效OCR ${validSamples.length} 幀. 最大視覺變化: ${maxDiffSample.winDiff.toFixed(1)} @ ${maxDiffSample.time?.toFixed(2)}s`);
+    // ── 取樣結束仍未穩定：統計出現最多次的有效值 ──
+    const validSamples = samples.filter(s => s.ocrValue !== '' && s.ocrValue !== '0');
+    console.log(`[Diagnostic] bestOfNCapture 超時截斷(${sampleWindow}s): 取樣 ${samples.length} 幀, 有效OCR ${validSamples.length} 幀`);
 
     if (validSamples.length === 0) {
-        // 沒有有效 OCR 取樣 → 視覺巔峰備案 (Peak Visual Diff Fallback)
-        if (samples.length > 0 && maxDiffSample.winDiff > 10) { // 確保真的有明確的畫面變化
-            const captureTime = Math.min(maxDiffSample.time + 0.2, video.duration); // 巔峰後延遲 0.2s 讓畫面穩定
-            console.log(`👁️ OCR全滅！啟動視覺巔峰備案：峰值在 ${maxDiffSample.time.toFixed(2)}s (diff: ${maxDiffSample.winDiff.toFixed(1)}), 截圖延遲至 ${captureTime.toFixed(2)}s`);
-            return { captureTime, delayReason: 'visual_diff_fallback', sampleCount: samples.length };
+        // OCR 全滅 → 視覺高峰備案
+        if (maxWinDiff > 10) {
+            const captureTime = Math.min(maxWinDiffTime + 0.2, video.duration);
+            console.log(`👁️ OCR全滅，視覺巔峰備案: 峰值 ${maxWinDiffTime.toFixed(2)}s, 截圖 → ${captureTime.toFixed(2)}s`);
+            return { captureTime, delayReason: 'visual_diff_fallback', sampleCount: samples.length, isStabilized: false };
         }
-        
-        // 老招 fallback
         const fallbackTime = Math.min(reelStopTime + 0.5, video.duration);
-        console.log(`[Diagnostic] OCR失敗且無明顯視覺變化 (maxDiff=${maxDiffSample.winDiff.toFixed(1)})，使用 0.5s 盲截。`);
-        return { captureTime: fallbackTime, delayReason: 'no_valid_sample', sampleCount: samples.length };
+        console.log(`[Diagnostic] OCR全滅且無明顯視覺變化，使用 0.5s 盲截`);
+        return { captureTime: fallbackTime, delayReason: 'no_valid_sample', sampleCount: samples.length, isStabilized: false };
     }
 
-    // 找穩定的最大值：相同 ocrValue 出現 ≥2 次
+    // 找出現次數最多的值（超時截斷時最可靠的估計）
     const valueCounts = {};
     for (const s of validSamples) {
-        if (!valueCounts[s.ocrValue]) valueCounts[s.ocrValue] = [];
-        valueCounts[s.ocrValue].push(s);
+        valueCounts[s.ocrValue] = (valueCounts[s.ocrValue] || 0) + 1;
     }
+    const mostFrequentOcr = Object.entries(valueCounts).reduce((a, b) => b[1] > a[1] ? b : a)[0];
+    const mostFrequentSample = validSamples.filter(s => s.ocrValue === mostFrequentOcr).at(-1);
 
-    // 優先選出現 ≥2 次的最大值
-    let bestSample = null;
-    let bestValue = -1;
-
-    for (const [val, arr] of Object.entries(valueCounts)) {
-        const numVal = parseFloat(val) || 0;
-        if (arr.length >= 2 && numVal > bestValue) {
-            bestValue = numVal;
-            bestSample = arr[arr.length - 1]; // 取最後一張（動畫更完整）
-        }
-    }
-
-    // 沒有重複的 → 取數值最大的那張
-    if (!bestSample) {
-        bestSample = validSamples.reduce((best, cur) => {
-            const curVal = parseFloat(cur.ocrValue) || 0;
-            const bestVal = parseFloat(best.ocrValue) || 0;
-            return curVal > bestVal ? cur : best;
-        }, validSamples[0]);
-    }
-
+    console.log(`⏰ 跑分超時截斷，使用最常出現值 "${mostFrequentOcr}" (${valueCounts[mostFrequentOcr]}次)`);
     return {
-        captureTime: bestSample.time,
-        delayReason: 'best_of_n',
+        captureTime: mostFrequentSample ? mostFrequentSample.time : Math.min(reelStopTime + 0.5, video.duration),
+        delayReason: 'timeout_truncated',
         sampleCount: samples.length,
-        effectCount: 0,
-        bestOcrValue: bestSample.ocrValue
+        bestOcrValue: mostFrequentOcr,
+        isStabilized: false
     };
 }
 
@@ -382,13 +394,11 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
         const diffWindow = [];
         let prevGray = null;
 
-        // --- NEW: WIN ROI Motion Tracking ---
-        const winDiffWindow = [];
-        let prevWinGray = null;
-        // ------------------------------------
-
+        // ── 三層觸發所需追蹤變數 ──
+        let peakDiff = 0;       // 旋轉期 MAE 高峰（動畫備援用）
+        let decayCount = 0;     // 大幅衰減後的持續幀數
+        let stableCount = 0;    // 完全穩定的連續幀數
         let lastCandidateTime = -999;
-        let stableCount = 0;
         const results = [];
 
         for (let i = 0; i < totalFrames; i++) {
@@ -400,75 +410,87 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
             await yieldToMain(20);
 
             const currentGray = extractROIGray(video, roi);
-            if (!currentGray) { prevGray = null; prevWinGray = null; continue; }
+            if (!currentGray) { prevGray = null; continue; }
 
             const diff = prevGray ? computeMAE(prevGray, currentGray) : 0;
             diffWindow.push(diff);
             if (diffWindow.length > WINDOW_SIZE) diffWindow.shift();
 
-            // --- WIN ROI 突波偵測 ---
-            const currentWinGray = winROI ? extractROIGray(video, winROI) : null;
-            let winSpikeDetected = false;
-            
-            if (currentWinGray && prevWinGray) {
-                const winDiff = computeMAE(prevWinGray, currentWinGray);
-                winDiffWindow.push(winDiff);
-                if (winDiffWindow.length > WINDOW_SIZE) winDiffWindow.shift();
-                
-                if (winDiffWindow.length >= Math.min(WINDOW_SIZE, 3)) {
-                    const { mean: wμ } = windowStats(winDiffWindow.slice(0, -1)); // 排除當前幀
-                    
-                    // -- 加入深度診斷日誌：紀錄每一次超過基本均值的變化 --
-                    if (winDiff > 5) {
-                        // console.log(`[Diagnostic] ${t.toFixed(2)}s | diff=${winDiff.toFixed(1)}, prevMean=${wμ.toFixed(1)} (${wμ>0 ? (winDiff/wμ).toFixed(1) : 'INF'}x)`);
-                    }
+            // ── 追蹤旋轉高峰（動畫備援計算用）──
+            if (diff > peakDiff) peakDiff = diff;
 
-                    // 降低門檻：突波倍率 2.5x 或絕對差異 > 10
-                    if (winDiff > Math.max(wμ * 2.5, 10)) {
-                        winSpikeDetected = true;
-                        console.log(`⚡ WIN突波偵測 @ ${t.toFixed(2)}s | winDiff=${winDiff.toFixed(1)} vs wμ=${wμ.toFixed(1)} (${wμ > 0 ? (winDiff/wμ).toFixed(1) : 'INF'}x)`);
-                    }
-                }
-            }
-            // ------------------------
-
-            // ── 盤面穩定性分析 (需要足夠的 diff 歷史) ──
+            // ── 第一層：盤面完全靜止判定 ──
             let isReelStopped = false;
             if (diffWindow.length >= Math.min(WINDOW_SIZE, 10)) {
                 const { mean: μ } = windowStats(diffWindow);
                 const isStable = diff < Math.max(μ * STABLE_RATIO, 2);
 
-                if (isStable) {
-                    stableCount++;
-                } else {
-                    stableCount = 0;
-                }
+                if (isStable) { stableCount++; } else { stableCount = 0; }
 
                 const motionThresh = μ * 0.6;
-                const motionFrames = diffWindow.filter(d => d > motionThresh).length;
-                const hadMotion = motionFrames >= diffWindow.length * MIN_MOTION_RATIO;
+                const hadMotion = diffWindow.filter(d => d > motionThresh).length >= diffWindow.length * MIN_MOTION_RATIO;
 
                 isReelStopped = stableCount >= POST_STABLE_FRAMES && hadMotion && (t - lastCandidateTime) > minGap;
             }
 
-            // ── WIN突波判定（獨立於盤面 diffWindow，不被 reset 擋住）──
-            const isWinSpike = winSpikeDetected && (t - lastCandidateTime) > Math.min(0.5, minGap);
+            // ── 第二層：動畫備援（永遠在背景追蹤，不受第一層結果影響）──
+            // 用途：盤面 MAE 已大幅下降但未完全靜止時，仍然觸發截圖
+            // 場景：WILD 擴展動畫、符號變身特效、WIN 值顯示與停輪時機不同步
+            let isAnimationFallback = false;
+            if (peakDiff > 5 && diff < peakDiff * DECAY_RATIO) {
+                decayCount++;
+            } else if (diff > peakDiff * 0.5) {
+                decayCount = 0; // MAE 回彈，表示真的還在轉
+            }
+            if (decayCount >= ANIMATION_TIMEOUT_FRAMES && !isReelStopped) {
+                const hadMotion2 = diffWindow.filter(d => d > windowStats(diffWindow).mean * 0.6).length >= diffWindow.length * MIN_MOTION_RATIO;
+                isAnimationFallback = hadMotion2 && (t - lastCandidateTime) > minGap;
+            }
 
-            // ── 觸發截圖 ──
-            if (isReelStopped || isWinSpike) {
-                const triggerReason = isWinSpike ? 'WIN_SPIKE' : 'REEL_STOP';
-                console.log(`📸 觸發截圖 @ ${t.toFixed(2)}s | 原因: ${triggerReason}`);
+            // ── 觸發截圖（WIN_SPIKE 不再獨立觸發）──
+            if (isReelStopped || isAnimationFallback) {
+                const triggerReason = isReelStopped ? 'REEL_STOP' : 'ANIMATION_FALLBACK';
+                const { mean: trigμ, std: trigσ } = windowStats(diffWindow);
 
-                // ── Best-of-N 取樣：多點取樣挑最佳贏分幀 ──
+                // ── 詳細判斷依據 ──
+                console.log(`\n${'═'.repeat(60)}`);
+                console.log(`📸 #${results.length + 1} 觸發截圖 @ ${t.toFixed(2)}s`);
+                console.log(`${'─'.repeat(60)}`);
+                console.log(`  觸發原因 : ${triggerReason}`);
+                console.log(`  當前 diff : ${diff.toFixed(2)} (μ=${trigμ.toFixed(2)}, σ=${trigσ.toFixed(2)})`);
+                console.log(`  ┌─ 第一層 REEL_STOP ────────────────`);
+                console.log(`  │  stableCount : ${stableCount} / ${POST_STABLE_FRAMES} (需 ≥${POST_STABLE_FRAMES})`);
+                console.log(`  │  穩定門檻    : diff < ${Math.max(trigμ * STABLE_RATIO, 2).toFixed(2)} (μ×${STABLE_RATIO} or 2)`);
+                console.log(`  │  結果        : ${isReelStopped ? '✅ 觸發' : '❌ 未達標'}`);
+                console.log(`  ├─ 第二層 ANIMATION_FALLBACK ───────`);
+                console.log(`  │  peakDiff    : ${peakDiff.toFixed(2)}`);
+                console.log(`  │  衰減門檻    : diff < ${(peakDiff * DECAY_RATIO).toFixed(2)} (peak×${DECAY_RATIO})`);
+                console.log(`  │  decayCount  : ${decayCount} / ${ANIMATION_TIMEOUT_FRAMES} (需 ≥${ANIMATION_TIMEOUT_FRAMES})`);
+                console.log(`  │  結果        : ${isAnimationFallback ? '✅ 觸發' : '❌ 未達標'}`);
+                console.log(`  └─ 間隔檢查 ────────────────────────`);
+                console.log(`     距上次截圖  : ${(t - lastCandidateTime).toFixed(2)}s (需 >${minGap}s)`);
+
+                // ── Best-of-N 跑分觀察期 ──
                 let captureTime = t;
+                let isStabilized = false;
                 if (winROI) {
                     const worker = ocrWorkerRef.current;
+                    console.log(`  ⏳ 進入 Best-of-N 跑分觀察 (窗口=${winWaitMax}s)...`);
                     const result = await bestOfNCapture(video, winROI, worker, t, winWaitMax, step, ocrDecimalPlaces);
                     captureTime = result.captureTime;
-                    console.log(`  → Best-of-N: captureTime=${captureTime.toFixed(2)}s, samples=${result.sampleCount}, bestOcr=${result.bestOcrValue}`);
+                    isStabilized = result.isStabilized ?? false;
+                    console.log(`  ┌─ OCR 跑分結果 ────────────────────`);
+                    console.log(`  │  最終數值    : "${result.bestOcrValue || '(無)'}"`);
+                    console.log(`  │  穩定狀態    : ${isStabilized ? '✅ 連續穩定確認' : '⚠️ 超時截斷'}`);
+                    console.log(`  │  判定原因    : ${result.delayReason}`);
+                    console.log(`  │  取樣數      : ${result.sampleCount} 幀`);
+                    console.log(`  │  延遲        : ${(captureTime - t).toFixed(2)}s (停輪→截圖)`);
+                    console.log(`  └──────────────────────────────────`);
                     video.currentTime = captureTime;
                     await waitForSeek(video);
                     await yieldToMain(20);
+                } else {
+                    console.log(`  ⚠️ 未設定 WIN ROI，跳過 Best-of-N`);
                 }
 
                 const frameCanvas = captureFullFrame(video);
@@ -480,6 +502,7 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                     reelStopTime: t,
                     captureDelay: captureTime - t,
                     triggerReason,
+                    ocrStabilized: isStabilized,  // true=跑分確認, false=超時截斷
                     canvas: frameCanvas,
                     thumbUrl,
                     diff: diff.toFixed(2),
@@ -489,24 +512,25 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                     error: ''
                 });
 
+                console.log(`  📋 候選幀 #${results.length}: time=${captureTime.toFixed(2)}s, trigger=${triggerReason}, ocrOK=${isStabilized}`);
+                console.log(`${'═'.repeat(60)}\n`);
+
                 lastCandidateTime = captureTime;
                 stableCount = 0;
+                decayCount = 0;
+                peakDiff = 0;       // 重置高峰，準備偵測下一局
                 diffWindow.length = 0;
-                // 重要：重設 WIN 歷史，避免 bestOfNCapture 跳時間後產生虛假突波
-                winDiffWindow.length = 0;
 
                 // 跳過已掃描的延遲區域
                 const skipFrames = Math.ceil((captureTime - t) / step);
                 if (skipFrames > 0) {
                     i += skipFrames;
                     prevGray = null;
-                    prevWinGray = null;  // 重要：同步重設 win 參考幀
                     continue;
                 }
             }
 
             prevGray = currentGray;
-            prevWinGray = currentWinGray;
 
             if (i % 5 === 0) {
                 setScanProgress(t / video.duration);
@@ -562,8 +586,24 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
             prevGray: null,
             lastCandidateTime: -999,
             stableCount: 0,
-            windowSize: 20
+            windowSize: 20,
+            // ── 三階段狀態機 ──
+            phase: 'SCANNING',       // SCANNING → WAITING_WIN → COOLDOWN → SCANNING
+            peakDiff: 0,             // 動畫備援用
+            decayCount: 0,
+            // ── WAITING_WIN 階段用 ──
+            pendingReelCanvas: null, // 停輪瞬間的乾淨盤面
+            pendingReelTime: 0,
+            pendingThumbUrl: null,
+            pendingDiff: '-',
+            pendingAvgDiff: '-',
+            winBaseGray: null,       // 停輪瞬間 WIN ROI 灰階（基線）
+            waitStartTime: 0,
         };
+
+        const WIN_WAIT_MAX = 3.0;     // 最長等 WIN 秒數
+        const WIN_CHANGE_THRESH = 10; // WIN ROI MAE 變化超過此值視為 WIN 出現
+        const SPIN_RESUME_THRESH = 15; // 盤面 MAE 超過此值視為下一轉開始
 
         const processLiveFrame = () => {
             if (liveCancelRef.current) return;
@@ -574,63 +614,156 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
 
             const state = liveStateRef.current;
             const currentGray = extractROIGray(video, roi);
+            const now = video.currentTime;
 
-            if (currentGray && state.prevGray) {
-                const diff = computeMAE(state.prevGray, currentGray);
-                state.diffWindow.push(diff);
-                if (state.diffWindow.length > state.windowSize) state.diffWindow.shift();
+            // ════════════════════════════════════════
+            // Phase 1: SCANNING — 偵測盤面停輪
+            // ════════════════════════════════════════
+            if (state.phase === 'SCANNING') {
+                if (currentGray && state.prevGray) {
+                    const diff = computeMAE(state.prevGray, currentGray);
+                    state.diffWindow.push(diff);
+                    if (state.diffWindow.length > state.windowSize) state.diffWindow.shift();
+                    if (diff > state.peakDiff) state.peakDiff = diff;
 
-                if (state.diffWindow.length >= 10) {
-                    const { mean: μ } = windowStats(state.diffWindow);
-                    const isStable = diff < Math.max(μ * STABLE_RATIO, 2);
+                    if (state.diffWindow.length >= 10) {
+                        const { mean: μ } = windowStats(state.diffWindow);
+                        const isStable = diff < Math.max(μ * STABLE_RATIO, 2);
 
-                    if (isStable) {
-                        state.stableCount++;
-                    } else {
-                        state.stableCount = 0;
-                    }
+                        if (isStable) { state.stableCount++; } else { state.stableCount = 0; }
 
-                    const motionThresh = μ * 0.6;
-                    const motionFrames = state.diffWindow.filter(d => d > motionThresh).length;
-                    const hadMotion = motionFrames >= state.diffWindow.length * MIN_MOTION_RATIO;
-                    const now = video.currentTime;
+                        const motionThresh = μ * 0.6;
+                        const hadMotion = state.diffWindow.filter(d => d > motionThresh).length >= state.diffWindow.length * MIN_MOTION_RATIO;
 
-                    if (state.stableCount >= 3 && hadMotion && (now - state.lastCandidateTime) > 1.0) {
-                        const frameCanvas = captureFullFrame(video);
-                        const thumbUrl = generateThumbUrl(frameCanvas, roi);
-                        const candidate = {
-                            id: `kf_live_${Date.now()}`,
-                            time: now,
-                            canvas: frameCanvas,
-                            thumbUrl,
-                            diff: diff.toFixed(2),
-                            avgDiff: μ.toFixed(2),
-                            status: 'pending',
-                            recognitionResult: null,
-                            error: ''
-                        };
+                        // 第一層：完全靜止
+                        const isReelStopped = state.stableCount >= 3 && hadMotion && (now - state.lastCandidateTime) > 1.0;
 
-                        setCandidates(prev => [...prev, candidate]);
-                        if (onCapture) onCapture(candidate);
-
-                        // 非同步跑 OCR（不阻塞即時偵測迴圈）
-                        const worker = ocrWorkerRef.current;
-                        const { winROI, balanceROI, betROI, ocrDecimalPlaces } = ocrOptions;
-                        if (worker && (winROI || balanceROI || betROI)) {
-                            Promise.all([
-                                cropAndOCR(frameCanvas, winROI, worker, ocrDecimalPlaces ?? 2),
-                                cropAndOCR(frameCanvas, balanceROI, worker, ocrDecimalPlaces ?? 2),
-                                cropAndOCR(frameCanvas, betROI, worker, 0)
-                            ]).then(([win, balance, bet]) => {
-                                setCandidates(prev => prev.map(c =>
-                                    c.id === candidate.id ? { ...c, ocrData: { win, balance, bet } } : c
-                                ));
-                            }).catch(() => {});
+                        // 第二層：動畫備援
+                        let isAnimFallback = false;
+                        if (state.peakDiff > 5 && diff < state.peakDiff * DECAY_RATIO) {
+                            state.decayCount++;
+                        } else if (diff > state.peakDiff * 0.5) {
+                            state.decayCount = 0;
+                        }
+                        if (!isReelStopped && state.decayCount >= ANIMATION_TIMEOUT_FRAMES && hadMotion && (now - state.lastCandidateTime) > 1.0) {
+                            isAnimFallback = true;
                         }
 
-                        state.lastCandidateTime = now;
-                        state.stableCount = 0;
-                        state.diffWindow.length = 0;
+                        if (isReelStopped || isAnimFallback) {
+                            // ── 停輪確認！先拍乾淨盤面 ──
+                            state.pendingReelCanvas = captureFullFrame(video);
+                            state.pendingReelTime = now;
+                            state.pendingThumbUrl = generateThumbUrl(state.pendingReelCanvas, roi);
+                            state.pendingDiff = diff.toFixed(2);
+                            state.pendingAvgDiff = μ.toFixed(2);
+
+                            const { winROI } = ocrOptions;
+                            state.winBaseGray = winROI ? extractROIGray(video, winROI) : null;
+                            state.waitStartTime = now;
+                            state.phase = 'WAITING_WIN';
+
+                            const reason = isReelStopped ? 'REEL_STOP' : 'ANIM_FALLBACK';
+                            console.log(`🎰 [${now.toFixed(2)}s] 停輪(${reason}) → 等待 WIN 出現... (最長 ${WIN_WAIT_MAX}s)`);
+                        }
+                    }
+                }
+            }
+
+            // ════════════════════════════════════════
+            // Phase 2: WAITING_WIN — 等 WIN 顯示或下一轉開始
+            // ════════════════════════════════════════
+            else if (state.phase === 'WAITING_WIN') {
+                const { winROI } = ocrOptions;
+                const elapsed = now - state.waitStartTime;
+
+                // 偵測 WIN ROI 有無變化（數字出現）
+                let winAppeared = false;
+                if (winROI && state.winBaseGray) {
+                    const currentWinGray = extractROIGray(video, winROI);
+                    if (currentWinGray) {
+                        const winDiff = computeMAE(state.winBaseGray, currentWinGray);
+                        if (winDiff > WIN_CHANGE_THRESH) winAppeared = true;
+                    }
+                }
+
+                // 偵測盤面是否重新開始轉動（下一局開始）
+                let nextSpinStarted = false;
+                if (currentGray && state.prevGray) {
+                    const reelDiff = computeMAE(state.prevGray, currentGray);
+                    if (reelDiff > SPIN_RESUME_THRESH) nextSpinStarted = true;
+                }
+
+                // 是否超時
+                const timedOut = elapsed > WIN_WAIT_MAX;
+
+                if (winAppeared || nextSpinStarted || timedOut) {
+                    const captureReason = winAppeared ? 'WIN_APPEARED'
+                                       : nextSpinStarted ? 'NEXT_SPIN'
+                                       : 'WIN_TIMEOUT';
+
+                    // ── 用「現在」的畫面跑 OCR（此時 WIN 應已顯示）──
+                    const ocrCanvas = captureFullFrame(video);
+
+                    const candidate = {
+                        id: `kf_live_${Date.now()}`,
+                        time: state.pendingReelTime,
+                        reelStopTime: state.pendingReelTime,
+                        canvas: state.pendingReelCanvas,  // 盤面用停輪瞬間的（最乾淨）
+                        thumbUrl: state.pendingThumbUrl,
+                        diff: state.pendingDiff,
+                        avgDiff: state.pendingAvgDiff,
+                        triggerReason: captureReason,
+                        winWaitDuration: elapsed.toFixed(1),
+                        status: 'pending',
+                        recognitionResult: null,
+                        error: ''
+                    };
+
+                    setCandidates(prev => [...prev, candidate]);
+                    if (onCapture) onCapture(candidate);
+
+                    // ── OCR：從「後面」的畫面讀取（WIN 已顯示）──
+                    // 用 Promise.allSettled 避免單一 ROI 失敗導致全部遺失
+                    const worker = ocrWorkerRef.current;
+                    const { balanceROI, betROI, ocrDecimalPlaces } = ocrOptions;
+                    if (worker && (winROI || balanceROI || betROI)) {
+                        Promise.allSettled([
+                            cropAndOCR(ocrCanvas, winROI, worker, ocrDecimalPlaces ?? 2),
+                            cropAndOCR(ocrCanvas, balanceROI, worker, ocrDecimalPlaces ?? 2),
+                            cropAndOCR(ocrCanvas, betROI, worker, 0)
+                        ]).then(([winR, balR, betR]) => {
+                            const win = winR.status === 'fulfilled' ? winR.value : '';
+                            const balance = balR.status === 'fulfilled' ? balR.value : '';
+                            const bet = betR.status === 'fulfilled' ? betR.value : '';
+                            setCandidates(prev => prev.map(c =>
+                                c.id === candidate.id ? { ...c, ocrData: { win, balance, bet } } : c
+                            ));
+                            console.log(`  💰 OCR: WIN="${win}" BAL="${balance}" BET="${bet}"`);
+                        });
+                    }
+
+                    console.log(`📸 [${state.pendingReelTime.toFixed(2)}s] 擷取 | ${captureReason} | 等了 ${elapsed.toFixed(1)}s`);
+
+                    state.lastCandidateTime = now;
+                    state.phase = 'COOLDOWN';
+                    state.pendingReelCanvas = null;
+                    state.stableCount = 0;
+                    state.peakDiff = 0;
+                    state.decayCount = 0;
+                    state.diffWindow.length = 0;
+                }
+            }
+
+            // ════════════════════════════════════════
+            // Phase 3: COOLDOWN — 等動態恢復再回去偵測
+            // ════════════════════════════════════════
+            else if (state.phase === 'COOLDOWN') {
+                if (currentGray && state.prevGray) {
+                    const diff = computeMAE(state.prevGray, currentGray);
+                    // 偵測到新的動態 + 距上次截圖至少 0.5 秒
+                    if (diff > 5 && (now - state.lastCandidateTime) > 0.5) {
+                        state.phase = 'SCANNING';
+                        console.log(`🔄 [${now.toFixed(2)}s] 新轉動偵測 → 回到 SCANNING`);
                     }
                 }
             }
