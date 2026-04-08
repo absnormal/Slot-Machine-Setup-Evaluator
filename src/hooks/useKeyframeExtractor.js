@@ -1175,26 +1175,27 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
             }));
 
             // 判斷兩幀是否為同一局
-            function areSameSpin(a, b) {
+            function areSameSpin(frameA, frameB) {
+                // 確保 f1 在影片時間上「早於或等於」 f2
+                const [f1, f2] = frameA.kf.time <= frameB.kf.time ? [frameA, frameB] : [frameB, frameA];
+
                 // BET 必須一致
-                if (Math.abs(a.bet - b.bet) > eps && a.bet > 0 && b.bet > 0) return false;
+                if (Math.abs(f1.bet - f2.bet) > eps && f1.bet > 0 && f2.bet > 0) return false;
 
-                // Case 1: 完全相同
-                if (Math.abs(a.win - b.win) < eps && Math.abs(a.bal - b.bal) < eps) return true;
+                // Case 1: 完全相同 (無關順序)
+                if (Math.abs(f1.win - f2.win) < eps && Math.abs(f1.bal - f2.bal) < eps) return true;
 
-                // Case 2: 一方 WIN=0, 另一方 WIN>0, BAL 相同（State 1→2）
-                if (a.win < eps && b.win > eps && Math.abs(a.bal - b.bal) < eps) return true;
-                if (b.win < eps && a.win > eps && Math.abs(a.bal - b.bal) < eps) return true;
+                // Case 2: 較早的沒有 WIN，較晚的準備跳 WIN（State 1→2）
+                // 嚴格限定：必須是「先沒有贏分 (f1)，後來才有贏分 (f2)」，不能時光倒流！
+                if (f1.win < eps && f2.win > eps && Math.abs(f1.bal - f2.bal) < eps) return true;
 
-                // Case 3: 同 WIN, BAL 差了一個 WIN（State 2→3）
-                if (a.win > eps && b.win > eps && Math.abs(a.win - b.win) < eps) {
-                    if (Math.abs(a.bal + a.win - b.bal) < eps) return true;
-                    if (Math.abs(b.bal + b.win - a.bal) < eps) return true;
+                // Case 3: 同 WIN, 較晚的 BAL 更新了（State 2→3）
+                if (f1.win > eps && f2.win > eps && Math.abs(f1.win - f2.win) < eps) {
+                    if (Math.abs(f1.bal + f1.win - f2.bal) < eps) return true;
                 }
 
-                // Case 4: WIN=0 → State 3（BAL + WIN = newBAL）
-                if (a.win < eps && b.win > eps && Math.abs(a.bal + b.win - b.bal) < eps) return true;
-                if (b.win < eps && a.win > eps && Math.abs(b.bal + a.win - a.bal) < eps) return true;
+                // Case 4: 較早的沒有 WIN，較晚的已經結算完畢（State 1→3）
+                if (f1.win < eps && f2.win > eps && Math.abs(f1.bal + f2.win - f2.bal) < eps) return true;
 
                 return false;
             }
@@ -1206,7 +1207,27 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
 
             for (let i = 0; i < frames.length; i++) {
                 for (let j = i + 1; j < frames.length; j++) {
-                    if (areSameSpin(frames[i], frames[j])) union(i, j);
+                    const timeDiff = Math.abs(frames[i].kf.time - frames[j].kf.time);
+                    if (timeDiff <= 15 && areSameSpin(frames[i], frames[j])) {
+                        
+                        // 【終極防呆】：防止 Union-Find 把跨越中獎局的兩個死局縫合
+                        // 如果首尾兩張圖都沒有贏分（WIN=0），但它們中間夾了一張有贏分的圖，
+                        // 代表這絕對是「跨越了不同局」，不可縫合！
+                        let crossWinBoundary = false;
+                        if (frames[i].win < eps && frames[j].win < eps) {
+                            for (let k = i + 1; k < j; k++) {
+                                // 中間只要有任何大於 0 的贏分，這條連線就必須剪斷
+                                if (frames[k].win > eps) {
+                                    crossWinBoundary = true;
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (!crossWinBoundary) {
+                            union(i, j);
+                        }
+                    }
                 }
             }
 
@@ -1381,6 +1402,7 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
         smartDedup,
         confirmDedup,
         setManualBestCandidate,
+        addManualCandidate,
         healBreaks
     };
 }

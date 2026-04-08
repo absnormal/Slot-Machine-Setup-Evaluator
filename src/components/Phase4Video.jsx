@@ -210,23 +210,26 @@ const Phase4Video = ({
 
         const sortedCandidates = [...candidates].sort((a, b) => a.time - b.time);
 
-        const contiguousBlocks = [];
-        let currentBlock = null;
-
+        const blocksByGid = new Map();
+        
         sortedCandidates.forEach((kf, idx) => {
             const gid = kf.spinGroupId !== undefined ? kf.spinGroupId : `ungrouped_${kf.id}`;
-
-            if (!currentBlock || currentBlock.gid !== gid) {
-                if (currentBlock) contiguousBlocks.push(currentBlock);
-                currentBlock = { gid, group: [] };
+            if (!blocksByGid.has(gid)) {
+                blocksByGid.set(gid, []);
             }
-            
-            currentBlock.group.push({ kf, idx });
+            blocksByGid.get(gid).push({ kf, idx });
         });
-        if (currentBlock) contiguousBlocks.push(currentBlock);
+
+        const blocksArray = Array.from(blocksByGid.entries()).map(([gid, group]) => ({
+            gid,
+            group
+        }));
+
+        // 依據每個群組的【第一張卡片出現時間】進行排序，讓 UI 邏輯與時間線保持自然
+        blocksArray.sort((a, b) => a.group[0].kf.time - b.group[0].kf.time);
 
         let currentBase = null;
-        return contiguousBlocks.map((block) => {
+        return blocksArray.map((block) => {
             const { gid, group } = block;
             const bestFrame = group.find(g => g.kf.isSpinBest)?.kf || group[0].kf;
             const parse = v => parseFloat(v) || 0;
