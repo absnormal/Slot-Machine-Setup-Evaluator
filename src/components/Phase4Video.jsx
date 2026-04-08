@@ -1,13 +1,12 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Video, Scan, Play, Pause, Trash2, Send, Sparkles, ChevronDown, ChevronUp, X, Clock, Download, BarChart3, ImageIcon, RefreshCw, Square, Camera, Link2, AlertCircle } from 'lucide-react';
-
+import { Video, Scan, Play, Pause, Trash2, Send, Sparkles, ChevronDown, ChevronUp, X, Clock, Download, BarChart3, ImageIcon, RefreshCw, Square, Camera, Link2, AlertCircle, Star } from 'lucide-react';
 const Phase4Video = ({
     isPhase4Minimized,
     onToggle,
     // Keyframe Extractor
     candidates, isScanning, scanProgress, scanStats,
     scanVideo, startLiveDetection, stopLiveDetection,
-    removeCandidate, clearCandidates, addManualCandidate, smartDedup, confirmDedup, healBreaks,
+    removeCandidate, clearCandidates, addManualCandidate, smartDedup, confirmDedup, healBreaks, setManualBestCandidate,
     // Auto Recognition
     isRecognizing, isStopping, recognitionProgress,
     recognizeBatch, cancelRecognition,
@@ -609,12 +608,13 @@ const Phase4Video = ({
                                                     </div>
                                                     {group.map(({ kf, idx }) => {
                                                         const isBest = kf.isSpinBest;
+                                                        const hasBeenGrouped = kf.isSpinBest !== undefined; // smartDedup 有跑過
                                                         const isDimmed = isMulti && !isBest;
                                                         return (
                                                             <div key={kf.id}
                                                                 className={`group relative rounded-xl border p-2 shadow-sm hover:shadow-md transition-all cursor-pointer
                                                                     ${isDimmed ? 'opacity-40 bg-slate-50 border-slate-200' : 'bg-white'}
-                                                                    ${isBest && isMulti ? 'ring-2 ring-emerald-400 border-emerald-300' :
+                                                                    ${isBest && hasBeenGrouped ? 'ring-2 ring-emerald-400 border-emerald-300' :
                                                                         kf.status === 'recognized' ? 'border-emerald-200' :
                                                                             kf.status === 'error' ? 'border-rose-200' :
                                                                                 kf.status === 'recognizing' ? 'border-indigo-300 ring-2 ring-indigo-200' :
@@ -622,10 +622,16 @@ const Phase4Video = ({
                                                                     }`}
                                                                 onClick={() => { if (videoRef.current) videoRef.current.currentTime = kf.time; }}
                                                             >
-                                                                {isBest && isMulti && (
-                                                                    <div className="absolute -top-1.5 -left-1.5 bg-emerald-500 text-white text-[8px] font-bold px-1.5 py-0.5 rounded-full shadow z-10">
+                                                                {isBest && hasBeenGrouped && (
+                                                                    <div className="absolute -top-1.5 -left-1.5 bg-emerald-500 text-white text-[8px] font-bold px-1.5 py-0.5 rounded-full shadow z-10 pointer-events-none">
                                                                         ★ 最佳
                                                                     </div>
+                                                                )}
+                                                                {!isBest && hasBeenGrouped && (
+                                                                    <button onClick={(e) => { e.stopPropagation(); setManualBestCandidate(kf.id); }}
+                                                                        className="absolute -top-1.5 -left-1.5 bg-slate-200 text-slate-500 hover:bg-emerald-500 hover:text-white text-[8px] font-bold px-1.5 py-0.5 rounded-full shadow z-10 opacity-0 group-hover:opacity-100 transition-all cursor-pointer">
+                                                                        ⭐ 設為最佳
+                                                                    </button>
                                                                 )}
                                                                 {renderCardContent(kf, idx)}
                                                                 <button onClick={(e) => { e.stopPropagation(); removeCandidate(kf.id); }}

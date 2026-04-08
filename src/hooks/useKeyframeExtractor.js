@@ -881,12 +881,19 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                                 setCandidates(prev => prev.map(c =>
                                     c.id === candidate.id ? { ...c, ocrData: { win, balance, bet } } : c
                                 ));
+
+                                // 【快速短路機制】：如果 Reel Stop 的畫面中就已經包含了清晰的 WIN！
+                                // 立刻通報 WIN 追蹤特工「不需要抓了，直接下班！」
+                                if (win && parseFloat(win) > 0) {
+                                    state.reelStopHasWin = true;
+                                }
                             });
 
                             // ── WIN 輪詢：立刻啟動！不等初始 OCR 完成 ──
                             if (winROI) {
                                 state.isWinPollActive = true;
                                 state.cancelWinPoll = false;
+                                state.reelStopHasWin = false;
 
                                 let lastWin = '';
                                 let confirmCount = 0;
@@ -949,8 +956,16 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                                 const pollNext = async () => {
                                     polls++;
                                     
-                                    // 【打斷與超時判斷】：如果外頭的影片已經開始狂轉下一局，或者是三秒超時
-                                    if (state.cancelWinPoll || isDone || liveCancelRef.current || video.paused || video.ended || polls > MAX_POLLS) {
+                                    // 【打斷與超時判斷】：如果外頭的影片已經開始狂轉下一局，或者是三秒超時，或者原圖已經有贏分
+                                    if (state.cancelWinPoll || isDone || liveCancelRef.current || video.paused || video.ended || polls > MAX_POLLS || state.reelStopHasWin) {
+                                        
+                                        // 如果是因為原圖就已經有 WIN 而被短路下班，那我們什麼遺產都不留（因為原圖已經夠完美了）
+                                        if (state.reelStopHasWin) {
+                                            console.log(`🕵️‍♂️ [WIN 追蹤特工] 捷報！Reel Stop 原圖就自帶贏分了，特工提早快樂下班，不產出多餘卡片 🍻`);
+                                            state.isWinPollActive = false;
+                                            return;
+                                        }
+
                                         if (bestWinCanvas && !hasOutput) {
                                             console.log(`🕵️‍♂️ [WIN 追蹤特工] 任務強行中斷，但提取了最後一刻的完美遺產！強制輸出...`);
                                             await outputWinCard('WIN_POLL_FORCED');
@@ -1326,23 +1341,47 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
     // 智慧刪除：移除未被標記為 isSpinBest 的幀
     const confirmDedup = useCallback(() => {
         setCandidates(prev => {
-            const hasMark = prev.some(c => c.isSpinBest !== undefined);
-            if (!hasMark) return prev;
-            const kept = prev.filter(c => c.isSpinBest !== false);
-            const removed = prev.length - kept.length;
-            setTemplateMessage?.(`🗑️ 已清理 ${removed} 張非最佳重複幀`);
-            return kept;
+            const kept = prev.filter(c => c.isSpinBest !== false); // 保留 best 或是還沒被標記過單局的
+            setTemplateMessage?.(`已刪除 ${prev.length - kept.length} 張重複畫格，剩餘 ${kept.length} 張`);
+            return kept.map(c => ({...c, isSpinBest: undefined})); // 清除標記
         });
     }, [setTemplateMessage]);
+
+    // 【新增功能】：手動指定某張卡片為該局的最佳畫格
+    const setManualBestCandidate = useCallback((candidateId) => {
+        setCandidates(prev => {
+            const target = prev.find(c => c.id === candidateId);
+            if (!target) return prev;
+            const targetGroupId = target.spinGroupId;
+            
+            // 只有跑過 smartDedup 的才能指定
+            if (targetGroupId === undefined) return prev;
+
+            // 找到同群組的所有卡片
+            const sameGroup = prev.filter(c => c.spinGroupId === targetGroupId);
+            // 群組內只有一張，不需要切換
+            if (sameGroup.length <= 1) return prev;
+
+            return prev.map(c => {
+                if (c.spinGroupId === targetGroupId) {
+                    return { ...c, isSpinBest: c.id === candidateId };
+                }
+                return c;
+            });
+        });
+    }, []);
 
     return {
         candidates, setCandidates,
         isScanning, scanProgress, scanStats,
         scanVideo,
         startLiveDetection, stopLiveDetection,
-        removeCandidate, clearCandidates,
-        addManualCandidate, updateCandidate,
-        smartDedup, confirmDedup, healBreaks
+        removeCandidate, updateCandidate,
+        clearCandidates,
+        smartDedup,
+        confirmDedup,
+        setManualBestCandidate,
+        healBreaks
     };
 }
 

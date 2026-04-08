@@ -505,6 +505,7 @@ function App() {
                     smartDedup={keyframeExtractor.smartDedup}
                     confirmDedup={keyframeExtractor.confirmDedup}
                     healBreaks={keyframeExtractor.healBreaks}
+                    setManualBestCandidate={keyframeExtractor.setManualBestCandidate}
                     // Auto Recognition
                     isRecognizing={autoRecognition.isRecognizing}
                     isStopping={autoRecognition.isStopping}
