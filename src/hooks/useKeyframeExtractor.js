@@ -586,24 +586,8 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
             prevGray: null,
             lastCandidateTime: -999,
             stableCount: 0,
-            windowSize: 20,
-            // ── 三階段狀態機 ──
-            phase: 'SCANNING',       // SCANNING → WAITING_WIN → COOLDOWN → SCANNING
-            peakDiff: 0,             // 動畫備援用
-            decayCount: 0,
-            // ── WAITING_WIN 階段用 ──
-            pendingReelCanvas: null, // 停輪瞬間的乾淨盤面
-            pendingReelTime: 0,
-            pendingThumbUrl: null,
-            pendingDiff: '-',
-            pendingAvgDiff: '-',
-            winBaseGray: null,       // 停輪瞬間 WIN ROI 灰階（基線）
-            waitStartTime: 0,
+            windowSize: 20
         };
-
-        const WIN_WAIT_MAX = 3.0;     // 最長等 WIN 秒數
-        const WIN_CHANGE_THRESH = 10; // WIN ROI MAE 變化超過此值視為 WIN 出現
-        const SPIN_RESUME_THRESH = 15; // 盤面 MAE 超過此值視為下一轉開始
 
         const processLiveFrame = () => {
             if (liveCancelRef.current) return;
@@ -614,156 +598,126 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
 
             const state = liveStateRef.current;
             const currentGray = extractROIGray(video, roi);
-            const now = video.currentTime;
 
-            // ════════════════════════════════════════
-            // Phase 1: SCANNING — 偵測盤面停輪
-            // ════════════════════════════════════════
-            if (state.phase === 'SCANNING') {
-                if (currentGray && state.prevGray) {
-                    const diff = computeMAE(state.prevGray, currentGray);
-                    state.diffWindow.push(diff);
-                    if (state.diffWindow.length > state.windowSize) state.diffWindow.shift();
-                    if (diff > state.peakDiff) state.peakDiff = diff;
+            if (currentGray && state.prevGray) {
+                const diff = computeMAE(state.prevGray, currentGray);
+                state.diffWindow.push(diff);
+                if (state.diffWindow.length > state.windowSize) state.diffWindow.shift();
 
-                    if (state.diffWindow.length >= 10) {
-                        const { mean: μ } = windowStats(state.diffWindow);
-                        const isStable = diff < Math.max(μ * STABLE_RATIO, 2);
+                if (state.diffWindow.length >= 10) {
+                    const { mean: μ } = windowStats(state.diffWindow);
+                    const isStable = diff < Math.max(μ * STABLE_RATIO, 2);
 
-                        if (isStable) { state.stableCount++; } else { state.stableCount = 0; }
-
-                        const motionThresh = μ * 0.6;
-                        const hadMotion = state.diffWindow.filter(d => d > motionThresh).length >= state.diffWindow.length * MIN_MOTION_RATIO;
-
-                        // 第一層：完全靜止
-                        const isReelStopped = state.stableCount >= 3 && hadMotion && (now - state.lastCandidateTime) > 1.0;
-
-                        // 第二層：動畫備援
-                        let isAnimFallback = false;
-                        if (state.peakDiff > 5 && diff < state.peakDiff * DECAY_RATIO) {
-                            state.decayCount++;
-                        } else if (diff > state.peakDiff * 0.5) {
-                            state.decayCount = 0;
-                        }
-                        if (!isReelStopped && state.decayCount >= ANIMATION_TIMEOUT_FRAMES && hadMotion && (now - state.lastCandidateTime) > 1.0) {
-                            isAnimFallback = true;
-                        }
-
-                        if (isReelStopped || isAnimFallback) {
-                            // ── 停輪確認！先拍乾淨盤面 ──
-                            state.pendingReelCanvas = captureFullFrame(video);
-                            state.pendingReelTime = now;
-                            state.pendingThumbUrl = generateThumbUrl(state.pendingReelCanvas, roi);
-                            state.pendingDiff = diff.toFixed(2);
-                            state.pendingAvgDiff = μ.toFixed(2);
-
-                            const { winROI } = ocrOptions;
-                            state.winBaseGray = winROI ? extractROIGray(video, winROI) : null;
-                            state.waitStartTime = now;
-                            state.phase = 'WAITING_WIN';
-
-                            const reason = isReelStopped ? 'REEL_STOP' : 'ANIM_FALLBACK';
-                            console.log(`🎰 [${now.toFixed(2)}s] 停輪(${reason}) → 等待 WIN 出現... (最長 ${WIN_WAIT_MAX}s)`);
-                        }
-                    }
-                }
-            }
-
-            // ════════════════════════════════════════
-            // Phase 2: WAITING_WIN — 等 WIN 顯示或下一轉開始
-            // ════════════════════════════════════════
-            else if (state.phase === 'WAITING_WIN') {
-                const { winROI } = ocrOptions;
-                const elapsed = now - state.waitStartTime;
-
-                // 偵測 WIN ROI 有無變化（數字出現）
-                let winAppeared = false;
-                if (winROI && state.winBaseGray) {
-                    const currentWinGray = extractROIGray(video, winROI);
-                    if (currentWinGray) {
-                        const winDiff = computeMAE(state.winBaseGray, currentWinGray);
-                        if (winDiff > WIN_CHANGE_THRESH) winAppeared = true;
-                    }
-                }
-
-                // 偵測盤面是否重新開始轉動（下一局開始）
-                let nextSpinStarted = false;
-                if (currentGray && state.prevGray) {
-                    const reelDiff = computeMAE(state.prevGray, currentGray);
-                    if (reelDiff > SPIN_RESUME_THRESH) nextSpinStarted = true;
-                }
-
-                // 是否超時
-                const timedOut = elapsed > WIN_WAIT_MAX;
-
-                if (winAppeared || nextSpinStarted || timedOut) {
-                    const captureReason = winAppeared ? 'WIN_APPEARED'
-                                       : nextSpinStarted ? 'NEXT_SPIN'
-                                       : 'WIN_TIMEOUT';
-
-                    // ── 用「現在」的畫面跑 OCR（此時 WIN 應已顯示）──
-                    const ocrCanvas = captureFullFrame(video);
-
-                    const candidate = {
-                        id: `kf_live_${Date.now()}`,
-                        time: state.pendingReelTime,
-                        reelStopTime: state.pendingReelTime,
-                        canvas: state.pendingReelCanvas,  // 盤面用停輪瞬間的（最乾淨）
-                        thumbUrl: state.pendingThumbUrl,
-                        diff: state.pendingDiff,
-                        avgDiff: state.pendingAvgDiff,
-                        triggerReason: captureReason,
-                        winWaitDuration: elapsed.toFixed(1),
-                        status: 'pending',
-                        recognitionResult: null,
-                        error: ''
-                    };
-
-                    setCandidates(prev => [...prev, candidate]);
-                    if (onCapture) onCapture(candidate);
-
-                    // ── OCR：從「後面」的畫面讀取（WIN 已顯示）──
-                    // 用 Promise.allSettled 避免單一 ROI 失敗導致全部遺失
-                    const worker = ocrWorkerRef.current;
-                    const { balanceROI, betROI, ocrDecimalPlaces } = ocrOptions;
-                    if (worker && (winROI || balanceROI || betROI)) {
-                        Promise.allSettled([
-                            cropAndOCR(ocrCanvas, winROI, worker, ocrDecimalPlaces ?? 2),
-                            cropAndOCR(ocrCanvas, balanceROI, worker, ocrDecimalPlaces ?? 2),
-                            cropAndOCR(ocrCanvas, betROI, worker, 0)
-                        ]).then(([winR, balR, betR]) => {
-                            const win = winR.status === 'fulfilled' ? winR.value : '';
-                            const balance = balR.status === 'fulfilled' ? balR.value : '';
-                            const bet = betR.status === 'fulfilled' ? betR.value : '';
-                            setCandidates(prev => prev.map(c =>
-                                c.id === candidate.id ? { ...c, ocrData: { win, balance, bet } } : c
-                            ));
-                            console.log(`  💰 OCR: WIN="${win}" BAL="${balance}" BET="${bet}"`);
-                        });
+                    if (isStable) {
+                        state.stableCount++;
+                    } else {
+                        state.stableCount = 0;
                     }
 
-                    console.log(`📸 [${state.pendingReelTime.toFixed(2)}s] 擷取 | ${captureReason} | 等了 ${elapsed.toFixed(1)}s`);
+                    const motionThresh = μ * 0.6;
+                    const motionFrames = state.diffWindow.filter(d => d > motionThresh).length;
+                    const hadMotion = motionFrames >= state.diffWindow.length * MIN_MOTION_RATIO;
+                    const now = video.currentTime;
 
-                    state.lastCandidateTime = now;
-                    state.phase = 'COOLDOWN';
-                    state.pendingReelCanvas = null;
-                    state.stableCount = 0;
-                    state.peakDiff = 0;
-                    state.decayCount = 0;
-                    state.diffWindow.length = 0;
-                }
-            }
+                    if (state.stableCount >= 3 && hadMotion && (now - state.lastCandidateTime) > 1.0) {
+                        const frameCanvas = captureFullFrame(video);
+                        const thumbUrl = generateThumbUrl(frameCanvas, roi);
+                        const candidate = {
+                            id: `kf_live_${Date.now()}`,
+                            time: now,
+                            canvas: frameCanvas,
+                            thumbUrl,
+                            diff: diff.toFixed(2),
+                            avgDiff: μ.toFixed(2),
+                            status: 'pending',
+                            recognitionResult: null,
+                            error: ''
+                        };
 
-            // ════════════════════════════════════════
-            // Phase 3: COOLDOWN — 等動態恢復再回去偵測
-            // ════════════════════════════════════════
-            else if (state.phase === 'COOLDOWN') {
-                if (currentGray && state.prevGray) {
-                    const diff = computeMAE(state.prevGray, currentGray);
-                    // 偵測到新的動態 + 距上次截圖至少 0.5 秒
-                    if (diff > 5 && (now - state.lastCandidateTime) > 0.5) {
-                        state.phase = 'SCANNING';
-                        console.log(`🔄 [${now.toFixed(2)}s] 新轉動偵測 → 回到 SCANNING`);
+                        setCandidates(prev => [...prev, candidate]);
+                        if (onCapture) onCapture(candidate);
+
+                        // 非同步跑 OCR（不阻塞即時偵測迴圈）
+                        const worker = ocrWorkerRef.current;
+                        const { winROI, balanceROI, betROI, ocrDecimalPlaces } = ocrOptions;
+                        if (worker && (winROI || balanceROI || betROI)) {
+                            Promise.allSettled([
+                                cropAndOCR(frameCanvas, winROI, worker, ocrDecimalPlaces ?? 2),
+                                cropAndOCR(frameCanvas, balanceROI, worker, ocrDecimalPlaces ?? 2),
+                                cropAndOCR(frameCanvas, betROI, worker, 0)
+                            ]).then(([winR, balR, betR]) => {
+                                const win = winR.status === 'fulfilled' ? winR.value : '';
+                                const balance = balR.status === 'fulfilled' ? balR.value : '';
+                                const bet = betR.status === 'fulfilled' ? betR.value : '';
+                                setCandidates(prev => prev.map(c =>
+                                    c.id === candidate.id ? { ...c, ocrData: { win, balance, bet } } : c
+                                ));
+
+                                // 如果第一次就讀到 WIN > 0 → 不需要輪詢
+                                if (win && win !== '0') return;
+
+                                // ── WIN 輪詢：每 200ms 觀察一次，讀到穩定 WIN 就多推一張候選幀 ──
+                                if (!winROI) return;
+                                let lastWin = '';
+                                let confirmCount = 0;
+                                let polls = 0;
+                                const MAX_POLLS = 15; // 15 × 200ms = 3 秒
+
+                                const pollId = setInterval(() => {
+                                    polls++;
+                                    if (polls > MAX_POLLS || liveCancelRef.current || video.paused || video.ended) {
+                                        clearInterval(pollId);
+                                        return;
+                                    }
+                                    const w = ocrWorkerRef.current;
+                                    if (!w) return;
+
+                                    const pollCanvas = captureFullFrame(video);
+                                    Promise.allSettled([
+                                        cropAndOCR(pollCanvas, winROI, w, ocrDecimalPlaces ?? 2),
+                                        cropAndOCR(pollCanvas, balanceROI, w, ocrDecimalPlaces ?? 2),
+                                        cropAndOCR(pollCanvas, betROI, w, 0)
+                                    ]).then(([wR, bR, tR]) => {
+                                        const pollWin = wR.status === 'fulfilled' ? wR.value : '';
+                                        const pollBal = bR.status === 'fulfilled' ? bR.value : '';
+                                        const pollBet = tR.status === 'fulfilled' ? tR.value : '';
+
+                                        if (pollWin && pollWin !== '0') {
+                                            if (pollWin === lastWin) confirmCount++;
+                                            else { lastWin = pollWin; confirmCount = 1; }
+
+                                            if (confirmCount >= 2) {
+                                                // ✅ WIN 確認！推第二張候選幀
+                                                const winThumbUrl = generateThumbUrl(pollCanvas, roi);
+                                                const winCandidate = {
+                                                    id: `kf_live_win_${Date.now()}`,
+                                                    time: video.currentTime,
+                                                    canvas: pollCanvas,
+                                                    thumbUrl: winThumbUrl,
+                                                    diff: '0',
+                                                    avgDiff: '0',
+                                                    triggerReason: 'WIN_POLL',
+                                                    ocrData: { win: pollWin, balance: pollBal, bet: pollBet },
+                                                    status: 'pending',
+                                                    recognitionResult: null,
+                                                    error: ''
+                                                };
+                                                setCandidates(prev => [...prev, winCandidate]);
+                                                console.log(`💰 [${video.currentTime.toFixed(2)}s] WIN=${pollWin} 確認！推第二張候選幀`);
+                                                clearInterval(pollId);
+                                            }
+                                        } else {
+                                            confirmCount = 0;
+                                            lastWin = '';
+                                        }
+                                    });
+                                }, 200);
+                            });
+                        }
+
+                        state.lastCandidateTime = now;
+                        state.stableCount = 0;
+                        state.diffWindow.length = 0;
                     }
                 }
             }
