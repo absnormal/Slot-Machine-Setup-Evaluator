@@ -1,5 +1,6 @@
-import { useState, useRef, useEffect } from 'react';
-import { createWorker } from 'tesseract.js';
+import { useState, useRef, useCallback, useEffect } from 'react';
+import Ocr from '@gutenye/ocr-browser';
+import * as ort from 'onnxruntime-web';
 import { fetchWithRetry, resizeImageBase64 } from '../utils/helpers';
 import { validateVisionResponse } from '../utils/aiValidator';
 import { isCashSymbol, isCollectSymbol, isDynamicMultiplierSymbol } from '../utils/symbolUtils';
@@ -16,7 +17,7 @@ import {
  * useAutoRecognition — 自動辨識 Pipeline
  *
  * 將候選關鍵幀自動送往 Gemini Vision 辨識盤面符號，
- * + Tesseract.js 辨識 Win/Balance/Bet 數值，
+ * + PaddleOCR 辨識 Win/Balance/Bet 數值，
  * + computeGridResults 結算。
  *
  * 完全複用現有 Phase 3 的 prompt 模板和驗證邏輯。
@@ -26,12 +27,12 @@ import {
 const RATE_LIMIT_INTERVAL = 1500;   // API 呼叫間隔 (ms)
 const MAX_RETRIES = 3;
 
-// ── OCR 工具函式 (從 useVideoProcessor 搬入) ──
+// ── OCR 工具函式 ──
 
 /**
- * 裁切 ROI → 放大 → 二值化 → 侵蝕 → Tesseract OCR
+ * 裁切 ROI → 放大 → PaddleOCR 辨識
  */
-async function recognizeROIText(fullCanvas, roi, ocrWorker, ocrDecimalPlaces, useFixedDecimal = true) {
+const recognizeROIText = async (fullCanvas, roi, ocrWorker, ocrDecimalPlaces, useFixedDecimal = true) => {
     if (!roi || !ocrWorker) return '';
     try {
         const cropCanvas = document.createElement('canvas');
@@ -40,93 +41,45 @@ async function recognizeROIText(fullCanvas, roi, ocrWorker, ocrDecimalPlaces, us
         const cx = Math.floor(fullCanvas.width * (roi.x / 100));
         const cy = Math.floor(fullCanvas.height * (roi.y / 100));
 
-        const scale = 3;
-        cropCanvas.width = cw * scale;
-        cropCanvas.height = ch * scale;
+        // PaddleOCR 容忍度高，降回 2x 即可保留清晰度且縮減運算成本
+        let scale = 2;
+        if (roi === window.winROI || (roi.w > 10 && roi.h > 3)) { // 簡單推斷
+            scale = 40 / ch;
+            if (scale < 1) scale = 1;
+        }
+
+        // [關鍵修復] 加上 Padding: DBNet 如果文字太貼齊邊緣，會辨識不到
+        const PADDING = 30;
+        cropCanvas.width = Math.floor(cw * scale) + (PADDING * 2);
+        cropCanvas.height = Math.floor(ch * scale) + (PADDING * 2);
         const ctx = cropCanvas.getContext('2d');
-        ctx.drawImage(fullCanvas, cx, cy, cw, ch, 0, 0, cw * scale, ch * scale);
+        
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, cropCanvas.width, cropCanvas.height);
 
-        // 影像增強：自適應二值化
-        const imgData = ctx.getImageData(0, 0, cw * scale, ch * scale);
-        const data = imgData.data;
-        let totalGray = 0;
-        for (let i = 0; i < data.length; i += 4) {
-            totalGray += (data[i] * 0.3 + data[i + 1] * 0.59 + data[i + 2] * 0.11);
-        }
-        const avgGray = totalGray / (cw * scale * ch * scale);
-        const thresholdOffset = useFixedDecimal ? 30 : 15;
-        const threshold = Math.max(100, Math.min(180, avgGray + thresholdOffset));
+        ctx.drawImage(fullCanvas, cx, cy, cw, ch, PADDING, PADDING, cw * scale, ch * scale);
 
-        for (let i = 0; i < data.length; i += 4) {
-            const gray = data[i] * 0.3 + data[i + 1] * 0.59 + data[i + 2] * 0.11;
-            const v = gray > threshold ? 255 : 0;
-            data[i] = data[i + 1] = data[i + 2] = v;
-        }
-        ctx.putImageData(imgData, 0, 0);
+        // 已移除舊有的 Tesseract 取向二值化、侵蝕等灰階轉換。
+        // 保留原彩 Canvas 給 PaddleOCR 神經網路處理！
 
-        // 形態學侵蝕
-        const kernelSize = useFixedDecimal ? 1 : 0;
-        if (kernelSize > 0) {
-            const w = cw * scale, h = ch * scale;
-            const eroded = ctx.getImageData(0, 0, w, h);
-            const eData = eroded.data;
-            const src = new Uint8Array(w * h);
-            for (let i = 0; i < w * h; i++) src[i] = data[i * 4];
+        // 轉換為 Base64 Data URL 傳遞給 Paddle
+        const detectedLines = await ocrWorker.detect(cropCanvas.toDataURL('image/png'));
 
-            for (let y = kernelSize; y < h - kernelSize; y++) {
-                for (let x = kernelSize; x < w - kernelSize; x++) {
-                    let minVal = 255;
-                    for (let ky = -kernelSize; ky <= kernelSize; ky++) {
-                        for (let kx = -kernelSize; kx <= kernelSize; kx++) {
-                            minVal = Math.min(minVal, src[(y + ky) * w + (x + kx)]);
-                        }
-                    }
-                    const idx = (y * w + x) * 4;
-                    eData[idx] = eData[idx + 1] = eData[idx + 2] = minVal;
-                }
-            }
-            ctx.putImageData(eroded, 0, 0);
-        }
+        // 串連多行辨識結果
+        const text = (detectedLines || []).map(t => t.text).join(' ').trim();
+        console.log(`[PaddleOCR Raw] ROI:`, roi, `=> "${text}"`);
 
-        const { data: { text } } = await ocrWorker.recognize(cropCanvas);
-
-        // 後處理：取最後一組數字
-        let validText = text;
-        const numberBlocks = text.match(/[0-9.,]+/g);
-        if (numberBlocks && numberBlocks.length > 0) {
-            validText = numberBlocks[numberBlocks.length - 1];
-        } else {
-            validText = '';
-        }
-
-        if (useFixedDecimal) {
-            let digits = validText.replace(/[^0-9]/g, '');
-            let cleaned = '0';
-            if (digits) {
-                if (ocrDecimalPlaces > 0) {
-                    if (digits.length <= ocrDecimalPlaces) {
-                        digits = digits.padStart(ocrDecimalPlaces + 1, '0');
-                    }
-                    const intPart = digits.slice(0, -ocrDecimalPlaces);
-                    const decPart = digits.slice(-ocrDecimalPlaces);
-                    cleaned = `${intPart}.${decPart}`;
-                } else {
-                    cleaned = digits;
-                }
-            }
-            return cleaned || '0';
-        } else {
-            const cleaned = validText
-                .replace(/,/g, '')
-                .replace(/^\.+|\.+$/g, '')
-                .replace(/\.{2,}/g, '.');
-            return cleaned || '0';
-        }
+        // 後處理：PaddleOCR 偶爾會誤認背景裝飾為字母 (例如 $ 或 WIN)，
+        // 這裡設定嚴密屏障，只保留純數字 (0-9)、小數點 (.) 與千分位逗號 (,)
+        const validText = text.replace(/[^0-9.,]/g, '');
+        // 最後移除逗號以便後續 JavaScript 解析，並清掉頭尾不小心沾到的孤立小數點
+        const cleaned = validText.replace(/,/g, '').replace(/^\.+|\.+$/g, '') || "0";
+        return cleaned;
     } catch (err) {
         console.error('OCR Error:', err);
         return 'Err';
     }
-}
+};
 
 
 // ══════════════════════════════════════════════
@@ -149,13 +102,29 @@ export function useAutoRecognition({
     const ocrWorkerRef = useRef(null);
 
     useEffect(() => {
-        let worker = null;
+        let isMounted = true;
         (async () => {
-            worker = await createWorker('eng');
-            await worker.setParameters({ tessedit_pageseg_mode: '7' });
-            ocrWorkerRef.current = worker;
+            try {
+                console.log("[OCR] 啟動 PaddleOCR (AutoRecognition) 引擎中...");
+                const baseUrl = import.meta.env.BASE_URL;
+                ort.env.wasm.wasmPaths = baseUrl;
+                ort.env.wasm.numThreads = 1;
+
+                const ocr = await Ocr.create({
+                    models: {
+                        detectionPath: `${baseUrl}ocr-models/ch_PP-OCRv4_det_infer.onnx`,
+                        recognitionPath: `${baseUrl}ocr-models/ch_PP-OCRv4_rec_infer.onnx`,
+                        dictionaryPath: `${baseUrl}ocr-models/ppocr_keys_v1.txt`
+                    }
+                });
+                if (isMounted) {
+                    ocrWorkerRef.current = ocr;
+                }
+            } catch (err) {
+                console.error("[OCR] 初始化 PaddleOCR 失敗:", err);
+            }
         })();
-        return () => { if (worker) worker.terminate(); };
+        return () => { isMounted = false; };
     }, []);
 
     /**

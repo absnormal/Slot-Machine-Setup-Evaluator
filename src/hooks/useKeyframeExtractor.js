@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { createWorker } from 'tesseract.js';
+import Ocr from '@gutenye/ocr-browser';
+import * as ort from 'onnxruntime-web';
 
 /**
  * useKeyframeExtractor — 自適應關鍵幀提取器
@@ -248,64 +249,71 @@ async function bestOfNCapture(video, winROI, ocrWorker, reelStopTime, sampleWind
 }
 
 
+// 建立全域排隊機制，確保只有一個 Worker 實例時不會因為高頻調用導致內部 WASM 記憶體擠爆或阻塞
+let ocrGlobalQueue = Promise.resolve();
+
 /**
- * 裁切 ROI → 放大 → 二值化 → OCR
+ * 裁切 ROI → 放大 → 原彩影像 → PaddleOCR (透過全域 Queue 保護)
  */
-async function cropAndOCR(canvas, roi, ocrWorker, decimalPlaces) {
+async function cropAndOCR(canvas, roi, ocrWorker, decimalPlaces, label = '未知') {
     if (!roi || !ocrWorker || !canvas) return '';
-    try {
-        const cropCanvas = document.createElement('canvas');
-        const cw = Math.floor(canvas.width * (roi.w / 100));
-        const ch = Math.floor(canvas.height * (roi.h / 100));
-        const cx = Math.floor(canvas.width * (roi.x / 100));
-        const cy = Math.floor(canvas.height * (roi.y / 100));
-        if (cw < 2 || ch < 2) return '';
 
-        const scale = 3;
-        cropCanvas.width = cw * scale;
-        cropCanvas.height = ch * scale;
-        const ctx = cropCanvas.getContext('2d');
-        ctx.drawImage(canvas, cx, cy, cw, ch, 0, 0, cw * scale, ch * scale);
+    return new Promise((resolve) => {
+        ocrGlobalQueue = ocrGlobalQueue.then(async () => {
+            try {
+                const cropCanvas = document.createElement('canvas');
+                const cw = Math.floor(canvas.width * (roi.w / 100));
+                const ch = Math.floor(canvas.height * (roi.h / 100));
+                const cx = Math.floor(canvas.width * (roi.x / 100));
+                const cy = Math.floor(canvas.height * (roi.y / 100));
+                if (cw < 2 || ch < 2) return resolve('');
 
-        // 二值化
-        const imgData = ctx.getImageData(0, 0, cw * scale, ch * scale);
-        const data = imgData.data;
-        let totalGray = 0;
-        for (let i = 0; i < data.length; i += 4) {
-            totalGray += (data[i] * 0.3 + data[i + 1] * 0.59 + data[i + 2] * 0.11);
-        }
-        const avgGray = totalGray / (cw * scale * ch * scale);
-        const threshold = Math.max(100, Math.min(180, avgGray + 30));
-        for (let i = 0; i < data.length; i += 4) {
-            const gray = data[i] * 0.3 + data[i + 1] * 0.59 + data[i + 2] * 0.11;
-            const v = gray > threshold ? 255 : 0;
-            data[i] = data[i + 1] = data[i + 2] = v;
-        }
-        ctx.putImageData(imgData, 0, 0);
+                let scale = 2;
+                if (label === 'WIN' && ch >= 20) {
+                    scale = 40 / ch; 
+                }
 
-        const { data: { text } } = await ocrWorker.recognize(cropCanvas);
+                // [關鍵修復] 加上 Padding: DBNet 如果文字太貼齊邊緣，會辨識不到
+                const PADDING = 30;
+                cropCanvas.width = Math.floor(cw * scale) + (PADDING * 2);
+                cropCanvas.height = Math.floor(ch * scale) + (PADDING * 2);
+                const ctx = cropCanvas.getContext('2d');
+                
+                ctx.fillStyle = '#000000';
+                ctx.fillRect(0, 0, cropCanvas.width, cropCanvas.height);
 
-        // 後處理
-        const numberBlocks = text.match(/[0-9.,]+/g);
-        let validText = numberBlocks && numberBlocks.length > 0 ? numberBlocks[numberBlocks.length - 1] : '';
+                ctx.drawImage(canvas, cx, cy, cw, ch, PADDING, PADDING, cw * scale, ch * scale);
 
-        if (decimalPlaces > 0) {
-            let digits = validText.replace(/[^0-9]/g, '');
-            if (digits && digits.length > 0) {
-                if (digits.length <= decimalPlaces) digits = digits.padStart(decimalPlaces + 1, '0');
-                const intPart = digits.slice(0, -decimalPlaces);
-                const decPart = digits.slice(-decimalPlaces);
-                return `${intPart}.${decPart}`;
-            } else {
-                return '0';
+                const preBinarized = cropCanvas.toDataURL('image/jpeg', 0.8);
+
+                // ⚠️ 彩圖直出：我們不再手動運算灰階二值化，把這項工作全權託付給 Paddle 神經網路
+                const detectedLines = await ocrWorker.detect(cropCanvas.toDataURL('image/png'));
+
+                // 將多行字串陣列合併
+                const rawText = (detectedLines || []).map(t => t.text).join(' ').trim();
+
+                // 後處理：PaddleOCR 偶爾會誤認背景裝飾為字母 (例如 $ 或 WIN)，
+                // 這裡設定嚴密屏障，只保留純數字 (0-9)、小數點 (.) 與千分位逗號 (,)
+                const validText = rawText.replace(/[^0-9.,]/g, '');
+                // 最後移除逗號以便後續 JavaScript 解析，並清掉頭尾不小心沾到的孤立小數點
+                const resultStr = validText.replace(/,/g, '').replace(/^\.+|\.+$/g, '') || "0";
+
+                console.log(`[OCR 字串追蹤 - ${label}] Paddle原文: "${rawText}" | validText: "${validText}" | 最終結果: "${resultStr}"`);
+
+                if (label === 'WIN' || label === 'BALANCE') {
+                    console.log(
+                        `%c ${label} 彩圖餵養 `,
+                        `font-size: 1px; padding: 30px 80px; background: url(${preBinarized}) no-repeat center center; background-size: contain;`
+                    );
+                }
+
+                resolve(resultStr);
+            } catch (err) {
+                console.warn('Quick PaddleOCR error:', err);
+                resolve('');
             }
-        } else {
-            return validText.replace(/,/g, '').replace(/^\.+|\.+$/g, '') || '0';
-        }
-    } catch (err) {
-        console.warn('Quick OCR error:', err);
-        return '';
-    }
+        }); // 結束 queue.then
+    }); // 結束 Promise
 }
 
 /**
@@ -318,9 +326,9 @@ async function runQuickOCR(candidates, rois, worker, decimalPlaces, setCandidate
         const kf = candidates[i];
 
         const [win, balance, bet] = await Promise.all([
-            cropAndOCR(kf.canvas, winROI, worker, decimalPlaces),
-            cropAndOCR(kf.canvas, balanceROI, worker, decimalPlaces),
-            cropAndOCR(kf.canvas, betROI, worker, 0)  // 押注不套用小數位數
+            cropAndOCR(kf.canvas, winROI, worker, decimalPlaces, 'WIN'),
+            cropAndOCR(kf.canvas, balanceROI, worker, decimalPlaces, 'BALANCE'),
+            cropAndOCR(kf.canvas, betROI, worker, 0, 'BET')  // 押注不套用小數位數
         ]);
 
         // 逐張更新（讓 UI 即時看到）
@@ -343,16 +351,37 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
     const [scanProgress, setScanProgress] = useState(0);   // 0~1
     const [scanStats, setScanStats] = useState(null);
 
-    // OCR Worker (持久化)
+    // OCR Worker (持久化) - 負責 BAL / BET 及初始 WIN 讀取
     const ocrWorkerRef = useRef(null);
+    // WIN 輪詢專屬 Worker - 獨立隊伍，不與 BAL/BET 共用，確保輪詢能夠即時回應
+    const winPollWorkerRef = useRef(null);
     useEffect(() => {
-        let worker = null;
+        let isMounted = true;
         (async () => {
-            worker = await createWorker('eng');
-            await worker.setParameters({ tessedit_pageseg_mode: '7' });
-            ocrWorkerRef.current = worker;
+            try {
+                console.log("[OCR] 啟動 PaddleOCR (KeyframeExtractor) 引擎中...");
+                const baseUrl = import.meta.env.BASE_URL;
+                ort.env.wasm.wasmPaths = baseUrl;
+                ort.env.wasm.numThreads = 1;
+
+                const ocr = await Ocr.create({
+                    models: {
+                        detectionPath: `${baseUrl}ocr-models/ch_PP-OCRv4_det_infer.onnx`,
+                        recognitionPath: `${baseUrl}ocr-models/ch_PP-OCRv4_rec_infer.onnx`,
+                        dictionaryPath: `${baseUrl}ocr-models/ppocr_keys_v1.txt`
+                    }
+                });
+                
+                // 第二個 Worker 給 WIN 輪詢用（目前 PaddleOCR 也可以共用同一個實例，但為了與舊邏輯相容保留 ref）
+                if (isMounted) {
+                    ocrWorkerRef.current = ocr;
+                    winPollWorkerRef.current = ocr; 
+                }
+            } catch (err) {
+                console.error("[OCR] 初始化 PaddleOCR (Keyframe) 失敗:", err);
+            }
         })();
-        return () => { if (worker) worker.terminate(); };
+        return () => { isMounted = false; };
     }, []);
 
     // 即時模式用的 refs
@@ -641,10 +670,11 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                         const worker = ocrWorkerRef.current;
                         const { winROI, balanceROI, betROI, ocrDecimalPlaces } = ocrOptions;
                         if (worker && (winROI || balanceROI || betROI)) {
+                            // ── 初始 OCR：讀取截圖時的 BAL / BET / WIN ──
                             Promise.allSettled([
-                                cropAndOCR(frameCanvas, winROI, worker, ocrDecimalPlaces ?? 2),
-                                cropAndOCR(frameCanvas, balanceROI, worker, ocrDecimalPlaces ?? 2),
-                                cropAndOCR(frameCanvas, betROI, worker, 0)
+                                cropAndOCR(frameCanvas, winROI, worker, ocrDecimalPlaces ?? 2, 'WIN'),
+                                cropAndOCR(frameCanvas, balanceROI, worker, ocrDecimalPlaces ?? 2, 'BALANCE'),
+                                cropAndOCR(frameCanvas, betROI, worker, 0, 'BET')
                             ]).then(([winR, balR, betR]) => {
                                 const win = winR.status === 'fulfilled' ? winR.value : '';
                                 const balance = balR.status === 'fulfilled' ? balR.value : '';
@@ -652,58 +682,60 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                                 setCandidates(prev => prev.map(c =>
                                     c.id === candidate.id ? { ...c, ocrData: { win, balance, bet } } : c
                                 ));
+                            });
 
-                                // 如果第一次就讀到 WIN > 0 → 不需要輪詢
-                                if (win && win !== '0') return;
-
-                                // ── WIN 輪詢：每 200ms 觀察一次，讀到穩定 WIN 就多推一張候選幀 ──
-                                if (!winROI) return;
+                            // ── WIN 輪詢：立刻啟動！不等初始 OCR 完成 ──
+                            // 核心修復：之前輪詢被塞在 .then() 裡面，導致要等初始 3 個 OCR 排隊跑完（~1200ms）才啟動。
+                            // 如果 WIN 在畫面上只出現不到 1 秒，輪詢根本還沒開始就已經消失了。
+                            if (winROI) {
                                 let lastWin = '';
                                 let confirmCount = 0;
                                 let polls = 0;
-                                const MAX_POLLS = 15; // 15 × 200ms = 3 秒
+                                let winFound = false;
+                                const MAX_POLLS = 25; // 25 × 120ms = 3 秒
 
                                 const pollId = setInterval(() => {
                                     polls++;
-                                    if (polls > MAX_POLLS || liveCancelRef.current || video.paused || video.ended) {
+                                    if (winFound || polls > MAX_POLLS || liveCancelRef.current || video.paused || video.ended) {
                                         clearInterval(pollId);
                                         return;
                                     }
-                                    const w = ocrWorkerRef.current;
+                                    const w = winPollWorkerRef.current || ocrWorkerRef.current;
                                     if (!w) return;
 
+                                    // 只截 WIN 一個欄位！不浪費寶貴的排隊時間去重複讀 BAL/BET
                                     const pollCanvas = captureFullFrame(video);
-                                    Promise.allSettled([
-                                        cropAndOCR(pollCanvas, winROI, w, ocrDecimalPlaces ?? 2),
-                                        cropAndOCR(pollCanvas, balanceROI, w, ocrDecimalPlaces ?? 2),
-                                        cropAndOCR(pollCanvas, betROI, w, 0)
-                                    ]).then(([wR, bR, tR]) => {
-                                        const pollWin = wR.status === 'fulfilled' ? wR.value : '';
-                                        const pollBal = bR.status === 'fulfilled' ? bR.value : '';
-                                        const pollBet = tR.status === 'fulfilled' ? tR.value : '';
-
-                                        if (pollWin && pollWin !== '0') {
+                                    const exactPollTime = video.currentTime; // 核心修復：精準備份照相那一瞬間的時間，不要用 .then 之後的時間！
+                                    
+                                    cropAndOCR(pollCanvas, winROI, w, ocrDecimalPlaces ?? 2, 'WIN-POLL').then(pollWin => {
+                                        if (pollWin && pollWin !== '0' && pollWin !== '0.00') {
                                             if (pollWin === lastWin) confirmCount++;
                                             else { lastWin = pollWin; confirmCount = 1; }
 
-                                            if (confirmCount >= 2) {
-                                                // ✅ WIN 確認！推第二張候選幀
-                                                const winThumbUrl = generateThumbUrl(pollCanvas, roi);
-                                                const winCandidate = {
-                                                    id: `kf_live_win_${Date.now()}`,
-                                                    time: video.currentTime,
-                                                    canvas: pollCanvas,
-                                                    thumbUrl: winThumbUrl,
-                                                    diff: '0',
-                                                    avgDiff: '0',
-                                                    triggerReason: 'WIN_POLL',
-                                                    ocrData: { win: pollWin, balance: pollBal, bet: pollBet },
-                                                    status: 'pending',
-                                                    recognitionResult: null,
-                                                    error: ''
-                                                };
-                                                setCandidates(prev => [...prev, winCandidate]);
-                                                console.log(`💰 [${video.currentTime.toFixed(2)}s] WIN=${pollWin} 確認！推第二張候選幀`);
+                                            if (confirmCount >= 1) {
+                                                winFound = true;
+                                                // ✅ WIN 確認！補讀 BAL/BET 並推第二張候選幀
+                                                Promise.all([
+                                                    cropAndOCR(pollCanvas, balanceROI, w, ocrDecimalPlaces ?? 2, 'BALANCE'),
+                                                    cropAndOCR(pollCanvas, betROI, w, 0, 'BET')
+                                                ]).then(([pollBal, pollBet]) => {
+                                                    const winThumbUrl = generateThumbUrl(pollCanvas, roi);
+                                                    const winCandidate = {
+                                                        id: `kf_live_win_${Date.now()}`,
+                                                        time: exactPollTime, // 使用備份的精準時間
+                                                        canvas: pollCanvas,
+                                                        thumbUrl: winThumbUrl,
+                                                        diff: '0',
+                                                        avgDiff: '0',
+                                                        triggerReason: 'WIN_POLL',
+                                                        ocrData: { win: pollWin, balance: pollBal, bet: pollBet },
+                                                        status: 'pending',
+                                                        recognitionResult: null,
+                                                        error: ''
+                                                    };
+                                                    setCandidates(prev => [...prev, winCandidate]);
+                                                    console.log(`💰 [${exactPollTime.toFixed(2)}s] WIN=${pollWin} 確認！推第二張候選幀`);
+                                                });
                                                 clearInterval(pollId);
                                             }
                                         } else {
@@ -711,8 +743,8 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                                             lastWin = '';
                                         }
                                     });
-                                }, 200);
-                            });
+                                }, 120); // 從 200ms 縮短到 120ms，更密集地捕捉短暫 WIN
+                            }
                         }
 
                         state.lastCandidateTime = now;
@@ -782,9 +814,9 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
         const { winROI, balanceROI, betROI, ocrDecimalPlaces } = ocrOptions;
         if (worker && (winROI || balanceROI || betROI)) {
             Promise.all([
-                cropAndOCR(canvas, winROI, worker, ocrDecimalPlaces ?? 2),
-                cropAndOCR(canvas, balanceROI, worker, ocrDecimalPlaces ?? 2),
-                cropAndOCR(canvas, betROI, worker, 0)
+                cropAndOCR(canvas, winROI, worker, ocrDecimalPlaces ?? 2, 'WIN'),
+                cropAndOCR(canvas, balanceROI, worker, ocrDecimalPlaces ?? 2, 'BALANCE'),
+                cropAndOCR(canvas, betROI, worker, 0, 'BET')
             ]).then(([win, balance, bet]) => {
                 setCandidates(prev => prev.map(c =>
                     c.id === candidate.id ? { ...c, ocrData: { win, balance, bet } } : c

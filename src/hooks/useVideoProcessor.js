@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { createWorker } from 'tesseract.js';
+import Ocr from '@gutenye/ocr-browser';
+import * as ort from 'onnxruntime-web';
 
 /**
  * Phase 4 影片處理核心：Grid Motion Detection Version
@@ -75,18 +76,32 @@ export function useVideoProcessor({ setTemplateMessage, template, motionCoverage
     const requestRef = useRef(null);
     const ocrWorkerRef = useRef(null);
 
-    // 初始化 OCR Worker
     useEffect(() => {
-        let worker = null;
+        let isMounted = true;
         (async () => {
-            worker = await createWorker('eng');
-            await worker.setParameters({
-                tessedit_pageseg_mode: '7',
-            });
-            ocrWorkerRef.current = worker;
+            try {
+                console.log("[OCR] 啟動 PaddleOCR WebAssembly 引擎中...");
+                const baseUrl = import.meta.env.BASE_URL;
+                ort.env.wasm.wasmPaths = baseUrl;
+                ort.env.wasm.numThreads = 1; // 關閉多執行緒，避免 SharedArrayBuffer 安全性警告
+                
+                const ocr = await Ocr.create({
+                    models: {
+                        detectionPath: `${baseUrl}ocr-models/ch_PP-OCRv4_det_infer.onnx`,
+                        recognitionPath: `${baseUrl}ocr-models/ch_PP-OCRv4_rec_infer.onnx`,
+                        dictionaryPath: `${baseUrl}ocr-models/ppocr_keys_v1.txt`
+                    }
+                });
+                if (isMounted) {
+                    ocrWorkerRef.current = ocr;
+                    console.log("[OCR] PaddleOCR 載入完成！");
+                }
+            } catch (err) {
+                console.error("[OCR] 初始化 PaddleOCR 失敗:", err);
+            }
         })();
         return () => {
-            if (worker) worker.terminate();
+            isMounted = false;
         };
     }, []);
 
@@ -123,7 +138,7 @@ export function useVideoProcessor({ setTemplateMessage, template, motionCoverage
         }
     }, [videoSrc, setTemplateMessage]);
 
-    // 核心辨識函式：使用 Tesseract.js 本地辨識
+    // 核心辨識函式：使用 PaddleOCR 本地辨識
     const recognizeData = async (fullCanvas, roi, useFixedDecimal = true) => {
         if (!roi) return "";
         try {
@@ -133,99 +148,43 @@ export function useVideoProcessor({ setTemplateMessage, template, motionCoverage
             const cx = Math.floor(fullCanvas.width * (roi.x / 100));
             const cy = Math.floor(fullCanvas.height * (roi.y / 100));
 
-            const scale = 3;
-            cropCanvas.width = cw * scale;
-            cropCanvas.height = ch * scale;
+            // PaddleOCR 容忍度高，降回 2x 即可保留清晰度且縮減運算成本
+            let scale = 2;
+            if (roi === window.winROI || (roi.w > 10 && roi.h > 3)) { // 簡單推斷
+                scale = 40 / ch;
+                if (scale < 1) scale = 1;
+            }
+
+            // [關鍵修復] 加上 Padding: DBNet 如果文字太貼齊邊緣，會辨識不到
+            const PADDING = 30;
+            cropCanvas.width = Math.floor(cw * scale) + (PADDING * 2);
+            cropCanvas.height = Math.floor(ch * scale) + (PADDING * 2);
             const ctx = cropCanvas.getContext('2d');
-            ctx.drawImage(fullCanvas, cx, cy, cw, ch, 0, 0, cw * scale, ch * scale);
-
-            // 影像增強：自適應二值化概念 (轉灰度後根據平均亮度調整門檻)
-            const imgData = ctx.getImageData(0, 0, cw * scale, ch * scale);
-            const data = imgData.data;
-            let totalGray = 0;
-            for (let i = 0; i < data.length; i += 4) {
-                totalGray += (data[i] * 0.3 + data[i + 1] * 0.59 + data[i + 2] * 0.11);
-            }
-            const avgGray = totalGray / (cw * scale * ch * scale);
             
-            // 根據是否為「暴戾版(WIN/BAL)」或「溫和版(BET)」調整門檻
-            // 暴戾版提高門檻 (消除更多發光毛邊)；溫和版門檻較寬鬆 (避免削掉小標點)
-            const thresholdOffset = useFixedDecimal ? 30 : 15;
-            const threshold = Math.max(100, Math.min(180, avgGray + thresholdOffset));
+            // 填入常見的暗色背景防呆
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, cropCanvas.width, cropCanvas.height);
 
-            for (let i = 0; i < data.length; i += 4) {
-                const gray = data[i] * 0.3 + data[i + 1] * 0.59 + data[i + 2] * 0.11;
-                const v = gray > threshold ? 255 : 0;
-                data[i] = data[i + 1] = data[i + 2] = v;
-            }
-            ctx.putImageData(imgData, 0, 0);
+            ctx.drawImage(fullCanvas, cx, cy, cw, ch, PADDING, PADDING, cw * scale, ch * scale);
 
-            // 形態學侵蝕 (Erosion)：消除邊緣光暈，讓邊界更銳利
-            // 暴戾版：輕微侵蝕 kernel=1（只清邊緣，不破壞數字筆畫）；溫和版：關閉侵蝕
-            const kernelSize = useFixedDecimal ? 1 : 0;
-            
-            if (kernelSize > 0) {
-                const w = cw * scale, h = ch * scale;
-                const eroded = ctx.getImageData(0, 0, w, h);
-                const eData = eroded.data;
-                const src = new Uint8Array(w * h);
-                for (let i = 0; i < w * h; i++) src[i] = data[i * 4]; // 取出二值化圖
-                
-                for (let y = kernelSize; y < h - kernelSize; y++) {
-                    for (let x = kernelSize; x < w - kernelSize; x++) {
-                        let minVal = 255;
-                        for (let ky = -kernelSize; ky <= kernelSize; ky++) {
-                            for (let kx = -kernelSize; kx <= kernelSize; kx++) {
-                                minVal = Math.min(minVal, src[(y + ky) * w + (x + kx)]);
-                            }
-                        }
-                        const idx = (y * w + x) * 4;
-                        eData[idx] = eData[idx + 1] = eData[idx + 2] = minVal;
-                    }
-                }
-                ctx.putImageData(eroded, 0, 0);
-            }
+            // ⚠️ 已經完全移除以前 Tesseract 時代需要的「灰階轉換、二值化、侵蝕膨脹」
+            // 因為 PaddleOCR 的神經網路設計本身就是接受彩色物件，破壞色彩反而會減損特徵判斷！
 
             if (!ocrWorkerRef.current) return "...";
-            const { data: { text } } = await ocrWorkerRef.current.recognize(cropCanvas);
+            // 轉換為 Base64 Data URL 傳遞給 Paddle
+            const detectedLines = await ocrWorkerRef.current.detect(cropCanvas.toDataURL('image/png'));
 
-            // 1. 為了對抗文字幻覺（例如 "押注 50" 被英文引擎印成 "93 50"），
-            // 我們只擷取輸入字串中的「最後一組連續數字區塊」
-            let validText = text;
-            const numberBlocks = text.match(/[0-9.,]+/g);
-            if (numberBlocks && numberBlocks.length > 0) {
-                validText = numberBlocks[numberBlocks.length - 1]; // 取最後一組
-            } else {
-                validText = "";
-            }
+            // 將 Paddle 多行捕捉結果以空白連接起來
+            const text = (detectedLines || []).map(t => t.text).join(' ').trim();
 
-            // 後處理
-            if (useFixedDecimal) {
-                // WIN / BALANCE：完全不依賴 OCR 辨識出來的標點符號，強行插入小數點
-                let digits = validText.replace(/[^0-9]/g, '');
-                let cleaned = "0";
-                
-                if (digits) {
-                    if (ocrDecimalPlaces > 0) {
-                        if (digits.length <= ocrDecimalPlaces) {
-                            digits = digits.padStart(ocrDecimalPlaces + 1, '0');
-                        }
-                        const intPart = digits.slice(0, -ocrDecimalPlaces);
-                        const decPart = digits.slice(-ocrDecimalPlaces);
-                        cleaned = `${intPart}.${decPart}`;
-                    } else {
-                        cleaned = digits;
-                    }
-                }
-                return cleaned || "0";
-            } else {
-                // BET：使用原本的辨識方式（保留數字與小數點，處理連續小數點等）
-                const cleaned = validText
-                    .replace(/,/g, '')        // 移除千分位逗號
-                    .replace(/^\.+|\.+$/g, '')// 移除開頭/結尾的孤立小數點
-                    .replace(/\.{2,}/g, '.'); // 連續多個小數點合併為一個
-                return cleaned || "0";
-            }
+            // 在控制台輸出原始 OCR 辨識結果與二值化原圖 (雖然現在是彩圖)
+            console.log(`[PaddleOCR Raw] ROI:`, roi, `=> "${text}"`);
+            // 後處理：PaddleOCR 偶爾會誤認背景裝飾為字母 (例如 $ 或 WIN)，
+            // 這裡設定嚴密屏障，只保留純數字 (0-9)、小數點 (.) 與千分位逗號 (,)
+            const validText = text.replace(/[^0-9.,]/g, '');
+            // 最後移除逗號以便後續 JavaScript 解析，並清掉頭尾不小心沾到的孤立小數點
+            const cleaned = validText.replace(/,/g, '').replace(/^\.+|\.+$/g, '') || "0";
+            return cleaned;
         } catch (err) {
             console.error("OCR Error:", err);
             return "Err";

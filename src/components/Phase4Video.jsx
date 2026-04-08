@@ -474,16 +474,7 @@ const Phase4Video = ({
                                             <option value={30}>30 fps (逐格盲抓)</option>
                                         </select>
                                     </div>
-                                    <div className="flex items-center gap-2" title="僅影響贏分/總分，押注固定讀取原始數字">
-                                        <span className="text-[11px] font-bold text-slate-500">贏分/總分 小數</span>
-                                        <select value={ocrDecimalPlaces} onChange={(e) => setOcrDecimalPlaces(parseInt(e.target.value))}
-                                            className="h-7 bg-white text-slate-700 text-xs rounded-lg border border-slate-200 px-2 cursor-pointer">
-                                            <option value={0}>整數</option>
-                                            <option value={1}>1 位</option>
-                                            <option value={2}>2 位</option>
-                                        </select>
-                                        <span className="text-[9px] text-slate-400">押注不套用</span>
-                                    </div>
+
                                     {scanStats && (
                                         <div className="text-[10px] text-slate-400 ml-auto">
                                             掃描 {scanStats.totalFrames} 幀 → {scanStats.candidateCount} 候選（去重 {scanStats.removedDuplicates}）
