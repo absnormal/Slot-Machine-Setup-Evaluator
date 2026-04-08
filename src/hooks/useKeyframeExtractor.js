@@ -104,6 +104,117 @@ function computeMAE(a, b) {
     return total / a.length;
 }
 
+// ══════════════════════════════════════
+// V-Line Scanner — 垂直切片引擎
+// ══════════════════════════════════════
+
+/** V-Line 切片用的獨立降採 canvas（避免與整體 MAE 的 cache 衝突）*/
+let _sliceCanvas = null;
+let _sliceCtx = null;
+function getSliceCanvas() {
+    if (!_sliceCanvas) {
+        _sliceCanvas = document.createElement('canvas');
+        _sliceCanvas.width = SAMPLE_SIZE;
+        _sliceCanvas.height = SAMPLE_SIZE;
+        _sliceCtx = _sliceCanvas.getContext('2d', { willReadFrequently: true });
+    }
+    return { canvas: _sliceCanvas, ctx: _sliceCtx };
+}
+
+/**
+ * 從影片中裁切 ROI → 降採至 128×128 → 依軸數垂直切片 → 每片各自轉灰階
+ * @param {HTMLVideoElement} video
+ * @param {{ x, y, w, h }} roi  — 百分比座標
+ * @param {number} cols         — 軸數（切片數）
+ * @returns {Uint8Array[]} 每個切片的灰階像素陣列（長度 = cols）
+ */
+function extractSliceGrays(video, roi, cols) {
+    const { canvas, ctx } = getSliceCanvas();
+    const sx = (roi.x / 100) * video.videoWidth;
+    const sy = (roi.y / 100) * video.videoHeight;
+    const sw = (roi.w / 100) * video.videoWidth;
+    const sh = (roi.h / 100) * video.videoHeight;
+
+    if (sw <= 1 || sh <= 1) return null;
+
+    ctx.drawImage(video, sx, sy, sw, sh, 0, 0, SAMPLE_SIZE, SAMPLE_SIZE);
+    const data = ctx.getImageData(0, 0, SAMPLE_SIZE, SAMPLE_SIZE).data;
+
+    const sliceWidth = Math.floor(SAMPLE_SIZE / cols);
+    const slices = [];
+
+    for (let c = 0; c < cols; c++) {
+        const startX = c * sliceWidth;
+        const endX = (c === cols - 1) ? SAMPLE_SIZE : (c + 1) * sliceWidth; // 最後一軸吃尾
+        const w = endX - startX;
+        const gray = new Uint8Array(w * SAMPLE_SIZE);
+
+        for (let y = 0; y < SAMPLE_SIZE; y++) {
+            for (let x = startX; x < endX; x++) {
+                const srcIdx = (y * SAMPLE_SIZE + x) * 4;
+                const dstIdx = y * w + (x - startX);
+                gray[dstIdx] = (data[srcIdx] * 77 + data[srcIdx + 1] * 150 + data[srcIdx + 2] * 29) >> 8;
+            }
+        }
+        slices.push(gray);
+    }
+
+    return slices;
+}
+
+/**
+ * 逐軸計算 MAE
+ * @param {Uint8Array[]} prevSlices — 前一幀的 N 個切片
+ * @param {Uint8Array[]} currSlices — 當前幀的 N 個切片
+ * @returns {number[]} 每個切片的 MAE 差異值
+ */
+function computeSliceMAEs(prevSlices, currSlices) {
+    if (!prevSlices || !currSlices || prevSlices.length !== currSlices.length) return null;
+
+    return prevSlices.map((prev, i) => {
+        const curr = currSlices[i];
+        if (!prev || !curr || prev.length !== curr.length) return 0;
+        let total = 0;
+        for (let j = 0; j < prev.length; j++) {
+            total += Math.abs(prev[j] - curr[j]);
+        }
+        return total / prev.length;
+    });
+}
+
+/**
+ * 分析切片 MAE 分佈模式，精確判定盤面狀態
+ * @param {number[]} sliceMAEs — 每軸的 MAE
+ * @returns {{ isAllStopped, isFullyStill, isAnimationOnly, spinningCount, avgMAE, maxMAE, sliceMAEs }}
+ */
+function analyzeSlicePattern(sliceMAEs) {
+    if (!sliceMAEs || sliceMAEs.length === 0) {
+        return { isAllStopped: false, isFullyStill: false, isAnimationOnly: false, spinningCount: 0, avgMAE: 0, maxMAE: 0, sliceMAEs: [] };
+    }
+
+    const max = Math.max(...sliceMAEs);
+    const min = Math.min(...sliceMAEs);
+    const avg = sliceMAEs.reduce((a, b) => a + b, 0) / sliceMAEs.length;
+
+    // 判定：有任何一軸的 diff 極高（仍在旋轉）
+    // 條件：diff > 均值3倍 且 diff > 8（絕對門檻，排除微弱噪音）
+    const spinningCount = sliceMAEs.filter(d => d > avg * 3 && d > 8).length;
+    const hasSpinning = spinningCount > 0;
+
+    // 完全靜止：所有軸的 diff 都極低
+    const isFullyStill = max < 2;
+
+    return {
+        isAllStopped: !hasSpinning,                        // 全軸皆停（含特效）
+        isFullyStill,                                       // 完全靜止（無特效）
+        isAnimationOnly: !hasSpinning && !isFullyStill,     // 全停但有閃光特效
+        spinningCount,
+        avgMAE: avg,
+        maxMAE: max,
+        sliceMAEs,
+    };
+}
+
 /**
  * 計算滑動窗口的均值和標準差
  */
@@ -298,13 +409,14 @@ async function cropAndOCR(canvas, roi, ocrWorker, decimalPlaces, label = '未知
                 // 最後移除逗號以便後續 JavaScript 解析，並清掉頭尾不小心沾到的孤立小數點
                 const resultStr = validText.replace(/,/g, '').replace(/^\.+|\.+$/g, '') || "0";
 
-                console.log(`[OCR 字串追蹤 - ${label}] Paddle原文: "${rawText}" | validText: "${validText}" | 最終結果: "${resultStr}"`);
+                // console.log(`[OCR 字串追蹤 - ${label}] Paddle原文: "${rawText}" | validText: "${validText}" | 最終結果: "${resultStr}"`);
 
                 if (label === 'WIN' || label === 'BALANCE') {
-                    console.log(
-                        `%c ${label} 彩圖餵養 `,
-                        `font-size: 1px; padding: 30px 80px; background: url(${preBinarized}) no-repeat center center; background-size: contain;`
-                    );
+                    // console.log(
+                    //     `%c[${label}]%c ${resultStr || '(空)'}`,
+                    //     'background: #2563eb; color: white; padding: 2px 6px; border-radius: 4px;',
+                    //     'color: #2563eb; font-weight: bold;'
+                    // );
                 }
 
                 resolve(resultStr);
@@ -421,7 +533,8 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
         const WINDOW_SIZE = Math.max(10, fps * 2);  // 2 秒窗口
 
         const diffWindow = [];
-        let prevGray = null;
+        const recentSlicesList = []; // 全片掃描的歷史切片庫
+        const sliceCols = options.sliceCols || 5;
 
         // ── 三層觸發所需追蹤變數 ──
         let peakDiff = 0;       // 旋轉期 MAE 高峰（動畫備援用）
@@ -438,21 +551,39 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
             await waitForSeek(video);
             await yieldToMain(20);
 
-            const currentGray = extractROIGray(video, roi);
-            if (!currentGray) { prevGray = null; continue; }
+            const currentSlices = extractSliceGrays(video, roi, sliceCols);
+            if (!currentSlices) { 
+                recentSlicesList.length = 0; 
+                continue; 
+            }
 
-            const diff = prevGray ? computeMAE(prevGray, currentGray) : 0;
+            let diff = 0;
+            let analysis = null;
+            let mergedSliceMAEs = null;
+
+            if (recentSlicesList.length > 0) {
+                // 【多幀抗壓比對】：全片掃描模式
+                const allComparisons = recentSlicesList.map(prev => computeSliceMAEs(prev, currentSlices));
+                mergedSliceMAEs = [];
+                for (let c = 0; c < sliceCols; c++) {
+                    mergedSliceMAEs.push(Math.max(...allComparisons.map(comp => comp[c] || 0)));
+                }
+
+                analysis = analyzeSlicePattern(mergedSliceMAEs);
+                diff = analysis.avgMAE;
+            }
+
             diffWindow.push(diff);
             if (diffWindow.length > WINDOW_SIZE) diffWindow.shift();
 
             // ── 追蹤旋轉高峰（動畫備援計算用）──
             if (diff > peakDiff) peakDiff = diff;
 
-            // ── 第一層：盤面完全靜止判定 ──
+            // ── 第一層：V-Line 全軸靜止判定 ──
             let isReelStopped = false;
-            if (diffWindow.length >= Math.min(WINDOW_SIZE, 10)) {
+            if (analysis && diffWindow.length >= Math.min(WINDOW_SIZE, 10)) {
                 const { mean: μ } = windowStats(diffWindow);
-                const isStable = diff < Math.max(μ * STABLE_RATIO, 2);
+                const isStable = analysis.isAllStopped && diff < Math.max(μ * STABLE_RATIO, 2);
 
                 if (isStable) { stableCount++; } else { stableCount = 0; }
 
@@ -462,31 +593,31 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                 isReelStopped = stableCount >= POST_STABLE_FRAMES && hadMotion && (t - lastCandidateTime) > minGap;
             }
 
-            // ── 第二層：動畫備援（永遠在背景追蹤，不受第一層結果影響）──
-            // 用途：盤面 MAE 已大幅下降但未完全靜止時，仍然觸發截圖
-            // 場景：WILD 擴展動畫、符號變身特效、WIN 值顯示與停輪時機不同步
+            // ── 第二層：動畫備援（全軸停但有特效閃光）──
             let isAnimationFallback = false;
-            if (peakDiff > 5 && diff < peakDiff * DECAY_RATIO) {
+            if (analysis && analysis.isAllStopped && peakDiff > 5 && diff < peakDiff * DECAY_RATIO) {
                 decayCount++;
             } else if (diff > peakDiff * 0.5) {
-                decayCount = 0; // MAE 回彈，表示真的還在轉
+                decayCount = 0;
             }
             if (decayCount >= ANIMATION_TIMEOUT_FRAMES && !isReelStopped) {
                 const hadMotion2 = diffWindow.filter(d => d > windowStats(diffWindow).mean * 0.6).length >= diffWindow.length * MIN_MOTION_RATIO;
                 isAnimationFallback = hadMotion2 && (t - lastCandidateTime) > minGap;
             }
 
-            // ── 觸發截圖（WIN_SPIKE 不再獨立觸發）──
+            // ── 觸發截圖 ──
             if (isReelStopped || isAnimationFallback) {
                 const triggerReason = isReelStopped ? 'REEL_STOP' : 'ANIMATION_FALLBACK';
                 const { mean: trigμ, std: trigσ } = windowStats(diffWindow);
 
                 // ── 詳細判斷依據 ──
                 console.log(`\n${'═'.repeat(60)}`);
-                console.log(`📸 #${results.length + 1} 觸發截圖 @ ${t.toFixed(2)}s`);
+                console.log(`📸 #${results.length + 1} [V-Line] 觸發截圖 @ ${t.toFixed(2)}s`);
                 console.log(`${'─'.repeat(60)}`);
                 console.log(`  觸發原因 : ${triggerReason}`);
+                console.log(`  切片數據 : [${mergedSliceMAEs ? mergedSliceMAEs.map(d => d.toFixed(1)).join(', ') : 'N/A'}]`);
                 console.log(`  當前 diff : ${diff.toFixed(2)} (μ=${trigμ.toFixed(2)}, σ=${trigσ.toFixed(2)})`);
+
                 console.log(`  ┌─ 第一層 REEL_STOP ────────────────`);
                 console.log(`  │  stableCount : ${stableCount} / ${POST_STABLE_FRAMES} (需 ≥${POST_STABLE_FRAMES})`);
                 console.log(`  │  穩定門檻    : diff < ${Math.max(trigμ * STABLE_RATIO, 2).toFixed(2)} (μ×${STABLE_RATIO} or 2)`);
@@ -554,12 +685,15 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                 const skipFrames = Math.ceil((captureTime - t) / step);
                 if (skipFrames > 0) {
                     i += skipFrames;
-                    prevGray = null;
+                    recentSlicesList.length = 0;
                     continue;
                 }
             }
 
-            prevGray = currentGray;
+            recentSlicesList.push(currentSlices);
+            if (recentSlicesList.length > 2) {
+                recentSlicesList.shift();
+            }
 
             if (i % 5 === 0) {
                 setScanProgress(t / video.duration);
@@ -610,12 +744,19 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
         if (!video || !roi) return;
 
         liveCancelRef.current = false;
+        const sliceCols = ocrOptions.sliceCols || 5;
         liveStateRef.current = {
             diffWindow: [],
-            prevGray: null,
+            recentSlices: [], // 改為儲存近 2 幀的歷史切片
             lastCandidateTime: -999,
             stableCount: 0,
-            windowSize: 20
+            decayCount: 0,
+            peakDiff: 0,
+            isWinPollActive: false,
+            cancelWinPoll: false,
+            windowSize: 20,
+            lastVideoTime: -1,
+            sliceCols,
         };
 
         const processLiveFrame = () => {
@@ -625,30 +766,88 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                 return;
             }
 
-            const state = liveStateRef.current;
-            const currentGray = extractROIGray(video, roi);
+            // 【防偽停輪機制】：影片時間未前進就跳過
+            const now = video.currentTime;
+            if (now === liveStateRef.current.lastVideoTime) {
+                liveRafRef.current = requestAnimationFrame(processLiveFrame);
+                return;
+            }
+            liveStateRef.current.lastVideoTime = now;
 
-            if (currentGray && state.prevGray) {
-                const diff = computeMAE(state.prevGray, currentGray);
+            const state = liveStateRef.current;
+            const currentSlices = extractSliceGrays(video, roi, state.sliceCols);
+
+            if (currentSlices && state.recentSlices.length > 0) {
+                // 【多幀抗壓比對】：與過去 2 幀分別計算差異，並取該軸在任何歷史比對中的「最大誤差」
+                // 這樣即使影片解碼卡頓，給了我們一張跟上一秒完全一樣的複製幀 (diff=0)，
+                // 只要它跟「上上幀」不同，就不會被當成真停輪！
+                const allComparisons = state.recentSlices.map(prev => computeSliceMAEs(prev, currentSlices));
+                
+                const mergedSliceMAEs = [];
+                for (let c = 0; c < state.sliceCols; c++) {
+                    // 取同一條軸，與歷史所有幀比對發生過的最大變化
+                    const maxColDiff = Math.max(...allComparisons.map(comp => comp[c] || 0));
+                    mergedSliceMAEs.push(maxColDiff);
+                }
+
+                const analysis = analyzeSlicePattern(mergedSliceMAEs);
+                const diff = analysis.avgMAE; // 向下相容：用均值餵入 diffWindow
+
                 state.diffWindow.push(diff);
                 if (state.diffWindow.length > state.windowSize) state.diffWindow.shift();
 
+                // 追蹤本局動態高峰
+                if (diff > state.peakDiff) state.peakDiff = diff;
+
+                // 【打斷機制】：有軸在高速旋轉 且 maxMAE 爆表 → 新一局開始
+                if (state.isWinPollActive && analysis.spinningCount > 0 && analysis.maxMAE > 25) {
+                    console.log(`🌀 [V-Line] 偵測到新一局旋轉 (${analysis.spinningCount}軸在轉, max=${analysis.maxMAE.toFixed(1)})，強行終止上一局的 WIN 特工！ (影片時間：${now.toFixed(3)}s)`);
+                    state.cancelWinPoll = true;
+                    state.isWinPollActive = false;
+                }
+
                 if (state.diffWindow.length >= 10) {
                     const { mean: μ } = windowStats(state.diffWindow);
-                    const isStable = diff < Math.max(μ * STABLE_RATIO, 2);
 
-                    if (isStable) {
+                    // V-Line 判定：全軸皆停 → 計入穩定
+                    const isStrictStable = analysis.isAllStopped && diff < Math.max(μ * STABLE_RATIO, 2);
+                    const isDecayed = analysis.isAllStopped && diff < (state.peakDiff * 0.3);
+
+                    if (isStrictStable) {
                         state.stableCount++;
                     } else {
                         state.stableCount = 0;
                     }
 
+                    if (isDecayed) {
+                        state.decayCount++;
+                    } else {
+                        state.decayCount = 0;
+                    }
+
                     const motionThresh = μ * 0.6;
                     const motionFrames = state.diffWindow.filter(d => d > motionThresh).length;
-                    const hadMotion = motionFrames >= state.diffWindow.length * MIN_MOTION_RATIO;
+                    const hadMotion = motionFrames >= state.diffWindow.length * MIN_MOTION_RATIO || state.peakDiff > 8;
                     const now = video.currentTime;
 
-                    if (state.stableCount >= 3 && hadMotion && (now - state.lastCandidateTime) > 1.0) {
+                    const isReelStopped = state.stableCount >= 3;
+                    const isAnimationFallback = state.decayCount >= 15 && state.peakDiff > 8;
+
+                    if ((isReelStopped || isAnimationFallback) && hadMotion && (now - state.lastCandidateTime) > 1.0) {
+                        
+                        // 【互斥鎖防連發】：已有特工在跟蹤跑分，只跟過不截圖
+                        if (state.isWinPollActive) {
+                            // 不截圖，但迴圈繼續跑 (絕對不能 return)
+                        } else {
+
+                        const triggerReason = isReelStopped ? 'REEL_STOP (極度靜止)' : 'ANIMATION_FALLBACK (全軸停但有動畫)';
+                        console.log(`\n========================================`);
+                        console.log(`🎯 [V-Line] 觸發『停輪』截圖！`);
+                        console.log(`⏰ 影片時間點: ${now.toFixed(3)}s`);
+                        console.log(`📊 觸發原因: ${triggerReason}`);
+                        console.log(`📊 切片數據: [${mergedSliceMAEs.map(d => d.toFixed(1)).join(', ')}] avg=${diff.toFixed(2)}, peak=${state.peakDiff.toFixed(2)}`);
+                        console.log(`========================================\n`);
+                        
                         const frameCanvas = captureFullFrame(video);
                         const thumbUrl = generateThumbUrl(frameCanvas, roi);
                         const candidate = {
@@ -685,76 +884,173 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                             });
 
                             // ── WIN 輪詢：立刻啟動！不等初始 OCR 完成 ──
-                            // 核心修復：之前輪詢被塞在 .then() 裡面，導致要等初始 3 個 OCR 排隊跑完（~1200ms）才啟動。
-                            // 如果 WIN 在畫面上只出現不到 1 秒，輪詢根本還沒開始就已經消失了。
                             if (winROI) {
+                                state.isWinPollActive = true;
+                                state.cancelWinPoll = false;
+
                                 let lastWin = '';
                                 let confirmCount = 0;
+                                let missCount = 0;
                                 let polls = 0;
                                 let winFound = false;
-                                const MAX_POLLS = 25; // 25 × 120ms = 3 秒
+                                let isDone = false;
+                                let lastBal = '';
+                                
+                                // 快照保存機制：保存 WIN 被判定達標時的那一個畫格，避免跑去等 BAL 導致錯過贏分數字畫面
+                                let capturedWinCanvas = null;
+                                let capturedWinTime = 0;
 
-                                const pollId = setInterval(() => {
+                                // 動態計算輪詢頻率 (如 fps=20 就是 50ms，以最高效能換取最低延遲)
+                                const targetFps = ocrOptions.fps || 10;
+                                const pollIntervalMs = Math.floor(1000 / targetFps);
+                                const MAX_POLLS = targetFps * 3; // 最多嘗試約 3 秒
+                                const blinkTolerance = Math.max(4, Math.floor(targetFps * 0.5)); // 容忍閃爍約 0.5 秒
+
+                                console.log(`🕵️‍♂️ [WIN 追蹤特工] 啟動！以 ${targetFps} FPS (${pollIntervalMs}ms) 持續跟蹤長達 3 秒... (影片時間：${video.currentTime.toFixed(3)}s)`);
+
+                                const pollNext = async () => {
                                     polls++;
-                                    if (winFound || polls > MAX_POLLS || liveCancelRef.current || video.paused || video.ended) {
-                                        clearInterval(pollId);
+                                    
+                                    // 【新局打斷鎖】：如果外頭的影片已經開始狂轉下一局了，立刻自殺撤退
+                                    if (state.cancelWinPoll) {
+                                        state.isWinPollActive = false;
                                         return;
                                     }
+                                    
+                                    // 只要任務完成、取消、暫停，就徹底終止
+                                    if (isDone || liveCancelRef.current || video.paused || video.ended) {
+                                        state.isWinPollActive = false;
+                                        return;
+                                    }
+                                    if (polls > MAX_POLLS) {
+                                        console.log(`🕵️‍♂️ [WIN 追蹤特工] 取消任務：3秒輪詢超時 (未達所有條件)。`);
+                                        state.isWinPollActive = false;
+                                        return;
+                                    }
+                                    
                                     const w = winPollWorkerRef.current || ocrWorkerRef.current;
                                     if (!w) return;
 
                                     // 只截 WIN 一個欄位！不浪費寶貴的排隊時間去重複讀 BAL/BET
                                     const pollCanvas = captureFullFrame(video);
-                                    const exactPollTime = video.currentTime; // 核心修復：精準備份照相那一瞬間的時間，不要用 .then 之後的時間！
+                                    const exactPollTime = video.currentTime; // 精準備份照相那一瞬間的時間
                                     
-                                    cropAndOCR(pollCanvas, winROI, w, ocrDecimalPlaces ?? 2, 'WIN-POLL').then(pollWin => {
-                                        if (pollWin && pollWin !== '0' && pollWin !== '0.00') {
-                                            if (pollWin === lastWin) confirmCount++;
-                                            else { lastWin = pollWin; confirmCount = 1; }
+                                    try {
+                                        if (!winFound) {
+                                            const pollWin = await cropAndOCR(pollCanvas, winROI, w, ocrDecimalPlaces ?? 2, 'WIN-POLL');
+                                            
+                                            if (pollWin && parseFloat(pollWin) > 0) {
+                                                missCount = 0; // 成功讀到，重置失敗閃爍計數器
+                                                console.log(`🕵️‍♂️ [WIN 追蹤特工] 👀 抓到數字: "${pollWin}" (第 ${polls} 次輪詢)`);
+                                                
+                                                if (pollWin === lastWin) confirmCount++;
+                                                else { lastWin = pollWin; confirmCount = 1; }
 
-                                            if (confirmCount >= 1) {
-                                                winFound = true;
-                                                // ✅ WIN 確認！補讀 BAL/BET 並推第二張候選幀
-                                                Promise.all([
-                                                    cropAndOCR(pollCanvas, balanceROI, w, ocrDecimalPlaces ?? 2, 'BALANCE'),
-                                                    cropAndOCR(pollCanvas, betROI, w, 0, 'BET')
-                                                ]).then(([pollBal, pollBet]) => {
-                                                    const winThumbUrl = generateThumbUrl(pollCanvas, roi);
-                                                    const winCandidate = {
-                                                        id: `kf_live_win_${Date.now()}`,
-                                                        time: exactPollTime, // 使用備份的精準時間
-                                                        canvas: pollCanvas,
-                                                        thumbUrl: winThumbUrl,
-                                                        diff: '0',
-                                                        avgDiff: '0',
-                                                        triggerReason: 'WIN_POLL',
-                                                        ocrData: { win: pollWin, balance: pollBal, bet: pollBet },
-                                                        status: 'pending',
-                                                        recognitionResult: null,
-                                                        error: ''
-                                                    };
-                                                    setCandidates(prev => [...prev, winCandidate]);
-                                                    console.log(`💰 [${exactPollTime.toFixed(2)}s] WIN=${pollWin} 確認！推第二張候選幀`);
-                                                });
-                                                clearInterval(pollId);
+                                                const targetCount = ocrOptions.requireStableWin ? Math.max(3, Math.floor(targetFps * 0.3)) : 1;
+                                                
+                                                if (confirmCount >= targetCount) {
+                                                    winFound = true;
+                                                    capturedWinCanvas = pollCanvas; // 捕捉畫面！
+                                                    capturedWinTime = video.currentTime;
+                                                    
+                                                    confirmCount = 0; // 重置給第二階段使用
+                                                    missCount = 0;
+                                                    console.log(`⏳ WIN=${pollWin} 達標！已保存當下畫面，繼續觀察 BAL 結算...`);
+                                                }
+                                            } else {
+                                                // 遇到 0 或空值 (可能是數字正在閃爍)，忍耐半秒 
+                                                missCount++;
+                                                if (missCount >= blinkTolerance) {
+                                                    confirmCount = 0;
+                                                    lastWin = '';
+                                                }
                                             }
                                         } else {
-                                            confirmCount = 0;
-                                            lastWin = '';
+                                            // ── 階段 2：WIN 已穩定，觀察 BAL 是否也穩定下來了 ──
+                                            let targetBalCount = ocrOptions.requireStableWin ? 3 : 1;
+
+                                            // 如果使用者根本沒有畫 BAL 框，那直接當作 BAL 已經就緒！
+                                            if (!balanceROI) {
+                                                targetBalCount = 0;
+                                            } else {
+                                                const pollBal = await cropAndOCR(pollCanvas, balanceROI, w, ocrDecimalPlaces ?? 2, 'BALANCE-POLL');
+                                                
+                                                if (pollBal && parseFloat(pollBal) > 0) {
+                                                    missCount = 0;
+                                                    if (pollBal === lastBal) {
+                                                        confirmCount++;
+                                                    } else {
+                                                        lastBal = pollBal;
+                                                        confirmCount = 1;
+                                                    }
+                                                } else {
+                                                    missCount++;
+                                                    if (missCount >= 4) { confirmCount = 0; lastBal = ''; }
+                                                }
+                                            }
+
+                                            if (confirmCount >= targetBalCount) {
+                                                const pollBet = await cropAndOCR(pollCanvas, betROI, w, 0, 'BET');
+                                                
+                                                // 我們強制使用剛剛在 Phase 1 達標時截取的完美的「贏分照片」
+                                                const finalCanvas = capturedWinCanvas || pollCanvas; 
+                                                const finalTime = capturedWinTime || exactPollTime;
+
+                                                const winThumbUrl = generateThumbUrl(finalCanvas, roi);
+                                                const winCandidate = {
+                                                    id: `kf_live_win_${Date.now()}`,
+                                                    time: finalTime,
+                                                    canvas: finalCanvas,
+                                                    thumbUrl: winThumbUrl,
+                                                    diff: '0',
+                                                    avgDiff: '0',
+                                                    triggerReason: 'WIN_POLL',
+                                                    ocrData: { win: lastWin, balance: lastBal, bet: pollBet },
+                                                    status: 'pending',
+                                                    recognitionResult: null,
+                                                    error: ''
+                                                };
+                                                setCandidates(prev => [...prev, winCandidate]);
+                                                
+                                                console.log(`\n========================================`);
+                                                console.log(`📸 [贏分結算] 觸發『第二張』候選截圖！`);
+                                                console.log(`⏰ 截圖畫面時間: ${finalTime.toFixed(3)}s`);
+                                                console.log(`💰 確認數值: WIN=${lastWin}, BAL=${lastBal || '(未設定ROI)'}`);
+                                                console.log(`========================================\n`);
+
+                                                isDone = true; // 正式宣告特工任務完成，下次 tick 就不會再跑
+                                                state.isWinPollActive = false; // 解除鎖定
+                                                return; // 結束輪詢
+                                            }
                                         }
-                                    });
-                                }, 120); // 從 200ms 縮短到 120ms，更密集地捕捉短暫 WIN
+                                    } catch (e) {
+                                        console.error("WIN Poll error:", e);
+                                    }
+                                    
+                                    // 序列化等待前一次 OCR 結束後，再排程下一次
+                                    setTimeout(pollNext, pollIntervalMs);
+                                };
+
+                                pollNext();
                             }
                         }
-
+                        // ...啟動 OCR 與輪詢等後續操作，因為太長維持不變
                         state.lastCandidateTime = now;
                         state.stableCount = 0;
+                        state.decayCount = 0;
+                        state.peakDiff = 0;
                         state.diffWindow.length = 0;
+                        } // ← 對應「互斥鎖」的 else 結尾
                     }
                 }
             }
 
-            if (currentGray) state.prevGray = currentGray;
+            if (currentSlices) {
+                state.recentSlices.push(currentSlices);
+                if (state.recentSlices.length > 2) {
+                    state.recentSlices.shift(); // 永遠只保留近 2 幀歷史（N-1, N-2）
+                }
+            }
             liveRafRef.current = requestAnimationFrame(processLiveFrame);
         };
 
@@ -942,14 +1238,47 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                 bestIds.add(best.kf.id);
             }
 
-            const totalGroups = Object.keys(groups).length;
-            const multiGroups = Object.values(groups).filter(g => g.length > 1).length;
-            setTemplateMessage?.(`🧹 分析完成：${prev.length} 幀 → ${totalGroups} 局（${multiGroups} 局有重複幀），已標記最佳`);
+            // 【UI 體驗優化】：三明治異常修復 (Sandwich Healing)
+            // 如果某張照片 B 被照片 A 與 C 包夾，而 A 與 C 皆屬於同一個局 (相同 BAL/WIN)，
+            // 且時間跨度 < 15 秒，則 B 高機率是因為 OCR 讀錯而脫隊的孤兒。
+            // 我們予以強制歸化，使其不會破壞 Phase 4 的群組呈現，並打上標記。
+            const timeSortedFrames = [...frames].sort((a,b) => a.kf.time - b.kf.time);
+            const sandwichErrors = new Set();
+            
+            for (let i = 1; i < timeSortedFrames.length - 1; i++) {
+                const curId = timeSortedFrames[i].kf.id;
+                const curGid = spinGroupMap[curId];
+                
+                const leftGid = spinGroupMap[timeSortedFrames[i-1].kf.id];
+                const leftTime = timeSortedFrames[i-1].kf.time;
+
+                if (curGid !== leftGid) {
+                    let rightFound = false;
+                    let rightTime = 0;
+                    for (let r = i + 1; r < timeSortedFrames.length; r++) {
+                        if (spinGroupMap[timeSortedFrames[r].kf.id] === leftGid) {
+                            rightFound = true;
+                            rightTime = timeSortedFrames[r].kf.time;
+                            break;
+                        }
+                    }
+                    
+                    // 如果被同一個群組左右包夾，且時間間隔小於 15 秒（合理的一局長度）
+                    if (rightFound && (rightTime - leftTime < 15)) {
+                        spinGroupMap[curId] = leftGid;
+                        sandwichErrors.add(curId);
+                    }
+                }
+            }
+
+            const totalGroups = new Set(Object.values(spinGroupMap)).size;
+            setTemplateMessage?.(`🧹 分析完成：已修復 ${sandwichErrors.size} 處孤立區塊，共歸納為 ${totalGroups} 局`);
 
             return prev.map(kf => ({
                 ...kf,
                 spinGroupId: spinGroupMap[kf.id] ?? 0,
                 isSpinBest: bestIds.has(kf.id),
+                isSandwichError: sandwichErrors.has(kf.id),
             }));
         });
     }, [setTemplateMessage]);

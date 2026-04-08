@@ -35,6 +35,7 @@ const Phase4Video = ({
     const [dragState, setDragState] = useState(null);
     const [scanFps, setScanFps] = useState(20);
     const [isLiveActive, setIsLiveActive] = useState(false);
+    const [requireStableWin, setRequireStableWin] = useState(false);
 
     const containerRef = useRef(null);
     const listEndRef = useRef(null);
@@ -271,7 +272,7 @@ const Phase4Video = ({
     }, [groupsWithMath]);
 
     // ── 操作處理 ──
-    const scanOpts = { fps: scanFps, winROI, balanceROI, betROI, ocrDecimalPlaces };
+    const scanOpts = { fps: scanFps, winROI, balanceROI, betROI, ocrDecimalPlaces, requireStableWin, sliceCols: template?.cols || propGridCols || 5 };
 
     const handleHealBreaksGlobally = () => {
         if (brokenGroupIds.length === 0) return;
@@ -301,7 +302,7 @@ const Phase4Video = ({
         if (videoRef.current.paused) videoRef.current.play();
         startLiveDetection(videoRef.current, reelROI, (candidate) => {
             setTemplateMessage?.(`📸 即時偵測到停輪 @ ${candidate.time.toFixed(1)}s`);
-        }, { winROI, balanceROI, betROI, ocrDecimalPlaces });
+        }, { ...scanOpts });
     };
 
     const handleStopLive = () => {
@@ -626,6 +627,11 @@ const Phase4Video = ({
                                                                         ★ 最佳
                                                                     </div>
                                                                 )}
+                                                                {kf.isSandwichError && (
+                                                                    <div className="absolute -top-1.5 left-1/2 transform -translate-x-1/2 bg-rose-500 text-white text-[8px] font-bold px-1.5 py-0.5 rounded shadow z-10 whitespace-nowrap">
+                                                                        ⚠️ OCR 誤讀
+                                                                    </div>
+                                                                )}
                                                                 {renderCardContent(kf, idx)}
                                                                 <button onClick={(e) => { e.stopPropagation(); removeCandidate(kf.id); }}
                                                                     className="absolute top-1.5 right-1.5 text-slate-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all">
@@ -658,16 +664,26 @@ const Phase4Video = ({
                                     </button>
                                 </div>
 
-                                {/* 主動作按鈕 */}
-                                <button onClick={isLiveActive ? handleStopLive : handleStartLive}
-                                    disabled={!videoSrc}
-                                    className={`w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg ${isLiveActive ? 'bg-rose-600 text-white animate-pulse' : !videoSrc ? 'bg-slate-100 text-slate-400 cursor-not-allowed shadow-none' : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-emerald-200 active:scale-95'}`}>
-                                    {isLiveActive ? (
-                                        <><Square size={16} fill="currentColor" /> 停止偵測</>
-                                    ) : (
-                                        <><Play size={18} fill="currentColor" /> 開始即時偵測</>
-                                    )}
-                                </button>
+                                {/* 掃描設定與主動作按鈕 */}
+                                <div className="space-y-2">
+                                    <label className="flex items-center gap-2 px-1 cursor-pointer">
+                                        <input type="checkbox" checked={requireStableWin} onChange={(e) => setRequireStableWin(e.target.checked)} 
+                                            className="w-3.5 h-3.5 rounded border-slate-300 text-indigo-600 shadow-sm focus:border-indigo-300 focus:ring focus:ring-offset-0 focus:ring-indigo-200 focus:ring-opacity-50 cursor-pointer" />
+                                        <span className={`text-xs font-bold transition-colors ${requireStableWin ? 'text-indigo-600' : 'text-slate-500'}`}>
+                                            要求贏分穩定 (停輪後等待跑分動畫)
+                                        </span>
+                                    </label>
+                                    
+                                    <button onClick={isLiveActive ? handleStopLive : handleStartLive}
+                                        disabled={!videoSrc}
+                                        className={`w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg ${isLiveActive ? 'bg-rose-600 text-white animate-pulse' : !videoSrc ? 'bg-slate-100 text-slate-400 cursor-not-allowed shadow-none' : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-emerald-200 active:scale-95'}`}>
+                                        {isLiveActive ? (
+                                            <><Square size={16} fill="currentColor" /> 停止偵測</>
+                                        ) : (
+                                            <><Play size={18} fill="currentColor" /> 開始即時偵測</>
+                                        )}
+                                    </button>
+                                </div>
 
                                 {/* 輔助操作 */}
                                 <div className="flex gap-2">

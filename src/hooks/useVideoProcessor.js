@@ -178,7 +178,7 @@ export function useVideoProcessor({ setTemplateMessage, template, motionCoverage
             const text = (detectedLines || []).map(t => t.text).join(' ').trim();
 
             // 在控制台輸出原始 OCR 辨識結果與二值化原圖 (雖然現在是彩圖)
-            console.log(`[PaddleOCR Raw] ROI:`, roi, `=> "${text}"`);
+            // console.log(`[PaddleOCR Raw] ROI:`, roi, `=> "${text}"`);
             // 後處理：PaddleOCR 偶爾會誤認背景裝飾為字母 (例如 $ 或 WIN)，
             // 這裡設定嚴密屏障，只保留純數字 (0-9)、小數點 (.) 與千分位逗號 (,)
             const validText = text.replace(/[^0-9.,]/g, '');

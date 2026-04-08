@@ -67,7 +67,7 @@ const recognizeROIText = async (fullCanvas, roi, ocrWorker, ocrDecimalPlaces, us
 
         // 串連多行辨識結果
         const text = (detectedLines || []).map(t => t.text).join(' ').trim();
-        console.log(`[PaddleOCR Raw] ROI:`, roi, `=> "${text}"`);
+        // console.log(`[PaddleOCR Raw] ROI:`, roi, `=> "${text}"`);
 
         // 後處理：PaddleOCR 偶爾會誤認背景裝飾為字母 (例如 $ 或 WIN)，
         // 這裡設定嚴密屏障，只保留純數字 (0-9)、小數點 (.) 與千分位逗號 (,)
