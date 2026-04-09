@@ -39,9 +39,10 @@ export default function SettingsModal({ show, customApiKey, setCustomApiKey, onC
                     </div>
                     <div className="p-4 bg-indigo-50 rounded-lg border border-indigo-100">
                         <h3 className="text-sm font-bold text-indigo-800 mb-1">💡 關於 Google Sheets 雲端資料庫</h3>
-                        <p className="text-xs text-indigo-700/80 leading-relaxed">
-                            本工具已切換為無伺服器 (Serverless) 的 Google Sheets 儲存方案。<br />
-                            您的模板庫網址已安全地內嵌於程式碼中，無需在此設定。
+                        <p className="text-xs text-indigo-700/80 leading-relaxed space-y-1">
+                            <span>本工具已切換為無伺服器 (Serverless) 的 Google Sheets 儲存方案。</span><br />
+                            <span>您的模板庫網址已安全地內嵌於程式碼中，無需在此設定。</span><br />
+                            <span className="inline-block mt-1 pt-1 border-t border-indigo-200 font-medium">持有帳號：oldts001@gmail.com</span>
                         </p>
                     </div>
                 </div>
