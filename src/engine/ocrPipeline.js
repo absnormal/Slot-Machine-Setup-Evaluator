@@ -60,25 +60,32 @@ export async function cropAndOCR(canvas, roi, ocrWorker, decimalPlaces, label = 
                 let scale = 48 / ch;
                 if (scale < 1) scale = 1; // 避免反向壓縮導致像素遺失
 
+                // [對抗密集字漏字] 水平拉寬 1.25 倍：解決 CTC 神經網絡因為 '22' 太近而疊合成一個 '2' 的幻覺
+                const stretchX = 1.25;
+                const finalW = cw * scale * stretchX;
+                const finalH = ch * scale;
+
                 // [關鍵修復] 加上 Padding: DBNet 如果文字太貼齊邊緣，會辨識不到
                 const PADDING = 30;
-                cropCanvas.width = Math.floor(cw * scale) + (PADDING * 2);
-                cropCanvas.height = Math.floor(ch * scale) + (PADDING * 2);
+                cropCanvas.width = Math.floor(finalW) + (PADDING * 2);
+                cropCanvas.height = Math.floor(finalH) + (PADDING * 2);
                 const ctx = cropCanvas.getContext('2d');
                 
                 ctx.fillStyle = '#000000';
                 ctx.fillRect(0, 0, cropCanvas.width, cropCanvas.height);
 
-                // 關閉平滑柔邊 (Anti-aliasing)，保留銳利鋸齒邊緣，防止過於靠近的數字 (如 22) 在放大縮小時沾黏
-                ctx.imageSmoothingEnabled = false;
+                // 稍微提升對比，幫助邊緣更清晰
+                ctx.filter = 'contrast(1.2) brightness(1.1)';
+                ctx.imageSmoothingEnabled = true; // 拉伸後開啟平滑搭配高對比，避免鋸齒邊緣太破碎
 
-                ctx.drawImage(canvas, cx, cy, cw, ch, PADDING, PADDING, cw * scale, ch * scale);
+                ctx.drawImage(canvas, cx, cy, cw, ch, PADDING, PADDING, finalW, finalH);
 
                 // ⚠️ 彩圖直出：我們不再手動運算灰階二值化，把這項工作全權託付給 Paddle 神經網路
                 const detectedLines = await ocrWorker.detect(cropCanvas.toDataURL('image/png'));
 
                 // 將多行字串陣列合併
                 const rawText = (detectedLines || []).map(t => t.text).join(' ').trim();
+                console.log(`[OCR RAW - ${label}]`, rawText);
 
                 let resultStr = "";
                 if (label === 'ORDER_ID') {

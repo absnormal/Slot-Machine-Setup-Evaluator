@@ -1,4 +1,9 @@
 import { isScatterSymbol, isCollectSymbol, isWildSymbol, isCashSymbol, getCashValue, isJpSymbol, getSymbolCount, isDoubleSymbol, getBaseSymbol, getSymbolMultiplier, getCollectValue } from '../utils/symbolUtils';
+import Big from 'big.js';
+
+// === 安全數學輔助函數 (從根本解決 IEEE 754 浮點數飄移) ===
+const safeMul = (...args) => args.reduce((acc, val) => acc.times(val !== null && val !== undefined && val !== false ? val : 1), Big(1)).toNumber();
+const safeAdd = (...args) => args.reduce((acc, val) => acc.plus(val || 0), Big(0)).toNumber();
 
 /**
  * 核心結算引擎：根據模板、盤面與押注計算線獎結果
@@ -81,8 +86,8 @@ export function computeGridResults(template, targetGrid, betAmount) {
                         const sym = safeGrid[coord.row][coord.col];
                         const m = getSymbolMultiplier(sym);
                         if (m > 1) {
-                            if (template.multiplierCalcType === 'sum') lineMultiplierMultiplier += m;
-                            else lineMultiplierMultiplier *= m;
+                            if (template.multiplierCalcType === 'sum') lineMultiplierMultiplier = safeAdd(lineMultiplierMultiplier, m);
+                            else lineMultiplierMultiplier = safeMul(lineMultiplierMultiplier, m);
                         }
                     });
                 }
@@ -182,7 +187,7 @@ export function computeGridResults(template, targetGrid, betAmount) {
 
                     if (payoutMult > 0) {
                         const finalLineMult = (template.multiplierCalcType === 'sum' ? Math.max(1, lineMultiplierMultiplier) : lineMultiplierMultiplier);
-                        const payout = parseFloat((payoutMult * parsedBet * ways * finalLineMult).toFixed(8));
+                        const payout = safeMul(payoutMult, parsedBet, ways, finalLineMult);
                         calculatedResults.push({
                             lineId: `WAYS_${targetSymbol}`,
                             symbol: targetSymbol,
@@ -195,7 +200,7 @@ export function computeGridResults(template, targetGrid, betAmount) {
                             positions: [`${reelsReached} 連 × ${ways} Ways`],
                             winCoords: finalWinCoords
                         });
-                        totalWin = parseFloat((totalWin + payout).toFixed(8));
+                        totalWin = safeAdd(totalWin, payout);
                     }
                 }
             }
@@ -221,8 +226,8 @@ export function computeGridResults(template, targetGrid, betAmount) {
                             const m = getSymbolMultiplier(sym);
                             if (m > 1) {
                                 hasLineMultiplier = true;
-                                if (template.multiplierCalcType === 'sum') lineMultiplierMultiplier += m;
-                                else lineMultiplierMultiplier *= m;
+                                if (template.multiplierCalcType === 'sum') lineMultiplierMultiplier = safeAdd(lineMultiplierMultiplier, m);
+                                else lineMultiplierMultiplier = safeMul(lineMultiplierMultiplier, m);
                             }
                         }
                     }
@@ -235,7 +240,7 @@ export function computeGridResults(template, targetGrid, betAmount) {
 
                     if (payoutMult > 0) {
                         const finalLineMult = hasLineMultiplier ? (template.multiplierCalcType === 'sum' ? Math.max(1, lineMultiplierMultiplier) : lineMultiplierMultiplier) : 1;
-                        const payout = parseFloat((payoutMult * parsedBet * finalLineMult).toFixed(8));
+                        const payout = safeMul(payoutMult, parsedBet, finalLineMult);
                         calculatedResults.push({
                             lineId: `COUNT_${targetSymbol}`,
                             symbol: targetSymbol,
@@ -247,7 +252,7 @@ export function computeGridResults(template, targetGrid, betAmount) {
                             positions: [`${totalCount} 消除`],
                             winCoords
                         });
-                        totalWin = parseFloat((totalWin + payout).toFixed(8));
+                        totalWin = safeAdd(totalWin, payout);
                     }
                 }
             }
@@ -290,8 +295,8 @@ export function computeGridResults(template, targetGrid, betAmount) {
                             // xN Multiplier logic
                             const m = getSymbolMultiplier(sym);
                             if (m > 1) {
-                                if (template.multiplierCalcType === 'sum') lineMultiplierMultiplier += m;
-                                else lineMultiplierMultiplier *= m;
+                                if (template.multiplierCalcType === 'sum') lineMultiplierMultiplier = safeAdd(lineMultiplierMultiplier, m);
+                                else lineMultiplierMultiplier = safeMul(lineMultiplierMultiplier, m);
                             }
                         } else {
                             break;
@@ -303,7 +308,7 @@ export function computeGridResults(template, targetGrid, betAmount) {
                         const payIndex = Math.min(currentCount - 1, payArray.length - 1);
                         const payoutMult = payIndex >= 0 ? payArray[payIndex] : 0;
                         const finalLineMult = (template.multiplierCalcType === 'sum' ? Math.max(1, lineMultiplierMultiplier) : lineMultiplierMultiplier);
-                        const payout = parseFloat((payoutMult * parsedBet * finalLineMult).toFixed(8));
+                        const payout = safeMul(payoutMult, parsedBet, finalLineMult);
 
                         if (payout > bestPayout) {
                             bestPayout = payout;
@@ -356,7 +361,7 @@ export function computeGridResults(template, targetGrid, betAmount) {
                         positions: [...positions, ...(bestLineMult > 1 ? [`x${bestLineMult}`] : [])],
                         winCoords
                     });
-                    totalWin = parseFloat((totalWin + bestPayout).toFixed(8));
+                    totalWin = safeAdd(totalWin, bestPayout);
                 }
             });
         } // end paylines else
@@ -381,7 +386,7 @@ export function computeGridResults(template, targetGrid, betAmount) {
                 const payArray = evalTemplate.paytable[scatterSymbol];
                 const payIndex = Math.min(scatterCount - 1, payArray.length - 1);
                 const payoutMult = payIndex >= 0 ? payArray[payIndex] : 0;
-                const payout = parseFloat((payoutMult * parsedBet).toFixed(8));
+                const payout = safeMul(payoutMult, parsedBet);
 
                 calculatedResults.push({
                     lineId: `SCATTER_${scatterSymbol}`,
@@ -394,7 +399,7 @@ export function computeGridResults(template, targetGrid, betAmount) {
                     winCoords: payoutMult > 0 ? scatterCoords : []
                 });
 
-                totalWin = parseFloat((totalWin + payout).toFixed(8));
+                totalWin = safeAdd(totalWin, payout);
             }
         }
 
@@ -427,11 +432,11 @@ export function computeGridResults(template, targetGrid, betAmount) {
                     if (val > 0) {
                         let symPayout = 0;
                         if (isJpSymbol(sym, evalTemplate.jpConfig)) {
-                            symPayout = val * parsedBet;
+                            symPayout = safeMul(val, parsedBet);
                         } else {
                             symPayout = val;
                         }
-                        totalCashWinValue += symPayout;
+                        totalCashWinValue = safeAdd(totalCashWinValue, symPayout);
                         cashCoords.push({ row: r, col: c });
                     }
                 }
@@ -444,9 +449,8 @@ export function computeGridResults(template, targetGrid, betAmount) {
 
         if (effectiveCollectCount > 0 && totalCashWinValue > 0) {
             const finalOtherMult = hasOtherGridMultiplier ? (template.multiplierCalcType === 'sum' ? Math.max(1, otherGridMultiplier) : otherGridMultiplier) : 1;
-            const totalCollectionFactor = effectiveCollectCount * finalOtherMult;
-            const totalPayout = totalCashWinValue * totalCollectionFactor;
-            const payout = parseFloat(totalPayout.toFixed(8));
+            const totalCollectionFactor = safeMul(effectiveCollectCount, finalOtherMult);
+            const payout = safeMul(totalCashWinValue, totalCollectionFactor);
 
             calculatedResults.push({
                 lineId: `COLLECT_FEATURE`,
@@ -458,14 +462,14 @@ export function computeGridResults(template, targetGrid, betAmount) {
                 positions: [evalTemplate.requiresCollectToWin === false && totalCollectorMultiplicity === 0 ? "自動收集" : `收集 x${totalCollectionFactor}`],
                 winCoords: [...collectCoords, ...cashCoords, ...multiplierCoords]
             });
-            totalWin = parseFloat((totalWin + payout).toFixed(8));
+            totalWin = safeAdd(totalWin, payout);
         }
 
         // === 乘倍處理 ===
         if (activeMultiplier > 1 && totalWin > 0) {
-            totalWin = parseFloat((totalWin * activeMultiplier).toFixed(8));
+            totalWin = safeMul(totalWin, activeMultiplier);
             calculatedResults.forEach(res => {
-                res.winAmount = parseFloat((res.winAmount * activeMultiplier).toFixed(8));
+                res.winAmount = safeMul(res.winAmount, activeMultiplier);
                 if (res.lineId === 'COLLECT_FEATURE') {
                     // 對於收集功能，直接將乘倍反映在「收集 xN」上
                     const match = String(res.positions[0]).match(/收集 x(\d+(?:\.\d+)?)/);
