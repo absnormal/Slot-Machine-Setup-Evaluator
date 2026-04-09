@@ -127,7 +127,7 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                     mergedSliceMAEs.push(bestComp);
                 }
 
-                const analysis = analyzeSlicePattern(mergedSliceMAEs);
+                const analysis = analyzeSlicePattern(mergedSliceMAEs, now);
                 const diff = analysis.avgMAE; // 向下相容：用均值餵入 diffWindow
 
                 state.diffWindow.push(diff);
@@ -147,7 +147,8 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                     const { mean: μ } = windowStats(state.diffWindow);
 
                     // V-Line 判定：全軸皆停 → 計入穩定
-                    const isStrictStable = analysis.isAllStopped && diff < Math.max(μ * STABLE_RATIO, 2);
+                    // (不再使用 diff < Math.max(μ) 門檻，因為飛行動畫會推高均值，我們全權信任底層 4切塊過濾的 isAllStopped 結果！)
+                    const isStrictStable = analysis.isAllStopped;
                     const isDecayed = analysis.isAllStopped && diff < (state.peakDiff * 0.3);
 
                     if (isStrictStable) {
@@ -658,14 +659,98 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                 groups[root].push(f);
             });
 
+            // ==========================================
+            // 🔥 [FG 智能合併 Pass] 
+            // 如果相鄰兩個群組在數學特徵上符合「未扣除押注」且「贏分維持或累加」，
+            // 我們將它們強行縫合為同一個巨大的 FG 序列！
+            // ==========================================
+            let finalGroups = Object.values(groups);
+            // 確保依時間排序，以進行相鄰比對
+            finalGroups.sort((a, b) => a[0].kf.time - b[0].kf.time);
+
+            let foldedGroups = [];
+            let currentFG = null;
+
+            for (let i = 0; i < finalGroups.length; i++) {
+                const g = finalGroups[i];
+                // 找出這個 Group 帳面上最大的贏分特徵
+                let maxWin = -1, rep = g[0];
+                g.forEach(f => { if (f.win > maxWin) { maxWin = f.win; rep = f; } });
+
+                if (currentFG) {
+                    const prevTime = currentFG.group[currentFG.group.length - 1].kf.time;
+                    const fgBal = currentFG.rep.bal;
+                    const fgBet = currentFG.rep.bet;
+                    const fgWin = currentFG.rep.win;
+                    const fgId = currentFG.rep.kf.ocrData?.orderId;
+                    const repId = rep.kf.ocrData?.orderId;
+
+                    const timeDiff = g[0].kf.time - prevTime;
+                    
+                    const isFGFrozenBal = Math.abs(rep.bal - fgBal) < eps;
+                    const isFGDynamicBal = Math.abs(rep.bal - (fgBal + fgWin)) < eps;
+                    
+                    const isValidId = id => (id && id.length >= 5);
+                    const isIdMatch = isValidId(fgId) && isValidId(repId) && fgId === repId;
+
+                    // 滿足免遊條件：
+                    // 1. Order ID 相同 (無敵鐵證) OR
+                    // 2. 算術相符 (未扣 bet，且 win 往上疊)
+                    if (isIdMatch || ((isFGFrozenBal || isFGDynamicBal) && rep.bet === fgBet && rep.bet > 0 && rep.win >= fgWin && timeDiff <= 180)) {
+                        
+                        // 【贏分歸零防呆】：如果在疑似接續的局數中，出現了「贏分變 0」的畫面，
+                        // 這代表機台已經徹底把上一局的贏分「結算並清空」了，這就絕對不可能是同一局免遊！
+                        const isWinCleared = g.some(f => f.win < 0.5);
+                        
+                        // 【平局防呆】：如果舊的代表幀贏分剛好等於押注 (Tie Spin)，那餘額(Bal)本來就會不變！
+                        // 數學巧合完美符合 FG 條件，但它實際上是兩場獨立的常規付費局！無情斷鏈！
+                        const isTieSpin = Math.abs(fgWin - rep.bet) < eps;
+
+                        if (!isIdMatch && isWinCleared) {
+                            foldedGroups.push(currentFG.group);
+                            currentFG = null;
+                        } else if (!isIdMatch && isFGFrozenBal && isTieSpin) {
+                            foldedGroups.push(currentFG.group);
+                            currentFG = null;
+                        } else {
+                            // 成功縫合！將這兩坨群組的所有幀都打上【免遊印記】
+                            g.forEach(f => f.isFGFolded = true);
+                            currentFG.group.forEach(f => f.isFGFolded = true);
+
+                            // 合併進當前序列
+                            currentFG.group.push(...g);
+                            // 更新代表幀特徵 (如果餘額動態更新，我們得追蹤最新的 FG 基準點)
+                            if (isFGDynamicBal || rep.win > fgWin) {
+                                currentFG.rep = rep; 
+                            }
+                            continue;
+                        }
+                    } else {
+                        // 斷鏈
+                        foldedGroups.push(currentFG.group);
+                        currentFG = null;
+                    }
+                }
+
+                if (!currentFG) {
+                    currentFG = { group: [...g], rep: rep };
+                }
+            }
+            if (currentFG) {
+                foldedGroups.push(currentFG.group);
+            }
+
+            // 把 foldedGroups 內容交接給後續的最佳幀挑選邏輯
+            const mergedGroupsList = foldedGroups;
+
             // 每組標記最佳幀
             const bestIds = new Set();
             let spinGroupCounter = 0;
             const spinGroupMap = {}; // kf.id → spinGroupId
 
-            for (const group of Object.values(groups)) {
+            for (const group of mergedGroupsList) {
                 const gid = spinGroupCounter++;
-                group.forEach(f => { spinGroupMap[f.kf.id] = gid; });
+                group.forEach(f => { spinGroupMap[f.kf.id] = { id: gid, isFGSequence: !!f.isFGFolded }; });
 
                 if (group.length === 1) {
                     bestIds.add(group[0].kf.id);
@@ -708,9 +793,11 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
 
             return prev.map(kf => {
                 const safeKf = cleansedMap[kf.id] || kf;
+                const mapping = spinGroupMap[kf.id];
                 return {
                     ...safeKf,
-                    spinGroupId: spinGroupMap[kf.id] ?? 0,
+                    spinGroupId: mapping ? mapping.id : 0,
+                    isFGSequence: mapping ? mapping.isFGSequence : false,
                     isSpinBest: bestIds.has(kf.id),
                 };
             });

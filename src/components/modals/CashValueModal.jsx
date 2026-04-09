@@ -31,8 +31,17 @@ const CashValueModal = ({ show, onClose, onConfirm, cashValueInput, setCashValue
                                 value={cashValueInput}
                                 onChange={(e) => setCashValueInput(e.target.value)}
                                 onKeyDown={(e) => {
-                                    if (e.key === 'Enter') onConfirm();
-                                    if (e.key === 'Escape') onClose();
+                                    if (e.key === 'Enter') {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        if (e.nativeEvent) e.nativeEvent.stopImmediatePropagation();
+                                        onConfirm();
+                                    }
+                                    if (e.key === 'Escape') {
+                                        e.stopPropagation();
+                                        if (e.nativeEvent) e.nativeEvent.stopImmediatePropagation();
+                                        onClose();
+                                    }
                                 }}
                                 className="w-full bg-slate-900 border border-slate-700 rounded-xl p-4 text-white text-2xl font-black focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
                                 placeholder={isDynamic ? "例如: 5、10、100" : "例如:10、3.5M、2.5K"}

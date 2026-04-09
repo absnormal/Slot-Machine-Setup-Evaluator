@@ -175,28 +175,29 @@ const Phase4Video = ({
         };
     }, [videoSrc, videoRef]);
 
-    // 自動滾動列表到底部
+    // ── 新卡片滾動邏輯 ──
+    const prevLengthRef = useRef(candidates.length);
     useEffect(() => {
-        if (listEndRef.current) {
-            listEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        // 只有當陣列長度增加（有新卡片加入）時才執行
+        if (candidates.length > prevLengthRef.current) {
+            if (lastAddedManualId) {
+                // 情境 1：手動截圖。滾動到指定卡片，不要滾到底部
+                setTimeout(() => {
+                    const el = document.getElementById(`kf-card-${lastAddedManualId}`);
+                    if (el) {
+                        el.scrollIntoView({ behavior: 'auto', block: 'center' });
+                        el.classList.add('ring-4', 'ring-amber-400', 'ring-offset-2', 'transition-all', 'duration-500');
+                        setTimeout(() => el.classList.remove('ring-4', 'ring-amber-400', 'ring-offset-2'), 1500);
+                    }
+                    setLastAddedManualId(null);
+                }, 100);
+            } else if (isLiveActive && listEndRef.current) {
+                // 情境 2：即時偵測。自動追加到底部，視角平滑跟蹤到底部
+                listEndRef.current.scrollIntoView({ behavior: 'auto', block: 'nearest' });
+            }
         }
-    }, [candidates.length]);
-
-    // 自動滾動到手動新增的卡片
-    useEffect(() => {
-        if (lastAddedManualId) {
-            // 需要等 React render 出來
-            setTimeout(() => {
-                const el = document.getElementById(`kf-card-${lastAddedManualId}`);
-                if (el) {
-                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    el.classList.add('ring-4', 'ring-amber-400', 'ring-offset-2', 'transition-all', 'duration-500');
-                    setTimeout(() => el.classList.remove('ring-4', 'ring-amber-400', 'ring-offset-2'), 1500);
-                }
-                setLastAddedManualId(null);
-            }, 100);
-        }
-    }, [lastAddedManualId, candidates.length]);
+        prevLengthRef.current = candidates.length;
+    }, [candidates.length, isLiveActive, lastAddedManualId]);
 
     // ── 播放控制 ──
     const togglePlay = () => {
@@ -335,7 +336,10 @@ const Phase4Video = ({
                 }
             }
 
-            return { gid, group, mathValid, mathState, mathDiff, expectedBase, nextBase: currentBase };
+            // 由底層 smartDedup 引擎的 isFGSequence 標記驅動，不再用 UI 層啟發式猜測
+            const isFGSequence = group.some(c => c.kf?.isFGSequence);
+
+            return { gid, group, mathValid, mathState, mathDiff, expectedBase, nextBase: currentBase, isFGSequence };
         });
     }, [candidates]);
 
@@ -719,7 +723,7 @@ const Phase4Video = ({
                                             ));
                                         }
 
-                                        return groupsWithMath.map(({ gid, group, mathValid, mathDiff, expectedBase, nextBase }, listIndex) => {
+                                        return groupsWithMath.map(({ gid, group, mathValid, mathDiff, expectedBase, nextBase, isFGSequence }, listIndex) => {
                                             const isMulti = group.length > 1;
                                             const parsedGid = parseInt(gid);
                                             const palette = isNaN(parsedGid) 
@@ -731,7 +735,11 @@ const Phase4Video = ({
                                                     style={{ borderLeft: `4px solid ${palette.border}`, backgroundColor: palette.bg }}
                                                 >
                                                     <div className="text-[9px] font-bold px-1 flex flex-wrap items-center gap-1.5 mb-1 pb-1 border-b border-slate-200/50">
-                                                        <span className="text-slate-500 opacity-60">{isMulti ? '同局' : '單局'}</span>
+                                                        {isFGSequence ? (
+                                                            <span className="bg-rose-100 text-rose-600 px-1.5 py-0.5 rounded shadow-sm flex items-center gap-0.5">🔥 免遊序列</span>
+                                                        ) : (
+                                                            <span className="text-slate-500 opacity-60">{isMulti ? '同局' : '單局'}</span>
+                                                        )}
                                                         <span className="text-emerald-600">W:{group[0].kf.ocrData?.win || '0'}</span>
                                                         <span className="text-sky-600">B:{group[0].kf.ocrData?.balance || '0'}</span>
                                                         <span className="text-amber-600">BET:{group[0].kf.ocrData?.bet || '-'}</span>

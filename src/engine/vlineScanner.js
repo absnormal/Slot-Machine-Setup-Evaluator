@@ -98,9 +98,10 @@ export function computeSliceMAEs(prevSlices, currSlices) {
 /**
  * 分析切片 MAE 分佈模式，精確判定盤面狀態 (加入 4區塊 動態過濾)
  * @param {{ full: number, blocks: number[] }[]} bandMAEs — 每軸的分塊 MAE 資料
+ * @param {number} currentTime — 目前影片時間點 (可選用，用於 Log 顯示)
  * @returns {{ isAllStopped, isFullyStill, isAnimationOnly, spinningCount, avgMAE, maxMAE, sliceMAEs }}
  */
-export function analyzeSlicePattern(bandMAEs) {
+export function analyzeSlicePattern(bandMAEs, currentTime = 0) {
     if (!bandMAEs || bandMAEs.length === 0) {
         return { isAllStopped: false, isFullyStill: false, isAnimationOnly: false, spinningCount: 0, avgMAE: 0, maxMAE: 0, sliceMAEs: [] };
     }
@@ -109,27 +110,55 @@ export function analyzeSlicePattern(bandMAEs) {
     const max = Math.max(...sliceMAEs);
     const avg = sliceMAEs.reduce((a, b) => a + b, 0) / sliceMAEs.length;
 
-    // 判定：有任何一軸的 diff 極高（仍在旋轉）
-    // 條件：整片 diff > 均值3倍 且 diff > 8
+    // 判定：有任何一軸的 diff 大於絕對門檻 (全軸在轉時，大家 diff 都很大，不能用 avg * 3 當判定)
     let spinningCount = 0;
+    let anyIntercepted = false;
+    let boardParams = [];
 
     for (let i = 0; i < bandMAEs.length; i++) {
         const d = bandMAEs[i].full;
         const blocks = bandMAEs[i].blocks;
+        let isSpinning = false;
+        let isIntercepted = false;
+        let activeBlocks = 0;
+        let gapRatio = 0;
 
-        if (d > avg * 3 && d > 8) {
-            // [抗飛行動畫過濾]：如果整片平均看起來在動，我們檢查 4 個區塊
-            // 如果是一顆金幣往上飛，只會有 1~2 個區塊的 MAE 飆高，其他區塊 (背景殘留影像) 是靜止的。
-            // 真正的轉輪是整條瀑布往下刷，4 個區塊都應該要有劇烈變化。
-            // 我們容忍 1 個區塊可能剛好特徵不明顯，所以判定門檻為： >= 3 個區塊的 MAE 都大於 4 (顯著動態)
-            const activeBlocks = blocks.filter(bDiff => bDiff > 4).length;
+        if (d >= 8) {
+            activeBlocks = blocks.filter(bDiff => bDiff > 4).length;
+            const sortedBlocks = [...blocks].sort((a, b) => a - b);
+            const weakHalfAvg = (sortedBlocks[0] + sortedBlocks[1]) / 2;
+            const maxBlock = sortedBlocks[3];
+            const minBlock = sortedBlocks[0];
+            
+            gapRatio = maxBlock / (weakHalfAvg + 1.0);
 
-            if (activeBlocks >= 3) {
+            // [死寂區段防呆]：如果某個區段完全沒變動 (<1.5)，代表這不可能是整條在刷的轉輪！
+            if (activeBlocks >= 3 && gapRatio <= 5.0 && minBlock >= 1.5) {
+                isSpinning = true;
                 spinningCount++;
             } else {
-                console.log(`🛡️ [防干擾] 軸 ${i + 1} 整體誤差 ${d.toFixed(1)} 達標，但全高 4區段 中只有 ${activeBlocks} 區段在動 [${blocks.map(x => x.toFixed(1)).join(', ')}]，成功攔截為【飛行動畫局部干擾】!`);
+                isIntercepted = true;
+                anyIntercepted = true;
             }
         }
+        boardParams.push({ d, blocks, activeBlocks, gapRatio, isSpinning, isIntercepted });
+    }
+
+    // 為了避免洗版，我們只在「確定有發生攔截 (⛔)」的情境下，才印出上帝視角盤面
+    if (anyIntercepted) {
+        const p = (n) => String(n).padStart(6, ' ');
+        let logStr = `\n🛡️ [防干擾盤面 @ ${currentTime.toFixed(3)}s]\n`;
+        logStr += `  軸 1   軸 2   軸 3   軸 4   軸 5\n`;
+        logStr += `--------------------------------------\n`;
+        for (let b = 0; b < 4; b++) {
+            logStr += boardParams.map(bp => p(bp.blocks[b].toFixed(1))).join('') + ` | 區段 ${b+1}\n`;
+        }
+        logStr += `--------------------------------------\n`;
+        logStr += boardParams.map(bp => p(bp.d.toFixed(1))).join('') + ` | 總誤差\n`;
+        logStr += boardParams.map(bp => p(bp.d >= 8 ? bp.activeBlocks : '-')).join('') + ` | 活躍數\n`;
+        logStr += boardParams.map(bp => p(bp.d >= 8 ? bp.gapRatio.toFixed(1) : '-')).join('') + ` | 落差比\n`;
+        logStr += boardParams.map(bp => bp.isSpinning ? '  ✅  ' : (bp.isIntercepted ? '  ⛔  ' : '  ➖  ')).join('') + `| 判定\n`;
+        console.log(logStr);
     }
 
     const hasSpinning = spinningCount > 0;
