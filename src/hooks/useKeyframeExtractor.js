@@ -610,7 +610,10 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
 
             const totalGroups = Object.keys(groups).length;
             const multiGroups = Object.values(groups).filter(g => g.length > 1).length;
-            setTemplateMessage?.(`🧹 分析完成：${prev.length} 幀 → ${totalGroups} 局（${multiGroups} 局有重複幀），已標記最佳`);
+            
+            setTimeout(() => {
+                setTemplateMessage?.(`🧹 分析完成：${prev.length} 幀 → ${totalGroups} 局（${multiGroups} 局有重複幀），已標記最佳`);
+            }, 0);
 
             return prev.map(kf => ({
                 ...kf,
@@ -633,14 +636,12 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
             if (id > 0) targetGroupIds.add(id - 1);
         });
 
-        setIsScanning(true);
         setTemplateMessage?.(`⚡ 正在深度修復 ${targetGroupIds.size} 局斷層資料...`);
 
         // 讓 React 取得最新 state，執行非同步修復，然後寫回
         setCandidates(prev => {
             const targetCandidates = prev.filter(c => targetGroupIds.has(c.spinGroupId));
             if (targetCandidates.length === 0) {
-                setIsScanning(false);
                 return prev;
             }
 
@@ -680,7 +681,6 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                 // 然後立刻觸發重新分局 (smartDedup會讀取這最新的數值並重選代表幀!)
                 setTimeout(() => {
                     smartDedup();
-                    setIsScanning(false);
                     setTemplateMessage?.(`✅ 斷層修復完成：已重新推演連貫性！`);
                 }, 100);
             };
@@ -694,7 +694,11 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
     const confirmDedup = useCallback(() => {
         setCandidates(prev => {
             const kept = prev.filter(c => c.isSpinBest !== false); // 保留 best 或是還沒被標記過單局的
-            setTemplateMessage?.(`已刪除 ${prev.length - kept.length} 張重複畫格，剩餘 ${kept.length} 張`);
+            
+            setTimeout(() => {
+                setTemplateMessage?.(`已刪除 ${prev.length - kept.length} 張重複畫格，剩餘 ${kept.length} 張`);
+            }, 0);
+
             return kept.map(c => ({...c, isSpinBest: undefined})); // 清除標記
         });
     }, [setTemplateMessage]);
