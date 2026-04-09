@@ -457,11 +457,7 @@ const Phase4Video = ({
                                         </select>
                                     </div>
 
-                                    {scanStats && (
-                                        <div className="text-[10px] text-slate-400 ml-auto">
-                                            掃描 {scanStats.totalFrames} 幀 → {scanStats.candidateCount} 候選（去重 {scanStats.removedDuplicates}）
-                                        </div>
-                                    )}
+
                                 </div>
                             </div>
                         )}
