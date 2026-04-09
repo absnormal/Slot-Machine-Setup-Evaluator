@@ -493,10 +493,6 @@ function App() {
                     onToggle={() => handlePhaseToggle('phase4')}
                     // Keyframe Extractor
                     candidates={keyframeExtractor.candidates}
-                    isScanning={keyframeExtractor.isScanning}
-                    scanProgress={keyframeExtractor.scanProgress}
-                    scanStats={keyframeExtractor.scanStats}
-                    scanVideo={keyframeExtractor.scanVideo}
                     startLiveDetection={keyframeExtractor.startLiveDetection}
                     stopLiveDetection={keyframeExtractor.stopLiveDetection}
                     removeCandidate={keyframeExtractor.removeCandidate}

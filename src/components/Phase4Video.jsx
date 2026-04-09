@@ -4,8 +4,8 @@ const Phase4Video = ({
     isPhase4Minimized,
     onToggle,
     // Keyframe Extractor
-    candidates, isScanning, scanProgress, scanStats,
-    scanVideo, startLiveDetection, stopLiveDetection,
+    candidates,
+    startLiveDetection, stopLiveDetection,
     removeCandidate, clearCandidates, addManualCandidate, smartDedup, confirmDedup, healBreaks, setManualBestCandidate,
     // Auto Recognition
     isRecognizing, isStopping, recognitionProgress,
@@ -285,18 +285,7 @@ const Phase4Video = ({
         healBreaks([parseInt(gid)], scanOpts);
     };
 
-    const handleScan = () => {
-        if (!videoRef.current || !reelROI) return;
-        scanVideo(videoRef.current, reelROI, scanOpts);
-    };
 
-    const handleOneClick = async () => {
-        if (!videoRef.current || !reelROI) return;
-        const results = await scanVideo(videoRef.current, reelROI, scanOpts);
-        if (results && results.length > 0) {
-            recognizeBatch(ocrDecimalPlaces);
-        }
-    };
 
     const handleStartLive = () => {
         if (!videoRef.current || !reelROI) return;
@@ -389,17 +378,7 @@ const Phase4Video = ({
                                         ))}
                                     </div>
 
-                                    {/* 掃描進度覆蓋 */}
-                                    {isScanning && (
-                                        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-50 flex flex-col items-center justify-center">
-                                            <div className="text-white text-lg font-bold mb-4">🔍 掃描中...</div>
-                                            <div className="w-64 h-3 bg-slate-700 rounded-full overflow-hidden">
-                                                <div className="h-full bg-gradient-to-r from-indigo-500 to-cyan-400 rounded-full transition-all duration-300"
-                                                    style={{ width: `${(scanProgress * 100).toFixed(0)}%` }} />
-                                            </div>
-                                            <div className="text-slate-400 text-xs mt-2">{(scanProgress * 100).toFixed(0)}%</div>
-                                        </div>
-                                    )}
+
 
                                     {/* 即時模式指示器 */}
                                     {isLiveActive && (
@@ -689,24 +668,18 @@ const Phase4Video = ({
                                     </button>
                                 </div>
 
-                                {/* 輔助操作 */}
                                 <div className="flex gap-2">
                                     <button onClick={() => addManualCandidate(videoRef.current, reelROI, scanOpts)}
                                         disabled={!videoSrc}
                                         className="flex-1 py-2 rounded-lg font-bold flex items-center justify-center gap-1.5 text-xs transition-all bg-slate-100 text-slate-600 hover:bg-slate-200 border border-slate-200 active:scale-95">
                                         <Camera size={13} className="text-amber-500" /> 手動截圖
                                     </button>
-                                    <button onClick={handleScan}
-                                        disabled={isScanning || !videoSrc}
-                                        className={`flex-1 py-2 rounded-lg font-bold flex items-center justify-center gap-1.5 text-xs transition-all ${isScanning ? 'bg-amber-100 text-amber-700 animate-pulse' : 'bg-slate-100 text-slate-600 hover:bg-slate-200 border border-slate-200 active:scale-95'}`}>
-                                        <Scan size={13} className="text-indigo-500" /> {isScanning ? `${(scanProgress * 100).toFixed(0)}%` : '全片掃描'}
-                                    </button>
                                 </div>
 
                                 {brokenGroupIds.length > 0 && (
-                                    <button onClick={handleHealBreaksGlobally} disabled={isScanning}
+                                    <button onClick={handleHealBreaksGlobally}
                                         className="w-full py-2.5 rounded-lg font-bold flex items-center justify-center gap-1.5 text-xs transition-all bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 active:scale-95 shadow-sm shadow-indigo-500/10">
-                                        <RefreshCw size={14} className={isScanning ? 'animate-spin' : ''} /> 智慧修復：針對 {brokenGroupIds.length} 個斷層局重新研判
+                                        <RefreshCw size={14} /> 智慧修復：針對 {brokenGroupIds.length} 個斷層局重新研判
                                     </button>
                                 )}
 
