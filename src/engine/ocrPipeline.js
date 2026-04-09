@@ -78,11 +78,16 @@ export async function cropAndOCR(canvas, roi, ocrWorker, decimalPlaces, label = 
                 // 將多行字串陣列合併
                 const rawText = (detectedLines || []).map(t => t.text).join(' ').trim();
 
-                // 後處理：PaddleOCR 偶爾會誤認背景裝飾為字母 (例如 $ 或 WIN)，
-                // 這裡設定嚴密屏障，只保留純數字 (0-9)、小數點 (.) 與千分位逗號 (,)
-                const validText = rawText.replace(/[^0-9.,]/g, '');
-                // 最後移除逗號以便後續 JavaScript 解析，並清掉頭尾不小心沾到的孤立小數點
-                const resultStr = validText.replace(/,/g, '').replace(/^\.+|\.+$/g, '') || "0";
+                let resultStr = "";
+                if (label === 'ORDER_ID') {
+                    // 注單號：只保留數字與連字符 (-)
+                    resultStr = rawText.replace(/[^0-9\-]/g, '');
+                } else {
+                    // 餘額/贏分/押分：只保留純數字 (0-9)、小數點 (.) 與千分位逗號 (,)
+                    const validText = rawText.replace(/[^0-9.,]/g, '');
+                    // 最後移除逗號以便後續 JavaScript 解析，並清掉頭尾不小心沾到的孤立小數點
+                    resultStr = validText.replace(/,/g, '').replace(/^\.+|\.+$/g, '') || "0";
+                }
 
                 if (label === 'WIN' || label === 'BALANCE') {
                     // debug logging placeholder

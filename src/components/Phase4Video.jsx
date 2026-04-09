@@ -17,6 +17,7 @@ const Phase4Video = ({
     winROI, setWinROI,
     balanceROI, setBalanceROI,
     betROI, setBetROI,
+    orderIdROI, setOrderIdROI,
     // Video
     videoSrc, videoRef, handleVideoUpload,
     // Transfer
@@ -34,7 +35,6 @@ const Phase4Video = ({
     const [dragState, setDragState] = useState(null);
     const [scanFps, setScanFps] = useState(20);
     const [isLiveActive, setIsLiveActive] = useState(false);
-    const [requireStableWin, setRequireStableWin] = useState(false);
 
     const containerRef = useRef(null);
     const listEndRef = useRef(null);
@@ -78,6 +78,11 @@ const Phase4Video = ({
                             <span className="text-[8px] text-slate-400">總分</span>
                             <span className="text-[10px] font-bold text-sky-600">{kf.ocrData.balance || '-'}</span>
                         </div>
+                    </div>
+                )}
+                {kf.ocrData?.orderId && (
+                    <div className="mt-1 text-[9px] text-slate-400 font-mono tracking-wider">
+                        ID: {kf.ocrData.orderId}
                     </div>
                 )}
                 {kf.status === 'recognized' && kf.recognitionResult && (
@@ -155,6 +160,7 @@ const Phase4Video = ({
         if (roiMode === 'win') { targetROI = winROI; setTargetROI = setWinROI; }
         else if (roiMode === 'balance') { targetROI = balanceROI; setTargetROI = setBalanceROI; }
         else if (roiMode === 'bet') { targetROI = betROI; setTargetROI = setBetROI; }
+        else if (roiMode === 'orderId') { targetROI = orderIdROI; setTargetROI = setOrderIdROI; }
         else { targetROI = reelROI; setTargetROI = setReelROI; }
 
         const isOverHandle = pos.x >= targetROI.x + targetROI.w - handleSize && pos.x <= targetROI.x + targetROI.w &&
@@ -273,8 +279,33 @@ const Phase4Video = ({
         return groupsWithMath.filter(g => !g.mathValid).map(g => parseInt(g.gid));
     }, [groupsWithMath]);
 
+    const diagnosticStats = useMemo(() => {
+        if (!groupsWithMath) return null;
+        let total = groupsWithMath.length;
+        let unbroken = groupsWithMath.filter(g => g.mathValid).length;
+        let broken = groupsWithMath.filter(g => !g.mathValid).length;
+        return { total, unbroken, broken };
+    }, [groupsWithMath]);
+
+    const [currentBreakIndex, setCurrentBreakIndex] = useState(0);
+    useEffect(() => {
+        setCurrentBreakIndex(0);
+    }, [brokenGroupIds]);
+
+    const scrollToNextBreak = useCallback(() => {
+        if (brokenGroupIds.length === 0) return;
+        const gid = brokenGroupIds[currentBreakIndex];
+        const el = document.getElementById(`spin-group-${gid}`);
+        if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            el.classList.add('ring-4', 'ring-rose-400', 'ring-offset-2', 'transition-all', 'duration-500');
+            setTimeout(() => el.classList.remove('ring-4', 'ring-rose-400', 'ring-offset-2'), 1500);
+        }
+        setCurrentBreakIndex(prev => (prev + 1) % brokenGroupIds.length);
+    }, [brokenGroupIds, currentBreakIndex]);
+
     // ── 操作處理 ──
-    const scanOpts = { fps: scanFps, winROI, balanceROI, betROI, ocrDecimalPlaces, requireStableWin, sliceCols: template?.cols || propGridCols || 5 };
+    const scanOpts = { fps: scanFps, winROI, balanceROI, betROI, orderIdROI, ocrDecimalPlaces, requireStableWin: false, sliceCols: template?.cols || propGridCols || 5 };
 
     const handleHealBreaksGlobally = () => {
         if (brokenGroupIds.length === 0) return;
@@ -363,7 +394,8 @@ const Phase4Video = ({
                                             { key: 'reel', label: 'REEL', hex: '#f59e0b' },
                                             { key: 'win', label: 'WIN', hex: '#10b981' },
                                             { key: 'balance', label: 'BAL', hex: '#38bdf8' },
-                                            { key: 'bet', label: 'BET', hex: '#22d3ee' }
+                                            { key: 'bet', label: 'BET', hex: '#22d3ee' },
+                                            { key: 'orderId', label: 'ID', hex: '#a855f7' }
                                         ].map(r => (
                                             <button key={r.key} onClick={() => setRoiMode(r.key)}
                                                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm active:scale-95 ${roiMode === r.key
@@ -397,7 +429,8 @@ const Phase4Video = ({
                                             { roi: reelROI, mode: 'reel', hex: '#f59e0b', label: '盤面', showGrid: true },
                                             { roi: winROI, mode: 'win', hex: '#10b981', label: '贏分' },
                                             { roi: balanceROI, mode: 'balance', hex: '#38bdf8', label: '總分' },
-                                            { roi: betROI, mode: 'bet', hex: '#22d3ee', label: '押分' }
+                                            { roi: betROI, mode: 'bet', hex: '#22d3ee', label: '押分' },
+                                            { roi: orderIdROI, mode: 'orderId', hex: '#a855f7', label: '單號' }
                                         ].map(r => {
                                             const isActive = roiMode === r.mode;
                                             return (
@@ -497,6 +530,34 @@ const Phase4Video = ({
                                 </div>
                             )}
 
+                            {/* 診斷儀表板 (Diagnostic Dashboard) */}
+                            {diagnosticStats && (
+                                <div className="p-3 bg-white border-b border-slate-200 shadow-sm relative z-10">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex gap-6 pl-2">
+                                            <div className="text-center">
+                                                <div className="text-[10px] text-slate-500 font-bold mb-0.5">總局數</div>
+                                                <div className="text-xl leading-none font-black text-slate-700">{diagnosticStats.total}</div>
+                                            </div>
+                                            <div className="text-center">
+                                                <div className="text-[10px] text-emerald-600 font-bold mb-0.5">連貫局</div>
+                                                <div className="text-xl leading-none font-black text-emerald-600">{diagnosticStats.unbroken}</div>
+                                            </div>
+                                            <div className="text-center relative">
+                                                <div className="text-[10px] text-rose-600 font-bold mb-0.5">斷層</div>
+                                                <div className="text-xl leading-none font-black text-rose-600">{diagnosticStats.broken}</div>
+                                                {diagnosticStats.broken > 0 && <span className="absolute -top-1 -right-2 flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span></span>}
+                                            </div>
+                                        </div>
+                                        {diagnosticStats.broken > 0 && (
+                                            <button onClick={scrollToNextBreak} className="flex items-center gap-1.5 px-3 py-2 bg-rose-50 text-rose-600 hover:bg-rose-100 hover:text-rose-700 rounded-lg text-xs font-bold transition-all border border-rose-200 active:scale-95 shadow-sm">
+                                                <AlertCircle size={14} /> 找下個斷點 ({currentBreakIndex + 1}/{diagnosticStats.broken})
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
                             {/* 候選幀列表 Header */}
                             <div className="px-4 py-2 border-b bg-white flex items-center justify-between sticky top-0 z-10 shadow-sm">
                                 <h3 className="font-bold text-slate-700 flex items-center gap-2 text-xs">
@@ -555,7 +616,7 @@ const Phase4Video = ({
                                                 ? { border: '#cbd5e1', bg: 'rgba(248,250,252,0.6)' } 
                                                 : groupColorPalette[parsedGid % groupColorPalette.length];
                                             return (
-                                                <div key={`spin-${gid}-${listIndex}`}
+                                                <div id={`spin-group-${gid}`} key={`spin-${gid}-${listIndex}`}
                                                     className="rounded-xl p-1.5 space-y-1.5"
                                                     style={{ borderLeft: `4px solid ${palette.border}`, backgroundColor: palette.bg }}
                                                 >
@@ -645,14 +706,6 @@ const Phase4Video = ({
 
                                 {/* 掃描設定與主動作按鈕 */}
                                 <div className="space-y-2">
-                                    <label className="flex items-center gap-2 px-1 cursor-pointer">
-                                        <input type="checkbox" checked={requireStableWin} onChange={(e) => setRequireStableWin(e.target.checked)} 
-                                            className="w-3.5 h-3.5 rounded border-slate-300 text-indigo-600 shadow-sm focus:border-indigo-300 focus:ring focus:ring-offset-0 focus:ring-indigo-200 focus:ring-opacity-50 cursor-pointer" />
-                                        <span className={`text-xs font-bold transition-colors ${requireStableWin ? 'text-indigo-600' : 'text-slate-500'}`}>
-                                            要求贏分穩定 (停輪後等待跑分動畫)
-                                        </span>
-                                    </label>
-                                    
                                     <button onClick={isLiveActive ? handleStopLive : handleStartLive}
                                         disabled={!videoSrc}
                                         className={`w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg ${isLiveActive ? 'bg-rose-600 text-white animate-pulse' : !videoSrc ? 'bg-slate-100 text-slate-400 cursor-not-allowed shadow-none' : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-emerald-200 active:scale-95'}`}>

@@ -189,6 +189,7 @@ function App() {
     const [winROI, setWinROIRaw] = useState(() => loadCachedROI('win', { x: 38, y: 72, w: 24, h: 8 }));
     const [balanceROI, setBalanceROIRaw] = useState(() => loadCachedROI('balance', { x: 5, y: 90, w: 24, h: 6 }));
     const [betROI, setBetROIRaw] = useState(() => loadCachedROI('bet', { x: 70, y: 90, w: 24, h: 6 }));
+    const [orderIdROI, setOrderIdROIRaw] = useState(() => loadCachedROI('orderId', { x: 40, y: 5, w: 20, h: 5 }));
 
     // ROI 持久化
     const saveROI = useCallback((key, val) => {
@@ -202,6 +203,7 @@ function App() {
     const setWinROI = useCallback((v) => { setWinROIRaw(v); saveROI('win', v); }, [saveROI]);
     const setBalanceROI = useCallback((v) => { setBalanceROIRaw(v); saveROI('balance', v); }, [saveROI]);
     const setBetROI = useCallback((v) => { setBetROIRaw(v); saveROI('bet', v); }, [saveROI]);
+    const setOrderIdROI = useCallback((v) => { setOrderIdROIRaw(v); saveROI('orderId', v); }, [saveROI]);
 
     // 新 Phase 4 Hooks
     const keyframeExtractor = useKeyframeExtractor({ setTemplateMessage });
@@ -216,7 +218,7 @@ function App() {
 
     // 辨識觸發器（封裝 updateCandidate + rois）
     const handleRecognizeBatch = useCallback((decimalPlaces) => {
-        const rois = { reelROI, winROI, balanceROI, betROI };
+        const rois = { reelROI, winROI, balanceROI, betROI, orderIdROI };
         autoRecognition.recognizeBatch(
             keyframeExtractor.candidates,
             keyframeExtractor.updateCandidate,
@@ -516,6 +518,7 @@ function App() {
                     winROI={winROI} setWinROI={setWinROI}
                     balanceROI={balanceROI} setBalanceROI={setBalanceROI}
                     betROI={betROI} setBetROI={setBetROI}
+                    orderIdROI={orderIdROI} setOrderIdROI={setOrderIdROI}
                     // Video
                     videoSrc={videoSrc} videoRef={videoRef} handleVideoUpload={handleVideoUpload}
                     // Transfer

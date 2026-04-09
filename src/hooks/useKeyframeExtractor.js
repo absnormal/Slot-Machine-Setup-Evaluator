@@ -198,19 +198,21 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
 
                         // 非同步跑 OCR（不阻塞即時偵測迴圈）
                         const worker = ocrWorkerRef.current;
-                        const { winROI, balanceROI, betROI, ocrDecimalPlaces } = ocrOptions;
-                        if (worker && (winROI || balanceROI || betROI)) {
-                            // ── 初始 OCR：讀取截圖時的 BAL / BET / WIN ──
+                        const { winROI, balanceROI, betROI, orderIdROI, ocrDecimalPlaces } = ocrOptions;
+                        if (worker && (winROI || balanceROI || betROI || orderIdROI)) {
+                            // ── 初始 OCR：讀取截圖時的 BAL / BET / WIN / ID ──
                             Promise.allSettled([
                                 cropAndOCR(frameCanvas, winROI, worker, ocrDecimalPlaces ?? 2, 'WIN'),
                                 cropAndOCR(frameCanvas, balanceROI, worker, ocrDecimalPlaces ?? 2, 'BALANCE'),
-                                cropAndOCR(frameCanvas, betROI, worker, 0, 'BET')
-                            ]).then(([winR, balR, betR]) => {
+                                cropAndOCR(frameCanvas, betROI, worker, 0, 'BET'),
+                                orderIdROI ? cropAndOCR(frameCanvas, orderIdROI, worker, 0, 'ORDER_ID') : Promise.resolve('')
+                            ]).then(([winR, balR, betR, orderIdR]) => {
                                 const win = winR.status === 'fulfilled' ? winR.value : '';
                                 const balance = balR.status === 'fulfilled' ? balR.value : '';
                                 const bet = betR.status === 'fulfilled' ? betR.value : '';
+                                const orderId = orderIdR.status === 'fulfilled' ? orderIdR.value : '';
                                 setCandidates(prev => prev.map(c =>
-                                    c.id === candidate.id ? { ...c, ocrData: { win, balance, bet } } : c
+                                    c.id === candidate.id ? { ...c, ocrData: { win, balance, bet, orderId } } : c
                                 ));
 
                                 // 【快速短路機制】：如果 Reel Stop 的畫面中就已經包含了清晰的 WIN！
@@ -256,6 +258,7 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
 
                                     const finalBal = balanceROI ? await cropAndOCR(finalCanvas, balanceROI, w, ocrDecimalPlaces ?? 2, 'BAL-FINAL') : '';
                                     const finalBet = betROI ? await cropAndOCR(finalCanvas, betROI, w, 0, 'BET-FINAL') : '';
+                                    const finalOrderId = orderIdROI ? await cropAndOCR(finalCanvas, orderIdROI, w, 0, 'ORDER_ID') : '';
 
                                     const winThumbUrl = generateThumbUrl(finalCanvas, roi);
                                     const winCandidate = {
@@ -266,7 +269,7 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                                         diff: '0',
                                         avgDiff: '0',
                                         triggerReason: triggerLabel,
-                                        ocrData: { win: finalWinVal, balance: finalBal, bet: finalBet },
+                                        ocrData: { win: finalWinVal, balance: finalBal, bet: finalBet, orderId: finalOrderId },
                                         status: 'pending',
                                         recognitionResult: null,
                                         error: ''
@@ -424,7 +427,6 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
 
     const clearCandidates = useCallback(() => {
         setCandidates([]);
-        setScanStats(null);
     }, []);
 
     // 手動新增候選幀（從影片當前畫面擷取）
@@ -456,15 +458,16 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
 
         // 背景排隊執行 OCR 以取得 win, balance, bet，確保後續能夠順利被 smartDedup 分析
         const worker = ocrWorkerRef.current;
-        const { winROI, balanceROI, betROI, ocrDecimalPlaces } = ocrOptions;
-        if (worker && (winROI || balanceROI || betROI)) {
+        const { winROI, balanceROI, betROI, orderIdROI, ocrDecimalPlaces } = ocrOptions;
+        if (worker && (winROI || balanceROI || betROI || orderIdROI)) {
             Promise.all([
                 cropAndOCR(canvas, winROI, worker, ocrDecimalPlaces ?? 2, 'WIN'),
                 cropAndOCR(canvas, balanceROI, worker, ocrDecimalPlaces ?? 2, 'BALANCE'),
-                cropAndOCR(canvas, betROI, worker, 0, 'BET')
-            ]).then(([win, balance, bet]) => {
+                cropAndOCR(canvas, betROI, worker, 0, 'BET'),
+                orderIdROI ? cropAndOCR(canvas, orderIdROI, worker, 0, 'ORDER_ID') : Promise.resolve('')
+            ]).then(([win, balance, bet, orderId]) => {
                 setCandidates(prev => prev.map(c =>
-                    c.id === candidate.id ? { ...c, ocrData: { win, balance, bet } } : c
+                    c.id === candidate.id ? { ...c, ocrData: { win, balance, bet, orderId } } : c
                 ));
             }).catch(() => {});
         }
@@ -497,7 +500,7 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
             const parse = (v) => parseFloat(v) || 0;
 
             // 解析每幀的數值
-            const frames = prev.map((kf, i) => ({
+            let frames = prev.map((kf, i) => ({
                 idx: i,
                 kf,
                 win: parse(kf.ocrData?.win),
@@ -505,8 +508,57 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                 bet: parse(kf.ocrData?.bet),
             }));
 
+            // 【防禦源頭：淨化贏分殘影 (Ghost Win Purify)】
+            // 如果 B 的餘額剛好等於 A 的扣款後餘額 (A.bal + A.win - B.bet)，且 B.win == A.win，
+            // 代表 B 其實是剛轉動的新局，只是畫面截到了上一局留下來的 WIN！把它淨化成 0。
+            frames.sort((a, b) => a.kf.time - b.kf.time);
+            for (let i = 1; i < frames.length; i++) {
+                const curr = frames[i];
+                if (curr.win > 0) {
+                    for (let j = i - 1; j >= 0; j--) {
+                        const prevF = frames[j];
+                        // 找尋近 15 秒內有沒有上一局的殘影
+                        if (curr.kf.time - prevF.kf.time > 15) break; 
+                        
+                        if (Math.abs(curr.win - prevF.win) < eps) {
+                            const expectedNewBal = prevF.bal + prevF.win - curr.bet;
+                            if (curr.bet > 0 && Math.abs(curr.bal - expectedNewBal) < eps) {
+                                // 抓到了！這是一個剛開始轉的新局，但帶著舊的 WIN 殘影！
+                                curr.win = 0; // 功能邏輯同步淨化
+                                curr.kf = {
+                                    ...curr.kf,
+                                    ocrData: { ...curr.kf.ocrData, win: '0' },
+                                    error: '🌟 已淨化前局贏分殘影'
+                                };
+                                break; // 淨化完畢，這局就是新開的空局，不需再往回找
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // 把順序掛回最初的 idx 順序以配合後續 Union-Find 定義
+            frames.sort((a, b) => a.idx - b.idx);
+
+            // 100% 嚴格比對 (因為只有數字和連字符，不會有相似混淆)
+            const isSimilarStr = (s1, s2) => s1 === s2;
+
             // 判斷兩幀是否為同一局
             function areSameSpin(frameA, frameB) {
+                // 【先鋒判定法則 (Vanguard Rule)：注單號比對】
+                const id1 = frameA.kf.ocrData?.orderId;
+                const id2 = frameB.kf.ocrData?.orderId;
+                const isValidId = (id) => id && id.length >= 5;
+
+                if (isValidId(id1) && isValidId(id2)) {
+                    if (isSimilarStr(id1, id2)) {
+                        return true; // 身分證高度相似，無條件同局 (解決複雜 FG 算術失效)
+                    } else {
+                        return false; // 有明確且不同的單號，無條件不同局 (防禦殘影 / 幽冥斷層)
+                    }
+                }
+
+                // --------- Fallback: 傳統餘額算術比對 ---------
                 // 確保 f1 在影片時間上「早於或等於」 f2
                 const [f1, f2] = frameA.kf.time <= frameB.kf.time ? [frameA, frameB] : [frameB, frameA];
 
@@ -533,13 +585,38 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
 
             // Union-Find 分組
             const parent = frames.map((_, i) => i);
+            const groupCode = frames.map(f => {
+                const id = f.kf.ocrData?.orderId;
+                return (id && id.length >= 5) ? id : null;
+            });
+
             function find(x) { return parent[x] === x ? x : (parent[x] = find(parent[x])); }
-            function union(a, b) { parent[find(a)] = find(b); }
+            
+            function canUnion(a, b) {
+                const rootA = find(a);
+                const rootB = find(b);
+                if (rootA === rootB) return true;
+                const idA = groupCode[rootA];
+                const idB = groupCode[rootB];
+                // 如果兩邊群組都有單號，而且不一樣，就絕對不能縫合！阻止內鬼牽線！
+                if (idA && idB && !isSimilarStr(idA, idB)) return false;
+                return true;
+            }
+
+            function union(a, b) { 
+                const rootA = find(a);
+                const rootB = find(b);
+                if (rootA !== rootB) {
+                    parent[rootA] = rootB; 
+                    // 繼承單號血統
+                    if (!groupCode[rootB] && groupCode[rootA]) groupCode[rootB] = groupCode[rootA];
+                }
+            }
 
             for (let i = 0; i < frames.length; i++) {
                 for (let j = i + 1; j < frames.length; j++) {
                     const timeDiff = Math.abs(frames[i].kf.time - frames[j].kf.time);
-                    if (timeDiff <= 15 && areSameSpin(frames[i], frames[j])) {
+                    if (timeDiff <= 300 && areSameSpin(frames[i], frames[j])) {
                         
                         // 【終極防呆】：防止 Union-Find 把跨越中獎局的兩個死局縫合
                         // 如果首尾兩張圖都沒有贏分（WIN=0），但它們中間夾了一張有贏分的圖，
@@ -555,7 +632,7 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                             }
                         }
 
-                        if (!crossWinBoundary) {
+                        if (!crossWinBoundary && canUnion(i, j)) {
                             union(i, j);
                         }
                     }
@@ -615,17 +692,23 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                 setTemplateMessage?.(`🧹 分析完成：${prev.length} 幀 → ${totalGroups} 局（${multiGroups} 局有重複幀），已標記最佳`);
             }, 0);
 
-            return prev.map(kf => ({
-                ...kf,
-                spinGroupId: spinGroupMap[kf.id] ?? 0,
-                isSpinBest: bestIds.has(kf.id),
-            }));
+            const cleansedMap = {};
+            frames.forEach(f => { cleansedMap[f.kf.id] = f.kf; });
+
+            return prev.map(kf => {
+                const safeKf = cleansedMap[kf.id] || kf;
+                return {
+                    ...safeKf,
+                    spinGroupId: spinGroupMap[kf.id] ?? 0,
+                    isSpinBest: bestIds.has(kf.id),
+                };
+            });
         });
     }, [setTemplateMessage]);
 
     // 智慧修復：針對指定的 groupId 集合重新 OCR，並自動跑 smartDedup
     const healBreaks = useCallback(async (brokenGroupIds, ocrOptions) => {
-        const { winROI, balanceROI, betROI, ocrDecimalPlaces } = ocrOptions;
+        const { winROI, balanceROI, betROI, orderIdROI, ocrDecimalPlaces } = ocrOptions;
         const worker = ocrWorkerRef.current;
         if (!worker || brokenGroupIds.length === 0) return;
 
@@ -654,9 +737,10 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
 
                 const updatedTargets = [];
                 for (const c of targetCandidates) {
-                    const win = winROI ? await cropAndOCR(c.canvas, winROI, worker, ocrDecimalPlaces) : (c.ocrData?.win || '0');
-                    const balance = balanceROI ? await cropAndOCR(c.canvas, balanceROI, worker, ocrDecimalPlaces) : (c.ocrData?.balance || '0');
-                    const bet = betROI ? await cropAndOCR(c.canvas, betROI, worker, 0) : (c.ocrData?.bet || '0');
+                    const win = winROI ? await cropAndOCR(c.canvas, winROI, worker, ocrDecimalPlaces, 'WIN') : (c.ocrData?.win || '0');
+                    const balance = balanceROI ? await cropAndOCR(c.canvas, balanceROI, worker, ocrDecimalPlaces, 'BALANCE') : (c.ocrData?.balance || '0');
+                    const bet = betROI ? await cropAndOCR(c.canvas, betROI, worker, 0, 'BET') : (c.ocrData?.bet || '0');
+                    const orderId = orderIdROI ? await cropAndOCR(c.canvas, orderIdROI, worker, 0, 'ORDER_ID') : (c.ocrData?.orderId || '');
                     
                     completed++;
                     setTemplateMessage?.(`⚡ 修復進度: ${completed} / ${total}`);
@@ -664,7 +748,7 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                     // 利用微弱的影像處理差異？目前只要用新 ROI 重跑一次通常就能解，若之後不夠可在此處加 variations
                     updatedTargets.push({
                         ...c,
-                        ocrData: { win, balance, bet },
+                        ocrData: { win, balance, bet, orderId },
                         status: 'pending' // 重置狀態
                     });
                 }
