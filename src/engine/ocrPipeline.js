@@ -56,10 +56,9 @@ export async function cropAndOCR(canvas, roi, ocrWorker, decimalPlaces, label = 
                 const cy = Math.floor(canvas.height * (roi.y / 100));
                 if (cw < 2 || ch < 2) return resolve('');
 
-                let scale = 2;
-                if (label === 'WIN' && ch >= 20) {
-                    scale = 40 / ch; 
-                }
+                // 調整至神經網路最適合的文字高度（約 48px），避免不自然的壓縮
+                let scale = 48 / ch;
+                if (scale < 1) scale = 1; // 避免反向壓縮導致像素遺失
 
                 // [關鍵修復] 加上 Padding: DBNet 如果文字太貼齊邊緣，會辨識不到
                 const PADDING = 30;
@@ -69,6 +68,9 @@ export async function cropAndOCR(canvas, roi, ocrWorker, decimalPlaces, label = 
                 
                 ctx.fillStyle = '#000000';
                 ctx.fillRect(0, 0, cropCanvas.width, cropCanvas.height);
+
+                // 關閉平滑柔邊 (Anti-aliasing)，保留銳利鋸齒邊緣，防止過於靠近的數字 (如 22) 在放大縮小時沾黏
+                ctx.imageSmoothingEnabled = false;
 
                 ctx.drawImage(canvas, cx, cy, cw, ch, PADDING, PADDING, cw * scale, ch * scale);
 
@@ -85,8 +87,17 @@ export async function cropAndOCR(canvas, roi, ocrWorker, decimalPlaces, label = 
                 } else {
                     // 餘額/贏分/押分：只保留純數字 (0-9)、小數點 (.) 與千分位逗號 (,)
                     const validText = rawText.replace(/[^0-9.,]/g, '');
-                    // 最後移除逗號以便後續 JavaScript 解析，並清掉頭尾不小心沾到的孤立小數點
-                    resultStr = validText.replace(/,/g, '').replace(/^\.+|\.+$/g, '') || "0";
+                    // 移除逗號，並清掉頭尾不小心沾到的孤立小數點
+                    let cleanedText = validText.replace(/,/g, '').replace(/^\.+|\.+$/g, '') || "0";
+                    
+                    // 如果 OCR 神經大條把千分位全部當成了小數點 (例如 1.036.022.26)，強制只認最後一個點為小數點
+                    const parts = cleanedText.split('.');
+                    if (parts.length > 2) {
+                        const decimals = parts.pop();
+                        resultStr = parts.join('') + '.' + decimals;
+                    } else {
+                        resultStr = cleanedText;
+                    }
                 }
 
                 if (label === 'WIN' || label === 'BALANCE') {

@@ -51,18 +51,21 @@ export function useReportGenerator() {
         if (recognized.length === 0) return;
 
         const BOM = '\uFEFF'; // UTF-8 BOM for Excel
-        const headers = ['序號', '時間(s)', '盤面(JSON)', '贏分', 'BET', '餘額', 'WIN(OCR)', '備註'];
+        const headers = ['序號', '時間(s)', '盤面(JSON)', '單號', '餘額', '押注', '贏分(AI計算)', '贏分(OCR)', '備註'];
 
         const rows = recognized.map((c, i) => {
-            const r = c.recognitionResult;
+            const r = c.recognitionResult || {};
+            const ocr = c.ocrData || {};
+            const gridStr = JSON.stringify(r.grid || []).replace(/"/g, '""');
             return [
                 i + 1,
                 c.time.toFixed(2),
-                `"${JSON.stringify(r.grid).replace(/"/g, '""')}"`,
+                `"${gridStr}"`,
+                ocr.orderId || '',
+                ocr.balance || '',
+                ocr.bet || '',
                 r.totalWin || 0,
-                r.bet || '',
-                r.balance || '',
-                r.win || '',
+                ocr.win || '',
                 c.error ? `"${c.error}"` : ''
             ].join(',');
         });

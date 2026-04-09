@@ -166,10 +166,12 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
 
                     if ((isReelStopped || isAnimationFallback) && hadMotion && (now - state.lastCandidateTime) > 1.0) {
                         
-                        // 【互斥鎖防連發】：已有特工在跟蹤跑分，只跟過不截圖
+                        // 如果上一局的 WIN 特工還在上班，因為已經偵測到了「新一局的明確停輪」
+                        // 這裡必須直接強制殺死舊特工，不再讓特工蒙蔽主偵測器！
                         if (state.isWinPollActive) {
-                            // 不截圖，但迴圈繼續跑 (絕對不能 return)
-                        } else {
+                            console.log("⚠️ 偵測到強制新停輪，立刻撤銷上一局的 WIN 特工！");
+                            state.cancelWinPoll = true;
+                        }
 
                         const triggerReason = isReelStopped ? 'REEL_STOP (極度靜止)' : 'ANIMATION_FALLBACK (全軸停但有動畫)';
                         console.log(`\n========================================`);
@@ -224,8 +226,9 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
 
                             // ── WIN 輪詢：立刻啟動！不等初始 OCR 完成 ──
                             if (winROI) {
+                                const currentAgentId = Date.now();
+                                state.winPollAgentId = currentAgentId;
                                 state.isWinPollActive = true;
-                                state.cancelWinPoll = false;
                                 state.reelStopHasWin = false;
 
                                 let lastWin = '';
@@ -290,8 +293,9 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                                 const pollNext = async () => {
                                     polls++;
                                     
-                                    // 【打斷與超時判斷】：如果外頭的影片已經開始狂轉下一局，或者是三秒超時，或者原圖已經有贏分
-                                    if (state.cancelWinPoll || isDone || liveCancelRef.current || video.paused || video.ended || polls > MAX_POLLS || state.reelStopHasWin) {
+                                    // 【打斷與超時判斷】：特工被頂替、外頭的影片已經開始狂轉、三秒超時、或原圖已經有贏分
+                                    const isObsoleteAgent = state.winPollAgentId !== currentAgentId;
+                                    if (isObsoleteAgent || state.cancelWinPoll || isDone || liveCancelRef.current || video.paused || video.ended || polls > MAX_POLLS || state.reelStopHasWin) {
                                         
                                         // 如果是因為原圖就已經有 WIN 而被短路下班，那我們什麼遺產都不留（因為原圖已經夠完美了）
                                         if (state.reelStopHasWin) {
@@ -300,12 +304,15 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                                             return;
                                         }
 
-                                        if (bestWinCanvas && !hasOutput) {
-                                            console.log(`🕵️‍♂️ [WIN 追蹤特工] 任務強行中斷，但提取了最後一刻的完美遺產！強制輸出...`);
-                                            await outputWinCard('WIN_POLL_FORCED');
-                                        } else if (!hasOutput) {
-                                            console.log(`🕵️‍♂️ [WIN 追蹤特工] 任務撤銷/超時，未留下任何遺產。`);
-                                            state.isWinPollActive = false;
+                                        else if (state.cancelWinPoll || isObsoleteAgent) {
+                                            if (bestWinCanvas && !hasOutput) {
+                                                console.log(`🕵️‍♂️ [WIN 追蹤特工] 任務強行中斷，但提取了最後一刻的完美遺產！強制輸出...`);
+                                                await outputWinCard('WIN_POLL_FORCED');
+                                            } else if (!hasOutput) {
+                                                console.log(`🕵️‍♂️ [WIN 追蹤特工] 任務撤銷/超時/被頂替，未留下任何遺產。`);
+                                                // 只有在目前自己沒有被取代的情況下，才解除系統狀態
+                                                if (!isObsoleteAgent) state.isWinPollActive = false;
+                                            }
                                         }
                                         return;
                                     }
@@ -392,7 +399,6 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                         state.decayCount = 0;
                         state.peakDiff = 0;
                         state.diffWindow.length = 0;
-                        } // ← 對應「互斥鎖」的 else 結尾
                     }
                 }
             }
@@ -471,8 +477,7 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                 ));
             }).catch(() => {});
         }
-
-        return candidate;
+        return candidate.id;
     }, [setTemplateMessage, ocrWorkerRef]);
 
     // 更新候選幀狀態（辨識完成時呼叫）

@@ -78,9 +78,14 @@ const useAppStore = create((set, get) => ({
     // === API Key / 設定 ===
     customApiKey: typeof window !== 'undefined' ? (localStorage.getItem('gemini_api_key') || '') : '',
     showSettingsModal: false,
+    isDarkMode: typeof window !== 'undefined' ? (localStorage.getItem('slot_dark_mode') === 'true') : false,
 
     setCustomApiKey: (v) => set({ customApiKey: v }),
     setShowSettingsModal: (v) => set({ showSettingsModal: v }),
+    setIsDarkMode: (v) => {
+        set({ isDarkMode: v });
+        if (typeof window !== 'undefined') localStorage.setItem('slot_dark_mode', v.toString());
+    },
 
     // === 雲端模板 Modal ===
     showCloudModal: false,

@@ -35,9 +35,9 @@ const Phase4Video = ({
     const [dragState, setDragState] = useState(null);
     const [scanFps, setScanFps] = useState(20);
     const [isLiveActive, setIsLiveActive] = useState(false);
-
     const containerRef = useRef(null);
     const listEndRef = useRef(null);
+    const [lastAddedManualId, setLastAddedManualId] = useState(null);
 
     // ── 卡片內容渲染器（共用於平鋪與分組模式）──
     const renderCardContent = (kf, idx) => (
@@ -56,13 +56,40 @@ const Phase4Video = ({
                             </span>
                         )}
                     </div>
-                    <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${kf.status === 'recognized' ? 'bg-emerald-100 text-emerald-700' :
-                            kf.status === 'error' ? 'bg-rose-100 text-rose-600' :
-                                kf.status === 'recognizing' ? 'bg-indigo-100 text-indigo-600 animate-pulse' :
-                                    'bg-slate-100 text-slate-500'
-                        }`}>
-                        {kf.status === 'recognized' ? '✓ 已辨識' : kf.status === 'error' ? '✗ 失敗' : kf.status === 'recognizing' ? '辨識中...' : `#${idx + 1}`}
-                    </span>
+                    {(()=>{
+                        const ocrWin = kf.ocrData ? Math.floor(parseFloat(kf.ocrData.win) || 0) : 0;
+                        const aiWin = kf.recognitionResult ? Math.floor(parseFloat(kf.recognitionResult.totalWin) || 0) : 0;
+                        const isWinMatch = ocrWin === aiWin;
+                        const hasResult = kf.status === 'recognized' && kf.recognitionResult;
+
+                        let badgeClass = 'bg-slate-100 text-slate-500';
+                        let badgeText = `#${idx + 1}`;
+
+                        if (hasResult) {
+                            if (isWinMatch) {
+                                badgeClass = 'bg-emerald-100 text-emerald-700';
+                                badgeText = '✓ 贏分正確';
+                            } else {
+                                badgeClass = 'bg-rose-100 text-rose-700 font-black border border-rose-200 shadow-sm';
+                                badgeText = '⚠ 算分異常';
+                            }
+                        } else if (kf.status === 'recognized') {
+                            badgeClass = 'bg-emerald-100 text-emerald-700';
+                            badgeText = '✓ 已辨識';
+                        } else if (kf.status === 'error') {
+                            badgeClass = 'bg-rose-100 text-rose-600';
+                            badgeText = '✗ 失敗';
+                        } else if (kf.status === 'recognizing') {
+                            badgeClass = 'bg-indigo-100 text-indigo-600 animate-pulse';
+                            badgeText = '辨識中...';
+                        }
+
+                        return (
+                            <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${badgeClass}`}>
+                                {badgeText}
+                            </span>
+                        );
+                    })()}
                 </div>
                 {kf.ocrData && (
                     <div className="grid grid-cols-3 gap-1 mt-1 bg-slate-50 rounded-lg px-1.5 py-1">
@@ -87,12 +114,34 @@ const Phase4Video = ({
                 )}
                 {kf.status === 'recognized' && kf.recognitionResult && (
                     <div className="mt-1 pt-1 border-t border-slate-100">
-                        <div className="flex items-center justify-between">
-                            <span className="text-[9px] text-slate-400">結算贏分</span>
-                            <span className={`text-xs font-bold ${(kf.recognitionResult.totalWin || 0) > 0 ? 'text-emerald-600' : 'text-slate-400'}`}>
-                                {(kf.recognitionResult.totalWin || 0).toLocaleString()}
-                            </span>
-                        </div>
+                        {(() => {
+                            const ocrWin = kf.ocrData ? Math.floor(parseFloat(kf.ocrData.win) || 0) : 0;
+                            const aiWin = Math.floor(parseFloat(kf.recognitionResult.totalWin) || 0);
+                            const isWinMatch = ocrWin === aiWin;
+                            
+                            if (isWinMatch) {
+                                return (
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-[9px] text-slate-400">結算贏分</span>
+                                        <span className={`text-xs font-bold ${aiWin > 0 ? 'text-emerald-600' : 'text-slate-400'}`}>
+                                            {aiWin.toLocaleString()}
+                                        </span>
+                                    </div>
+                                );
+                            } else {
+                                return (
+                                    <div className="flex flex-col gap-0.5">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-[9px] text-rose-500 font-bold">⚠️ 算分異常</span>
+                                        </div>
+                                        <div className="flex items-center justify-between text-[10px]">
+                                            <span className="text-slate-500">OCR 抓取: <span className="font-bold text-slate-700">{ocrWin}</span></span>
+                                            <span className="text-rose-600">AI 計算: <span className="font-bold">{aiWin}</span></span>
+                                        </div>
+                                    </div>
+                                );
+                            }
+                        })()}
                     </div>
                 )}
                 {kf.status === 'error' && kf.error && (
@@ -132,6 +181,22 @@ const Phase4Video = ({
             listEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
     }, [candidates.length]);
+
+    // 自動滾動到手動新增的卡片
+    useEffect(() => {
+        if (lastAddedManualId) {
+            // 需要等 React render 出來
+            setTimeout(() => {
+                const el = document.getElementById(`kf-card-${lastAddedManualId}`);
+                if (el) {
+                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    el.classList.add('ring-4', 'ring-amber-400', 'ring-offset-2', 'transition-all', 'duration-500');
+                    setTimeout(() => el.classList.remove('ring-4', 'ring-amber-400', 'ring-offset-2'), 1500);
+                }
+                setLastAddedManualId(null);
+            }, 100);
+        }
+    }, [lastAddedManualId, candidates.length]);
 
     // ── 播放控制 ──
     const togglePlay = () => {
@@ -285,6 +350,20 @@ const Phase4Video = ({
         let unbroken = groupsWithMath.filter(g => g.mathValid).length;
         let broken = groupsWithMath.filter(g => !g.mathValid).length;
         return { total, unbroken, broken };
+    }, [groupsWithMath]);
+
+    const wrongWinGroupIds = useMemo(() => {
+        if (!groupsWithMath) return [];
+        return groupsWithMath.filter(g => {
+            return g.group.some(c => {
+                const kf = c.kf;
+                const hasResult = kf.status === 'recognized' && kf.recognitionResult;
+                if (!hasResult) return false;
+                const ocrWin = kf.ocrData ? Math.floor(parseFloat(kf.ocrData.win) || 0) : 0;
+                const aiWin = Math.floor(parseFloat(kf.recognitionResult.totalWin) || 0);
+                return ocrWin !== aiWin;
+            });
+        }).map(g => g.gid);
     }, [groupsWithMath]);
 
     const [currentBreakIndex, setCurrentBreakIndex] = useState(0);
@@ -476,12 +555,31 @@ const Phase4Video = ({
                                     </div>
                                 </div>
 
-                                {/* 參數欄 (極簡) */}
-                                <div className="flex items-center gap-4 bg-slate-50 p-3 rounded-xl border border-slate-200">
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-[11px] font-bold text-slate-500">取樣率</span>
+                                {/* 影片主控與參數欄 */}
+                                <div className="flex items-center gap-4 bg-slate-50 p-3 rounded-xl border border-slate-200 shadow-sm">
+                                    <button onClick={isLiveActive ? handleStopLive : handleStartLive}
+                                        disabled={!videoSrc}
+                                        className={`flex-1 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-md ${isLiveActive ? 'bg-rose-600 text-white animate-pulse shadow-rose-200' : !videoSrc ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none' : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-emerald-200 active:scale-95'}`}>
+                                        {isLiveActive ? (
+                                            <><Square size={16} fill="currentColor" /> 停止偵測</>
+                                        ) : (
+                                            <><Play size={18} fill="currentColor" /> 開始即時偵測</>
+                                        )}
+                                    </button>
+
+                                    <button onClick={() => {
+                                        const newId = addManualCandidate(videoRef.current, reelROI, scanOpts);
+                                        if (newId) setLastAddedManualId(newId);
+                                    }}
+                                        disabled={!videoSrc}
+                                        className="h-full px-6 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all bg-white text-slate-700 hover:bg-slate-100 border-2 border-slate-200 active:scale-95 shadow-sm">
+                                        <Camera size={16} className="text-amber-500" /> 手動截圖
+                                    </button>
+
+                                    <div className="flex flex-col gap-0.5 ml-auto border-l border-slate-200 pl-4">
+                                        <span className="text-[10px] font-bold text-slate-400">取樣率限制</span>
                                         <select value={scanFps} onChange={(e) => setScanFps(parseInt(e.target.value))}
-                                            className="h-7 bg-white text-slate-700 text-xs rounded-lg border border-slate-200 px-2 cursor-pointer">
+                                            className="h-7 bg-white text-slate-700 text-xs font-bold rounded-lg border border-slate-200 px-2 cursor-pointer shadow-sm">
                                             <option value={5}>5 fps (快速)</option>
                                             <option value={10}>10 fps (標準)</option>
                                             <option value={15}>15 fps (精細)</option>
@@ -489,8 +587,6 @@ const Phase4Video = ({
                                             <option value={30}>30 fps (逐格盲抓)</option>
                                         </select>
                                     </div>
-
-
                                 </div>
                             </div>
                         )}
@@ -548,12 +644,26 @@ const Phase4Video = ({
                                                 <div className="text-xl leading-none font-black text-rose-600">{diagnosticStats.broken}</div>
                                                 {diagnosticStats.broken > 0 && <span className="absolute -top-1 -right-2 flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span></span>}
                                             </div>
+                                            {(wrongWinGroupIds?.length > 0) && (
+                                                <div className="text-center relative">
+                                                    <div className="text-[10px] text-amber-600 font-bold mb-0.5">算分異常</div>
+                                                    <div className="text-xl leading-none font-black text-amber-600">{wrongWinGroupIds.length}</div>
+                                                    <span className="absolute -top-1 -right-2 flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span></span>
+                                                </div>
+                                            )}
                                         </div>
-                                        {diagnosticStats.broken > 0 && (
-                                            <button onClick={scrollToNextBreak} className="flex items-center gap-1.5 px-3 py-2 bg-rose-50 text-rose-600 hover:bg-rose-100 hover:text-rose-700 rounded-lg text-xs font-bold transition-all border border-rose-200 active:scale-95 shadow-sm">
-                                                <AlertCircle size={14} /> 找下個斷點 ({currentBreakIndex + 1}/{diagnosticStats.broken})
-                                            </button>
-                                        )}
+                                        <div className="flex flex-col gap-1.5 items-end">
+                                            {diagnosticStats.broken > 0 && (
+                                                <button onClick={scrollToNextBreak} className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 text-rose-600 hover:bg-rose-100 hover:text-rose-700 rounded-lg text-xs font-bold transition-all border border-rose-200 active:scale-95 shadow-sm">
+                                                    <AlertCircle size={14} /> 找下個斷點 ({currentBreakIndex + 1}/{diagnosticStats.broken})
+                                                </button>
+                                            )}
+                                            {wrongWinGroupIds?.length > 0 && (
+                                                <button onClick={scrollToNextWrongWin} className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 text-amber-600 hover:bg-amber-100 hover:text-amber-700 rounded-lg text-xs font-bold transition-all border border-amber-200 active:scale-95 shadow-sm">
+                                                    <AlertCircle size={14} /> 找下個算分異常 ({currentWrongWinIndex + 1}/{wrongWinGroupIds.length})
+                                                </button>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
                             )}
@@ -596,7 +706,7 @@ const Phase4Video = ({
 
                                         if (!groupsWithMath) {
                                             return candidates.map((kf, idx) => (
-                                                <div key={kf.id}
+                                                <div key={kf.id} id={`kf-card-${kf.id}`}
                                                     className={`group relative bg-white rounded-xl border p-2 shadow-sm hover:shadow-md transition-all cursor-pointer ${kf.status === 'recognized' ? 'border-emerald-200' : kf.status === 'error' ? 'border-rose-200' : kf.status === 'recognizing' ? 'border-indigo-300 ring-2 ring-indigo-200' : 'border-slate-200 hover:border-indigo-300'}`}
                                                     onClick={() => { if (videoRef.current) videoRef.current.currentTime = kf.time; }}
                                                 >
@@ -650,7 +760,7 @@ const Phase4Video = ({
                                                         const hasBeenGrouped = kf.isSpinBest !== undefined; // smartDedup 有跑過
                                                         const isDimmed = isMulti && !isBest;
                                                         return (
-                                                            <div key={kf.id}
+                                                            <div key={kf.id} id={`kf-card-${kf.id}`}
                                                                 className={`group relative rounded-xl border p-2 shadow-sm hover:shadow-md transition-all cursor-pointer
                                                                     ${isDimmed ? 'opacity-40 bg-slate-50 border-slate-200' : 'bg-white'}
                                                                     ${isBest && hasBeenGrouped ? 'ring-2 ring-emerald-400 border-emerald-300' :
@@ -688,49 +798,14 @@ const Phase4Video = ({
                                 <div ref={listEndRef} />
                             </div>
 
-                            {/* 底部動作區 */}
-                            <div className="p-4 bg-white border-t space-y-2.5">
-                                {/* 匯出 & 傳送 */}
-                                <div className="flex gap-2">
-                                    <button onClick={() => exportCSV(candidates)}
-                                        disabled={recognizedCount === 0}
-                                        className={`flex-1 py-2 rounded-lg font-bold flex items-center justify-center gap-1.5 text-xs transition-all ${recognizedCount === 0 ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200 active:scale-95'}`}>
-                                        <Download size={14} /> CSV
-                                    </button>
-                                    <button onClick={onTransferToPhase3}
-                                        disabled={candidates.length === 0}
-                                        className={`flex-1 py-2 rounded-lg font-bold flex items-center justify-center gap-1.5 text-xs transition-all ${candidates.length === 0 ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-emerald-100 active:scale-95'}`}>
-                                        <Send size={14} /> Phase 3
-                                    </button>
-                                </div>
-
-                                {/* 掃描設定與主動作按鈕 */}
-                                <div className="space-y-2">
-                                    <button onClick={isLiveActive ? handleStopLive : handleStartLive}
-                                        disabled={!videoSrc}
-                                        className={`w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg ${isLiveActive ? 'bg-rose-600 text-white animate-pulse' : !videoSrc ? 'bg-slate-100 text-slate-400 cursor-not-allowed shadow-none' : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-emerald-200 active:scale-95'}`}>
-                                        {isLiveActive ? (
-                                            <><Square size={16} fill="currentColor" /> 停止偵測</>
-                                        ) : (
-                                            <><Play size={18} fill="currentColor" /> 開始即時偵測</>
-                                        )}
-                                    </button>
-                                </div>
-
-                                <div className="flex gap-2">
-                                    <button onClick={() => addManualCandidate(videoRef.current, reelROI, scanOpts)}
-                                        disabled={!videoSrc}
-                                        className="flex-1 py-2 rounded-lg font-bold flex items-center justify-center gap-1.5 text-xs transition-all bg-slate-100 text-slate-600 hover:bg-slate-200 border border-slate-200 active:scale-95">
-                                        <Camera size={13} className="text-amber-500" /> 手動截圖
-                                    </button>
-                                </div>
-
-                                {brokenGroupIds.length > 0 && (
-                                    <button onClick={handleHealBreaksGlobally}
-                                        className="w-full py-2.5 rounded-lg font-bold flex items-center justify-center gap-1.5 text-xs transition-all bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 active:scale-95 shadow-sm shadow-indigo-500/10">
-                                        <RefreshCw size={14} /> 智慧修復：針對 {brokenGroupIds.length} 個斷層局重新研判
-                                    </button>
-                                )}
+                                {/* 底部動作區 */}
+                                <div className="p-4 bg-white border-t space-y-2.5">
+                                    {brokenGroupIds.length > 0 && (
+                                        <button onClick={handleHealBreaksGlobally}
+                                            className="w-full py-2.5 rounded-lg font-bold flex items-center justify-center gap-1.5 text-xs transition-all bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 active:scale-95 shadow-sm shadow-indigo-500/10">
+                                            <RefreshCw size={14} /> 智慧修復：針對 {brokenGroupIds.length} 個斷層局重新研判
+                                        </button>
+                                    )}
 
                                 {candidates.length >= 2 && (
                                     candidates.some(c => c.isSpinBest !== undefined) ? (
@@ -766,6 +841,20 @@ const Phase4Video = ({
                                         </button>
                                     )
                                 )}
+
+                                {/* 匯出 & 傳送 */}
+                                <div className="flex gap-2 pt-2 border-t border-slate-100">
+                                    <button onClick={() => exportCSV(candidates)}
+                                        disabled={recognizedCount === 0}
+                                        className={`flex-1 py-2 rounded-lg font-bold flex items-center justify-center gap-1.5 text-xs transition-all ${recognizedCount === 0 ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200 active:scale-95'}`}>
+                                        <Download size={14} /> CSV
+                                    </button>
+                                    <button onClick={onTransferToPhase3}
+                                        disabled={candidates.length === 0}
+                                        className={`flex-1 py-2 rounded-lg font-bold flex items-center justify-center gap-1.5 text-xs transition-all ${candidates.length === 0 ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-emerald-100 active:scale-95'}`}>
+                                        <Send size={14} /> Phase 3
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>

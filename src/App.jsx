@@ -57,6 +57,9 @@ function App() {
     const showCloudModal = useAppStore(s => s.showCloudModal);
     const setShowCloudModal = useAppStore(s => s.setShowCloudModal);
 
+    const isDarkMode = useAppStore(s => s.isDarkMode);
+    const setIsDarkMode = useAppStore(s => s.setIsDarkMode);
+
     // --- Google Sheets 雲端 ---
     const cloudInstance = useCloud();
     const {
@@ -394,7 +397,7 @@ function App() {
 
     // ========== RENDER ==========
     return (
-        <div className="min-h-screen bg-slate-50 text-slate-800 p-6 font-sans relative">
+        <div className={`min-h-screen bg-slate-50 text-slate-800 p-6 font-sans relative ${isDarkMode ? 'dark-theme-active' : ''}`}>
 
             <ToastMessage message={templateMessage} />
             <ToastMessage message={cloudMessage} />
@@ -587,6 +590,8 @@ function App() {
                 show={showSettingsModal}
                 customApiKey={customApiKey}
                 setCustomApiKey={setCustomApiKey}
+                isDarkMode={isDarkMode}
+                setIsDarkMode={setIsDarkMode}
                 onClose={() => setShowSettingsModal(false)}
                 onSave={() => {
                     localStorage.setItem('gemini_api_key', customApiKey);

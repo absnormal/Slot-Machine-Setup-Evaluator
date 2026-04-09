@@ -1,7 +1,7 @@
 import React from 'react';
-import { Settings, X, Key } from 'lucide-react';
+import { Settings, X, Key, Moon, Github } from 'lucide-react';
 
-export default function SettingsModal({ show, customApiKey, setCustomApiKey, onClose, onSave }) {
+export default function SettingsModal({ show, customApiKey, setCustomApiKey, isDarkMode, setIsDarkMode, onClose, onSave }) {
     if (!show) return null;
     return (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4" style={{ zIndex: 99999 }}>
@@ -37,6 +37,20 @@ export default function SettingsModal({ show, customApiKey, setCustomApiKey, onC
                             </a>
                         </div>
                     </div>
+
+                    {/* 暗黑模式設定 */}
+                    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+                        <div>
+                            <label className="text-sm font-bold text-slate-800 flex items-center gap-1.5 mb-1"><Moon size={16} className="text-indigo-500" /> 2. 暗黑模式 (Beta)</label>
+                            <p className="text-xs text-slate-500">減輕長時間盯著螢幕的眼睛疲勞。切換後即時生效，無需重整頁面。</p>
+                        </div>
+                        <button
+                            onClick={() => setIsDarkMode(!isDarkMode)}
+                            className={`relative w-12 h-6 rounded-full transition-colors duration-300 ${isDarkMode ? 'bg-indigo-600' : 'bg-slate-300'}`}
+                        >
+                            <span className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform duration-300 ${isDarkMode ? 'translate-x-6' : 'translate-x-0'}`} />
+                        </button>
+                    </div>
                     <div className="p-4 bg-indigo-50 rounded-lg border border-indigo-100">
                         <h3 className="text-sm font-bold text-indigo-800 mb-1">💡 關於 Google Sheets 雲端資料庫</h3>
                         <p className="text-xs text-indigo-700/80 leading-relaxed space-y-1">
@@ -44,6 +58,23 @@ export default function SettingsModal({ show, customApiKey, setCustomApiKey, onC
                             <span>您的模板庫網址已安全地內嵌於程式碼中，無需在此設定。</span><br />
                             <span className="inline-block mt-1 pt-1 border-t border-indigo-200 font-medium">持有帳號：oldts001@gmail.com</span>
                         </p>
+                    </div>
+                    
+                    {/* GitHub 專案連結 */}
+                    <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
+                        <h3 className="text-sm font-bold text-slate-800 flex items-center gap-1.5 mb-1"><Github size={16} className="text-slate-700" /> 3. 關於專案 (GitHub)</h3>
+                        <p className="text-[11px] text-slate-500 mb-2 leading-relaxed">
+                            本專案為開源維護，歡迎前往 GitHub 追蹤最新進度或回報問題。
+                        </p>
+                        <a 
+                            href="https://github.com/absnormal/Slot-Machine-Setup-Evaluator" 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold rounded-lg transition-colors border border-slate-200 shadow-sm"
+                        >
+                            <Github size={14} className="text-slate-600" /> 
+                            前往 Slot-Machine-Setup-Evaluator
+                        </a>
                     </div>
                 </div>
                 <div className="p-4 border-t bg-slate-50 flex justify-end gap-3">
