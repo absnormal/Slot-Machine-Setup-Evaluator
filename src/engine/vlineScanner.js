@@ -63,50 +63,84 @@ export function extractSliceGrays(video, roi, cols) {
 }
 
 /**
- * 逐軸計算 MAE
+ * 逐軸計算 MAE，並將每條軸分為 4 個水平區塊 (Block)，用以過濾局部飛行動畫
  * @param {Uint8Array[]} prevSlices — 前一幀的 N 個切片
  * @param {Uint8Array[]} currSlices — 當前幀的 N 個切片
- * @returns {number[]} 每個切片的 MAE 差異值
+ * @returns {{ full: number, blocks: number[] }[]} 每個切片的 MAE 差異值與分塊差異
  */
 export function computeSliceMAEs(prevSlices, currSlices) {
     if (!prevSlices || !currSlices || prevSlices.length !== currSlices.length) return null;
 
+    const NUM_BLOCKS = 4;
+
     return prevSlices.map((prev, i) => {
         const curr = currSlices[i];
-        if (!prev || !curr || prev.length !== curr.length) return 0;
-        let total = 0;
+        if (!prev || !curr || prev.length !== curr.length) return { full: 0, blocks: Array(NUM_BLOCKS).fill(0) };
+        
+        let fullTotal = 0;
+        const blockTotals = Array(NUM_BLOCKS).fill(0);
+        const pixelsPerBlock = prev.length / NUM_BLOCKS;
+
         for (let j = 0; j < prev.length; j++) {
-            total += Math.abs(prev[j] - curr[j]);
+            const diff = Math.abs(prev[j] - curr[j]);
+            fullTotal += diff;
+            const blockIdx = Math.floor(j / pixelsPerBlock);
+            blockTotals[blockIdx] += diff;
         }
-        return total / prev.length;
+        
+        return {
+            full: fullTotal / prev.length,
+            blocks: blockTotals.map(t => t / pixelsPerBlock)
+        };
     });
 }
 
 /**
- * 分析切片 MAE 分佈模式，精確判定盤面狀態
- * @param {number[]} sliceMAEs — 每軸的 MAE
+ * 分析切片 MAE 分佈模式，精確判定盤面狀態 (加入 4區塊 動態過濾)
+ * @param {{ full: number, blocks: number[] }[]} bandMAEs — 每軸的分塊 MAE 資料
  * @returns {{ isAllStopped, isFullyStill, isAnimationOnly, spinningCount, avgMAE, maxMAE, sliceMAEs }}
  */
-export function analyzeSlicePattern(sliceMAEs) {
-    if (!sliceMAEs || sliceMAEs.length === 0) {
+export function analyzeSlicePattern(bandMAEs) {
+    if (!bandMAEs || bandMAEs.length === 0) {
         return { isAllStopped: false, isFullyStill: false, isAnimationOnly: false, spinningCount: 0, avgMAE: 0, maxMAE: 0, sliceMAEs: [] };
     }
 
+    const sliceMAEs = bandMAEs.map(b => b.full); // 向下相容
     const max = Math.max(...sliceMAEs);
     const avg = sliceMAEs.reduce((a, b) => a + b, 0) / sliceMAEs.length;
 
     // 判定：有任何一軸的 diff 極高（仍在旋轉）
-    // 條件：diff > 均值3倍 且 diff > 8（絕對門檻，排除微弱噪音）
-    const spinningCount = sliceMAEs.filter(d => d > avg * 3 && d > 8).length;
+    // 條件：整片 diff > 均值3倍 且 diff > 8
+    let spinningCount = 0;
+
+    for (let i = 0; i < bandMAEs.length; i++) {
+        const d = bandMAEs[i].full;
+        const blocks = bandMAEs[i].blocks;
+
+        if (d > avg * 3 && d > 8) {
+            // [抗飛行動畫過濾]：如果整片平均看起來在動，我們檢查 4 個區塊
+            // 如果是一顆金幣往上飛，只會有 1~2 個區塊的 MAE 飆高，其他區塊 (背景殘留影像) 是靜止的。
+            // 真正的轉輪是整條瀑布往下刷，4 個區塊都應該要有劇烈變化。
+            // 我們容忍 1 個區塊可能剛好特徵不明顯，所以判定門檻為： >= 3 個區塊的 MAE 都大於 4 (顯著動態)
+            const activeBlocks = blocks.filter(bDiff => bDiff > 4).length;
+
+            if (activeBlocks >= 3) {
+                spinningCount++;
+            } else {
+                console.log(`🛡️ [防干擾] 軸 ${i + 1} 整體誤差 ${d.toFixed(1)} 達標，但全高 4區段 中只有 ${activeBlocks} 區段在動 [${blocks.map(x => x.toFixed(1)).join(', ')}]，成功攔截為【飛行動畫局部干擾】!`);
+            }
+        }
+    }
+
     const hasSpinning = spinningCount > 0;
 
     // 完全靜止：所有軸的 diff 都極低
     const isFullyStill = max < 2;
 
     return {
-        isAllStopped: !hasSpinning,                        // 全軸皆停（含特效）
+        isAllStopped: !hasSpinning,                        // 全軸皆停（含特效與被濾除的飛行動畫）
         isFullyStill,                                       // 完全靜止（無特效）
-        isAnimationOnly: !hasSpinning && !isFullyStill,     // 全停但有閃光特效
+        isAnimationOnly: !hasSpinning && !isFullyStill,     // 全停但有閃光或飛行動畫
         spinningCount,
         avgMAE: avg,
         maxMAE: max,

@@ -337,13 +337,13 @@ function App() {
                 } else if (!isPhase2Minimized) {
                     e.preventDefault();
                     const winAmount = calcResults?.totalWin || 0;
-                    setTotalBalance(prev => prev + winAmount);
+                    setTotalBalance(prev => parseFloat((prev + winAmount).toFixed(4)));
                     setTemplateMessage(`💰 已將贏分 ${winAmount.toLocaleString()} 加入總資產`);
                     setTimeout(() => setTemplateMessage(''), 3000);
                 } else if (!isPhase3Minimized) {
                     e.preventDefault();
                     const winAmount = visionCalcResults?.totalWin || 0;
-                    setTotalBalance(prev => prev + winAmount);
+                    setTotalBalance(prev => parseFloat((prev + winAmount).toFixed(4)));
                     setTemplateMessage(`💰 已將 AI 辨識贏分 ${winAmount.toLocaleString()} 加入總資產`);
                     setTimeout(() => setTemplateMessage(''), 3000);
                 }

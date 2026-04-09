@@ -116,9 +116,15 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                 
                 const mergedSliceMAEs = [];
                 for (let c = 0; c < state.sliceCols; c++) {
-                    // 取同一條軸，與歷史所有幀比對發生過的最大變化
-                    const maxColDiff = Math.max(...allComparisons.map(comp => comp[c] || 0));
-                    mergedSliceMAEs.push(maxColDiff);
+                    // 取同一條軸，與歷史所有幀比對發生過的最大變化 (以 full 來評估最劇烈那幀)
+                    let bestComp = { full: -1, blocks: [0, 0, 0, 0] };
+                    for (const compArr of allComparisons) {
+                        const comp = compArr[c];
+                        if (comp && comp.full > bestComp.full) {
+                            bestComp = comp;
+                        }
+                    }
+                    mergedSliceMAEs.push(bestComp);
                 }
 
                 const analysis = analyzeSlicePattern(mergedSliceMAEs);
@@ -178,7 +184,7 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                         console.log(`🎯 [V-Line] 觸發『停輪』截圖！`);
                         console.log(`⏰ 影片時間點: ${now.toFixed(3)}s`);
                         console.log(`📊 觸發原因: ${triggerReason}`);
-                        console.log(`📊 切片數據: [${mergedSliceMAEs.map(d => d.toFixed(1)).join(', ')}] avg=${diff.toFixed(2)}, peak=${state.peakDiff.toFixed(2)}`);
+                        console.log(`📊 切片全域誤差: [${mergedSliceMAEs.map(d => d.full.toFixed(1)).join(', ')}] avg=${diff.toFixed(2)}, peak=${state.peakDiff.toFixed(2)}`);
                         console.log(`========================================\n`);
                         
                         const frameCanvas = captureFullFrame(video);

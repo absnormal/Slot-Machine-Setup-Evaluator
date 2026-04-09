@@ -9,7 +9,7 @@ export default function ResultView({ template, calcData, calcErr, hoveredId, set
             if (e.stopPropagation) e.stopPropagation();
         }
         const winAmount = calcData?.totalWin || 0;
-        setTotalBalance(prev => prev + winAmount);
+        setTotalBalance(prev => parseFloat((prev + winAmount).toFixed(4)));
         if (setTemplateMessage) {
             setTemplateMessage(`💰 已將贏分 ${winAmount.toLocaleString()} 加入總資產`);
             setTimeout(() => setTemplateMessage(''), 3000);
@@ -19,7 +19,7 @@ export default function ResultView({ template, calcData, calcErr, hoveredId, set
     const handleDeductBet = () => {
         const betAmount = parseFloat(betInput) || 0;
         if (betAmount > 0) {
-            setTotalBalance(prev => prev - betAmount);
+            setTotalBalance(prev => parseFloat((prev - betAmount).toFixed(4)));
             if (setTemplateMessage) {
                 setTemplateMessage(`🪙 已扣除押注 -${betAmount.toLocaleString()}`);
                 setTimeout(() => setTemplateMessage(''), 3000);
@@ -111,7 +111,7 @@ export default function ResultView({ template, calcData, calcErr, hoveredId, set
                                     <div className="relative bg-white h-[28px] rounded-md border border-slate-300 shadow-sm flex items-center">
                                         <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">$</span>
                                         <span className="w-full pl-6 pr-2 font-black text-sm text-slate-700 truncate">
-                                            {(totalBalance + (calcData?.totalWin || 0)).toLocaleString()}
+                                            {(parseFloat((totalBalance + (calcData?.totalWin || 0)).toFixed(4))).toLocaleString()}
                                         </span>
                                     </div>
                                 </div>
