@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Video, Scan, Play, Pause, Trash2, Send, Sparkles, ChevronDown, ChevronUp, X, Clock, Download, BarChart3, ImageIcon, RefreshCw, Square, Camera, Link2, AlertCircle, Star } from 'lucide-react';
+import { Video, Scan, Play, Pause, Trash2, Send, Sparkles, ChevronDown, ChevronUp, X, Clock, Download, BarChart3, ImageIcon, RefreshCw, Square, Camera, Link2, AlertCircle, Star, Monitor, StopCircle, FolderOpen, CheckCircle2 } from 'lucide-react';
 const Phase4Video = ({
     isPhase4Minimized,
     onToggle,
@@ -20,6 +20,7 @@ const Phase4Video = ({
     orderIdROI, setOrderIdROI,
     // Video
     videoSrc, videoRef, handleVideoUpload,
+    isStreamMode, handleStartScreenCapture, handleStopScreenCapture,
     // Transfer
     onTransferToPhase3,
     setTemplateMessage,
@@ -38,6 +39,74 @@ const Phase4Video = ({
     const containerRef = useRef(null);
     const listEndRef = useRef(null);
     const [lastAddedManualId, setLastAddedManualId] = useState(null);
+    const [previewImage, setPreviewImage] = useState(null); // { url, time }
+
+    // ── 卡片點擊：影片模式=跳轉時間點，串流模式/無影片=開圖片預覽 ──
+    const handleCardClick = useCallback((kf) => {
+        if (isStreamMode || !videoSrc) {
+            // 串流模式或無影片來源時：開全幀截圖預覽
+            const fullUrl = kf.canvas ? kf.canvas.toDataURL('image/jpeg', 0.9) : kf.thumbUrl;
+            setPreviewImage({ url: fullUrl, time: kf.time });
+        } else {
+            // 影片模式：跳到時間點
+            if (videoRef.current) videoRef.current.currentTime = kf.time;
+        }
+    }, [isStreamMode, videoSrc, videoRef]);
+
+    // ── 串流計時器 ──
+    const [streamElapsed, setStreamElapsed] = useState(0);
+    const streamTimerRef = useRef(null);
+    useEffect(() => {
+        if (isStreamMode) {
+            setStreamElapsed(0);
+            streamTimerRef.current = setInterval(() => setStreamElapsed(prev => prev + 1), 1000);
+        } else {
+            if (streamTimerRef.current) clearInterval(streamTimerRef.current);
+            streamTimerRef.current = null;
+        }
+        return () => { if (streamTimerRef.current) clearInterval(streamTimerRef.current); };
+    }, [isStreamMode]);
+
+    // ── 截圖存檔狀態 (自動存入磁碟) ──
+    const [saveDirHandle, setSaveDirHandle] = useState(null);
+    const [saveCount, setSaveCount] = useState(0);
+    const [saveFormat, setSaveFormat] = useState('jpeg'); // 'jpeg' | 'png'
+    const savedIdsRef = useRef(new Set());
+
+    const handlePickSaveDir = async () => {
+        try {
+            const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
+            setSaveDirHandle(handle);
+            setSaveCount(0);
+            savedIdsRef.current.clear();
+        } catch (e) {
+            console.log("使用者取消選取目錄", e);
+        }
+    };
+
+    // 自動存檔 useEffect
+    useEffect(() => {
+        if (!saveDirHandle) return;
+        candidates.forEach(async (kf) => {
+            if (savedIdsRef.current.has(kf.id) || !kf.canvas) return;
+            savedIdsRef.current.add(kf.id);
+            try {
+                const mimeType = saveFormat === 'png' ? 'image/png' : 'image/jpeg';
+                const ext = saveFormat === 'png' ? 'png' : 'jpg';
+                const blob = await new Promise(r => kf.canvas.toBlob(r, mimeType, 0.92));
+                const prefix = kf.id.startsWith('win-') ? 'win_' : 'spin_';
+                const fileName = `${prefix}${kf.time.toFixed(2)}s_${kf.id}.${ext}`;
+                const fileHandle = await saveDirHandle.getFileHandle(fileName, { create: true });
+                const writable = await fileHandle.createWritable();
+                await writable.write(blob);
+                await writable.close();
+                kf.canvas = null; // 釋放記憶體
+                setSaveCount(prev => prev + 1);
+            } catch (e) {
+                console.error('自動存檔失敗:', e);
+            }
+        });
+    }, [candidates, saveDirHandle, saveFormat]);
 
     // ── 卡片內容渲染器（共用於平鋪與分組模式）──
     const renderCardContent = (kf, idx) => (
@@ -48,10 +117,10 @@ const Phase4Video = ({
             <div className="flex-1 min-w-0 pr-5">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1">
-                        <Clock size={10} className="text-slate-400" />
-                        <span className="text-[10px] font-mono text-slate-500">{kf.time.toFixed(1)}s</span>
+                        <Clock size={12} className="text-slate-400" />
+                        <span className="text-xs font-mono text-slate-500">{kf.time.toFixed(1)}s</span>
                         {kf.captureDelay > 0.05 && (
-                            <span className="text-[9px] text-amber-500" title={`盤面停於 ${kf.reelStopTime?.toFixed(1)}s，等贏分 +${kf.captureDelay.toFixed(1)}s`}>
+                            <span className="text-[10px] text-amber-500" title={`盤面停於 ${kf.reelStopTime?.toFixed(1)}s，等贏分 +${kf.captureDelay.toFixed(1)}s`}>
                                 +{kf.captureDelay.toFixed(1)}s
                             </span>
                         )}
@@ -85,30 +154,30 @@ const Phase4Video = ({
                         }
 
                         return (
-                            <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${badgeClass}`}>
+                            <span className={`text-[11px] px-2 py-0.5 rounded-full font-bold leading-none ${badgeClass}`}>
                                 {badgeText}
                             </span>
                         );
                     })()}
                 </div>
                 {kf.ocrData && (
-                    <div className="grid grid-cols-3 gap-1 mt-1 bg-slate-50 rounded-lg px-1.5 py-1">
-                        <div className="flex flex-col items-center">
-                            <span className="text-[8px] text-slate-400">贏分</span>
-                            <span className={`text-[10px] font-bold ${parseFloat(kf.ocrData.win) > 0 ? 'text-emerald-600' : 'text-slate-400'}`}>{kf.ocrData.win || '0'}</span>
+                    <div className="grid grid-cols-3 gap-1 mt-0.5 bg-slate-50 rounded-lg px-1.5 py-0.5">
+                        <div className="flex flex-col items-center leading-tight">
+                            <span className="text-[10px] text-slate-400">贏分</span>
+                            <span className={`text-[13px] font-bold ${parseFloat(kf.ocrData.win) > 0 ? 'text-emerald-600' : 'text-slate-400'}`}>{kf.ocrData.win || '0'}</span>
                         </div>
-                        <div className="flex flex-col items-center">
-                            <span className="text-[8px] text-slate-400">押注</span>
-                            <span className="text-[10px] font-bold text-amber-600">{kf.ocrData.bet || '-'}</span>
+                        <div className="flex flex-col items-center leading-tight">
+                            <span className="text-[10px] text-slate-400">押注</span>
+                            <span className="text-[13px] font-bold text-amber-600">{kf.ocrData.bet || '-'}</span>
                         </div>
-                        <div className="flex flex-col items-center">
-                            <span className="text-[8px] text-slate-400">總分</span>
-                            <span className="text-[10px] font-bold text-sky-600">{kf.ocrData.balance || '-'}</span>
+                        <div className="flex flex-col items-center leading-tight">
+                            <span className="text-[10px] text-slate-400">總分</span>
+                            <span className="text-[13px] font-bold text-sky-600">{kf.ocrData.balance || '-'}</span>
                         </div>
                     </div>
                 )}
                 {kf.ocrData?.orderId && (
-                    <div className="mt-1 text-[9px] text-slate-400 font-mono tracking-wider">
+                    <div className="mt-0.5 text-[11px] text-slate-400 font-mono tracking-wider leading-none">
                         ID: {kf.ocrData.orderId}
                     </div>
                 )}
@@ -121,22 +190,22 @@ const Phase4Video = ({
                             
                             if (isWinMatch) {
                                 return (
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-[9px] text-slate-400">結算贏分</span>
-                                        <span className={`text-xs font-bold ${aiWin > 0 ? 'text-emerald-600' : 'text-slate-400'}`}>
+                                    <div className="flex items-center justify-between leading-none mt-0.5">
+                                        <span className="text-[11px] text-slate-400">結算贏分</span>
+                                        <span className={`text-[14px] font-bold ${aiWin > 0 ? 'text-emerald-600' : 'text-slate-400'}`}>
                                             {aiWin.toLocaleString()}
                                         </span>
                                     </div>
                                 );
                             } else {
                                 return (
-                                    <div className="flex flex-col gap-0.5">
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-[9px] text-rose-500 font-bold">⚠️ 算分異常</span>
+                                    <div className="flex flex-col gap-0.5 mt-0.5">
+                                        <div className="flex items-center justify-between leading-none">
+                                            <span className="text-[11px] text-rose-500 font-bold">⚠️ 算分異常</span>
                                         </div>
-                                        <div className="flex items-center justify-between text-[10px]">
-                                            <span className="text-slate-500">OCR 抓取: <span className="font-bold text-slate-700">{ocrWin}</span></span>
-                                            <span className="text-rose-600">AI 計算: <span className="font-bold">{aiWin}</span></span>
+                                        <div className="flex items-center justify-between text-[11px] leading-tight">
+                                            <span className="text-slate-500">OCR: <span className="font-bold text-slate-700">{ocrWin}</span></span>
+                                            <span className="text-rose-600">AI: <span className="font-bold">{aiWin}</span></span>
                                         </div>
                                     </div>
                                 );
@@ -145,7 +214,7 @@ const Phase4Video = ({
                     </div>
                 )}
                 {kf.status === 'error' && kf.error && (
-                    <div className="text-[9px] text-rose-500 mt-1 truncate">{kf.error}</div>
+                    <div className="text-[11px] text-rose-500 mt-0.5 truncate leading-none">{kf.error}</div>
                 )}
             </div>
         </div>
@@ -461,11 +530,18 @@ const Phase4Video = ({
                                 <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center shadow-md mb-6 group-hover:scale-110 transition-transform">
                                     <Video size={32} className="text-indigo-500" />
                                 </div>
-                                <h3 className="text-xl font-bold text-slate-700 mb-2">上傳影片以開始分析</h3>
-                                <label className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-xl font-bold shadow-lg shadow-indigo-500/20 cursor-pointer transition-all active:scale-95 mt-4">
-                                    選擇影片檔案
-                                    <input type="file" accept="video/*" className="hidden" onChange={handleVideoUpload} />
-                                </label>
+                                <h3 className="text-xl font-bold text-slate-700 mb-2">選擇影像來源開始分析</h3>
+                                <p className="text-sm text-slate-400 mb-6">上傳影片檔案或即時擷取螢幕畫面</p>
+                                <div className="flex gap-3">
+                                    <label className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-indigo-500/20 cursor-pointer transition-all active:scale-95 flex items-center gap-2">
+                                        <Video size={18} /> 選擇影片檔案
+                                        <input type="file" accept="video/*" className="hidden" onChange={handleVideoUpload} />
+                                    </label>
+                                    <button onClick={handleStartScreenCapture}
+                                        className="bg-violet-600 hover:bg-violet-700 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-violet-500/20 cursor-pointer transition-all active:scale-95 flex items-center gap-2">
+                                        <Monitor size={18} /> 螢幕擷取
+                                    </button>
+                                </div>
                             </div>
                         ) : (
                             <div className="space-y-4">
@@ -505,7 +581,7 @@ const Phase4Video = ({
 
                                     <div className="relative inline-block" ref={containerRef}
                                         onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp} onMouseDown={handleMouseDown}>
-                                        <video ref={videoRef} src={videoSrc} className="max-w-full max-h-[70vh] block" />
+                                        <video ref={videoRef} src={isStreamMode ? undefined : videoSrc} autoPlay={isStreamMode} muted={isStreamMode} className="max-w-full max-h-[70vh] block" />
 
                                         {/* ROI 框 */}
                                         {[
@@ -542,21 +618,49 @@ const Phase4Video = ({
                                     </div>
 
                                     {/* 播放控制列 */}
-                                    <div className="w-full bg-slate-900/90 backdrop-blur p-3 px-5 flex items-center gap-4 border-t border-white/10">
-                                        <button onClick={togglePlay} className="text-white hover:text-amber-400 transition-colors">
-                                            {isPlaying ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" />}
-                                        </button>
-                                        <button onClick={() => { const input = document.createElement('input'); input.type = 'file'; input.accept = 'video/*'; input.onchange = handleVideoUpload; input.click(); }}
-                                            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs font-bold transition-all border border-slate-200 active:scale-95">
-                                            <RefreshCw size={12} /> 換片
-                                        </button>
-                                        <div className="flex-1 flex items-center gap-3">
-                                            <span className="text-[10px] font-mono text-slate-400">{formatTime(currentTime)}</span>
-                                            <input type="range" min="0" max={duration || 0} step="0.1" value={currentTime} onChange={handleSeek}
-                                                className="flex-1 h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500" />
-                                            <span className="text-[10px] font-mono text-slate-400">{formatTime(duration)}</span>
+                                    {isStreamMode ? (
+                                        /* 串流模式：簡化狀態列 */
+                                        <div className="w-full bg-slate-900/90 backdrop-blur p-3 px-5 flex items-center gap-4 border-t border-white/10">
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-2.5 h-2.5 bg-rose-500 rounded-full animate-pulse" />
+                                                <span className="text-xs font-bold text-rose-400">串流中</span>
+                                            </div>
+                                            <div className="flex items-center gap-1.5 text-slate-400">
+                                                <Clock size={12} />
+                                                <span className="text-xs font-mono">{formatTime(streamElapsed)}</span>
+                                            </div>
+                                            <div className="flex-1" />
+                                            <button onClick={() => { const input = document.createElement('input'); input.type = 'file'; input.accept = 'video/*'; input.onchange = handleVideoUpload; input.click(); }}
+                                                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg text-xs font-bold transition-all border border-slate-600 active:scale-95">
+                                                <RefreshCw size={12} /> 切換影片
+                                            </button>
+                                            <button onClick={handleStopScreenCapture}
+                                                className="flex items-center gap-1.5 px-4 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold transition-all active:scale-95 shadow-sm">
+                                                <StopCircle size={14} /> 結束串流
+                                            </button>
                                         </div>
-                                    </div>
+                                    ) : (
+                                        /* 影片模式：正常播放控制 */
+                                        <div className="w-full bg-slate-900/90 backdrop-blur p-3 px-5 flex items-center gap-4 border-t border-white/10">
+                                            <button onClick={togglePlay} className="text-white hover:text-amber-400 transition-colors">
+                                                {isPlaying ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" />}
+                                            </button>
+                                            <button onClick={() => { const input = document.createElement('input'); input.type = 'file'; input.accept = 'video/*'; input.onchange = handleVideoUpload; input.click(); }}
+                                                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs font-bold transition-all border border-slate-200 active:scale-95">
+                                                <RefreshCw size={12} /> 換片
+                                            </button>
+                                            <button onClick={handleStartScreenCapture}
+                                                className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-100 hover:bg-violet-200 text-violet-700 rounded-lg text-xs font-bold transition-all border border-violet-200 active:scale-95">
+                                                <Monitor size={12} /> 螢幕
+                                            </button>
+                                            <div className="flex-1 flex items-center gap-3">
+                                                <span className="text-[10px] font-mono text-slate-400">{formatTime(currentTime)}</span>
+                                                <input type="range" min="0" max={duration || 0} step="0.1" value={currentTime} onChange={handleSeek}
+                                                    className="flex-1 h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500" />
+                                                <span className="text-[10px] font-mono text-slate-400">{formatTime(duration)}</span>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* 影片主控與參數欄 */}
@@ -693,7 +797,7 @@ const Phase4Video = ({
                                     <div className="flex flex-col items-center justify-center h-full text-slate-300 opacity-60">
                                         <Scan size={48} className="mb-4 stroke-[1px]" />
                                         <p className="text-xs text-center">
-                                            點擊「開始即時偵測」或「全片掃描」
+                                            點擊「開始即時偵測」
                                         </p>
                                     </div>
                                 ) : (
@@ -712,7 +816,7 @@ const Phase4Video = ({
                                             return candidates.map((kf, idx) => (
                                                 <div key={kf.id} id={`kf-card-${kf.id}`}
                                                     className={`group relative bg-white rounded-xl border p-2 shadow-sm hover:shadow-md transition-all cursor-pointer ${kf.status === 'recognized' ? 'border-emerald-200' : kf.status === 'error' ? 'border-rose-200' : kf.status === 'recognizing' ? 'border-indigo-300 ring-2 ring-indigo-200' : 'border-slate-200 hover:border-indigo-300'}`}
-                                                    onClick={() => { if (videoRef.current) videoRef.current.currentTime = kf.time; }}
+                                                                onClick={() => handleCardClick(kf)}
                                                 >
                                                     {renderCardContent(kf, idx)}
                                                     <button onClick={(e) => { e.stopPropagation(); removeCandidate(kf.id); }}
@@ -734,34 +838,31 @@ const Phase4Video = ({
                                                     className="rounded-xl p-1.5 space-y-1.5"
                                                     style={{ borderLeft: `4px solid ${palette.border}`, backgroundColor: palette.bg }}
                                                 >
-                                                    <div className="text-[9px] font-bold px-1 flex flex-wrap items-center gap-1.5 mb-1 pb-1 border-b border-slate-200/50">
+                                                    <div className="text-[13px] font-bold px-1 flex flex-wrap items-center gap-2 mb-1 pb-1 border-b border-slate-200/50">
                                                         {isFGSequence ? (
-                                                            <span className="bg-rose-100 text-rose-600 px-1.5 py-0.5 rounded shadow-sm flex items-center gap-0.5">🔥 免遊序列</span>
+                                                            <span className="bg-rose-100 text-rose-600 px-2 py-0.5 rounded shadow-sm flex items-center gap-1">🔥 免遊序列</span>
                                                         ) : (
-                                                            <span className="text-slate-500 opacity-60">{isMulti ? '同局' : '單局'}</span>
+                                                            <span className="text-slate-500 opacity-60 bg-slate-100 px-2 py-0.5 rounded shadow-sm">{isMulti ? '同局' : '單局'}</span>
                                                         )}
-                                                        <span className="text-emerald-600">W:{group[0].kf.ocrData?.win || '0'}</span>
-                                                        <span className="text-sky-600">B:{group[0].kf.ocrData?.balance || '0'}</span>
-                                                        <span className="text-amber-600">BET:{group[0].kf.ocrData?.bet || '-'}</span>
                                                         
                                                         {expectedBase !== null && (
                                                             mathValid ? (
-                                                                <span className="ml-1 text-emerald-600 bg-emerald-100/80 px-1.5 py-0.5 rounded-full flex items-center gap-0.5 shadow-sm" title={`與上局符合 (推算本局結餘 = ${nextBase?.toFixed(2)})`}>
-                                                                    <Link2 size={9} /> 連續
+                                                                <span className="text-emerald-600 bg-emerald-100/80 px-2 py-0.5 rounded-full flex items-center gap-1 shadow-sm" title={`與上局符合 (推算本局結餘 = ${nextBase?.toFixed(2)})`}>
+                                                                    <Link2 size={14} /> 連續
                                                                 </span>
                                                             ) : (
-                                                                <div className="flex items-center gap-1 ml-1 cursor-help group/break">
-                                                                    <span className="text-rose-600 bg-rose-100/80 px-1.5 py-0.5 rounded-full flex items-center gap-0.5 shadow-sm" title={`預期起始: ${expectedBase.toFixed(2)}`}>
-                                                                        <AlertCircle size={9} /> 斷層 {mathDiff !== 0 && `(${mathDiff > 0 ? '+' : ''}${mathDiff.toFixed(2)})`}
+                                                                <div className="flex items-center gap-1.5 cursor-help group/break">
+                                                                    <span className="text-rose-600 bg-rose-100/80 px-2 py-0.5 rounded-full flex items-center gap-1 shadow-sm" title={`預期起始: ${expectedBase.toFixed(2)}`}>
+                                                                        <AlertCircle size={14} /> 斷層 {mathDiff !== 0 && `(${mathDiff > 0 ? '+' : ''}${mathDiff.toFixed(2)})`}
                                                                     </span>
-                                                                    <button onClick={() => handleHealSingleBreak(gid)} className="text-white bg-indigo-500 hover:bg-indigo-600 px-1.5 py-0.5 rounded shadow shadow-indigo-500/20 active:scale-95 transition-all text-[8px] flex items-center gap-0.5">
-                                                                        <RefreshCw size={8} /> 修復此局
+                                                                    <button onClick={() => handleHealSingleBreak(gid)} className="text-white bg-indigo-500 hover:bg-indigo-600 px-2 py-0.5 rounded shadow shadow-indigo-500/20 active:scale-95 transition-all text-[11px] flex items-center gap-1 leading-tight">
+                                                                        <RefreshCw size={12} /> 修復此局
                                                                     </button>
                                                                 </div>
                                                             )
                                                         )}
                                                         
-                                                        <span className="ml-auto text-slate-400">{group.length} 張</span>
+                                                        <span className="ml-auto text-slate-400 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded-full shadow-sm">{group.length} 張</span>
                                                     </div>
                                                     {group.map(({ kf, idx }) => {
                                                         const isBest = kf.isSpinBest;
@@ -777,7 +878,7 @@ const Phase4Video = ({
                                                                                 kf.status === 'recognizing' ? 'border-indigo-300 ring-2 ring-indigo-200' :
                                                                                     'border-slate-200 hover:border-indigo-300'
                                                                     }`}
-                                                                onClick={() => { if (videoRef.current) videoRef.current.currentTime = kf.time; }}
+                                                                            onClick={() => handleCardClick(kf)}
                                                             >
                                                                 {isBest && hasBeenGrouped && (
                                                                     <div className="absolute -top-1.5 -left-1.5 bg-emerald-500 text-white text-[8px] font-bold px-1.5 py-0.5 rounded-full shadow z-10 pointer-events-none">
@@ -850,6 +951,39 @@ const Phase4Video = ({
                                     )
                                 )}
 
+                                {/* 自動存檔區塊 */}
+                                <div className="space-y-2 pt-2 border-t border-slate-100">
+                                    {!saveDirHandle ? (
+                                        <button onClick={handlePickSaveDir}
+                                            className="w-full py-2 rounded-xl font-bold flex items-center justify-center gap-2 bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200 transition-all active:scale-95 text-xs">
+                                            <FolderOpen size={14} /> 選擇儲存資料夾 (自動存檔防爆RAM)
+                                        </button>
+                                    ) : (
+                                        <div className="flex flex-col gap-1.5 p-2 bg-emerald-50 border border-emerald-200 rounded-xl">
+                                            <div className="flex items-center justify-between text-xs font-bold text-emerald-800">
+                                                <div className="flex items-center gap-1">
+                                                    <CheckCircle2 size={14} />
+                                                    <span>自動存檔中 (已存 {saveCount} 張)</span>
+                                                </div>
+                                                <span className="truncate max-w-[100px]" title={saveDirHandle.name}>{saveDirHandle.name}</span>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <select
+                                                    value={saveFormat}
+                                                    onChange={e => setSaveFormat(e.target.value)}
+                                                    className="flex-1 bg-white border border-emerald-200 text-emerald-800 text-xs font-bold rounded-lg px-2 py-1.5 outline-none cursor-pointer">
+                                                    <option value="jpeg">JPEG (省空間)</option>
+                                                    <option value="png">PNG (無損)</option>
+                                                </select>
+                                                <button onClick={handlePickSaveDir}
+                                                    className="flex-1 py-1.5 rounded-lg font-bold text-emerald-700 bg-emerald-100 hover:bg-emerald-200 transition-all text-xs text-center">
+                                                    更換資料夾
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
                                 {/* 匯出 & 傳送 */}
                                 <div className="space-y-2 pt-2 border-t border-slate-100">
                                     <div className="flex gap-2">
@@ -878,6 +1012,23 @@ const Phase4Video = ({
                                     </div>
                                 </div>
                             </div>
+
+            {/* 全幀截圖預覽 Lightbox */}
+            {previewImage && (
+                <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-center justify-center cursor-pointer animate-in fade-in duration-200"
+                    onClick={() => setPreviewImage(null)}>
+                    <div className="relative max-w-[90vw] max-h-[90vh]" onClick={e => e.stopPropagation()}>
+                        <img src={previewImage.url} alt="preview" className="max-w-full max-h-[85vh] rounded-xl shadow-2xl border border-white/10" />
+                        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-4 rounded-b-xl">
+                            <span className="text-white text-sm font-mono">@ {previewImage.time.toFixed(2)}s</span>
+                        </div>
+                        <button onClick={() => setPreviewImage(null)}
+                            className="absolute -top-3 -right-3 w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-lg hover:bg-slate-100 transition-colors">
+                            <X size={16} className="text-slate-700" />
+                        </button>
+                    </div>
+                </div>
+            )}
                         </div>
                     </div>
                 </div>

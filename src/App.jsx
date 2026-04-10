@@ -182,15 +182,69 @@ function App() {
     // --- Phase 4 (影片智慧分析 — 新架構) ---
     const videoRef = useRef(null);
     const [videoSrc, setVideoSrc] = useState(null);
+    const [isStreamMode, setIsStreamMode] = useState(false);
     const handleVideoUpload = useCallback((e) => {
         const file = e.target?.files?.[0];
         if (!file) return;
-        if (videoSrc) URL.revokeObjectURL(videoSrc);
+        // 如果目前是串流模式，先清掉串流
+        if (isStreamMode) {
+            const stream = videoRef.current?.srcObject;
+            if (stream) stream.getTracks().forEach(t => t.stop());
+            videoRef.current.srcObject = null;
+            setIsStreamMode(false);
+        }
+        if (videoSrc && videoSrc !== '__stream__') URL.revokeObjectURL(videoSrc);
         const url = URL.createObjectURL(file);
         setVideoSrc(url);
         setTemplateMessage(`📽️ 已載入影片：${file.name}`);
         setTimeout(() => setTemplateMessage(''), 3000);
+    }, [videoSrc, isStreamMode, setTemplateMessage]);
+
+    const pendingStreamRef = useRef(null);
+    const handleStartScreenCapture = useCallback(async () => {
+        try {
+            const stream = await navigator.mediaDevices.getDisplayMedia({
+                video: { frameRate: { ideal: 30 } },
+                audio: false
+            });
+            // 使用者按瀏覽器原生「停止分享」時自動清理
+            stream.getVideoTracks()[0].onended = () => {
+                handleStopScreenCapture();
+            };
+            // 如果目前有影片，先清掉
+            if (videoSrc && videoSrc !== '__stream__') URL.revokeObjectURL(videoSrc);
+            // 先暫存 stream，等 React 渲染出 <video> 後再用 useEffect 附加
+            pendingStreamRef.current = stream;
+            setVideoSrc('__stream__');
+            setIsStreamMode(true);
+            setTemplateMessage('🖥️ 螢幕擷取已開始');
+            setTimeout(() => setTemplateMessage(''), 3000);
+        } catch (err) {
+            console.log('螢幕擷取已取消', err);
+        }
     }, [videoSrc, setTemplateMessage]);
+
+    // 當 isStreamMode 切為 true 且 video 元素已掛載，附加 srcObject
+    useEffect(() => {
+        if (isStreamMode && pendingStreamRef.current && videoRef.current) {
+            videoRef.current.srcObject = pendingStreamRef.current;
+            videoRef.current.play().catch(() => {});
+            pendingStreamRef.current = null;
+        }
+    }, [isStreamMode]);
+
+    const handleStopScreenCapture = useCallback(() => {
+        const stream = videoRef.current?.srcObject;
+        if (stream) {
+            stream.getTracks().forEach(t => t.stop());
+            videoRef.current.srcObject = null;
+        }
+        pendingStreamRef.current = null;
+        setVideoSrc(null);
+        setIsStreamMode(false);
+        setTemplateMessage('🖥️ 螢幕擷取已結束');
+        setTimeout(() => setTemplateMessage(''), 3000);
+    }, [setTemplateMessage]);
 
     // ROI 狀態 (保留手動框選)
     const ROI_CACHE_KEY = 'SLOT_P4_ROI_V2';
@@ -536,6 +590,7 @@ function App() {
                     orderIdROI={orderIdROI} setOrderIdROI={setOrderIdROI}
                     // Video
                     videoSrc={videoSrc} videoRef={videoRef} handleVideoUpload={handleVideoUpload}
+                    isStreamMode={isStreamMode} handleStartScreenCapture={handleStartScreenCapture} handleStopScreenCapture={handleStopScreenCapture}
                     // Transfer
                     onTransferToPhase3={handleTransferPhase4ToPhase3}
                     setTemplateMessage={setTemplateMessage}

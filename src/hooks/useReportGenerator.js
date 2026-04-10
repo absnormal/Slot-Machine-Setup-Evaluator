@@ -243,12 +243,13 @@ export function useReportGenerator() {
                 continuity = '(無押注)'; contClass = 'na';
             }
 
-            const thumbSrc = c.thumbUrl || '';
+            const fullSrc = c.canvas ? c.canvas.toDataURL('image/jpeg', 0.92) : (c.thumbUrl || '');
+            const displaySrc = c.thumbUrl || fullSrc;
             const winClass = win > 0 ? 'win-positive' : '';
 
             return `<tr>
                 <td class="idx">${i + 1}</td>
-                <td class="thumb"><img src="${thumbSrc}" alt="spin-${i + 1}" /></td>
+                <td class="thumb"><img src="${displaySrc}" data-full="${fullSrc}" alt="spin-${i + 1}" onclick="openLb(this.getAttribute('data-full'))" /></td>
                 <td class="time">${c.time.toFixed(2)}s</td>
                 <td>${ocr.orderId || '-'}</td>
                 <td class="num">${ocr.balance || '-'}</td>
@@ -283,7 +284,12 @@ td { padding:8px 12px; border-bottom:1px solid #f1f5f9; vertical-align:middle; }
 tr:hover { background:#f8fafc; }
 .idx { color:#94a3b8; font-weight:600; width:40px; text-align:center; }
 .thumb { width:140px; padding:4px 8px; }
-.thumb img { width:130px; height:auto; border-radius:6px; border:1px solid #e2e8f0; display:block; }
+.thumb img { width:130px; height:auto; border-radius:6px; border:1px solid #e2e8f0; display:block; cursor:pointer; transition:transform .15s; }
+.thumb img:hover { transform:scale(1.05); box-shadow:0 2px 8px rgba(0,0,0,.15); }
+.lightbox { display:none; position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,.85); backdrop-filter:blur(4px); justify-content:center; align-items:center; cursor:pointer; }
+.lightbox.show { display:flex; }
+.lightbox img { max-width:90vw; max-height:90vh; border-radius:12px; box-shadow:0 8px 32px rgba(0,0,0,.4); }
+.lightbox .hint { position:absolute; bottom:20px; color:#94a3b8; font-size:13px; }
 .time { font-family:monospace; color:#64748b; font-size:12px; }
 .num { font-family:monospace; font-weight:600; text-align:right; }
 .win-positive { color:#059669; font-weight:800; }
@@ -320,16 +326,21 @@ tr:hover { background:#f8fafc; }
     </table>
     <div class="footer">由老虎機線獎辨識工具自動生成</div>
 </div>
+<div class="lightbox" id="lb" onclick="closeLb()">
+    <img id="lbImg" src="" alt="preview" />
+    <div class="hint">點擊任意處關閉</div>
+</div>
+<script>
+function openLb(src) { const lb=document.getElementById('lb'); document.getElementById('lbImg').src=src; lb.classList.add('show'); }
+function closeLb() { document.getElementById('lb').classList.remove('show'); }
+document.addEventListener('keydown', e => { if(e.key==='Escape') closeLb(); });
+</script>
 </body>
 </html>`;
 
         const blob = new Blob([html], { type: 'text/html;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${gameName}_OCR_${new Date().toISOString().slice(0, 10)}.html`;
-        a.click();
-        URL.revokeObjectURL(url);
+        window.open(url, '_blank');
     }, []);
 
     return { computeStats, exportCSV, exportOcrCSV, exportOcrHTML };
