@@ -126,7 +126,7 @@ export default function Phase3Vision({
                                             </button>
                                         </div>
                                     </div>
-                                    <div className="flex-1 relative overflow-hidden bg-black flex items-center justify-center min-h-[300px]" ref={visionContainerRef}>
+                                    <div className="flex-1 relative overflow-hidden bg-black flex items-center justify-center min-h-[300px] no-invert" ref={visionContainerRef}>
                                         <div className={`relative w-full flex items-center justify-center overflow-hidden ${activeVisionImg?.grid ? 'h-auto py-4' : 'h-full'}`}>
                                             <canvas
                                                 ref={visionCanvasRef}

@@ -10,9 +10,9 @@ export default function SpecialSymbolQA({
     multiplierCalcType, setMultiplierCalcType,
     hasDynamicMultiplier, setHasDynamicMultiplier,
     requiresCollectToWin, setRequiresCollectToWin,
+    hasCashCollectFeature, setHasCashCollectFeature,
     hasJackpot, setHasJackpot, jpConfig, setJpConfig
 }) {
-    const [hasCashCollectFeature, setHasCashCollectFeature] = React.useState(false);
 
     return (
         <div className="bg-slate-50 p-5 rounded-xl border border-slate-200 mt-6 shadow-sm">

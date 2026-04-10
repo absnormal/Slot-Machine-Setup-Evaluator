@@ -38,6 +38,7 @@ export function useTemplateBuilder({
     const [hasJackpot, setHasJackpot] = useState(false);
     const [hasMultiplierReel, setHasMultiplierReel] = useState(false);
     const [requiresCollectToWin, setRequiresCollectToWin] = useState(true);
+    const [hasCashCollectFeature, setHasCashCollectFeature] = useState(false);
     const [hasDoubleSymbol, setHasDoubleSymbol] = useState(false);
     const [hasDynamicMultiplier, setHasDynamicMultiplier] = useState(false);
     const [multiplierCalcType, setMultiplierCalcType] = useState('sum');
@@ -356,6 +357,7 @@ export function useTemplateBuilder({
         hasJackpot, setHasJackpot,
         hasMultiplierReel, setHasMultiplierReel,
         requiresCollectToWin, setRequiresCollectToWin,
+        hasCashCollectFeature, setHasCashCollectFeature,
         hasDoubleSymbol, setHasDoubleSymbol,
         hasDynamicMultiplier, setHasDynamicMultiplier,
 

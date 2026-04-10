@@ -30,3 +30,10 @@
 .dark-theme-active .no-invert {
     filter: invert(1) hue-rotate(180deg);
 }
+
+/* 防止在防護罩內部發生多次反轉 */
+.dark-theme-active .no-invert img,
+.dark-theme-active .no-invert video,
+.dark-theme-active .no-invert canvas {
+    filter: none;
+}

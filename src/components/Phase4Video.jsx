@@ -11,7 +11,7 @@ const Phase4Video = ({
     isRecognizing, isStopping, recognitionProgress,
     recognizeBatch, cancelRecognition,
     // Report
-    stats, exportCSV,
+    stats, exportCSV, exportOcrCSV, exportOcrHTML,
     // ROI (手動框選，從舊 Phase 4 保留)
     reelROI, setReelROI,
     winROI, setWinROI,
@@ -470,7 +470,7 @@ const Phase4Video = ({
                         ) : (
                             <div className="space-y-4">
                                 {/* 影片 + ROI */}
-                                <div className="relative rounded-2xl shadow-2xl bg-black flex flex-col items-center overflow-hidden">
+                                <div className="relative rounded-2xl shadow-2xl bg-black flex flex-col items-center overflow-hidden no-invert">
                                     {/* ROI 切換器 */}
                                     <div className="absolute top-4 right-4 z-40 bg-slate-900/80 backdrop-blur-md p-1 rounded-lg border border-white/20 shadow-xl flex gap-1">
                                         {[
@@ -851,17 +851,31 @@ const Phase4Video = ({
                                 )}
 
                                 {/* 匯出 & 傳送 */}
-                                <div className="flex gap-2 pt-2 border-t border-slate-100">
-                                    <button onClick={() => exportCSV(candidates)}
-                                        disabled={recognizedCount === 0}
-                                        className={`flex-1 py-2 rounded-lg font-bold flex items-center justify-center gap-1.5 text-xs transition-all ${recognizedCount === 0 ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200 active:scale-95'}`}>
-                                        <Download size={14} /> CSV
-                                    </button>
-                                    <button onClick={onTransferToPhase3}
-                                        disabled={candidates.length === 0}
-                                        className={`flex-1 py-2 rounded-lg font-bold flex items-center justify-center gap-1.5 text-xs transition-all ${candidates.length === 0 ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-emerald-100 active:scale-95'}`}>
-                                        <Send size={14} /> Phase 3
-                                    </button>
+                                <div className="space-y-2 pt-2 border-t border-slate-100">
+                                    <div className="flex gap-2">
+                                        <button onClick={() => exportOcrCSV(candidates)}
+                                            disabled={!candidates.some(c => c.ocrData)}
+                                            className={`flex-1 py-2 rounded-lg font-bold flex items-center justify-center gap-1.5 text-xs transition-all ${!candidates.some(c => c.ocrData) ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-sky-50 text-sky-700 hover:bg-sky-100 border border-sky-200 active:scale-95'}`}>
+                                            <Download size={14} /> OCR CSV
+                                        </button>
+                                        <button onClick={() => exportOcrHTML(candidates)}
+                                            disabled={!candidates.some(c => c.ocrData)}
+                                            className={`flex-1 py-2 rounded-lg font-bold flex items-center justify-center gap-1.5 text-xs transition-all ${!candidates.some(c => c.ocrData) ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-violet-50 text-violet-700 hover:bg-violet-100 border border-violet-200 active:scale-95'}`}>
+                                            <ImageIcon size={14} /> HTML 報告
+                                        </button>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button onClick={() => exportCSV(candidates)}
+                                            disabled={recognizedCount === 0}
+                                            className={`flex-1 py-2 rounded-lg font-bold flex items-center justify-center gap-1.5 text-xs transition-all ${recognizedCount === 0 ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200 active:scale-95'}`}>
+                                            <Download size={14} /> 完整 CSV
+                                        </button>
+                                        <button onClick={onTransferToPhase3}
+                                            disabled={candidates.length === 0}
+                                            className={`flex-1 py-2 rounded-lg font-bold flex items-center justify-center gap-1.5 text-xs transition-all ${candidates.length === 0 ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-emerald-100 active:scale-95'}`}>
+                                            <Send size={14} /> Phase 3
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         </div>

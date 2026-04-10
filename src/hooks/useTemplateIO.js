@@ -13,7 +13,7 @@ export function useTemplateIO({
     setGridRows, setGridCols, setLineMode, setExtractResults,
     setPaytableInput, setPtResultItems, setPaytableMode,
     setJpConfig, setHasJackpot, setHasMultiplierReel,
-    setRequiresCollectToWin, setHasDoubleSymbol,
+    setRequiresCollectToWin, setHasCashCollectFeature, setHasDoubleSymbol,
     setHasDynamicMultiplier, setMultiplierCalcType,
     setLineImages, setActiveLineImageId, setLinesTextInput,
     setTemplateError,
@@ -24,7 +24,7 @@ export function useTemplateIO({
     platformName, gameName,
     gridRows, gridCols, lineMode, extractResults,
     paytableInput, ptResultItems, jpConfig,
-    hasJackpot, hasMultiplierReel, requiresCollectToWin,
+    hasJackpot, hasMultiplierReel, requiresCollectToWin, hasCashCollectFeature,
     hasDoubleSymbol, hasDynamicMultiplier, multiplierCalcType,
     // Phase 4 偵測參數（模板持久化）
     motionCoverageMin, vLineThreshold, ocrDecimalPlaces,
@@ -70,9 +70,11 @@ export function useTemplateIO({
         if (data.paytableInput) setPaytableInput(data.paytableInput);
 
         // JP Config
+        let isJpActive = false;
         if (data.jpConfig) {
             setJpConfig(data.jpConfig);
-            setHasJackpot(Object.keys(data.jpConfig).some(k => data.jpConfig[k] !== ''));
+            isJpActive = Object.keys(data.jpConfig).some(k => data.jpConfig[k] !== '');
+            setHasJackpot(isJpActive);
         } else {
             setJpConfig(defaultJpConfig);
             setHasJackpot(false);
@@ -82,8 +84,20 @@ export function useTemplateIO({
         if (data.hasMultiplierReel !== undefined) setHasMultiplierReel(parseBool(data.hasMultiplierReel));
         else setHasMultiplierReel(false);
 
-        if (data.requiresCollectToWin !== undefined) setRequiresCollectToWin(parseBool(data.requiresCollectToWin));
+        let reqCollect = true;
+        if (data.requiresCollectToWin !== undefined) {
+            reqCollect = parseBool(data.requiresCollectToWin);
+            setRequiresCollectToWin(reqCollect);
+        }
         else setRequiresCollectToWin(true);
+
+        if (data.hasCashCollectFeature !== undefined) {
+            setHasCashCollectFeature(parseBool(data.hasCashCollectFeature));
+        } else {
+            // 向後兼容：舊模板中沒有 hasCashCollectFeature 欄位。
+            // 我們如果看到 JP 有值，或者不需要收集符號，就代表這一定是個特殊贏分收集遊戲！
+            setHasCashCollectFeature(isJpActive || reqCollect === false);
+        }
 
         if (data.hasDoubleSymbol !== undefined) setHasDoubleSymbol(parseBool(data.hasDoubleSymbol));
         else setHasDoubleSymbol(false);
@@ -123,7 +137,7 @@ export function useTemplateIO({
         if (data.ocrDecimalPlaces !== undefined) setOcrDecimalPlaces(parseInt(data.ocrDecimalPlaces, 10));
     }, [setGridRows, setGridCols, setLineMode, setExtractResults, setPaytableInput, setPtResultItems,
         setPaytableMode, setJpConfig, setHasJackpot, setHasMultiplierReel, setRequiresCollectToWin,
-        setHasDoubleSymbol, setHasDynamicMultiplier, setMultiplierCalcType, setLineImages,
+        setHasCashCollectFeature, setHasDoubleSymbol, setHasDynamicMultiplier, setMultiplierCalcType, setLineImages,
         setActiveLineImageId, setLinesTextInput, setMotionCoverageMin, setVLineThreshold, setOcrDecimalPlaces]);
 
     /**
@@ -181,7 +195,7 @@ export function useTemplateIO({
             gameName: gameNameState,
             gridRows, gridCols, extractResults,
             paytableInput, ptResultItems,
-            jpConfig, hasMultiplierReel, requiresCollectToWin,
+            jpConfig, hasMultiplierReel, requiresCollectToWin, hasCashCollectFeature,
             hasDoubleSymbol, hasDynamicMultiplier, multiplierCalcType,
             motionCoverageMin, vLineThreshold, ocrDecimalPlaces
         };
@@ -202,7 +216,7 @@ export function useTemplateIO({
         setTemplateMessage('✅ 本地模板已成功下載！');
         setTimeout(() => setTemplateMessage(''), 3000);
     }, [platformNameState, gameNameState, gridRows, gridCols, extractResults, paytableInput, ptResultItems,
-        jpConfig, hasMultiplierReel, requiresCollectToWin, hasDoubleSymbol, hasDynamicMultiplier,
+        jpConfig, hasMultiplierReel, requiresCollectToWin, hasCashCollectFeature, hasDoubleSymbol, hasDynamicMultiplier,
         multiplierCalcType, motionCoverageMin, vLineThreshold, ocrDecimalPlaces, setTemplateMessage, setTemplateError]);
 
     /**
@@ -231,7 +245,7 @@ export function useTemplateIO({
             platformName: platformNameState, gameName: gameNameState,
             gridRows, gridCols, lineMode, extractResults,
             paytableInput, ptResultItems, jpConfig,
-            hasJackpot, hasMultiplierReel, requiresCollectToWin,
+            hasJackpot, hasMultiplierReel, requiresCollectToWin, hasCashCollectFeature,
             hasDoubleSymbol, hasDynamicMultiplier, multiplierCalcType,
             localUserId, actualForceId,
             motionCoverageMin, vLineThreshold, ocrDecimalPlaces
@@ -247,7 +261,7 @@ export function useTemplateIO({
         }
         setActiveSaveAction(null);
     }, [platformNameState, gameNameState, templateName, gridRows, gridCols, lineMode, extractResults,
-        paytableInput, ptResultItems, jpConfig, hasJackpot, hasMultiplierReel, requiresCollectToWin,
+        paytableInput, ptResultItems, jpConfig, hasJackpot, hasMultiplierReel, requiresCollectToWin, hasCashCollectFeature,
         hasDoubleSymbol, hasDynamicMultiplier, multiplierCalcType, localUserId,
         motionCoverageMin, vLineThreshold, ocrDecimalPlaces,
         useCloudInstance, setTemplateError, showOverwriteConfirm]);

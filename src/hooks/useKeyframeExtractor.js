@@ -136,11 +136,19 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                 // 追蹤本局動態高峰
                 if (diff > state.peakDiff) state.peakDiff = diff;
 
-                // 【打斷機制】：有軸在高速旋轉 且 maxMAE 爆表 → 新一局開始
+                // 【打斷機制 v2】：用「連續多幀」確認是真正的新一局旋轉
+                // 贏分閃動動畫會讓全軸 MAE 在單一幀內飆高（像是轉輪），但下一幀就會消退
+                // 真正的轉輪則會持續維持高 MAE 不墜。所以我們要求「連續 3 幀」才確認打斷！
                 if (state.isWinPollActive && analysis.spinningCount > 0 && analysis.maxMAE > 25) {
-                    console.log(`🌀 [V-Line] 偵測到新一局旋轉 (${analysis.spinningCount}軸在轉, max=${analysis.maxMAE.toFixed(1)})，強行終止上一局的 WIN 特工！ (影片時間：${now.toFixed(3)}s)`);
-                    state.cancelWinPoll = true;
-                    state.isWinPollActive = false;
+                    state.spinBreakCount = (state.spinBreakCount || 0) + 1;
+                    if (state.spinBreakCount >= 3) {
+                        console.log(`🌀 [V-Line] 確認新一局旋轉 (連續 ${state.spinBreakCount} 幀, ${analysis.spinningCount}軸在轉, max=${analysis.maxMAE.toFixed(1)})，強行終止上一局的 WIN 特工！ (影片時間：${now.toFixed(3)}s)`);
+                        state.cancelWinPoll = true;
+                        state.isWinPollActive = false;
+                        state.spinBreakCount = 0;
+                    }
+                } else {
+                    state.spinBreakCount = 0;
                 }
 
                 if (state.diffWindow.length >= 10) {

@@ -43,6 +43,7 @@ export default function Phase1Setup(props) {
         hasJackpot, setHasJackpot, jpConfig, setJpConfig, buildErrorMsg, handleBuildTemplate,
         showPtModal, setShowPtModal,
         hasDoubleSymbol, setHasDoubleSymbol,
+        hasCashCollectFeature, setHasCashCollectFeature,
         hasDynamicMultiplier, setHasDynamicMultiplier,
         multiplierCalcType, setMultiplierCalcType,
         hasApiKey
@@ -138,6 +139,7 @@ export default function Phase1Setup(props) {
                             multiplierCalcType={multiplierCalcType} setMultiplierCalcType={setMultiplierCalcType}
                             hasDynamicMultiplier={hasDynamicMultiplier} setHasDynamicMultiplier={setHasDynamicMultiplier}
                             requiresCollectToWin={requiresCollectToWin} setRequiresCollectToWin={setRequiresCollectToWin}
+                            hasCashCollectFeature={hasCashCollectFeature} setHasCashCollectFeature={setHasCashCollectFeature}
                             hasJackpot={hasJackpot} setHasJackpot={setHasJackpot}
                             jpConfig={jpConfig} setJpConfig={setJpConfig}
                         />

@@ -60,6 +60,14 @@ function App() {
     const isDarkMode = useAppStore(s => s.isDarkMode);
     const setIsDarkMode = useAppStore(s => s.setIsDarkMode);
 
+    useEffect(() => {
+        if (isDarkMode) {
+            document.documentElement.classList.add('dark-theme-active');
+        } else {
+            document.documentElement.classList.remove('dark-theme-active');
+        }
+    }, [isDarkMode]);
+
     // --- Google Sheets 雲端 ---
     const cloudInstance = useCloud();
     const {
@@ -86,6 +94,7 @@ function App() {
         buildErrorMsg, setBuildErrorMsg, jpConfig, setJpConfig,
         hasJackpot, setHasJackpot, hasMultiplierReel, setHasMultiplierReel,
         requiresCollectToWin, setRequiresCollectToWin,
+        hasCashCollectFeature, setHasCashCollectFeature,
         hasDoubleSymbol, setHasDoubleSymbol,
         hasDynamicMultiplier, setHasDynamicMultiplier,
         multiplierCalcType, setMultiplierCalcType,
@@ -118,7 +127,7 @@ function App() {
         setGridRows, setGridCols, setLineMode, setExtractResults,
         setPaytableInput, setPtResultItems, setPaytableMode,
         setJpConfig, setHasJackpot, setHasMultiplierReel,
-        setRequiresCollectToWin, setHasDoubleSymbol,
+        setRequiresCollectToWin, setHasCashCollectFeature, setHasDoubleSymbol,
         setHasDynamicMultiplier, setMultiplierCalcType,
         setLineImages, setActiveLineImageId, setLinesTextInput,
         setTemplateError,
@@ -127,7 +136,7 @@ function App() {
         platformName: undefined, gameName: undefined,
         gridRows, gridCols, lineMode, extractResults,
         paytableInput, ptResultItems, jpConfig,
-        hasJackpot, hasMultiplierReel, requiresCollectToWin,
+        hasJackpot, hasMultiplierReel, requiresCollectToWin, hasCashCollectFeature,
         hasDoubleSymbol, hasDynamicMultiplier, multiplierCalcType,
         motionCoverageMin, vLineThreshold, ocrDecimalPlaces,
         setMotionCoverageMin, setVLineThreshold, setOcrDecimalPlaces,
@@ -397,7 +406,7 @@ function App() {
 
     // ========== RENDER ==========
     return (
-        <div className={`min-h-screen bg-slate-50 text-slate-800 p-6 font-sans relative ${isDarkMode ? 'dark-theme-active' : ''}`}>
+        <div className="min-h-screen bg-slate-50 text-slate-800 p-6 font-sans relative">
 
             <ToastMessage message={templateMessage} />
             <ToastMessage message={cloudMessage} />
@@ -428,6 +437,7 @@ function App() {
                     gridCols={gridCols} setGridCols={setGridCols}
                     hasMultiplierReel={hasMultiplierReel} setHasMultiplierReel={setHasMultiplierReel}
                     requiresCollectToWin={requiresCollectToWin} setRequiresCollectToWin={setRequiresCollectToWin}
+                    hasCashCollectFeature={hasCashCollectFeature} setHasCashCollectFeature={setHasCashCollectFeature}
                     hasDoubleSymbol={hasDoubleSymbol} setHasDoubleSymbol={setHasDoubleSymbol}
                     hasDynamicMultiplier={hasDynamicMultiplier} setHasDynamicMultiplier={setHasDynamicMultiplier}
                     multiplierCalcType={multiplierCalcType} setMultiplierCalcType={setMultiplierCalcType}
@@ -516,6 +526,8 @@ function App() {
                     // Report
                     stats={phase4Stats}
                     exportCSV={(c) => reportGenerator.exportCSV(c, gameName || 'slot')}
+                    exportOcrCSV={(c) => reportGenerator.exportOcrCSV(c, gameName || 'slot')}
+                    exportOcrHTML={(c) => reportGenerator.exportOcrHTML(c, gameName || 'slot')}
                     // ROI
                     reelROI={reelROI} setReelROI={setReelROI}
                     winROI={winROI} setWinROI={setWinROI}
