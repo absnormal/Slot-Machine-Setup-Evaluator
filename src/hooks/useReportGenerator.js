@@ -136,6 +136,15 @@ export function useReportGenerator() {
                 continuity = '(無押注)'; contClass = 'na';
             }
 
+            if (aiWin !== null) {
+                if (aiWin === ocrWin) {
+                    continuity += `<br/><span style="color:#059669; font-size:10px;">✓ AI吻合</span>`;
+                } else {
+                    continuity += `<br/><span style="color:#dc2626; font-size:10px; font-weight:bold;">⚠ AI異常</span>`;
+                    contClass = 'break';
+                }
+            }
+
             const fullSrc = c.canvas ? c.canvas.toDataURL('image/jpeg', 0.92) : (c.thumbUrl || '');
             const displaySrc = c.thumbUrl || fullSrc;
             const winClass = ocrWin > 0 ? 'win-positive' : '';
@@ -354,7 +363,7 @@ tr:hover { background:#f8fafc; }
     </div>
     <table>
         <thead>
-            <tr><th>#</th><th>截圖</th><th>時間</th><th>單號</th><th>餘額</th><th>押注</th><th>OCR贏分</th><th>連續性</th><th>AI贏分</th><th>線獎結果</th><th>AI盤面</th><th>備註</th></tr>
+            <tr><th>#</th><th>截圖</th><th>時間</th><th>單號</th><th>餘額</th><th>押注</th><th>OCR贏分</th><th>狀態</th><th>AI贏分</th><th>線獎結果</th><th>AI盤面</th><th>備註</th></tr>
         </thead>
         <tbody>
             ${tableRows}
