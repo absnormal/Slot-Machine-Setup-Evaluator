@@ -40,6 +40,8 @@ const Phase4Video = ({
     const listEndRef = useRef(null);
     const [lastAddedManualId, setLastAddedManualId] = useState(null);
     const [previewImage, setPreviewImage] = useState(null); // { url, time }
+    const [enableOrderId, setEnableOrderId] = useState(true); // 是否啟用注單號 OCR
+    const [captureFirstWinFrame, setCaptureFirstWinFrame] = useState(false); // 第一動擷取開關
 
     // ── 卡片點擊：影片模式=跳轉時間點，串流模式/無影片=開圖片預覽 ──
     const handleCardClick = useCallback((kf) => {
@@ -457,7 +459,7 @@ const Phase4Video = ({
     }, [brokenGroupIds, currentBreakIndex]);
 
     // ── 操作處理 ──
-    const scanOpts = { fps: scanFps, winROI, balanceROI, betROI, orderIdROI, ocrDecimalPlaces, requireStableWin: false, sliceCols: template?.cols || propGridCols || 5 };
+    const scanOpts = { fps: scanFps, winROI, balanceROI, betROI, orderIdROI: enableOrderId ? orderIdROI : null, ocrDecimalPlaces, requireStableWin: false, captureFirstWinFrame, sliceCols: template?.cols || propGridCols || 5 };
 
     const handleHealBreaksGlobally = () => {
         if (brokenGroupIds.length === 0) return;
@@ -560,9 +562,18 @@ const Phase4Video = ({
                                                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm active:scale-95 ${roiMode === r.key
                                                     ? 'text-white ring-2 ring-offset-2'
                                                     : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
-                                                    }`}
+                                                    } ${r.key === 'orderId' && !enableOrderId ? 'opacity-50 grayscale' : ''}`}
                                                 style={roiMode === r.key ? { backgroundColor: r.hex, ringColor: r.hex, boxShadow: `0 0 0 2px white, 0 0 0 4px ${r.hex}` } : {}}
                                             >
+                                                {r.key === 'orderId' && (
+                                                    <input 
+                                                        type="checkbox" 
+                                                        checked={enableOrderId} 
+                                                        onChange={(e) => { e.stopPropagation(); setEnableOrderId(e.target.checked); }} 
+                                                        className="cursor-pointer h-3 w-3 rounded accent-purple-500" 
+                                                        title="勾選以進行注單號擷取與 OCR"
+                                                    />
+                                                )}
                                                 <div className="w-2 h-2 rounded-full" style={{ backgroundColor: roiMode === r.key ? 'white' : r.hex }} />
                                                 {r.label}
                                             </button>
@@ -664,7 +675,7 @@ const Phase4Video = ({
                                 </div>
 
                                 {/* 影片主控與參數欄 */}
-                                <div className="flex items-center gap-4 bg-slate-50 p-3 rounded-xl border border-slate-200 shadow-sm">
+                                <div className="flex flex-wrap items-center gap-4 bg-slate-50 p-3 rounded-xl border border-slate-200 shadow-sm">
                                     <button onClick={isLiveActive ? handleStopLive : handleStartLive}
                                         disabled={!videoSrc}
                                         className={`flex-1 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-md ${isLiveActive ? 'bg-rose-600 text-white animate-pulse shadow-rose-200' : !videoSrc ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none' : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-emerald-200 active:scale-95'}`}>
@@ -684,16 +695,30 @@ const Phase4Video = ({
                                         <Camera size={16} className="text-amber-500" /> 手動截圖
                                     </button>
 
-                                    <div className="flex flex-col gap-0.5 ml-auto border-l border-slate-200 pl-4">
-                                        <span className="text-[10px] font-bold text-slate-400">取樣率限制</span>
-                                        <select value={scanFps} onChange={(e) => setScanFps(parseInt(e.target.value))}
-                                            className="h-7 bg-white text-slate-700 text-xs font-bold rounded-lg border border-slate-200 px-2 cursor-pointer shadow-sm">
-                                            <option value={5}>5 fps (快速)</option>
-                                            <option value={10}>10 fps (標準)</option>
-                                            <option value={15}>15 fps (精細)</option>
-                                            <option value={20}>20 fps (極致高頻)</option>
-                                            <option value={30}>30 fps (逐格盲抓)</option>
-                                        </select>
+                                    <div className="flex flex-wrap items-center gap-3 ml-auto border-l border-slate-200 pl-4">
+                                        <label className="flex flex-col gap-0.5 cursor-pointer" title="取代最終截圖，改為擷取剛開始跳動第一時刻的畫面">
+                                            <span className="text-[10px] font-bold text-slate-400">WIN 截圖時機</span>
+                                            <div className={`flex items-center gap-2 h-7 px-3 rounded-lg shadow-sm font-bold text-xs transition-colors border ${captureFirstWinFrame ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+                                                <input 
+                                                    type="checkbox" 
+                                                    checked={captureFirstWinFrame} 
+                                                    onChange={(e) => setCaptureFirstWinFrame(e.target.checked)} 
+                                                    className="cursor-pointer h-3.5 w-3.5 rounded accent-emerald-600" 
+                                                />
+                                                🎯 抓第一動
+                                            </div>
+                                        </label>
+                                        <div className="flex flex-col gap-0.5">
+                                            <span className="text-[10px] font-bold text-slate-400">取樣率限制</span>
+                                            <select value={scanFps} onChange={(e) => setScanFps(parseInt(e.target.value))}
+                                                className="h-7 bg-white text-slate-700 text-xs font-bold rounded-lg border border-slate-200 px-2 cursor-pointer shadow-sm outline-none">
+                                                <option value={5}>5 fps (快速)</option>
+                                                <option value={10}>10 fps (標準)</option>
+                                                <option value={15}>15 fps (精細)</option>
+                                                <option value={20}>20 fps (極致高頻)</option>
+                                                <option value={30}>30 fps (盲抓)</option>
+                                            </select>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -976,8 +1001,12 @@ const Phase4Video = ({
                                                     <option value="png">PNG (無損)</option>
                                                 </select>
                                                 <button onClick={handlePickSaveDir}
-                                                    className="flex-1 py-1.5 rounded-lg font-bold text-emerald-700 bg-emerald-100 hover:bg-emerald-200 transition-all text-xs text-center">
+                                                    className="flex-1 py-1.5 rounded-lg font-bold text-emerald-700 bg-emerald-100 hover:bg-emerald-200 transition-all text-xs text-center" title="更換儲存目錄">
                                                     更換資料夾
+                                                </button>
+                                                <button onClick={() => setSaveDirHandle(null)}
+                                                    className="flex items-center justify-center min-w-[32px] h-[32px] rounded-lg bg-white border border-rose-200 text-rose-500 hover:bg-rose-50 hover:text-rose-600 transition-all cursor-pointer shadow-sm" title="取消綁定並停止存檔">
+                                                    <X size={14} />
                                                 </button>
                                             </div>
                                         </div>

@@ -241,9 +241,15 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
 
                             // ── WIN 輪詢：立刻啟動！不等初始 OCR 完成 ──
                             if (winROI) {
+                                if (state.isWinPollActive) {
+                                    const oldId = state.winPollAgentId.toString().slice(-4);
+                                    console.log(`🕵️‍♂️ [WIN 追蹤特工 #${oldId} (前任)] 被新一局截斷！已強制退場 🪦`);
+                                }
                                 const currentAgentId = Date.now();
+                                const shortId = currentAgentId.toString().slice(-4);
                                 state.winPollAgentId = currentAgentId;
                                 state.isWinPollActive = true;
+                                state.cancelWinPoll = false;
                                 state.reelStopHasWin = false;
 
                                 let lastWin = '';
@@ -260,6 +266,10 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                                 let bestWinTime = 0;
                                 let bestWinValue = '';
 
+                                // 【抓第一動機制】：保存數字剛從 0 變成有數值的第一眼畫面
+                                let firstWinCanvas = null;
+                                let firstWinTime = 0;
+
                                 const targetFps = ocrOptions.fps || 10;
                                 const pollIntervalMs = Math.floor(1000 / targetFps);
                                 const MAX_POLLS = targetFps * 10; // 最多嘗試約 10 秒
@@ -269,8 +279,8 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                                     if (hasOutput) return;
                                     hasOutput = true;
                                     
-                                    const finalCanvas = bestWinCanvas;
-                                    const finalTime = bestWinTime;
+                                    const finalCanvas = (ocrOptions.captureFirstWinFrame && firstWinCanvas) ? firstWinCanvas : bestWinCanvas;
+                                    const finalTime = (ocrOptions.captureFirstWinFrame && firstWinCanvas) ? firstWinTime : bestWinTime;
                                     const finalWinVal = bestWinValue;
                                     const w = winPollWorkerRef.current || ocrWorkerRef.current;
 
@@ -303,7 +313,7 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                                     state.isWinPollActive = false; // 解除鎖定
                                 };
 
-                                console.log(`🕵️‍♂️ [WIN 追蹤特工] 啟動！以 ${targetFps} FPS (${pollIntervalMs}ms) 持續跟蹤長達 10 秒... (影片時間：${video.currentTime.toFixed(3)}s)`);
+                                console.log(`🕵️‍♂️ [WIN 追蹤特工 #${shortId}] 啟動！以 ${targetFps} FPS (${pollIntervalMs}ms) 持續跟蹤長達 10 秒... (影片時間：${video.currentTime.toFixed(3)}s)`);
 
                                 const frameQueue = [];
                                 const MAX_QUEUE_SIZE = 30; // 避免積壓過多撐爆記憶體
@@ -330,16 +340,18 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                                     if (isObsoleteAgent || state.cancelWinPoll || isDone || liveCancelRef.current || video.paused || video.ended || polls > MAX_POLLS || state.reelStopHasWin) {
                                         clearInterval(captureTimer);
                                         if (state.reelStopHasWin) {
-                                            console.log(`🕵️‍♂️ [WIN 追蹤特工] 捷報！Reel Stop 原圖就自帶贏分了，特工提早快樂下班，不產出多餘卡片 🍻`);
+                                            console.log(`🕵️‍♂️ [WIN 追蹤特工 #${shortId}] 捷報！Reel Stop 原圖就自帶贏分了，特工提早快樂下班，不產出多餘卡片 🍻`);
                                             state.isWinPollActive = false;
                                             return;
                                         } else if (state.cancelWinPoll || isObsoleteAgent) {
                                             if (bestWinCanvas && !hasOutput) {
-                                                console.log(`🕵️‍♂️ [WIN 追蹤特工] 任務強行中斷，但提取了最後一刻的完美遺產！強制輸出...`);
+                                                console.log(`🕵️‍♂️ [WIN 追蹤特工 #${shortId}${isObsoleteAgent ? ' (前任)' : ''}] 任務強行中斷，但提取了最後一刻的完美遺產！強制輸出...`);
                                                 await outputWinCard('WIN_POLL_FORCED');
                                             } else if (!hasOutput) {
-                                                console.log(`🕵️‍♂️ [WIN 追蹤特工] 任務撤銷/超時/被頂替，未留下任何遺產。`);
-                                                if (!isObsoleteAgent) state.isWinPollActive = false;
+                                                if (!isObsoleteAgent) {
+                                                    console.log(`🕵️‍♂️ [WIN 追蹤特工 #${shortId}] 任務撤銷/超時，未留下任何遺產。`);
+                                                    state.isWinPollActive = false;
+                                                }
                                             }
                                         }
                                         return;
@@ -354,7 +366,12 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                                                     const pollWin = await cropAndOCR(pollCanvas, winROI, w, ocrDecimalPlaces ?? 2, 'WIN-POLL');
                                                     if (pollWin && parseFloat(pollWin) > 0) {
                                                         missCount = 0;
-                                                        console.log(`🕵️‍♂️ [WIN 追蹤特工] 👀 抓到數字: "${pollWin}" (佇列剩餘: ${frameQueue.length})`);
+                                                        console.log(`🕵️‍♂️ [WIN 追蹤特工 #${shortId}] 👀 抓到數字: "${pollWin}" (佇列剩餘: ${frameQueue.length})`);
+
+                                                        if (!firstWinCanvas) {
+                                                            firstWinCanvas = pollCanvas;
+                                                            firstWinTime = exactPollTime;
+                                                        }
 
                                                         if (pollWin === lastWin) {
                                                             confirmCount++;
