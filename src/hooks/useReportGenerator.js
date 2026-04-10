@@ -394,10 +394,21 @@ document.addEventListener('keydown', e => { if(e.key==='Escape') closeLb(); });
                 const writable = await fileHandle.createWritable();
                 await writable.write(blob);
                 await writable.close();
-                console.log(`✅ HTML 報告已自動儲存至目錄：${fileName}`);
+                alert(`✅ HTML 報告已隨截圖自動儲存至您的資料夾：\n${fileName}`);
             } catch (e) {
                 console.error('HTML 報告儲存至資料夾失敗', e);
+                alert('⚠️ 報告儲存至資料夾時發生異常，改為瀏覽器直接下載。\n您可以手動將其放進您的資料夾中。');
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = fileName;
+                a.click();
             }
+        } else {
+            // 沒有選擇資料夾時，觸發瀏覽器下載
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileName;
+            a.click();
         }
 
         window.open(url, '_blank');
