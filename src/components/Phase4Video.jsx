@@ -7,11 +7,12 @@ const Phase4Video = ({
     candidates,
     startLiveDetection, stopLiveDetection,
     removeCandidate, clearCandidates, addManualCandidate, smartDedup, confirmDedup, healBreaks, setManualBestCandidate,
+    updateCandidateOcr,
     // Auto Recognition
     isRecognizing, isStopping, recognitionProgress,
     recognizeBatch, cancelRecognition,
     // Report
-    stats, exportCSV, exportOcrCSV, exportOcrHTML,
+    stats, exportHTMLReport,
     // ROI (手動框選，從舊 Phase 4 保留)
     reelROI, setReelROI,
     winROI, setWinROI,
@@ -21,7 +22,6 @@ const Phase4Video = ({
     // Video
     videoSrc, videoRef, handleVideoUpload,
     isStreamMode, handleStartScreenCapture, handleStopScreenCapture,
-    // Transfer
     onTransferToPhase3,
     setTemplateMessage,
     template,
@@ -34,14 +34,13 @@ const Phase4Video = ({
     const [duration, setDuration] = useState(0);
     const [roiMode, setRoiMode] = useState('reel');
     const [dragState, setDragState] = useState(null);
-    const [scanFps, setScanFps] = useState(20);
     const [isLiveActive, setIsLiveActive] = useState(false);
     const containerRef = useRef(null);
     const listEndRef = useRef(null);
     const [lastAddedManualId, setLastAddedManualId] = useState(null);
     const [previewImage, setPreviewImage] = useState(null); // { url, time }
     const [enableOrderId, setEnableOrderId] = useState(true); // 是否啟用注單號 OCR
-    const [captureFirstWinFrame, setCaptureFirstWinFrame] = useState(false); // 第一動擷取開關
+    const [editingOcr, setEditingOcr] = useState(null); // { id: string, field: 'win'|'bet'|'balance', value: string }
 
     // ── 卡片點擊：影片模式=跳轉時間點，串流模式/無影片=開圖片預覽 ──
     const handleCardClick = useCallback((kf) => {
@@ -164,18 +163,55 @@ const Phase4Video = ({
                 </div>
                 {kf.ocrData && (
                     <div className="grid grid-cols-3 gap-1 mt-0.5 bg-slate-50 rounded-lg px-1.5 py-0.5">
-                        <div className="flex flex-col items-center leading-tight">
-                            <span className="text-[10px] text-slate-400">贏分</span>
-                            <span className={`text-[13px] font-bold ${parseFloat(kf.ocrData.win) > 0 ? 'text-emerald-600' : 'text-slate-400'}`}>{kf.ocrData.win || '0'}</span>
-                        </div>
-                        <div className="flex flex-col items-center leading-tight">
-                            <span className="text-[10px] text-slate-400">押注</span>
-                            <span className="text-[13px] font-bold text-amber-600">{kf.ocrData.bet || '-'}</span>
-                        </div>
-                        <div className="flex flex-col items-center leading-tight">
-                            <span className="text-[10px] text-slate-400">總分</span>
-                            <span className="text-[13px] font-bold text-sky-600">{kf.ocrData.balance || '-'}</span>
-                        </div>
+                        {[
+                            { label: '贏分', field: 'win', defaultColor: parseFloat(kf.ocrData.win) > 0 ? 'text-emerald-600' : 'text-slate-400' },
+                            { label: '押注', field: 'bet', defaultColor: 'text-amber-600' },
+                            { label: '總分', field: 'balance', defaultColor: 'text-sky-600' }
+                        ].map(({ label, field, defaultColor }) => {
+                            const isEditing = editingOcr?.id === kf.id && editingOcr?.field === field;
+                            const currentValue = kf.ocrData[field];
+                            const isManual = kf.manualOverrides?.[field];
+
+                            return (
+                                <div key={field} className="flex flex-col items-center leading-tight">
+                                    <span className="text-[10px] text-slate-400">{label}</span>
+                                    {isEditing ? (
+                                        <input
+                                            autoFocus
+                                            className="w-16 text-[13px] font-bold text-center border-b border-indigo-500 bg-white shadow-inner focus:outline-none focus:bg-indigo-50 text-indigo-700"
+                                            value={editingOcr.value}
+                                            onChange={(e) => setEditingOcr({ ...editingOcr, value: e.target.value })}
+                                            onBlur={() => {
+                                                if (editingOcr.value !== currentValue) {
+                                                    updateCandidateOcr(kf.id, field, editingOcr.value);
+                                                }
+                                                setEditingOcr(null);
+                                            }}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') {
+                                                    e.target.blur();
+                                                }
+                                                if (e.key === 'Escape') {
+                                                    setEditingOcr(null);
+                                                }
+                                            }}
+                                        />
+                                    ) : (
+                                        <span 
+                                            className={`text-[13px] font-bold cursor-pointer transition-all hover:scale-105 inline-block px-1 rounded ${isManual ? 'bg-amber-100 text-amber-800 border border-amber-300 ring-1 ring-amber-400 shadow-sm' : defaultColor} hover:bg-slate-200`}
+                                            title="點擊手動修改數據"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setEditingOcr({ id: kf.id, field, value: currentValue || '' });
+                                            }}
+                                        >
+                                            {isManual && <span className="mr-0.5 text-[10px] opacity-70">✎</span>}
+                                            {currentValue || (field === 'bet' || field === 'balance' ? '-' : '0')}
+                                        </span>
+                                    )}
+                                </div>
+                            );
+                        })}
                     </div>
                 )}
                 {kf.ocrData?.orderId && (
@@ -458,8 +494,27 @@ const Phase4Video = ({
         setCurrentBreakIndex(prev => (prev + 1) % brokenGroupIds.length);
     }, [brokenGroupIds, currentBreakIndex]);
 
+    const [currentWrongWinIndex, setCurrentWrongWinIndex] = useState(0);
+    useEffect(() => {
+        setCurrentWrongWinIndex(0);
+    }, [wrongWinGroupIds]);
+
+    const scrollToNextWrongWin = useCallback(() => {
+        if (wrongWinGroupIds.length === 0) return;
+        const gid = wrongWinGroupIds[currentWrongWinIndex];
+        const el = document.getElementById(`spin-group-${gid}`);
+        // If grouped, scroll to the group block. If ungrouped, scroll to the card.
+        const targetEl = el || document.getElementById(`kf-card-${gid.replace('ungrouped_', '')}`);
+        if (targetEl) {
+            targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            targetEl.classList.add('ring-4', 'ring-amber-400', 'ring-offset-2', 'transition-all', 'duration-500');
+            setTimeout(() => targetEl.classList.remove('ring-4', 'ring-amber-400', 'ring-offset-2'), 1500);
+        }
+        setCurrentWrongWinIndex(prev => (prev + 1) % wrongWinGroupIds.length);
+    }, [wrongWinGroupIds, currentWrongWinIndex]);
+
     // ── 操作處理 ──
-    const scanOpts = { fps: scanFps, winROI, balanceROI, betROI, orderIdROI: enableOrderId ? orderIdROI : null, ocrDecimalPlaces, requireStableWin: false, captureFirstWinFrame, sliceCols: template?.cols || propGridCols || 5 };
+    const scanOpts = { winROI, balanceROI, betROI, orderIdROI: enableOrderId ? orderIdROI : null, ocrDecimalPlaces, requireStableWin: false, sliceCols: template?.cols || propGridCols || 5 };
 
     const handleHealBreaksGlobally = () => {
         if (brokenGroupIds.length === 0) return;
@@ -696,28 +751,11 @@ const Phase4Video = ({
                                     </button>
 
                                     <div className="flex flex-wrap items-center gap-3 ml-auto border-l border-slate-200 pl-4">
-                                        <label className="flex flex-col gap-0.5 cursor-pointer" title="取代最終截圖，改為擷取剛開始跳動第一時刻的畫面">
-                                            <span className="text-[10px] font-bold text-slate-400">WIN 截圖時機</span>
-                                            <div className={`flex items-center gap-2 h-7 px-3 rounded-lg shadow-sm font-bold text-xs transition-colors border ${captureFirstWinFrame ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
-                                                <input 
-                                                    type="checkbox" 
-                                                    checked={captureFirstWinFrame} 
-                                                    onChange={(e) => setCaptureFirstWinFrame(e.target.checked)} 
-                                                    className="cursor-pointer h-3.5 w-3.5 rounded accent-emerald-600" 
-                                                />
-                                                🎯 抓第一動
-                                            </div>
-                                        </label>
                                         <div className="flex flex-col gap-0.5">
-                                            <span className="text-[10px] font-bold text-slate-400">取樣率限制</span>
-                                            <select value={scanFps} onChange={(e) => setScanFps(parseInt(e.target.value))}
-                                                className="h-7 bg-white text-slate-700 text-xs font-bold rounded-lg border border-slate-200 px-2 cursor-pointer shadow-sm outline-none">
-                                                <option value={5}>5 fps (快速)</option>
-                                                <option value={10}>10 fps (標準)</option>
-                                                <option value={15}>15 fps (精細)</option>
-                                                <option value={20}>20 fps (極致高頻)</option>
-                                                <option value={30}>30 fps (盲抓)</option>
-                                            </select>
+                                            <span className="text-[10px] font-bold text-slate-400">WIN 引擎模式</span>
+                                            <div className="h-7 flex items-center gap-1.5 px-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold shadow-sm">
+                                                📝 數據合併
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -876,13 +914,10 @@ const Phase4Video = ({
                                                                     <Link2 size={14} /> 連續
                                                                 </span>
                                                             ) : (
-                                                                <div className="flex items-center gap-1.5 cursor-help group/break">
+                                                                <div className="flex items-center gap-1.5 group/break">
                                                                     <span className="text-rose-600 bg-rose-100/80 px-2 py-0.5 rounded-full flex items-center gap-1 shadow-sm" title={`預期起始: ${expectedBase.toFixed(2)}`}>
                                                                         <AlertCircle size={14} /> 斷層 {mathDiff !== 0 && `(${mathDiff > 0 ? '+' : ''}${mathDiff.toFixed(2)})`}
                                                                     </span>
-                                                                    <button onClick={() => handleHealSingleBreak(gid)} className="text-white bg-indigo-500 hover:bg-indigo-600 px-2 py-0.5 rounded shadow shadow-indigo-500/20 active:scale-95 transition-all text-[11px] flex items-center gap-1 leading-tight">
-                                                                        <RefreshCw size={12} /> 修復此局
-                                                                    </button>
                                                                 </div>
                                                             )
                                                         )}
@@ -934,12 +969,6 @@ const Phase4Video = ({
 
                                 {/* 底部動作區 */}
                                 <div className="p-4 bg-white border-t space-y-2.5">
-                                    {brokenGroupIds.length > 0 && (
-                                        <button onClick={handleHealBreaksGlobally}
-                                            className="w-full py-2.5 rounded-lg font-bold flex items-center justify-center gap-1.5 text-xs transition-all bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 active:scale-95 shadow-sm shadow-indigo-500/10">
-                                            <RefreshCw size={14} /> 智慧修復：針對 {brokenGroupIds.length} 個斷層局重新研判
-                                        </button>
-                                    )}
 
                                 {candidates.length >= 2 && (
                                     candidates.some(c => c.isSpinBest !== undefined) ? (
@@ -1016,23 +1045,13 @@ const Phase4Video = ({
                                 {/* 匯出 & 傳送 */}
                                 <div className="space-y-2 pt-2 border-t border-slate-100">
                                     <div className="flex gap-2">
-                                        <button onClick={() => exportOcrCSV(candidates)}
-                                            disabled={!candidates.some(c => c.ocrData)}
-                                            className={`flex-1 py-2 rounded-lg font-bold flex items-center justify-center gap-1.5 text-xs transition-all ${!candidates.some(c => c.ocrData) ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-sky-50 text-sky-700 hover:bg-sky-100 border border-sky-200 active:scale-95'}`}>
-                                            <Download size={14} /> OCR CSV
-                                        </button>
-                                        <button onClick={() => exportOcrHTML(candidates)}
-                                            disabled={!candidates.some(c => c.ocrData)}
-                                            className={`flex-1 py-2 rounded-lg font-bold flex items-center justify-center gap-1.5 text-xs transition-all ${!candidates.some(c => c.ocrData) ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-violet-50 text-violet-700 hover:bg-violet-100 border border-violet-200 active:scale-95'}`}>
-                                            <ImageIcon size={14} /> HTML 報告
+                                        <button onClick={() => exportHTMLReport(candidates, 'slot_analysis', saveDirHandle)}
+                                            disabled={!candidates.some(c => c.ocrData || c.recognitionResult)}
+                                            className={`flex-1 py-2 rounded-lg font-bold flex items-center justify-center gap-1.5 text-xs transition-all ${!candidates.some(c => c.ocrData || c.recognitionResult) ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-violet-50 text-violet-700 hover:bg-violet-100 border border-violet-200 active:scale-95'}`}>
+                                            <ImageIcon size={14} /> 匯出完整 HTML 報告 (包含 AI 與 OCR 資料)
                                         </button>
                                     </div>
                                     <div className="flex gap-2">
-                                        <button onClick={() => exportCSV(candidates)}
-                                            disabled={recognizedCount === 0}
-                                            className={`flex-1 py-2 rounded-lg font-bold flex items-center justify-center gap-1.5 text-xs transition-all ${recognizedCount === 0 ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200 active:scale-95'}`}>
-                                            <Download size={14} /> 完整 CSV
-                                        </button>
                                         <button onClick={onTransferToPhase3}
                                             disabled={candidates.length === 0}
                                             className={`flex-1 py-2 rounded-lg font-bold flex items-center justify-center gap-1.5 text-xs transition-all ${candidates.length === 0 ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-emerald-100 active:scale-95'}`}>

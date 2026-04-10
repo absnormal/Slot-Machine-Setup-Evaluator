@@ -261,64 +261,59 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                                 let lastBal = '';
                                 let hasOutput = false;
                                 
-                                // 【最強記憶機制】：無條件保存最後一次肉眼看到的數字，就算等一下被錢幣擋住，我們也有這張遺照！
+                                // 【最強記憶機制】：保存最後一次穩定讀到的 WIN 數字與對應截圖（供 BAL/BET OCR 用）
                                 let bestWinCanvas = null;
                                 let bestWinTime = 0;
                                 let bestWinValue = '';
 
-                                // 【抓第一動機制】：保存數字剛從 0 變成有數值的第一眼畫面
-                                let firstWinCanvas = null;
-                                let firstWinTime = 0;
+                                const targetFps = 20; // 固定 20 FPS 輪詢
+                                const pollIntervalMs = 50;
+                                const MAX_POLLS = 200; // 最多嘗試約 10 秒 (20fps * 10s)
+                                const blinkTolerance = 10; // 容忍閃爍約 0.5 秒 (20fps * 0.5)
+                                const reelStopId = candidate.id; // 原始 Reel Stop 卡片 ID
 
-                                const targetFps = ocrOptions.fps || 10;
-                                const pollIntervalMs = Math.floor(1000 / targetFps);
-                                const MAX_POLLS = targetFps * 10; // 最多嘗試約 10 秒
-                                const blinkTolerance = Math.max(4, Math.floor(targetFps * 0.5)); // 容忍閃爍約 0.5 秒
-
-                                const outputWinCard = async (triggerLabel) => {
+                                // 【合併輸出】：把 WIN/BAL/BET 數據寫回原始 Reel Stop 卡片（不建立新卡片）
+                                const mergeWinData = async (triggerLabel) => {
                                     if (hasOutput) return;
                                     hasOutput = true;
                                     
-                                    const finalCanvas = (ocrOptions.captureFirstWinFrame && firstWinCanvas) ? firstWinCanvas : bestWinCanvas;
-                                    const finalTime = (ocrOptions.captureFirstWinFrame && firstWinCanvas) ? firstWinTime : bestWinTime;
-                                    const finalWinVal = bestWinValue;
                                     const w = winPollWorkerRef.current || ocrWorkerRef.current;
+                                    // 從 bestWinCanvas 讀取結算後的 BAL/BET/ID（因為結算後數字會變）
+                                    const finalBal = balanceROI ? await cropAndOCR(bestWinCanvas, balanceROI, w, ocrDecimalPlaces ?? 2, 'BAL-FINAL') : '';
+                                    const finalBet = betROI ? await cropAndOCR(bestWinCanvas, betROI, w, 0, 'BET-FINAL') : '';
+                                    const finalOrderId = orderIdROI ? await cropAndOCR(bestWinCanvas, orderIdROI, w, 0, 'ORDER_ID') : '';
 
-                                    const finalBal = balanceROI ? await cropAndOCR(finalCanvas, balanceROI, w, ocrDecimalPlaces ?? 2, 'BAL-FINAL') : '';
-                                    const finalBet = betROI ? await cropAndOCR(finalCanvas, betROI, w, 0, 'BET-FINAL') : '';
-                                    const finalOrderId = orderIdROI ? await cropAndOCR(finalCanvas, orderIdROI, w, 0, 'ORDER_ID') : '';
-
-                                    const winThumbUrl = generateThumbUrl(finalCanvas, roi);
-                                    const winCandidate = {
-                                        id: `kf_live_win_${Date.now()}`,
-                                        time: finalTime,
-                                        canvas: finalCanvas,
-                                        thumbUrl: winThumbUrl,
-                                        diff: '0',
-                                        avgDiff: '0',
-                                        triggerReason: triggerLabel,
-                                        ocrData: { win: finalWinVal, balance: finalBal, bet: finalBet, orderId: finalOrderId },
-                                        status: 'pending',
-                                        recognitionResult: null,
-                                        error: ''
-                                    };
-                                    setCandidates(prev => [...prev, winCandidate]);
+                                    // 核心：寫回原卡片的 OCR 數據，canvas/thumbUrl 保持乾淨盤面不動！
+                                    // 同時保存 WIN 特工截圖（winPollCanvas），讓匯出時兩張圖都有
+                                    const winPollThumbUrl = generateThumbUrl(bestWinCanvas, roi);
+                                    setCandidates(prev => prev.map(c =>
+                                        c.id === reelStopId
+                                            ? { ...c,
+                                                ocrData: { win: bestWinValue, balance: finalBal, bet: finalBet, orderId: finalOrderId },
+                                                captureDelay: bestWinTime - c.time,
+                                                reelStopTime: c.time,
+                                                winPollCanvas: bestWinCanvas,
+                                                winPollThumbUrl,
+                                                winPollTime: bestWinTime
+                                              }
+                                            : c
+                                    ));
                                     
                                     console.log(`\n========================================`);
-                                    console.log(`📸 [贏分結算] 觸發『第二張』候選截圖！(${triggerLabel})`);
-                                    console.log(`⏰ 截圖畫面時間: ${finalTime.toFixed(3)}s`);
-                                    console.log(`💰 確認數值: WIN=${finalWinVal}, BAL=${finalBal || '(未設定ROI)'}`);
+                                    console.log(`📝 [贏分合併] WIN=${bestWinValue} 已寫回 Reel Stop 卡片 (${triggerLabel})`);
+                                    console.log(`⏰ Reel Stop 時間 → WIN 確認時間: +${(bestWinTime - candidate.time).toFixed(3)}s`);
+                                    console.log(`💰 合併數值: WIN=${bestWinValue}, BAL=${finalBal || '(未設定ROI)'}`);
                                     console.log(`========================================\n`);
                                     
                                     state.isWinPollActive = false; // 解除鎖定
                                 };
 
-                                console.log(`🕵️‍♂️ [WIN 追蹤特工 #${shortId}] 啟動！以 ${targetFps} FPS (${pollIntervalMs}ms) 持續跟蹤長達 10 秒... (影片時間：${video.currentTime.toFixed(3)}s)`);
+                                console.log(`🕵️‍♂️ [WIN 追蹤特工 #${shortId}] 啟動！以 20 FPS 持續跟蹤長達 10 秒，數據將合併回 Reel Stop 卡片 (影片時間：${video.currentTime.toFixed(3)}s)`);
 
                                 const frameQueue = [];
-                                const MAX_QUEUE_SIZE = 30; // 避免積壓過多撐爆記憶體
+                                const MAX_QUEUE_SIZE = 30;
 
-                                // ── 生產者：嚴格以設定的 FPS 截取畫面，不受 OCR 速度影響 ──
+                                // ── 生產者：以 20 FPS 截取畫面供 OCR 輪詢 ──
                                 const captureTimer = setInterval(() => {
                                     if (state.winPollAgentId !== currentAgentId || state.cancelWinPoll || isDone || liveCancelRef.current || video.paused || video.ended) {
                                         clearInterval(captureTimer);
@@ -345,11 +340,11 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                                             return;
                                         } else if (state.cancelWinPoll || isObsoleteAgent) {
                                             if (bestWinCanvas && !hasOutput) {
-                                                console.log(`🕵️‍♂️ [WIN 追蹤特工 #${shortId}${isObsoleteAgent ? ' (前任)' : ''}] 任務強行中斷，但提取了最後一刻的完美遺產！強制輸出...`);
-                                                await outputWinCard('WIN_POLL_FORCED');
+                                                console.log(`🕵️‍♂️ [WIN 追蹤特工 #${shortId}${isObsoleteAgent ? ' (前任)' : ''}] 任務強行中斷，但提取了最後一刻的完美遺產！合併回原卡片...`);
+                                                await mergeWinData('WIN_POLL_FORCED');
                                             } else if (!hasOutput) {
                                                 if (!isObsoleteAgent) {
-                                                    console.log(`🕵️‍♂️ [WIN 追蹤特工 #${shortId}] 任務撤銷/超時，未留下任何遺產。`);
+                                                    console.log(`🕵️‍♂️ [WIN 追蹤特工 #${shortId}] 任務撤銷/超時，未留下任何遺產。 (影片時間：${video.currentTime.toFixed(3)}s)`);
                                                     state.isWinPollActive = false;
                                                 }
                                             }
@@ -368,11 +363,6 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                                                         missCount = 0;
                                                         console.log(`🕵️‍♂️ [WIN 追蹤特工 #${shortId}] 👀 抓到數字: "${pollWin}" (佇列剩餘: ${frameQueue.length})`);
 
-                                                        if (!firstWinCanvas) {
-                                                            firstWinCanvas = pollCanvas;
-                                                            firstWinTime = exactPollTime;
-                                                        }
-
                                                         if (pollWin === lastWin) {
                                                             confirmCount++;
                                                         } else {
@@ -383,11 +373,13 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                                                             bestWinValue = pollWin;
                                                         }
 
-                                                        const targetCount = Math.max(3, Math.floor(targetFps * 0.25));
+                                                        // 因為數據合併法不再需要完美截圖，門檻降低到 2 次確認即可
+                                                        // （只需排除噪音，不需等待長時間穩定）
+                                                        const targetCount = 2;
                                                         if (confirmCount >= targetCount) {
                                                             winFound = true;
                                                             confirmCount = 0; missCount = 0;
-                                                            console.log(`⏳ WIN=${pollWin} 達標！繼續觀察 BAL 結算...`);
+                                                            console.log(`⏳ WIN=${pollWin} 達標 (${targetCount}次確認)！繼續觀察 BAL 結算...`);
                                                             frameQueue.length = 0; // 清空佇列，加速進入 BAL 階段
                                                         }
                                                     } else {
@@ -397,27 +389,26 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                                                         }
                                                     }
                                                 } else {
-                                                    // ── 階段 2：WIN 已穩定，觀察 BAL 是否也穩定下來了 ──
-                                                    let targetBalCount = ocrOptions.requireStableWin ? 3 : 1;
-                                                    if (!balanceROI) targetBalCount = 0;
-                                                    else {
-                                                        const pollBal = await cropAndOCR(pollCanvas, balanceROI, w, ocrDecimalPlaces ?? 2, 'BALANCE-POLL');
-                                                        if (pollBal && parseFloat(pollBal) > 0) {
-                                                            missCount = 0;
-                                                            if (pollBal === lastBal) confirmCount++;
-                                                            else { lastBal = pollBal; confirmCount = 1; }
-                                                        } else {
-                                                            missCount++;
-                                                            if (missCount >= 4) { confirmCount = 0; lastBal = ''; }
-                                                        }
-                                                    }
-
-                                                    if (confirmCount >= targetBalCount) {
+                                                    // ── 階段 2：WIN 已穩定，快速讀取 BAL 就完工 ──
+                                                    // 數據合併法不需要 BAL 穩定（圖用原圖），讀到即收
+                                                    if (!balanceROI) {
+                                                        // 沒有 BAL ROI，直接完工
                                                         isDone = true;
-                                                        await outputWinCard('WIN_POLL');
+                                                        await mergeWinData('WIN_POLL_NO_BAL');
                                                         clearInterval(captureTimer);
                                                         return;
                                                     }
+                                                    const pollBal = await cropAndOCR(pollCanvas, balanceROI, w, ocrDecimalPlaces ?? 2, 'BALANCE-POLL');
+                                                    if (pollBal && parseFloat(pollBal) > 0) {
+                                                        // 讀到有效 BAL，立刻合併完工
+                                                        bestWinCanvas = pollCanvas; // 更新 bestWinCanvas 讓 merge 用最新 BAL
+                                                        bestWinTime = exactPollTime;
+                                                        isDone = true;
+                                                        await mergeWinData('WIN_POLL');
+                                                        clearInterval(captureTimer);
+                                                        return;
+                                                    }
+                                                    // BAL 讀不到就繼續下一幀
                                                 }
                                             } catch (e) { console.error("WIN Poll error:", e); }
                                         }
@@ -437,6 +428,10 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                         state.decayCount = 0;
                         state.peakDiff = 0;
                         state.diffWindow.length = 0;
+                    } else if (isReelStopped && state.stableCount === 3) {
+                        // 【診斷 log】：看起來停了但沒觸發，到底哪個條件擋住？
+                        const timeSinceLast = now - state.lastCandidateTime;
+                        console.log(`🔍 [V-Line 診斷] 停輪偵測到但未觸發 @ ${now.toFixed(3)}s | hadMotion=${hadMotion} (peak=${state.peakDiff.toFixed(1)}) | cooldown=${timeSinceLast.toFixed(2)}s (需>1.0) | spinning=${analysis.spinningCount}`);
                     }
                 }
             }
@@ -835,73 +830,29 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
         });
     }, [setTemplateMessage]);
 
-    // 智慧修復：針對指定的 groupId 集合重新 OCR，並自動跑 smartDedup
-    const healBreaks = useCallback(async (brokenGroupIds, ocrOptions) => {
-        const { winROI, balanceROI, betROI, orderIdROI, ocrDecimalPlaces } = ocrOptions;
-        const worker = ocrWorkerRef.current;
-        if (!worker || brokenGroupIds.length === 0) return;
-
-        // 整理需要處理的局號 (含發生斷層的當局 & 上一局)
-        const targetGroupIds = new Set();
-        brokenGroupIds.forEach(id => {
-            targetGroupIds.add(id);
-            if (id > 0) targetGroupIds.add(id - 1);
-        });
-
-        setTemplateMessage?.(`⚡ 正在深度修復 ${targetGroupIds.size} 局斷層資料...`);
-
-        // 讓 React 取得最新 state，執行非同步修復，然後寫回
-        setCandidates(prev => {
-            const targetCandidates = prev.filter(c => targetGroupIds.has(c.spinGroupId));
-            if (targetCandidates.length === 0) {
-                return prev;
+    // 手動更新單張卡片的 OCR 數值（WIN/BET/BAL）並加上人工修改標記
+    const updateCandidateOcr = useCallback((candidateId, field, value) => {
+        setCandidates(prev => prev.map(c => {
+            if (c.id === candidateId) {
+                // 如果已經有 ocrData，就覆寫；沒有就建一個預設空的
+                const oldOcr = c.ocrData || { win: '0', balance: '0', bet: '0', orderId: '' };
+                const prevOverrides = c.manualOverrides || {};
+                return {
+                    ...c,
+                    ocrData: {
+                        ...oldOcr,
+                        [field]: value
+                    },
+                    manualOverrides: {
+                        ...prevOverrides,
+                        [field]: true
+                    },
+                    status: 'pending' // 重置狀態讓它重新算分
+                };
             }
-
-            // 因為 setCandidates 裡不能直接用 await (reducer必須同步)，
-            // 所以我們在這裡「觸發」一個非同步流程，並在此次 setState 返回原樣。
-            // 非同步流程跑完後會再次呼叫 setCandidates。
-            const runHeal = async () => {
-                let completed = 0;
-                const total = targetCandidates.length;
-
-                const updatedTargets = [];
-                for (const c of targetCandidates) {
-                    const win = winROI ? await cropAndOCR(c.canvas, winROI, worker, ocrDecimalPlaces, 'WIN') : (c.ocrData?.win || '0');
-                    const balance = balanceROI ? await cropAndOCR(c.canvas, balanceROI, worker, ocrDecimalPlaces, 'BALANCE') : (c.ocrData?.balance || '0');
-                    const bet = betROI ? await cropAndOCR(c.canvas, betROI, worker, 0, 'BET') : (c.ocrData?.bet || '0');
-                    const orderId = orderIdROI ? await cropAndOCR(c.canvas, orderIdROI, worker, 0, 'ORDER_ID') : (c.ocrData?.orderId || '');
-                    
-                    completed++;
-                    setTemplateMessage?.(`⚡ 修復進度: ${completed} / ${total}`);
-                    
-                    // 利用微弱的影像處理差異？目前只要用新 ROI 重跑一次通常就能解，若之後不夠可在此處加 variations
-                    updatedTargets.push({
-                        ...c,
-                        ocrData: { win, balance, bet, orderId },
-                        status: 'pending' // 重置狀態
-                    });
-                }
-
-                // 更新完候補圖後，把整包丟進第二次 setState
-                setCandidates(prev2 => {
-                    const next = prev2.map(c => {
-                        const updated = updatedTargets.find(uc => uc.id === c.id);
-                        return updated ? updated : c;
-                    });
-                    return next;
-                });
-
-                // 然後立刻觸發重新分局 (smartDedup會讀取這最新的數值並重選代表幀!)
-                setTimeout(() => {
-                    smartDedup();
-                    setTemplateMessage?.(`✅ 斷層修復完成：已重新推演連貫性！`);
-                }, 100);
-            };
-
-            runHeal(); // 啟動非同步任務
-            return prev; // 本次不改動，等非同步任務完成
-        });
-    }, [smartDedup, setTemplateMessage]);
+            return c;
+        }));
+    }, []);
 
     // 智慧刪除：移除未被標記為 isSpinBest 的幀
     const confirmDedup = useCallback(() => {
@@ -931,9 +882,19 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
             // 群組內只有一張，不需要切換
             if (sameGroup.length <= 1) return prev;
 
+            // 找到舊 best 中有 WIN 數據的那張，準備搬遷 OCR 數據
+            const donor = sameGroup.find(c => c.isSpinBest && c.ocrData?.win && parseFloat(c.ocrData.win) > 0);
+
             return prev.map(c => {
                 if (c.spinGroupId === targetGroupId) {
-                    return { ...c, isSpinBest: c.id === candidateId };
+                    const isNewBest = c.id === candidateId;
+                    return {
+                        ...c,
+                        isSpinBest: isNewBest,
+                        // 新 best 繼承舊 best 的 OCR 數據（贏分合併搬遷）
+                        ocrData: isNewBest && donor ? donor.ocrData : c.ocrData,
+                        captureDelay: isNewBest && donor ? donor.captureDelay : c.captureDelay,
+                    };
                 }
                 return c;
             });
@@ -949,6 +910,6 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
         confirmDedup,
         setManualBestCandidate,
         addManualCandidate,
-        healBreaks
+        updateCandidateOcr
     };
 }

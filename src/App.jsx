@@ -569,7 +569,7 @@ function App() {
                     addManualCandidate={keyframeExtractor.addManualCandidate}
                     smartDedup={keyframeExtractor.smartDedup}
                     confirmDedup={keyframeExtractor.confirmDedup}
-                    healBreaks={keyframeExtractor.healBreaks}
+                    updateCandidateOcr={keyframeExtractor.updateCandidateOcr}
                     setManualBestCandidate={keyframeExtractor.setManualBestCandidate}
                     // Auto Recognition
                     isRecognizing={autoRecognition.isRecognizing}
@@ -579,9 +579,7 @@ function App() {
                     cancelRecognition={autoRecognition.cancelRecognition}
                     // Report
                     stats={phase4Stats}
-                    exportCSV={(c) => reportGenerator.exportCSV(c, gameName || 'slot')}
-                    exportOcrCSV={(c) => reportGenerator.exportOcrCSV(c, gameName || 'slot')}
-                    exportOcrHTML={(c) => reportGenerator.exportOcrHTML(c, gameName || 'slot')}
+                    exportHTMLReport={(c, game, dir) => reportGenerator.exportHTMLReport(c, gameName || 'slot', dir, template)}
                     // ROI
                     reelROI={reelROI} setReelROI={setReelROI}
                     winROI={winROI} setWinROI={setWinROI}
