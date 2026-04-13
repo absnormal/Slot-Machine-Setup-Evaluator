@@ -1,126 +1,280 @@
-# 🎰 老虎機線獎辨識工具 (Slot Machine Setup Evaluator)
+# 老虎機線獎辨識工具 (Slot Machine Setup Evaluator)
 
-這是一個專門為「實機老虎機」進行**賠率表自動擷取**、**實機影片動態偵測截圖**、**AI 自動辨識盤面**與**贏分驗證結算**的 React 開發工具。
-
-透過結合 Gemini Vision API、前端 WebAssembly OCR (PaddleOCR)、圖像分析 (V-Line Scanner) 與精密的結算引擎，本工具旨在大幅減少測試與審查人員核對錄影畫面的時間，將其轉換為可量化與匯出的自動報告。
+用於實機老虎機的「賠率表建立 → 盤面辨識 → 贏分結算驗證」全流程工具。  
+支援影片/串流自動截圖、PaddleOCR 本地贏分讀取、Gemini Vision AI 盤面辨識，最終產出含斷層標記的 HTML 驗證報告。
 
 ---
 
-## 🚀 1. 快速啟動指南 (Getting Started)
+## 1. 啟動指南
 
 ### 環境需求
-* **Node.js**: v18+ 
-* **npm** 或 **yarn**
 
-### 安裝與運行
+| 項目 | 版本 |
+|------|------|
+| Node.js | 18+ |
+| npm | 隨 Node 附帶即可 |
+
+### 安裝與啟動
+
 ```bash
-# 1. 將專案 Clone 到本地端
 git clone https://github.com/absnormal/Slot-Machine-Setup-Evaluator.git
 cd Slot-Machine-Setup-Evaluator
 
-# 2. 安裝依賴 (使用 npm)
-npm install
-
-# 3. 啟動本機開發伺服器
-npm run dev
-```
-啟動後，開啟瀏覽器並進入 `http://localhost:5173`。
-
-### 環境變數設定
-專案需要 **Gemini API Key** 才能進行 AI Vision 盤面與賠率表的自動辨識。
-您無須在環境建立 `.env` 檔，只需於介面右上角點擊「⚙️ 齒輪」圖示 (SettingsModal) 直接填入您的 Gemini API 即可（儲存於 LocalStorage）。 
-
----
-
-## 📁 2. 目錄架構說明 (Folder Structure)
-
-本專案採模組化的 React 架構，核心運算引擎與 React UI 分離。
-
-```
-Slot-Machine-Setup-Evaluator/
-├── .agent/                    # [重要] 存放開發環境與文件規範
-│   ├── SPEC.md                # ⚡️ 核心規格書（任何改動前必讀，詳列所有狀態與防呆規則）
-│   └── SKILL.md               # 開發者與 Agent 共通的技能定義與架構觀念
-├── tests/                     # Vitest 單元測試
-│   └── computeGridResults.test.js # 結算引擎核心邏輯的 45 項單元測試（絕對不可打破）
-├── public/                    # 靜態資源、Paddle OCR Model (onnx)
-└── src/
-    ├── App.jsx                # 應用程式入口，處理四大 Phase 之間膠水邏輯與快捷鍵
-    ├── components/            # React 元件庫
-    │   ├── modals/            # 所有的燈箱與彈窗 (如確認框、金幣計算、設定等)
-    │   ├── Phase1Setup.jsx    # 第一階段：遊戲環境、線路與賠率表設定
-    │   ├── Phase2Manual.jsx   # 第二階段：手動盤面配置與畫筆工具介面
-    │   ├── Phase3Vision.jsx   # 第三階段：AI 圖片與實機圖辨識
-    │   ├── Phase4Video.jsx    # 第四階段：實機影片解析、去殘影邏輯與匯出報告
-    │   └── ... 
-    ├── config/
-    │   └── promptTemplates.js # 呼叫 Gemini Vision 時使用的 AI 咒語/模板
-    ├── engine/                # [核心運算] 純函式、不受框架干擾的核心模組
-    │   ├── computeGridResults.js # 🎉 結算計算引擎 (Paylines, AllWays, Anywhere)
-    │   ├── ocrPipeline.js        # WebAssembly OCR 影像前置裁切與文字辨識
-    │   └── vlineScanner.js       # V-Line 動態偵測：負責切片計算幀間差異判斷轉輪狀態
-    ├── hooks/                 # 針對不同業務抽離封裝的邏輯 (Custom Hooks)
-    │   ├── useTemplateBuilder.js # 管理 Phase 1 的所有組裝與設定狀態
-    │   ├── useSlotEngine.js      # 管理 Phase 2 結算即時狀態
-    │   ├── useVisionBatchProcessor.js # 實作批次呼叫 Gemini AI 辨識的佇列
-    │   ├── useKeyframeExtractor.js    # Phase 4：實時幀抽取與特工作業 (WIN Poll)
-    │   └── useReportGenerator.js      # 產出最終含有雙對比圖的 HTML 報表
-    ├── stores/                # Zustand 全域狀態中心
-    │   └── useAppStore.js     # 存放手風琴展開狀態、全域 API Key 等
-    └── utils/                 # 工具小函式
-        └── symbolUtils.js     # 封裝所有的特殊符號判定 (如 JP, Wild, Scatter)
+npm install      # 安裝依賴
+npm run dev      # 啟動開發伺服器 (預設 http://localhost:5173)
 ```
 
----
+### 其他指令
 
-## 🔄 3. 資料處理流程 (Data Flow)
-
-本工具嚴格遵循「**四大階段 (Phase 1 ~ Phase 4)**」的單向資料流，以手風琴形式呈現，並將各階段的產出「傳遞 (Transfer)」至下一階。 
-
-### Phase 1：環境建立 (Template Builder)
-1. **設定參數**：使用者設定盤面長寬、Q&A 問卷 (有無乘倍、CASH 等特殊機制)。
-2. **擷取線獎**：透過顏色提取圖片中的 Paylines。
-3. **建立賠率表 (Paytable)**：上傳總說明書，使用 Gemini AI 自動 OCR，抓出所有付費符號及相對應賠率（或是使用者手動繪製/修改表格）。
-4. **輸出 `Template`**：點擊確認後產生物件 `template` 下放供 Phase 2~4 所有的引擎共用。包含 `jpConfig` 甚至動態添加 `xN` 符號等防呆皆在建立時自動補齊。
-
-### Phase 2：手動驗算 (Manual Simulator)
-* 開發者可以使用本階的 **畫筆工具列 (Brush Toolbar)** 隨機或是手動擺放物件。
-* 若發生變化，會即刻呼叫 `computeGridResults.js` 引擎得出結算表（包含中獎線路、中獎金額、收集獎項、SCATTER 機制等）。
-
-### Phase 3：實機圖片 AI 辨識 (Vision Analysis)
-* 使用者上傳實機截圖，使用滑鼠框選 **「原廠盤面範圍 (ROI)」**。
-* 呼叫 `performAIVisionBatchMatching` 委派給 Gemini AI 引擎。
-* AI 辨識得到的字串與座標轉換為 Phase 2 共用的 `grid`（盤面二維陣列），並於左側即時預覽。有疑慮時，能以「向下箭頭 (傳送按鈕)」將辨識結果送到 Phase 2 進行修改。
-
-### Phase 4：自動影片追蹤錄影 (Video Dynamics & Keyframes)
-本專案的「大腦與防呆」最密集的地方。
-1. **V-Line Scanner 轉輪偵測**：將指定區域以直向切分成 5 軸，分析連續幀的變化，自動判斷 `IDLE → SPINNING → SETTLING` (停輪)。
-2. **WIN 追蹤特工 (WIN Polling)**：一旦偵測到停輪，會以 20 FPS 輪詢擷取贏分數字。
-   * 特工使用 `PaddleOCR / ONNX` 在本地端作業。
-   * 具備 V-Line 旋轉打斷(`hadSpinSinceLastStop`)及佇列排乾救援(Drain Queue)。
-3. **智慧去重與融合 (Smart Dedup)**：利用贏分數學(Bal + Win - Bet) 結合『注單號 (OrderID)』檢查，移除影片或串流截屏途中所衍生的虛影殘影、結算尚未跳離的殘留重複畫面，與串接 Free Game。
-4. **HTML 報告產出**：結合所有驗證資料，產出可導航、無廣告的可攜式 HTML 文件（透過 `useReportGenerator.js`）。
-
----
-
-## 🛠 4. 給接手工程師的交接指南
-
-### ⚠️ 最高守則：請隨時維護並服從 SPEC.md 
-專案的每一個環節有高度關聯（例：你在 Phase 1 的問卷加入了一個 Toggle，這將影響 `useTemplateBuilder.js` 的狀態、`useTemplateIO.js` 的轉換、雲端 `useCloud.js` 的解構陣列、以及 `computeGridResults.js` 的最終數學算法）。
-* **所有規則都詳述在 `.agent/SPEC.md`。開發或修復 Bug 前，請一定要詳讀對應章節！**
-* 更新完程式了請連帶更新該檔案，請把這個 Markdown 文件視作為你的 **「單一知識來源 (SSOT)」**。
-
-### 🚨 切勿忽視單元測試
-在 `tests/computeGridResults.test.js` 有高達 45 項涵蓋所有遊戲路數與數學邏輯的測試。
-如果你修改了結算引擎（`engine/computeGridResults.js`）或符號判定 (`utils/symbolUtils.js`)，請先執行：
 ```bash
-npm run test
+npm run build    # 正式打包 (輸出至 dist/)
+npm run test     # 執行結算引擎單元測試 (45 項)
+npm run preview  # 預覽 production build
 ```
-若有測試亮紅燈，**嚴禁強行 Commit 推進**，必須保證所有的結算數學邏輯正確。
 
-### 📦 工具模組增加與共用
-如果需要更換 AI 引擎或是 OCR 框架：
-* **OCR (WebAssembly)** 相關皆放在 `engine/ocrPipeline.js`，將 Canvas 切割處理後的 Blob 與其對接。
-* **Gemini AI** 相關則於 `hooks/useVisionBatchProcessor.js` 中管理串接、輪詢與 Error Handle。
+### API Key 設定
 
-> 祝您開發愉快，一切順利！有空記得看看 `App.jsx` 的整體資料流向，這能大幅度加速你適應整個平台的時間。 🍻
+本工具使用 **Gemini API** 進行盤面辨識與賠率表 OCR。  
+啟動後點右上角 ⚙️ 齒輪圖示，在設定面板中填入 API Key（儲存於瀏覽器 localStorage）。  
+無 API Key 時 Phase 1 的 AI 賠率辨識與 Phase 3 的 AI 盤面辨識無法使用，其餘功能不受影響。
+
+---
+
+## 2. 目錄架構
+
+```
+.
+├── index.html                  # Vite 入口 HTML
+├── vite.config.js              # Vite + Tailwind v4 + React 設定
+├── package.json                # 依賴與 scripts
+│
+├── .agent/                     # 開發者文件（Vite watch 已忽略）
+│   ├── SPEC.md                 # 完整功能規範書（改動前必讀）
+│   └── SKILL.md                # 開發技能定義與模組架構
+│
+├── gas/                        # Google Apps Script 雲端後端
+│   └── Code.gs                 # 模板的 CRUD API（部署於 Google Sheets）
+│
+├── public/                     # 靜態資源（不經 Vite 處理）
+│   ├── ocr-models/             # PaddleOCR ONNX 模型檔
+│   │   ├── ch_PP-OCRv4_det_infer.onnx    # 文字偵測模型
+│   │   ├── ch_PP-OCRv4_rec_infer.onnx    # 文字辨識模型
+│   │   └── ppocr_keys_v1.txt             # 字典檔
+│   └── ort-wasm-*.wasm         # ONNX Runtime WebAssembly 執行檔
+│
+├── tests/
+│   └── computeGridResults.test.js  # 結算引擎 45 項單元測試
+│
+└── src/
+    ├── main.jsx                # React 進入點
+    ├── index.css               # Tailwind v4 全域樣式
+    ├── App.jsx                 # 應用主體（Phase 間資料流、快捷鍵、手風琴）
+    │
+    ├── engine/                 # 純函式運算引擎（無 React 依賴）
+    │   ├── computeGridResults.js   # 結算核心（Paylines / AllWays / SymbolCount）
+    │   ├── vlineScanner.js         # V-Line 切片動態偵測（5 軸 MAE 分析）
+    │   └── ocrPipeline.js          # 截圖裁切 + PaddleOCR 文字辨識管線
+    │
+    ├── hooks/                  # React Custom Hooks（業務邏輯層）
+    │   ├── useTemplateBuilder.js       # Phase 1 組合 Hook：組裝 template 物件
+    │   │   ├── (子) useCanvasLineExtractor.js  # 線獎圖片色彩提取
+    │   │   └── (子) usePaytableProcessor.js    # 賠率表 AI OCR + 表格管理
+    │   ├── useTemplateIO.js           # 模板匯入/匯出/雲端載入統一入口
+    │   ├── useSlotEngine.js           # Phase 2 盤面結算即時計算
+    │   ├── useGeminiVision.js         # Phase 3 組合 Hook：ROI 框選 + Canvas
+    │   │   ├── (子) useVisionImageManager.js   # 圖片上傳/切換/管理
+    │   │   └── (子) useVisionBatchProcessor.js # Gemini API 批次辨識
+    │   ├── useVideoProcessor.js       # Phase 4 影片/串流 UI 狀態管理
+    │   ├── useKeyframeExtractor.js    # Phase 4 核心：V-Line 偵測 + WIN 特工 + Smart Dedup
+    │   ├── useReportGenerator.js      # HTML 報表產生（含浮動導覽列）
+    │   ├── useAutoRecognition.js      # Phase 4→Phase 3 自動辨識串接
+    │   ├── useCloud.js                # 雲端 CRUD（呼叫 GAS API）
+    │   ├── useLightbox.js             # 圖片放大燈箱
+    │   └── useCanvasDrag.js           # Canvas 拖曳框選
+    │
+    ├── components/             # React 元件
+    │   ├── Phase1Setup.jsx         # Phase 1 設定介面
+    │   ├── Phase2Manual.jsx        # Phase 2 手動盤面 + 畫筆
+    │   ├── Phase3Vision.jsx        # Phase 3 AI 辨識介面
+    │   ├── Phase4Video.jsx         # Phase 4 影片偵測 + 候選幀管理 + 匯出
+    │   ├── ResultView.jsx          # 結算結果面板（Phase 2/3 共用）
+    │   ├── AppHeader.jsx           # 頂部標頭
+    │   ├── CloudModal.jsx          # 雲端模板庫彈窗
+    │   ├── SettingsModal.jsx       # 設定面板（API Key）
+    │   ├── ErrorBoundary.jsx       # 錯誤邊界（各 Phase 獨立包覆）
+    │   ├── ToastMessage.jsx        # Toast 訊息
+    │   ├── phase1/                 # Phase 1 子元件
+    │   │   ├── LineModeConfig.jsx      # 線獎模式設定（Paylines/AllWays/SymbolCount）
+    │   │   ├── PaytableConfig.jsx      # 賠率表設定（圖片 OCR / 手動輸入）
+    │   │   ├── SpecialSymbolQA.jsx     # Q&A 問卷（乘倍/CASH/JP 等）
+    │   │   └── TemplateToolbar.jsx     # 模板工具列（匯入/匯出/雲端）
+    │   ├── phase2/
+    │   │   └── BrushToolbar.jsx        # 畫筆工具列 + 符號選擇器
+    │   └── modals/
+    │       ├── PtConfirmModal.jsx      # AI 分析前確認
+    │       ├── BuildErrorModal.jsx     # 建構錯誤提示
+    │       ├── PtCropModal.jsx         # 符號縮圖裁切 + Lightbox
+    │       ├── OverwriteConfirmModal.jsx # 雲端覆寫確認
+    │       └── CashValueModal.jsx      # 金幣/乘倍數值輸入
+    │
+    ├── stores/
+    │   └── useAppStore.js      # Zustand 全域狀態（手風琴、API Key、Toast）
+    │
+    ├── config/
+    │   └── promptTemplates.js  # Gemini Vision AI Prompt 模板
+    │
+    └── utils/
+        ├── symbolUtils.js      # 符號分類判定（WILD/SCATTER/CASH/JP/xN）
+        ├── videoUtils.js       # 灰階提取、MAE 計算、Canvas 快取
+        ├── aiValidator.js      # AI 辨識結果驗證與修正
+        ├── helpers.js          # 通用工具函式
+        └── constants.js        # GAS URL、API Key 常數
+```
+
+---
+
+## 3. 資料處理流程
+
+### 整體架構：四階段串接
+
+```
+Phase 1 (模板建立) → template 物件
+                        ↓ 共用
+Phase 2 (手動驗算) ←→ Phase 3 (AI 辨識) ← Phase 4 (影片截圖)
+                        ↓
+              computeGridResults() → 結算結果
+                        ↓
+              HTML 報告匯出（含贏分連續性驗證）
+```
+
+四個 Phase 以手風琴呈現，同時只展開一個。Phase 間可透過箭頭按鈕或快捷鍵傳送盤面資料。
+
+---
+
+### Phase 1：模板建立 (`useTemplateBuilder`)
+
+**輸入**：遊戲名稱、盤面尺寸、線獎圖片、賠率表截圖  
+**輸出**：`template` 物件（供 Phase 2~4 共用）
+
+1. 設定盤面列數 × 行數、線獎模式（Paylines / AllWays / SymbolCount）
+2. 上傳線獎圖片 → Canvas 色彩分析提取連線座標；或手動文字輸入
+3. 上傳賠率表截圖 → Gemini AI OCR 自動辨識符號與賠率；或手動文字輸入
+4. Q&A 問卷設定特殊機制（全盤乘倍、CASH/COLLECT、JP、動態乘倍 xN）
+5. 點擊「建立模板」→ 自動注入缺少的 WILD/xN/JP 符號 → 組裝 `template`
+
+模板可匯入/匯出 JSON，也可儲存至雲端（Google Sheets，後端為 `gas/Code.gs`）。
+
+---
+
+### Phase 2：手動盤面驗算 (`useSlotEngine`)
+
+**輸入**：`template` + 手動填入的盤面  
+**輸出**：即時結算結果
+
+- 畫筆模式：從符號選擇器點選，拖曳填入盤面格子
+- 鍵盤模式：直接打字輸入符號名稱
+- 每次盤面變化自動呼叫 `computeGridResults()` 即時計算
+- 結算結果顯示在右側 `ResultView`（含中獎線路明細、SCATTER、CASH/COLLECT）
+
+---
+
+### Phase 3：AI 實機截圖辨識 (`useGeminiVision`)
+
+**輸入**：實機截圖 + ROI 框選  
+**輸出**：辨識出的盤面 → 自動結算
+
+1. 上傳實機截圖（支援多張批次）
+2. 滑鼠框選盤面 ROI、押注 ROI、乘倍列 ROI
+3. 呼叫 Gemini Vision API 辨識盤面符號（Prompt 定義於 `promptTemplates.js`）
+4. 辨識結果即時顯示小盤面預覽 + 結算
+5. 可傳送至 Phase 2 進行人工修正（↑ 鍵）
+
+---
+
+### Phase 4：影片自動偵測截圖 (`useVideoProcessor` + `useKeyframeExtractor`)
+
+**輸入**：影片檔案 或 OBS 串流  
+**輸出**：候選關鍵幀清單（含 OCR 數據）→ HTML 報告
+
+這是整個系統最複雜的部分，分為以下子系統：
+
+#### 4a. V-Line 動態偵測 (`vlineScanner.js`)
+
+- 將 Reel ROI 切成 5 軸，計算相鄰幀的 MAE（Mean Absolute Error）
+- 全軸停止 ≥ 3 幀 → 判定為「停輪」，截取候選幀
+- 防呆：`hadSpinSinceLastStop` 旗標，確保「有旋轉過」才允許建立新候選，防止贏分動畫衰退被誤判為新的一局
+
+#### 4b. WIN 追蹤特工 (`useKeyframeExtractor`)
+
+停輪後啟動，以 20 FPS 持續截圖掃描贏分區域：
+
+| 機制 | 說明 |
+|------|------|
+| 快速短路 | 停輪原圖已有 WIN → 特工直接下班，保留原始清晰數據 |
+| 截圖鎖定 | `bestWinCanvas` 鎖定在第一次讀到 WIN 的幀（最乾淨） |
+| 2 次確認 | 同一數值連續讀到 2 次才視為有效 |
+| 統一數據源 | BAL/BET/OrderID 都從 bestWinCanvas 讀取，確保同局 |
+| 排乾佇列 | 被打斷時把佇列中已截好未 OCR 的幀全部掃完再退場 |
+
+#### 4c. Smart Dedup（智慧去重）
+
+- 殘影淨化：偵測前局 WIN 殘留在畫面上的假贏分（需 OrderID 不同才淨化）
+- Union-Find 分組：OrderID + BET + BAL + WIN 字串比對合併同局幀
+- FG 合併：依據使用者選擇的 FG 類型（贏分延續型 / 歸零型）合併 Free Game 序列
+
+#### 4d. HTML 報告 (`useReportGenerator`)
+
+- 表頭固定 (`position: sticky`)
+- 連續性驗算：自動計算 `BAL + BET - WIN` 是否與前局銜接，標記斷層
+- 浮動導覽列：支援「斷層 / 贏分 / FG」一鍵跳轉，位置感知，循環滾動
+- 雙截圖：盤面原圖 + WIN 特工截圖並排顯示
+
+---
+
+### 結算引擎 (`computeGridResults.js`)
+
+純函式，無 React 依賴。支援三種模式：
+
+| 模式 | 說明 |
+|------|------|
+| `paylines` | 固定線獎，逐條匹配最佳符號 |
+| `allways` | 全路線，扣除純 WILD 路線 (`pureWildWays`) |
+| `symbolcount` | 消除模式（Pay Anywhere），只計數量 |
+
+額外支援：WILD 替代、SCATTER 全盤掃描、CASH/COLLECT 收集、動態乘倍 xN、全盤乘倍列、DOUBLE 雙倍符號。  
+**共 45 項單元測試覆蓋**，修改後務必執行 `npm run test`。
+
+---
+
+## 4. 技術棧
+
+| 類別 | 技術 |
+|------|------|
+| 框架 | React 18 + Vite 6 |
+| 樣式 | Tailwind CSS v4 (Vite Plugin) |
+| 狀態管理 | Zustand |
+| OCR (本地) | PaddleOCR v4 via ONNX Runtime WebAssembly |
+| AI 辨識 | Gemini Vision API |
+| 雲端後端 | Google Apps Script (Google Sheets) |
+| 數學精度 | big.js |
+| 圖示 | lucide-react |
+| 測試 | Vitest |
+
+---
+
+## 5. 開發注意事項
+
+1. **改動前先讀 `.agent/SPEC.md`**  
+   這份文件詳列了所有狀態、行為規範與防呆規則。忽略它會踩坑。
+
+2. **新增 Template 狀態欄位**  
+   需同步修改 12 個位置（詳見 SPEC.md 第 14 節 Checklist），遺漏任何一處都會造成匯入/雲端載入/重置時的 Bug。
+
+3. **結算引擎的測試不可打破**  
+   `npm run test` 必須全過。結算邏輯是核心中的核心。
+
+4. **Vite 已設定忽略 `.agent/` 和 `*.md`**  
+   修改文件不會觸發頁面重新整理（`vite.config.js` → `server.watch.ignored`）。
+
+5. **雲端 API**  
+   後端是 Google Apps Script（`gas/Code.gs`），部署為 Web App，URL 寫在 `utils/constants.js` 的 `GAS_URL`。
