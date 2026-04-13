@@ -8,4 +8,9 @@ export default defineConfig({
         tailwindcss(),
     ],
     base: '/Slot-Machine-Setup-Evaluator/',
+    server: {
+        watch: {
+            ignored: ['**/.agent/**', '**/README.md', '**/*.md']
+        }
+    }
 })
