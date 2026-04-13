@@ -28,7 +28,9 @@ App.jsx (~430 行)
   ├─ useGeminiVision()         ← 組合 Hook，負責 ROI 與 Canvas
   │    ├─ useVisionImageManager()   ← 圖片清單 CRUD 與切換
   │    └─ useVisionBatchProcessor() ← Gemini API 批次辨識與進度
-  ├─ useVideoProcessor()       ← Phase 4 影片偵測
+  ├─ useVideoProcessor()       ← Phase 4 影片偵測 (UI 狀態管理與選項)
+  │    ├─ useKeyframeExtractor()    ← V-Line 動態偵測、WIN 特工輪詢與智慧去重
+  │    └─ useReportGenerator()      ← 生成附帶浮動導覽與過濾器的 HTML 報表
   └─ useCloud()                ← 雲端 CRUD
 ```
 
@@ -49,7 +51,9 @@ App.jsx (~430 行)
 | `useGeminiVision.js` | Phase 3 **組合 Hook**：Canvas 繪圖、ROI 框選拖拽、保留對外介面 |
 | `useVisionImageManager.js` | 圖片上傳、切換預覽、方向鍵綁定 |
 | `useVisionBatchProcessor.js` | AI 批次辨識：組裝 prompt、API 呼叫、進度控制、取消機制 |
-| `useVideoProcessor.js` | Phase 4 影片偵測：Motion Detection 狀態機 (IDLE→SPINNING→SETTLING→CAPTURE) |
+| `useVideoProcessor.js` | Phase 4 狀態管理：統合 V-Line 以及錄影串流機制 |
+| `useKeyframeExtractor.js` | 截圖核心：WIN 追蹤、短路判定、V-line 防呆、Smart Dedup (去殘影) |
+| `useReportGenerator.js` | 報表生成器：建立位置感知浮動選單及雙重影像比對模式 |
 
 ### 結算引擎 (`computeGridResults.js`)
 *   **核心邏輯**: 處理 Paylines / All Ways / Symbol Count 三種模式、WILD 替代、SCATTER、CASH/COLLECT、全盤乘倍、線上乘倍。

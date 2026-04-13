@@ -249,8 +249,21 @@ App.jsx
 - `winROI`：贏分框選。
 - `balanceROI`：餘額框選。
 - `betROI`：押注金額框選。
+- `orderIdROI`：注單號框選（用於防止連續局相同贏分被誤判為殘影）。
 
-### 5.4 傳送至 Phase 3
+### 5.4 WIN 追蹤特工與資料提取 (useKeyframeExtractor)
+- **初始短路**：若 Reel Stop (原始停輪) 截圖已辨識出 WIN > 0，特工直接下班保留原圖。
+- **截圖鎖定與兩次確認**：特工以 20 FPS 截圖。數值需 2 次確認才達標，但**畫面鎖定於第 1 次**看到 WIN 的極乾淨幀 (`bestWinCanvas`)。
+- **統一數據來源**：後續讀取 BAL、BET、OrderID 完全從鎖定的 `bestWinCanvas` 提取，確保同局數據一致。
+- **排乾佇列 (Queue Drain)**：被 V-Line 強制打斷時，特工在退場前會「強制掃描」駐留於緩衝佇列中尚未 OCR 的剩餘影格，確保不會遺漏打斷前最後一刻的贏分。
+- **V-Line 旋轉防呆**：必須確認 `hadSpinSinceLastStop = true`（期間有 V-Line 識別出的實質轉動）才允許下一次停輪截圖，徹底防止中斷殘影衰退被當作新局。
+
+### 5.5 智慧去重與報表匯出 (Smart Dedup)
+- **殘影淨化防呆**：加入 `OrderID` (注單號) 判斷，若前後局 OrderID 明確不同，即使贏分數值及推算餘額完美相符「也不會」淨化，避免同注贏分遭誤殺。
+- **UI 預覽雙顯示**：有特工介入的卡片會有「琥珀橘色邊框」。燈箱 (Lightbox) 模式中支援左盤原圖、右盤特工擷取圖並排。
+- **HTML 報表導覽**：匯出的報表內建「浮動導覽列」。系統會依據當下視窗滾動高度「位置感知」，一鍵將使用者跳轉並黃燈閃爍提示至下個「斷層、贏分、FG 狀態」，極大提升超長表單閱讀體驗。
+
+### 5.6 傳送至 Phase 3
 - `handleTransferPhase4ToPhase3()`：將所有已截取的圖片轉換為 Phase 3 格式。
 - 同步 ROI 位置到 Phase 3 的 `visionP1` 與 `visionP1Bet`。
 - 自動啟用 `hasBetBox`。
