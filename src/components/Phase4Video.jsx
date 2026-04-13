@@ -38,16 +38,23 @@ const Phase4Video = ({
     const containerRef = useRef(null);
     const listEndRef = useRef(null);
     const [lastAddedManualId, setLastAddedManualId] = useState(null);
-    const [previewImage, setPreviewImage] = useState(null); // { url, time }
+    const [previewImage, setPreviewImage] = useState(null); // { url, url2?, time, time2? }
     const [enableOrderId, setEnableOrderId] = useState(true); // 是否啟用注單號 OCR
     const [editingOcr, setEditingOcr] = useState(null); // { id: string, field: 'win'|'bet'|'balance', value: string }
+    const [fgType, setFgType] = useState('A'); // 'A' = 贏分延續型, 'B' = 贏分歸零型, 'none' = 無FG
 
     // ── 卡片點擊：影片模式=跳轉時間點，串流模式/無影片=開圖片預覽 ──
     const handleCardClick = useCallback((kf) => {
         if (isStreamMode || !videoSrc) {
             // 串流模式或無影片來源時：開全幀截圖預覽
-            const fullUrl = kf.canvas ? kf.canvas.toDataURL('image/jpeg', 0.9) : kf.thumbUrl;
-            setPreviewImage({ url: fullUrl, time: kf.time });
+            const reelUrl = kf.canvas ? kf.canvas.toDataURL('image/jpeg', 0.9) : kf.thumbUrl;
+            const winUrl = kf.winPollCanvas ? kf.winPollCanvas.toDataURL('image/jpeg', 0.9) : (kf.winPollThumbUrl || null);
+            setPreviewImage({
+                url: reelUrl,
+                url2: winUrl,
+                time: kf.reelStopTime || kf.time,
+                time2: kf.winPollTime || null
+            });
         } else {
             // 影片模式：跳到時間點
             if (videoRef.current) videoRef.current.currentTime = kf.time;
@@ -89,22 +96,43 @@ const Phase4Video = ({
     useEffect(() => {
         if (!saveDirHandle) return;
         candidates.forEach(async (kf) => {
-            if (savedIdsRef.current.has(kf.id) || !kf.canvas) return;
-            savedIdsRef.current.add(kf.id);
-            try {
-                const mimeType = saveFormat === 'png' ? 'image/png' : 'image/jpeg';
-                const ext = saveFormat === 'png' ? 'png' : 'jpg';
-                const blob = await new Promise(r => kf.canvas.toBlob(r, mimeType, 0.92));
-                const prefix = kf.id.startsWith('win-') ? 'win_' : 'spin_';
-                const fileName = `${prefix}${kf.time.toFixed(2)}s_${kf.id}.${ext}`;
-                const fileHandle = await saveDirHandle.getFileHandle(fileName, { create: true });
-                const writable = await fileHandle.createWritable();
-                await writable.write(blob);
-                await writable.close();
-                kf.canvas = null; // 釋放記憶體
-                setSaveCount(prev => prev + 1);
-            } catch (e) {
-                console.error('自動存檔失敗:', e);
+            // ── 存盤面截圖 ──
+            if (!savedIdsRef.current.has(kf.id) && kf.canvas) {
+                savedIdsRef.current.add(kf.id);
+                try {
+                    const mimeType = saveFormat === 'png' ? 'image/png' : 'image/jpeg';
+                    const ext = saveFormat === 'png' ? 'png' : 'jpg';
+                    const blob = await new Promise(r => kf.canvas.toBlob(r, mimeType, 0.92));
+                    const prefix = kf.id.startsWith('win-') ? 'win_' : 'spin_';
+                    const fileName = `${prefix}${kf.time.toFixed(2)}s_${kf.id}.${ext}`;
+                    const fileHandle = await saveDirHandle.getFileHandle(fileName, { create: true });
+                    const writable = await fileHandle.createWritable();
+                    await writable.write(blob);
+                    await writable.close();
+                    kf.canvas = null; // 釋放記憶體
+                    setSaveCount(prev => prev + 1);
+                } catch (e) {
+                    console.error('自動存檔失敗:', e);
+                }
+            }
+            // ── 存 WIN 特工截圖 ──
+            const wpKey = `wp_${kf.id}`;
+            if (!savedIdsRef.current.has(wpKey) && kf.winPollCanvas) {
+                savedIdsRef.current.add(wpKey);
+                try {
+                    const mimeType = saveFormat === 'png' ? 'image/png' : 'image/jpeg';
+                    const ext = saveFormat === 'png' ? 'png' : 'jpg';
+                    const blob = await new Promise(r => kf.winPollCanvas.toBlob(r, mimeType, 0.92));
+                    const fileName = `winpoll_${kf.time.toFixed(2)}s_${kf.id}.${ext}`;
+                    const fileHandle = await saveDirHandle.getFileHandle(fileName, { create: true });
+                    const writable = await fileHandle.createWritable();
+                    await writable.write(blob);
+                    await writable.close();
+                    // 不釋放 winPollCanvas，報表匯出時還需要
+                    setSaveCount(prev => prev + 1);
+                } catch (e) {
+                    console.error('WIN 特工截圖存檔失敗:', e);
+                }
             }
         });
     }, [candidates, saveDirHandle, saveFormat]);
@@ -112,8 +140,8 @@ const Phase4Video = ({
     // ── 卡片內容渲染器（共用於平鋪與分組模式）──
     const renderCardContent = (kf, idx) => (
         <div className="flex gap-2.5 items-center">
-            <div className="w-20 h-14 bg-slate-900 rounded-lg overflow-hidden shrink-0 flex items-center justify-center">
-                <img src={kf.thumbUrl} className="w-full h-full object-contain" alt="" />
+            <div className={`w-20 h-14 rounded-lg overflow-hidden shrink-0 flex items-center justify-center ${kf.winPollThumbUrl ? 'bg-amber-900 ring-2 ring-amber-400' : 'bg-slate-900'}`}>
+                <img src={kf.winPollThumbUrl || kf.thumbUrl} className="w-full h-full object-contain" alt="" />
             </div>
             <div className="flex-1 min-w-0 pr-5">
                 <div className="flex items-center justify-between">
@@ -423,10 +451,18 @@ const Phase4Video = ({
 
             const hasData = bestFrame.ocrData && typeof bestFrame.ocrData.balance !== 'undefined' && typeof bestFrame.ocrData.bet !== 'undefined';
 
+            // 由底層 smartDedup 引擎的 isFGSequence 標記驅動，不再用 UI 層啟發式猜測
+            const isFGSequence = group.some(c => c.kf?.isFGSequence);
+
             if (hasData && bet > 0) { 
                 if (currentBase === null) {
                     mathState = win > 0 ? 2 : 1;
                     currentBase = bal + win; 
+                } else if (isFGSequence) {
+                    // FG 模式：不檢查 BAL+BET=上局結餘（因為不扣 BET），直接視為連續
+                    mathState = 4; // FG 模式
+                    mathValid = true;
+                    currentBase = bal + win; // 追蹤 FG 結束後的結餘
                 } else {
                     const eps = 0.5;
                     if (Math.abs(bal + bet - currentBase) < eps) {
@@ -442,9 +478,6 @@ const Phase4Video = ({
                     }
                 }
             }
-
-            // 由底層 smartDedup 引擎的 isFGSequence 標記驅動，不再用 UI 層啟發式猜測
-            const isFGSequence = group.some(c => c.kf?.isFGSequence);
 
             return { gid, group, mathValid, mathState, mathDiff, expectedBase, nextBase: currentBase, isFGSequence };
         });
@@ -539,6 +572,36 @@ const Phase4Video = ({
     const handleStopLive = () => {
         setIsLiveActive(false);
         stopLiveDetection();
+    };
+
+    // ── 智慧刪除（含資料夾圖片清理）──
+    const handleConfirmDedup = async () => {
+        // 先找出即將被刪除的候選幀（isSpinBest === false）
+        const toRemove = candidates.filter(c => c.isSpinBest === false);
+
+        // 如果有選擇資料夾，嘗試刪除對應的截圖檔
+        if (saveDirHandle && toRemove.length > 0) {
+            const exts = ['jpg', 'jpeg', 'png'];
+            let deletedCount = 0;
+            for (const kf of toRemove) {
+                for (const ext of exts) {
+                    const prefix = kf.id.startsWith('win-') ? 'win_' : 'spin_';
+                    const fileName = `${prefix}${kf.time.toFixed(2)}s_${kf.id}.${ext}`;
+                    try {
+                        await saveDirHandle.removeEntry(fileName);
+                        deletedCount++;
+                    } catch (e) {
+                        // 檔案不存在或無權限，靜默跳過
+                    }
+                }
+            }
+            if (deletedCount > 0) {
+                console.log(`🗑️ 已從資料夾刪除 ${deletedCount} 張被淘汰的截圖`);
+            }
+        }
+
+        // 再執行原本的 confirmDedup（從 state 中移除非最佳候選幀）
+        confirmDedup();
     };
 
     // ── 統計數據 ──
@@ -757,6 +820,15 @@ const Phase4Video = ({
                                                 📝 數據合併
                                             </div>
                                         </div>
+                                        <div className="flex flex-col gap-0.5">
+                                            <span className="text-[10px] font-bold text-slate-400">FG 模式</span>
+                                            <select value={fgType} onChange={e => setFgType(e.target.value)}
+                                                className="h-7 px-2 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold shadow-sm cursor-pointer outline-none">
+                                                <option value="A">A 贏分延續</option>
+                                                <option value="B">B 贏分歸零</option>
+                                                <option value="none">無 FG</option>
+                                            </select>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -973,17 +1045,17 @@ const Phase4Video = ({
                                 {candidates.length >= 2 && (
                                     candidates.some(c => c.isSpinBest !== undefined) ? (
                                         <div className="flex gap-2">
-                                            <button onClick={smartDedup}
+                                            <button onClick={() => smartDedup(fgType)}
                                                 className="flex-1 py-2 rounded-lg font-bold flex items-center justify-center gap-1.5 text-xs transition-all bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 active:scale-95">
                                                 <RefreshCw size={14} /> 重新標記
                                             </button>
-                                            <button onClick={confirmDedup}
+                                            <button onClick={handleConfirmDedup}
                                                 className="flex-1 py-2 rounded-lg font-bold flex items-center justify-center gap-1.5 text-xs transition-all bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-200 active:scale-95">
                                                 🧹 智慧刪除 (僅保留最佳)
                                             </button>
                                         </div>
                                     ) : (
-                                        <button onClick={smartDedup}
+                                        <button onClick={() => smartDedup(fgType)}
                                             className="w-full py-2 rounded-lg font-bold flex items-center justify-center gap-1.5 text-xs transition-all bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 active:scale-95">
                                             🧹 智慧標記（辨識同局 → 凸顯最佳）
                                         </button>
@@ -1065,11 +1137,21 @@ const Phase4Video = ({
             {previewImage && (
                 <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-center justify-center cursor-pointer animate-in fade-in duration-200"
                     onClick={() => setPreviewImage(null)}>
-                    <div className="relative max-w-[90vw] max-h-[90vh]" onClick={e => e.stopPropagation()}>
-                        <img src={previewImage.url} alt="preview" className="max-w-full max-h-[85vh] rounded-xl shadow-2xl border border-white/10" />
-                        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-4 rounded-b-xl">
-                            <span className="text-white text-sm font-mono">@ {previewImage.time.toFixed(2)}s</span>
+                    <div className="relative flex gap-4 max-w-[95vw] max-h-[90vh]" onClick={e => e.stopPropagation()}>
+                        <div className="relative">
+                            <img src={previewImage.url} alt="reel-stop" className="max-w-full max-h-[85vh] rounded-xl shadow-2xl border border-white/10" />
+                            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-3 rounded-b-xl">
+                                <span className="text-white text-sm font-mono">🎰 盤面 @ {previewImage.time.toFixed(2)}s</span>
+                            </div>
                         </div>
+                        {previewImage.url2 && (
+                            <div className="relative">
+                                <img src={previewImage.url2} alt="win-poll" className="max-w-full max-h-[85vh] rounded-xl shadow-2xl border-2 border-amber-400/60" />
+                                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-3 rounded-b-xl">
+                                    <span className="text-amber-300 text-sm font-mono">🕵️ WIN 特工 @ {previewImage.time2?.toFixed(2) || '?'}s</span>
+                                </div>
+                            </div>
+                        )}
                         <button onClick={() => setPreviewImage(null)}
                             className="absolute -top-3 -right-3 w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-lg hover:bg-slate-100 transition-colors">
                             <X size={16} className="text-slate-700" />

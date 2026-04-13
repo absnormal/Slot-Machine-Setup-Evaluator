@@ -139,12 +139,15 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                 // 【打斷機制 v2】：用「連續多幀」確認是真正的新一局旋轉
                 // 贏分閃動動畫會讓全軸 MAE 在單一幀內飆高（像是轉輪），但下一幀就會消退
                 // 真正的轉輪則會持續維持高 MAE 不墜。所以我們要求「連續 3 幀」才確認打斷！
-                if (state.isWinPollActive && analysis.spinningCount > 0 && analysis.maxMAE > 25) {
+                if (analysis.spinningCount > 0 && analysis.maxMAE > 25) {
                     state.spinBreakCount = (state.spinBreakCount || 0) + 1;
                     if (state.spinBreakCount >= 3) {
-                        console.log(`🌀 [V-Line] 確認新一局旋轉 (連續 ${state.spinBreakCount} 幀, ${analysis.spinningCount}軸在轉, max=${analysis.maxMAE.toFixed(1)})，強行終止上一局的 WIN 特工！ (影片時間：${now.toFixed(3)}s)`);
-                        state.cancelWinPoll = true;
-                        state.isWinPollActive = false;
+                        state.hadSpinSinceLastStop = true; // 確認有新一局旋轉
+                        if (state.isWinPollActive) {
+                            console.log(`🌀 [V-Line] 確認新一局旋轉 (連續 ${state.spinBreakCount} 幀, ${analysis.spinningCount}軸在轉, max=${analysis.maxMAE.toFixed(1)})，強行終止上一局的 WIN 特工！ (影片時間：${now.toFixed(3)}s)`);
+                            state.cancelWinPoll = true;
+                            state.isWinPollActive = false;
+                        }
                         state.spinBreakCount = 0;
                     }
                 } else {
@@ -180,6 +183,14 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                     const isAnimationFallback = state.decayCount >= 15 && state.peakDiff > 8;
 
                     if ((isReelStopped || isAnimationFallback) && hadMotion && (now - state.lastCandidateTime) > 1.0) {
+                        
+                        // 【V-Line 旋轉門檻】：如果自上次停輪以來沒有偵測到任何旋轉，
+                        // 代表這只是同一局的動畫衰退，不是新的停輪。跳過！
+                        if (state.lastCandidateTime > 0 && !state.hadSpinSinceLastStop) {
+                            if (isReelStopped && state.stableCount === 3) {
+                                console.log(`🚫 [V-Line] 偵測到穩定但自上次停輪後沒有新旋轉，判定為動畫衰退，跳過 @ ${now.toFixed(3)}s`);
+                            }
+                        } else {
                         
                         // 如果上一局的 WIN 特工還在上班，因為已經偵測到了「新一局的明確停輪」
                         // 這裡必須直接強制殺死舊特工，不再讓特工蒙蔽主偵測器！
@@ -232,8 +243,7 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                                     c.id === candidate.id ? { ...c, ocrData: { win, balance, bet, orderId } } : c
                                 ));
 
-                                // 【快速短路機制】：如果 Reel Stop 的畫面中就已經包含了清晰的 WIN！
-                                // 立刻通報 WIN 追蹤特工「不需要抓了，直接下班！」
+                                // 【快速短路機制】：Reel Stop 原圖已有清晰 WIN → 通知特工直接下班，不要再去抓更糊的圖
                                 if (win && parseFloat(win) > 0) {
                                     state.reelStopHasWin = true;
                                 }
@@ -261,7 +271,7 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                                 let lastBal = '';
                                 let hasOutput = false;
                                 
-                                // 【最強記憶機制】：保存最後一次穩定讀到的 WIN 數字與對應截圖（供 BAL/BET OCR 用）
+                                // 【最強記憶機制】：保存最後一次穩定讀到的 WIN 數字與對應截圖（供截圖展示用）
                                 let bestWinCanvas = null;
                                 let bestWinTime = 0;
                                 let bestWinValue = '';
@@ -278,7 +288,7 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                                     hasOutput = true;
                                     
                                     const w = winPollWorkerRef.current || ocrWorkerRef.current;
-                                    // 從 bestWinCanvas 讀取結算後的 BAL/BET/ID（因為結算後數字會變）
+                                    // 全部從 bestWinCanvas（第一次讀到 WIN 的幀）讀取，確保局號一致
                                     const finalBal = balanceROI ? await cropAndOCR(bestWinCanvas, balanceROI, w, ocrDecimalPlaces ?? 2, 'BAL-FINAL') : '';
                                     const finalBet = betROI ? await cropAndOCR(bestWinCanvas, betROI, w, 0, 'BET-FINAL') : '';
                                     const finalOrderId = orderIdROI ? await cropAndOCR(bestWinCanvas, orderIdROI, w, 0, 'ORDER_ID') : '';
@@ -319,13 +329,14 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                                         clearInterval(captureTimer);
                                         return;
                                     }
-                                    if (frameQueue.length < MAX_QUEUE_SIZE) {
-                                        frameQueue.push({
-                                            canvas: captureFullFrame(video),
-                                            time: video.currentTime
-                                        });
-                                        polls++;
+                                    if (frameQueue.length >= MAX_QUEUE_SIZE) {
+                                        frameQueue.shift(); // 踢掉最舊的，確保最新幀永遠進得來
                                     }
+                                    frameQueue.push({
+                                        canvas: captureFullFrame(video),
+                                        time: video.currentTime
+                                    });
+                                    polls++;
                                 }, pollIntervalMs);
 
                                 // ── 消費者：依序從佇列取畫面跑 OCR ──
@@ -335,16 +346,34 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                                     if (isObsoleteAgent || state.cancelWinPoll || isDone || liveCancelRef.current || video.paused || video.ended || polls > MAX_POLLS || state.reelStopHasWin) {
                                         clearInterval(captureTimer);
                                         if (state.reelStopHasWin) {
-                                            console.log(`🕵️‍♂️ [WIN 追蹤特工 #${shortId}] 捷報！Reel Stop 原圖就自帶贏分了，特工提早快樂下班，不產出多餘卡片 🍻`);
+                                            console.log(`🕵️‍♂️ [WIN 追蹤特工 #${shortId}] Reel Stop 原圖已有 WIN，直接下班，保留原始清晰數據 🍻`);
                                             state.isWinPollActive = false;
                                             return;
                                         } else if (state.cancelWinPoll || isObsoleteAgent) {
+                                            // 【排乾佇列】：被打斷時，把已截好但還沒 OCR 的幀全部掃完再走
+                                            if (!hasOutput && frameQueue.length > 0) {
+                                                console.log(`🕵️‍♂️ [WIN 追蹤特工 #${shortId}] 被打斷！排乾佇列中剩餘 ${frameQueue.length} 幀...`);
+                                                const w = winPollWorkerRef.current || ocrWorkerRef.current;
+                                                while (frameQueue.length > 0 && !bestWinCanvas && w) {
+                                                    const { canvas: drainCanvas, time: drainTime } = frameQueue.shift();
+                                                    try {
+                                                        const drainWin = await cropAndOCR(drainCanvas, winROI, w, ocrDecimalPlaces ?? 2, 'WIN-DRAIN');
+                                                        if (drainWin && parseFloat(drainWin) > 0) {
+                                                            bestWinCanvas = drainCanvas;
+                                                            bestWinTime = drainTime;
+                                                            bestWinValue = drainWin;
+                                                            console.log(`🕵️‍♂️ [WIN 追蹤特工 #${shortId}] 🎯 排乾佇列中找到 WIN=${drainWin}！`);
+                                                            break;
+                                                        }
+                                                    } catch (e) { /* skip */ }
+                                                }
+                                            }
                                             if (bestWinCanvas && !hasOutput) {
                                                 console.log(`🕵️‍♂️ [WIN 追蹤特工 #${shortId}${isObsoleteAgent ? ' (前任)' : ''}] 任務強行中斷，但提取了最後一刻的完美遺產！合併回原卡片...`);
                                                 await mergeWinData('WIN_POLL_FORCED');
                                             } else if (!hasOutput) {
                                                 if (!isObsoleteAgent) {
-                                                    console.log(`🕵️‍♂️ [WIN 追蹤特工 #${shortId}] 任務撤銷/超時，未留下任何遺產。 (影片時間：${video.currentTime.toFixed(3)}s)`);
+                                                    console.log(`🕵️‍♂️ [WIN 追蹤特工 #${shortId}] 任務撤銷/超時，佇列也沒找到 WIN。 (影片時間：${video.currentTime.toFixed(3)}s)`);
                                                     state.isWinPollActive = false;
                                                 }
                                             }
@@ -359,6 +388,10 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                                             try {
                                                 if (!winFound) {
                                                     const pollWin = await cropAndOCR(pollCanvas, winROI, w, ocrDecimalPlaces ?? 2, 'WIN-POLL');
+                                                    // 【診斷 log】：每 10 幀印一次消費者進度
+                                                    if (missCount % 10 === 0) {
+                                                        console.log(`🕵️ [WIN 特工 #${shortId}] 消費進度: 已處理 ${missCount + confirmCount} 幀, 佇列=${frameQueue.length}, polls=${polls}, OCR="${pollWin || '(空)'}"`);
+                                                    }
                                                     if (pollWin && parseFloat(pollWin) > 0) {
                                                         missCount = 0;
                                                         console.log(`🕵️‍♂️ [WIN 追蹤特工 #${shortId}] 👀 抓到數字: "${pollWin}" (佇列剩餘: ${frameQueue.length})`);
@@ -373,8 +406,7 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                                                             bestWinValue = pollWin;
                                                         }
 
-                                                        // 因為數據合併法不再需要完美截圖，門檻降低到 2 次確認即可
-                                                        // （只需排除噪音，不需等待長時間穩定）
+                                                        // 維持 2 次確認可靠性，但截圖鎖定在第一次讀到的畫面
                                                         const targetCount = 2;
                                                         if (confirmCount >= targetCount) {
                                                             winFound = true;
@@ -400,9 +432,7 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                                                     }
                                                     const pollBal = await cropAndOCR(pollCanvas, balanceROI, w, ocrDecimalPlaces ?? 2, 'BALANCE-POLL');
                                                     if (pollBal && parseFloat(pollBal) > 0) {
-                                                        // 讀到有效 BAL，立刻合併完工
-                                                        bestWinCanvas = pollCanvas; // 更新 bestWinCanvas 讓 merge 用最新 BAL
-                                                        bestWinTime = exactPollTime;
+                                                        // 讀到有效 BAL，完工（不更新 bestWinCanvas，統一用最早的幀）
                                                         isDone = true;
                                                         await mergeWinData('WIN_POLL');
                                                         clearInterval(captureTimer);
@@ -428,6 +458,8 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                         state.decayCount = 0;
                         state.peakDiff = 0;
                         state.diffWindow.length = 0;
+                        state.hadSpinSinceLastStop = false; // 重置旋轉追蹤
+                        } // 關閉 hadSpinSinceLastStop 檢查的 else
                     } else if (isReelStopped && state.stableCount === 3) {
                         // 【診斷 log】：看起來停了但沒觸發，到底哪個條件擋住？
                         const timeSinceLast = now - state.lastCandidateTime;
@@ -530,7 +562,7 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
      *
      * 選取優先級：State 2 的第一張 > State 2 任一張 > WIN 最大的任一張
      */
-    const smartDedup = useCallback(() => {
+    const smartDedup = useCallback((fgType = 'A') => {
         setCandidates(prev => {
             if (prev.length <= 1) return prev.map(c => ({ ...c, spinGroupId: 0, isSpinBest: true }));
 
@@ -559,6 +591,11 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                         if (curr.kf.time - prevF.kf.time > 15) break; 
                         
                         if (Math.abs(curr.win - prevF.win) < eps) {
+                            // 【局號防呆】：如果兩幀有不同的局號，代表是不同局的真實贏分，不是殘影
+                            const currId = curr.kf.ocrData?.orderId;
+                            const prevId = prevF.kf.ocrData?.orderId;
+                            if (currId && prevId && currId !== prevId) continue;
+
                             const expectedNewBal = prevF.bal + prevF.win - curr.bet;
                             if (curr.bet > 0 && Math.abs(curr.bal - expectedNewBal) < eps) {
                                 // 抓到了！這是一個剛開始轉的新局，但帶著舊的 WIN 殘影！
@@ -687,83 +724,104 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
 
             // ==========================================
             // 🔥 [FG 智能合併 Pass] 
-            // 如果相鄰兩個群組在數學特徵上符合「未扣除押注」且「贏分維持或累加」，
-            // 我們將它們強行縫合為同一個巨大的 FG 序列！
+            // 根據使用者指定的 fgType (A/B/none) 決定合併策略
             // ==========================================
             let finalGroups = Object.values(groups);
-            // 確保依時間排序，以進行相鄰比對
             finalGroups.sort((a, b) => a[0].kf.time - b[0].kf.time);
 
             let foldedGroups = [];
-            let currentFG = null;
 
-            for (let i = 0; i < finalGroups.length; i++) {
-                const g = finalGroups[i];
-                // 找出這個 Group 帳面上最大的贏分特徵
-                let maxWin = -1, rep = g[0];
-                g.forEach(f => { if (f.win > maxWin) { maxWin = f.win; rep = f; } });
+            if (fgType === 'none') {
+                // 完全不做 FG 合併
+                foldedGroups = finalGroups.map(g => [...g]);
+            } else {
+                let currentFG = null;
 
-                if (currentFG) {
-                    const prevTime = currentFG.group[currentFG.group.length - 1].kf.time;
-                    const fgBal = currentFG.rep.bal;
-                    const fgBet = currentFG.rep.bet;
-                    const fgWin = currentFG.rep.win;
-                    const fgId = currentFG.rep.kf.ocrData?.orderId;
-                    const repId = rep.kf.ocrData?.orderId;
+                for (let i = 0; i < finalGroups.length; i++) {
+                    const g = finalGroups[i];
+                    let maxWin = -1, rep = g[0];
+                    g.forEach(f => { if (f.win > maxWin) { maxWin = f.win; rep = f; } });
 
-                    const timeDiff = g[0].kf.time - prevTime;
-                    
-                    const isFGFrozenBal = Math.abs(rep.bal - fgBal) < eps;
-                    const isFGDynamicBal = Math.abs(rep.bal - (fgBal + fgWin)) < eps;
-                    
-                    const isValidId = id => (id && id.length >= 5);
-                    const isIdMatch = isValidId(fgId) && isValidId(repId) && fgId === repId;
+                    if (currentFG) {
+                        const prevTime = currentFG.group[currentFG.group.length - 1].kf.time;
+                        const fgBal = currentFG.rep.bal;
+                        const fgBet = currentFG.rep.bet;
+                        const fgWin = currentFG.rep.win;
+                        const fgId = currentFG.rep.kf.ocrData?.orderId;
+                        const repId = rep.kf.ocrData?.orderId;
+                        const timeDiff = g[0].kf.time - prevTime;
 
-                    // 滿足免遊條件：
-                    // 1. Order ID 相同 (無敵鐵證) OR
-                    // 2. 算術相符 (未扣 bet，且 win 往上疊)
-                    if (isIdMatch || ((isFGFrozenBal || isFGDynamicBal) && rep.bet === fgBet && rep.bet > 0 && rep.win >= fgWin && timeDiff <= 180)) {
-                        
-                        // 【贏分歸零防呆】：如果在疑似接續的局數中，出現了「贏分變 0」的畫面，
-                        // 這代表機台已經徹底把上一局的贏分「結算並清空」了，這就絕對不可能是同一局免遊！
-                        const isWinCleared = g.some(f => f.win < 0.5);
-                        
-                        // 【平局防呆】：如果舊的代表幀贏分剛好等於押注 (Tie Spin)，那餘額(Bal)本來就會不變！
-                        // 數學巧合完美符合 FG 條件，但它實際上是兩場獨立的常規付費局！無情斷鏈！
+                        const isValidId = id => (id && id.length >= 5);
+                        const isIdMatch = isValidId(fgId) && isValidId(repId) && fgId === repId;
+                        const isFGFrozenBal = Math.abs(rep.bal - fgBal) < eps;
                         const isTieSpin = Math.abs(fgWin - rep.bet) < eps;
 
-                        if (!isIdMatch && isWinCleared) {
-                            foldedGroups.push(currentFG.group);
-                            currentFG = null;
-                        } else if (!isIdMatch && isFGFrozenBal && isTieSpin) {
-                            foldedGroups.push(currentFG.group);
-                            currentFG = null;
-                        } else {
-                            // 成功縫合！將這兩坨群組的所有幀都打上【免遊印記】
+                        let shouldMerge = false;
+
+                        if (isIdMatch) {
+                            // OrderID 匹配 → 無條件合併（A/B 共通）
+                            shouldMerge = true;
+                        } else if (timeDiff <= 180 && rep.bet === fgBet && rep.bet > 0) {
+                            // 無 OrderID → 依 fgType 分別驗證算術
+                            if (fgType === 'A') {
+                                // A 類：BAL 凍結 + WIN 遞增或持平
+                                const isFGDynamicBal = Math.abs(rep.bal - (fgBal + fgWin)) < eps;
+                                const isWinCleared = g.some(f => f.win < 0.5);
+                                if ((isFGFrozenBal || isFGDynamicBal) && rep.win >= fgWin) {
+                                    if (isWinCleared) {
+                                        shouldMerge = false; // A 類中 WIN 歸零 = 結算完畢，斷鏈
+                                    } else if (isFGFrozenBal && isTieSpin) {
+                                        shouldMerge = false; // 平局防呆
+                                    } else {
+                                        shouldMerge = true;
+                                    }
+                                }
+                            } else if (fgType === 'B') {
+                                // B 類：MG→FG 邊界允許 BAL 跳變 (BAL_new ≈ BAL_old + WIN_old)
+                                const isBTypeBoundary = Math.abs(rep.bal - (fgBal + fgWin)) < eps;
+                                if (isFGFrozenBal) {
+                                    // FG 內部連續局：BAL 凍結
+                                    if (isTieSpin) {
+                                        shouldMerge = false; // 平局防呆
+                                    } else {
+                                        shouldMerge = true;
+                                    }
+                                } else if (isBTypeBoundary) {
+                                    // MG→FG 邊界：贏分結算到餘額，WIN 可能歸零
+                                    shouldMerge = true;
+                                }
+                            }
+                        }
+
+                        if (shouldMerge) {
                             g.forEach(f => f.isFGFolded = true);
                             currentFG.group.forEach(f => f.isFGFolded = true);
-
-                            // 合併進當前序列
                             currentFG.group.push(...g);
-                            // 更新代表幀特徵 (如果餘額動態更新，我們得追蹤最新的 FG 基準點)
-                            if (isFGDynamicBal || rep.win > fgWin) {
-                                currentFG.rep = rep; 
+                            // 更新代表幀
+                            if (fgType === 'B') {
+                                // B 類：始終追蹤最新的幀作為基準（因為 BAL 可能在邊界跳變）
+                                currentFG.rep = rep;
+                            } else {
+                                // A 類：追蹤 BAL 動態更新或 WIN 更大的幀
+                                const isFGDynamicBal = Math.abs(rep.bal - (fgBal + fgWin)) < eps;
+                                if (isFGDynamicBal || rep.win > fgWin) {
+                                    currentFG.rep = rep;
+                                }
                             }
                             continue;
+                        } else {
+                            foldedGroups.push(currentFG.group);
+                            currentFG = null;
                         }
-                    } else {
-                        // 斷鏈
-                        foldedGroups.push(currentFG.group);
-                        currentFG = null;
+                    }
+
+                    if (!currentFG) {
+                        currentFG = { group: [...g], rep: rep };
                     }
                 }
-
-                if (!currentFG) {
-                    currentFG = { group: [...g], rep: rep };
+                if (currentFG) {
+                    foldedGroups.push(currentFG.group);
                 }
-            }
-            if (currentFG) {
-                foldedGroups.push(currentFG.group);
             }
 
             // 把 foldedGroups 內容交接給後續的最佳幀挑選邏輯

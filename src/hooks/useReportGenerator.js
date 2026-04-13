@@ -145,6 +145,10 @@ export function useReportGenerator() {
                 }
             }
 
+            if (c.isFGSequence) {
+                continuity += `<br/><span style="color:#e11d48; font-size:10px; font-weight:bold;">🔥 FG</span>`;
+            }
+
             const fullSrc = c.canvas ? c.canvas.toDataURL('image/jpeg', 0.92) : (c.thumbUrl || '');
             const displaySrc = c.thumbUrl || fullSrc;
             const winClass = ocrWin > 0 ? 'win-positive' : '';
@@ -200,7 +204,9 @@ export function useReportGenerator() {
 
             const errorStr = c.error ? `<div class="error-text">${c.error}</div>` : '';
 
-            return `<tr>
+            const dataAttrs = [contClass === 'break' ? 'data-break="1"' : '', ocrWin > 0 ? 'data-win="1"' : '', c.isFGSequence ? 'data-fg="1"' : ''].filter(Boolean).join(' ');
+
+            return `<tr ${dataAttrs}>
                 <td class="idx">${i + 1}</td>
                 <td class="thumb">
                     <img src="${displaySrc}" data-full="${fullSrc}" alt="board-${i + 1}" onclick="openLb(this.getAttribute('data-full'))" />
@@ -344,7 +350,17 @@ tr:hover { background:#f8fafc; }
 .error-text { color:#dc2626; background:#fef2f2; border:1px solid #fca5a5; padding:2px 4px; border-radius:4px; font-weight:bold; }
 .footer { padding:16px 32px; background:#f8fafc; border-top:1px solid #e2e8f0; text-align:center; font-size:11px; color:#94a3b8; }
 .excel-table th, .excel-table td { border: 1px solid #cbd5e1 !important; padding: 8px 16px; }
-@media print { body { background:#fff; padding:0; } .report { box-shadow:none; } }
+.nav-bar { position:fixed; bottom:20px; right:20px; z-index:999; display:flex; gap:6px; background:rgba(30,41,59,.92); backdrop-filter:blur(8px); padding:8px 12px; border-radius:12px; box-shadow:0 4px 24px rgba(0,0,0,.3); }
+.nav-btn { padding:6px 12px; border:none; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer; transition:all .15s; white-space:nowrap; }
+.nav-btn:hover { transform:translateY(-1px); box-shadow:0 2px 8px rgba(0,0,0,.2); }
+.nav-btn.break { background:#fef2f2; color:#dc2626; }
+.nav-btn.win { background:#ecfdf5; color:#059669; }
+.nav-btn.fg { background:#fff1f2; color:#e11d48; }
+.nav-btn.top { background:#f1f5f9; color:#64748b; }
+.nav-counter { font-size:10px; color:#94a3b8; align-self:center; padding:0 4px; }
+tr.highlight { animation: rowFlash .6s ease; }
+@keyframes rowFlash { 0%,100% { background:transparent; } 50% { background:#fef9c3; } }
+@media print { body { background:#fff; padding:0; } .report { box-shadow:none; } .nav-bar { display:none; } }
 </style>
 </head>
 <body>
@@ -376,10 +392,38 @@ tr:hover { background:#f8fafc; }
     <img id="lbImg" src="" alt="preview" />
     <div class="hint">點擊任意處關閉</div>
 </div>
+<div class="nav-bar">
+    <button class="nav-btn top" onclick="window.scrollTo({top:0,behavior:'smooth'})">⬆ 頂部</button>
+    <button class="nav-btn break" onclick="navTo('break')">⚠ 斷層</button>
+    <span class="nav-counter" id="breakCount"></span>
+    <button class="nav-btn win" onclick="navTo('win')">💰 贏分</button>
+    <span class="nav-counter" id="winCount"></span>
+    <button class="nav-btn fg" onclick="navTo('fg')">🔥 FG</button>
+    <span class="nav-counter" id="fgCount"></span>
+</div>
 <script>
 function openLb(src) { const lb=document.getElementById('lb'); document.getElementById('lbImg').src=src; lb.classList.add('show'); }
 function closeLb() { document.getElementById('lb').classList.remove('show'); }
 document.addEventListener('keydown', e => { if(e.key==='Escape') closeLb(); });
+
+function navTo(type) {
+    const rows = Array.from(document.querySelectorAll('tr[data-' + type + ']'));
+    if (rows.length === 0) return;
+    const viewCenter = window.scrollY + window.innerHeight / 2;
+    // 找到第一個在目前畫面中心「之下」的匹配列
+    let next = rows.find(r => r.getBoundingClientRect().top + window.scrollY > viewCenter + 10);
+    if (!next) next = rows[0]; // 沒有更下面的了，循環回頂部
+    next.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    next.classList.remove('highlight');
+    void next.offsetWidth;
+    next.classList.add('highlight');
+}
+const bc = document.querySelectorAll('tr[data-break]').length;
+const wc = document.querySelectorAll('tr[data-win]').length;
+const fc = document.querySelectorAll('tr[data-fg]').length;
+document.getElementById('breakCount').textContent = bc > 0 ? bc : '';
+document.getElementById('winCount').textContent = wc > 0 ? wc : '';
+document.getElementById('fgCount').textContent = fc > 0 ? fc : '';
 </script>
 </body>
 </html>`;
