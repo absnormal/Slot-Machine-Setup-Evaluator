@@ -40,9 +40,6 @@ export function generateThumbUrl(canvas, roi) {
 // 建立全域排隊機制，確保只有一個 Worker 實例時不會因為高頻調用導致內部 WASM 記憶體擠爆或阻塞
 let ocrGlobalQueue = Promise.resolve();
 
-// 每次 OCR 推理前讓出主線程，讓 rAF（V-Line 偵測）有機會執行
-const yieldToMain = () => new Promise(r => setTimeout(r, 0));
-
 /**
  * 裁切 ROI → 放大 → 原彩影像 → PaddleOCR (透過全域 Queue 保護)
  */
@@ -51,7 +48,6 @@ export async function cropAndOCR(canvas, roi, ocrWorker, decimalPlaces, label = 
 
     return new Promise((resolve) => {
         ocrGlobalQueue = ocrGlobalQueue.then(async () => {
-            await yieldToMain(); // ← 讓 V-Line rAF 有機會在兩次 OCR 之間跑
             try {
                 const cropCanvas = document.createElement('canvas');
                 const cw = Math.floor(canvas.width * (roi.w / 100));
