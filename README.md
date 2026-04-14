@@ -241,6 +241,11 @@ Phase 2 (手動驗算) ←→ Phase 3 (AI 辨識) ← Phase 4 (影片截圖)
 | `allways` | 全路線，扣除純 WILD 路線 (`pureWildWays`) |
 | `symbolcount` | 消除模式（Pay Anywhere），只計數量 |
 
+> **⚠️ 注意：UI 完整度差異 (`symbolcount` 模式)**
+> * **引擎端**：已完整實作雙符號累加法與多重乘倍。
+> * **Phase 1 (模板建立)**：目前 UI 尚未開放 `symbolcount` 的按鈕選項（僅可選 Paylines / AllWays），若需使用此模式需手動建立 JSON。
+> * **Phase 3/4 (辨識與報表)**：完全原生相容，只要輸入的 `template.lineMode` 為 `symbolcount`，報表文字與盤面畫框皆會正常對應渲染（會顯示 `COUNT_前綴` 作為線獎名稱）。
+
 額外支援：WILD 替代、SCATTER 全盤掃描、CASH/COLLECT 收集、動態乘倍 xN、全盤乘倍列、DOUBLE 雙倍符號。  
 **共 45 項單元測試覆蓋**，修改後務必執行 `npm run test`。
 
