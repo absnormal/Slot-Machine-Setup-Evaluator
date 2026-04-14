@@ -310,7 +310,8 @@ function App() {
 
         const transformed = await Promise.all(kfCandidates.map(kf => {
             return new Promise((resolve) => {
-                const dataUrl = kf.canvas.toDataURL('image/jpeg', 0.8);
+                const targetCanvas = kf.winPollCanvas || kf.canvas;
+                const dataUrl = targetCanvas.toDataURL('image/jpeg', 0.8);
                 const img = new Image();
                 img.onload = () => {
                     resolve({
