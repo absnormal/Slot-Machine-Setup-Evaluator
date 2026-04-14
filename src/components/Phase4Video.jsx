@@ -1130,8 +1130,9 @@ const Phase4Video = ({
                                 <div className="space-y-2 pt-2 border-t border-slate-100">
                                     {!rootSaveDirHandle ? (
                                         <button onClick={handlePickSaveDir}
-                                            className="w-full py-3 rounded-xl font-black flex items-center justify-center gap-2 bg-gradient-to-r from-amber-500 to-orange-500 text-white hover:from-amber-400 hover:to-orange-400 border border-orange-600 transition-all active:scale-95 text-sm shadow-lg shadow-orange-500/30 animate-pulse-slow">
-                                            <FolderOpen size={16} /> 設定靜默存檔目錄 (必選，點開始分析自動建子資料夾)
+                                            className="w-full py-3 rounded-xl font-black flex flex-col items-center justify-center gap-1 bg-gradient-to-r from-amber-500 to-orange-500 text-white hover:from-amber-400 hover:to-orange-400 border border-orange-600 transition-all active:scale-95 text-sm shadow-lg shadow-orange-500/30 animate-pulse-slow">
+                                            <div className="flex items-center gap-2"><FolderOpen size={16} /> 設定靜默存檔目錄</div>
+                                            <div className="text-[10px] font-normal opacity-90">(必選，點開始分析自動建子資料夾)</div>
                                         </button>
                                     ) : (
                                         <div className="flex flex-col gap-1.5 p-2 bg-emerald-50 border border-emerald-200 rounded-xl">
