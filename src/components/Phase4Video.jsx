@@ -513,6 +513,18 @@ const Phase4Video = ({
         }).map(g => g.gid);
     }, [groupsWithMath]);
 
+    const nonZeroWinGroupIds = useMemo(() => {
+        if (!groupsWithMath) return [];
+        return groupsWithMath.filter(g => {
+            return g.group.some(c => {
+                const kf = c.kf;
+                const ocrWin = kf.ocrData ? Math.floor(parseFloat(kf.ocrData.win) || 0) : 0;
+                const aiWin = (kf.status === 'recognized' && kf.recognitionResult) ? Math.floor(parseFloat(kf.recognitionResult.totalWin) || 0) : 0;
+                return Math.max(ocrWin, aiWin) > 0;
+            });
+        }).map(g => g.gid);
+    }, [groupsWithMath]);
+
     const [currentBreakIndex, setCurrentBreakIndex] = useState(0);
     useEffect(() => {
         setCurrentBreakIndex(0);
@@ -548,6 +560,24 @@ const Phase4Video = ({
         }
         setCurrentWrongWinIndex(prev => (prev + 1) % wrongWinGroupIds.length);
     }, [wrongWinGroupIds, currentWrongWinIndex]);
+
+    const [currentNonZeroWinIndex, setCurrentNonZeroWinIndex] = useState(0);
+    useEffect(() => {
+        setCurrentNonZeroWinIndex(0);
+    }, [nonZeroWinGroupIds]);
+
+    const scrollToNextNonZeroWin = useCallback(() => {
+        if (nonZeroWinGroupIds.length === 0) return;
+        const gid = nonZeroWinGroupIds[currentNonZeroWinIndex];
+        const el = document.getElementById(`spin-group-${gid}`);
+        const targetEl = el || document.getElementById(`kf-card-${gid.replace('ungrouped_', '')}`);
+        if (targetEl) {
+            targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            targetEl.classList.add('ring-4', 'ring-emerald-400', 'ring-offset-2', 'transition-all', 'duration-500');
+            setTimeout(() => targetEl.classList.remove('ring-4', 'ring-emerald-400', 'ring-offset-2'), 1500);
+        }
+        setCurrentNonZeroWinIndex(prev => (prev + 1) % nonZeroWinGroupIds.length);
+    }, [nonZeroWinGroupIds, currentNonZeroWinIndex]);
 
     // ── 操作處理 ──
     const scanOpts = { winROI, balanceROI, betROI, orderIdROI: enableOrderId ? orderIdROI : null, ocrDecimalPlaces, requireStableWin: false, sliceCols: template?.cols || propGridCols || 5 };
@@ -928,6 +958,11 @@ const Phase4Video = ({
                                             {wrongWinGroupIds?.length > 0 && (
                                                 <button onClick={scrollToNextWrongWin} className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 text-amber-600 hover:bg-amber-100 hover:text-amber-700 rounded-lg text-xs font-bold transition-all border border-amber-200 active:scale-95 shadow-sm">
                                                     <AlertCircle size={14} /> 找下個算分異常 ({currentWrongWinIndex + 1}/{wrongWinGroupIds.length})
+                                                </button>
+                                            )}
+                                            {nonZeroWinGroupIds?.length > 0 && (
+                                                <button onClick={scrollToNextNonZeroWin} className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 hover:text-emerald-700 rounded-lg text-xs font-bold transition-all border border-emerald-200 active:scale-95 shadow-sm">
+                                                    <Star size={14} /> 找下個非零贏分 ({currentNonZeroWinIndex + 1}/{nonZeroWinGroupIds.length})
                                                 </button>
                                             )}
                                         </div>
