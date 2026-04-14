@@ -191,9 +191,10 @@ export function useReportGenerator() {
             // 格式化 AI 盤面
             let gridHtml = '';
             if (aiData && aiData.grid) {
-                gridHtml = `<div class="grid-table">` + 
-                    aiData.grid.map(row => 
-                        `<div class="grid-row">${row.map(cell => `<span class="grid-cell">${cell}</span>`).join('')}</div>`
+                gridHtml = `<div class="grid-table" id="g-${i}">
+                    <div id="gw-${i}" class="grid-win-popup"></div>` + 
+                    aiData.grid.map((row, rIdx) => 
+                        `<div class="grid-row">${row.map((cell, cIdx) => `<span class="grid-cell" id="c-${i}-${rIdx}-${cIdx}">${cell}</span>`).join('')}</div>`
                     ).join('') + 
                 `</div>`;
             }
@@ -227,7 +228,9 @@ export function useReportGenerator() {
                                 text += ` (×${d.multiplier})`;
                             }
                             text += ` = ${parseFloat(d.winAmount.toFixed(2))}`;
-                            return `<div class="line-result">${text}</div>`;
+                            
+                            const coordsStr = (d.winCoords && d.winCoords.length > 0) ? JSON.stringify(d.winCoords).replace(/"/g, "'") : '[]';
+                            return `<div class="interactive-line" onmouseenter="hi(${i}, ${coordsStr}, ${d.winAmount})" onmouseleave="cl(${i})">${text}</div>`;
                         }).join('') + 
                     `</div>`;
                 }
@@ -376,11 +379,18 @@ tr:hover { background:#f8fafc; }
 .cont.ok { color:#059669; }
 .cont.break { color:#dc2626; background:#fef2f2; border-radius:4px; padding:2px 6px; }
 .cont.na { color:#94a3b8; }
-.grid-table { display:flex; flex-direction:column; gap:2px; font-family:monospace; font-size:10px; background:#f8fafc; padding:4px; border-radius:4px; border:1px solid #e2e8f0; width:max-content; }
+.grid-table { display:flex; flex-direction:column; gap:2px; font-family:monospace; font-size:10px; background:#1e293b; padding:4px; border-radius:6px; border:1px solid #e2e8f0; width:max-content; position:relative; user-select:none; }
+.grid-table.dimmed { background:#0f172a; }
 .grid-row { display:flex; gap:2px; }
-.grid-cell { background:#fff; border:1px solid #cbd5e1; border-radius:2px; padding:2px 4px; min-width:24px; text-align:center; color:#475569; font-weight:bold; }
+.grid-cell { background:#334155; border:1px solid #475569; border-radius:3px; padding:4px 6px; min-width:32px; text-align:center; color:#f8fafc; font-weight:800; transition:all 0.15s; position:relative; }
+.grid-table.dimmed .grid-cell { opacity:0.3; filter:grayscale(80%); }
+.grid-table.dimmed .grid-cell.highlight { opacity:1; filter:none; box-shadow:inset 0 0 8px rgba(253,224,71,0.6); background:#fde047; border-color:#eab308; color:#713f12; z-index:2; transform:scale(1.05); text-shadow:0 1px 1px rgba(255,255,255,0.4); }
+.grid-win-popup { position:absolute; top:-12px; left:-8px; background:rgba(0,0,0,0.85); color:#fff; font-size:12px; padding:3px 6px; border-radius:4px; box-shadow:0 4px 12px rgba(0,0,0,0.3); z-index:10; display:none; flex-direction:row; align-items:center; opacity:0; pointer-events:none; transition:opacity 0.15s; font-family:sans-serif; letter-spacing:0.5px; }
+.grid-win-popup.show { display:flex; opacity:1; }
+.grid-win-popup span.arrow { margin-left:4px; font-size:9px; opacity:0.6; }
 .lines-container { display:flex; flex-direction:column; gap:3px; }
-.line-result { background:#fff; border:1px solid #e2e8f0; border-radius:4px; padding:2px 6px; font-size:11px; color:#475569; font-weight:600; white-space:nowrap; }
+.interactive-line { background:#fff; border:1px solid #cbd5e1; border-radius:6px; padding:4px 8px; font-size:11px; color:#475569; font-weight:600; white-space:nowrap; cursor:pointer; text-align:center; width:100%; margin-bottom:2px; transition:all 0.15s; font-family:-apple-system, sans-serif; box-shadow:0 1px 2px rgba(0,0,0,.05); display:inline-block; }
+.interactive-line:hover { background:#fef9c3; color:#854d0e; border-color:#fde047; transform:translateX(2px); box-shadow:0 2px 4px rgba(0,0,0,.1); }
 .memo { font-size:11px; color:#64748b; max-width:150px; }
 .error-text { color:#dc2626; background:#fef2f2; border:1px solid #fca5a5; padding:2px 4px; border-radius:4px; font-weight:bold; }
 .footer { padding:16px 32px; background:#f8fafc; border-top:1px solid #e2e8f0; text-align:center; font-size:11px; color:#94a3b8; }
@@ -440,6 +450,32 @@ tr.highlight { animation: rowFlash .6s ease; }
 function openLb(src) { const lb=document.getElementById('lb'); document.getElementById('lbImg').src=src; lb.classList.add('show'); }
 function closeLb() { document.getElementById('lb').classList.remove('show'); }
 document.addEventListener('keydown', e => { if(e.key==='Escape') closeLb(); });
+
+function hi(idx, coords, amt) {
+    const grid = document.getElementById('g-' + idx);
+    const pop = document.getElementById('gw-' + idx);
+    if (!grid) return;
+    grid.classList.add('dimmed');
+    grid.querySelectorAll('.highlight').forEach(e => e.classList.remove('highlight'));
+    if (coords && coords.length) {
+        coords.forEach(c => {
+            const cell = document.getElementById('c-' + idx + '-' + c.row + '-' + c.col);
+            if (cell) cell.classList.add('highlight');
+        });
+    }
+    if (pop && amt > 0) {
+        pop.innerHTML = Number(amt).toLocaleString() + '<span class="arrow">→</span>';
+        pop.classList.add('show');
+    }
+}
+function cl(idx) {
+    const grid = document.getElementById('g-' + idx);
+    const pop = document.getElementById('gw-' + idx);
+    if (!grid) return;
+    grid.classList.remove('dimmed');
+    grid.querySelectorAll('.highlight').forEach(e => e.classList.remove('highlight'));
+    if (pop) pop.classList.remove('show');
+}
 
 function navTo(type) {
     const rows = Array.from(document.querySelectorAll('tr[data-' + type + ']'));
