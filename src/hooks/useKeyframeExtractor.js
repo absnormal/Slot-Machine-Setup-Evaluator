@@ -143,12 +143,17 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                     state.spinBreakCount = (state.spinBreakCount || 0) + 1;
                     if (state.spinBreakCount >= 3) {
                         state.hadSpinSinceLastStop = true; // 確認有新一局旋轉
-                        if (state.isWinPollActive) {
-                            console.log(`🌀 [V-Line] 確認新一局旋轉 (連續 ${state.spinBreakCount} 幀, ${analysis.spinningCount}軸在轉, max=${analysis.maxMAE.toFixed(1)})，強行終止上一局的 WIN 特工！ (影片時間：${now.toFixed(3)}s)`);
-                            state.cancelWinPoll = true;
-                            state.isWinPollActive = false;
-                        }
+                        // 註：在此移除了「偵測到新旋轉就強殺 WIN 特工」的機制（與其連帶的 LOG），
+                        // 因為滿版的大獎動畫會被誤判為新旋轉，若強殺特工會導致大獎分數流失。
+                        // 特工將會在「下一次真正的停輪 (Reel Stop)」到來時才被安全撤銷。
                         state.spinBreakCount = 0;
+                        
+                        // 【關鍵重置】：打斷後必須清空舊局的計算窗口（把早上解過的 bug 補回來），
+                        // 否則殘留的 peakDiff / diffWindow 會汙染新一局的停輪判定，導致「隔局漏抓」！
+                        state.peakDiff = 0;
+                        state.diffWindow.length = 0;
+                        state.stableCount = 0;
+                        state.decayCount = 0;
                     }
                 } else {
                     state.spinBreakCount = 0;
