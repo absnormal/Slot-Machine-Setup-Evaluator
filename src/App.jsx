@@ -293,10 +293,10 @@ function App() {
         );
     }, [autoRecognition, keyframeExtractor, reelROI, winROI, balanceROI, betROI, ocrDecimalPlaces]);
 
-    const handleRecognizeLocalBatch = useCallback((decimalPlaces) => {
+    const handleRecognizeLocalBatch = useCallback((decimalPlaces, specificCandidates = null) => {
         const rois = { reelROI, winROI, balanceROI, betROI, orderIdROI };
         autoRecognition.recognizeLocalBatch(
-            keyframeExtractor.candidates,
+            specificCandidates || keyframeExtractor.candidates,
             keyframeExtractor.updateCandidate,
             rois,
             decimalPlaces ?? ocrDecimalPlaces

@@ -213,10 +213,12 @@ export function useAutoRecognition({
             return;
         }
 
-        const toProcess = candidates.filter(c =>
+        // 如果是單張指定辨識（candidates.length === 1），則放寬條件強制辨識
+        const toProcess = candidates.length === 1 ? candidates : candidates.filter(c =>
             (c.status === 'pending' || c.status === 'error') &&
             c.ocrData?.win && parseFloat(c.ocrData.win) > 0
         );
+        
         if (toProcess.length === 0) {
             setTemplateMessage?.('沒有需要辨識的贏分盤面（僅辨識 WIN > 0 的幀）');
             return;

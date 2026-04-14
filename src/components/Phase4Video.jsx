@@ -1013,9 +1013,14 @@ const Phase4Video = ({
                                                                 onClick={() => handleCardClick(kf)}
                                                 >
                                                     {renderCardContent(kf, idx)}
+                                                    <button onClick={(e) => { e.stopPropagation(); recognizeLocalBatch(ocrDecimalPlaces, [kf]); }}
+                                                        title="單獨本地辨識盤面"
+                                                        className="absolute top-1.5 right-14 text-slate-300 hover:text-emerald-500 opacity-0 group-hover:opacity-100 transition-all">
+                                                        <Monitor size={12} />
+                                                    </button>
                                                     <button onClick={(e) => { e.stopPropagation(); onTransferToPhase3([kf]); }}
-                                                        title="送到 Phase 3"
-                                                        className="absolute top-1.5 right-8 text-slate-300 hover:text-emerald-500 opacity-0 group-hover:opacity-100 transition-all">
+                                                        title="送到 Phase 3 手動調校"
+                                                        className="absolute top-1.5 right-8 text-slate-300 hover:text-indigo-500 opacity-0 group-hover:opacity-100 transition-all">
                                                         <Send size={12} />
                                                     </button>
                                                     <button onClick={(e) => { e.stopPropagation(); removeCandidate(kf.id); }}
@@ -1097,6 +1102,16 @@ const Phase4Video = ({
                                                                     </button>
                                                                 )}
                                                                 {renderCardContent(kf, idx)}
+                                                                <button onClick={(e) => { e.stopPropagation(); recognizeLocalBatch(ocrDecimalPlaces, [kf]); }}
+                                                                    title="單獨本地辨識盤面"
+                                                                    className="absolute top-1.5 right-14 text-slate-300 hover:text-emerald-500 opacity-0 group-hover:opacity-100 transition-all">
+                                                                    <Monitor size={12} />
+                                                                </button>
+                                                                <button onClick={(e) => { e.stopPropagation(); onTransferToPhase3([kf]); }}
+                                                                    title="送到 Phase 3 手動調校"
+                                                                    className="absolute top-1.5 right-8 text-slate-300 hover:text-indigo-500 opacity-0 group-hover:opacity-100 transition-all">
+                                                                    <Send size={12} />
+                                                                </button>
                                                                 <button onClick={(e) => { e.stopPropagation(); removeCandidate(kf.id); }}
                                                                     className="absolute top-1.5 right-1.5 text-slate-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all">
                                                                     <X size={12} />
