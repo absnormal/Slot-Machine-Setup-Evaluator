@@ -77,7 +77,7 @@ export function useReportGenerator() {
     /**
      * 匯出完整 HTML 報告（包含 OCR 數據與 AI 辨識盤面/贏分）
      */
-    const exportHTMLReport = useCallback(async (candidates, gameName = 'slot_analysis', saveDirHandle = null, template = null) => {
+    const exportHTMLReport = useCallback(async (candidates, gameName = 'slot_analysis', saveDirHandle = null, template = null, customRois = null) => {
         // 過濾出含有 OCR 資料 或 已經被認定的重點影格
         const validCandidates = candidates.filter(c => c.ocrData || c.recognitionResult || c.isSpinBest);
         if (validCandidates.length === 0) return;
@@ -515,7 +515,7 @@ document.getElementById('fgCount').textContent = fc > 0 ? fc : '';
         const fileName = `${gameName}_Report_${new Date().toISOString().slice(0, 10).replace(/-/g, '')}.html`;
 
         // ====== 同步匯出 JSON 資料檔（Session Sidecar）======
-        const jsonData = validCandidates.map(c => ({
+        const exportedCandidates = validCandidates.map(c => ({
             id: c.id,
             time: c.time,
             status: c.status,
@@ -534,6 +534,12 @@ document.getElementById('fgCount').textContent = fc > 0 ? fc : '';
             imageFile: c.canvas ? `spin_${c.time.toFixed(2)}s_${c.id}` : (c.thumbUrl ? `spin_${c.time.toFixed(2)}s_${c.id}` : null),
             winPollImageFile: c.winPollCanvas ? `winpoll_${c.time.toFixed(2)}s_${c.id}` : null,
         }));
+
+        const jsonData = {
+            version: 2,
+            rois: customRois || null,
+            candidates: exportedCandidates
+        };
         const jsonBlob = new Blob([JSON.stringify(jsonData, null, 2)], { type: 'application/json;charset=utf-8;' });
         const jsonFileName = `${gameName}_Session_${new Date().toISOString().slice(0, 10).replace(/-/g, '')}.json`;
 
@@ -599,8 +605,21 @@ document.getElementById('fgCount').textContent = fc > 0 ? fc : '';
                     break;
                 }
             }
-            if (!jsonData || !Array.isArray(jsonData)) {
+            if (!jsonData) {
                 alert('⚠️ 在所選資料夾中找不到有效的 Session JSON 檔');
+                return null;
+            }
+            
+            // 支援舊版 Array 格式與新版 Object 格式
+            let loadedCandidates = [];
+            let loadedRois = null;
+            if (Array.isArray(jsonData)) {
+                loadedCandidates = jsonData;
+            } else if (jsonData.candidates && Array.isArray(jsonData.candidates)) {
+                loadedCandidates = jsonData.candidates;
+                loadedRois = jsonData.rois;
+            } else {
+                alert('⚠️ Session JSON 檔格式不正確');
                 return null;
             }
 
@@ -614,12 +633,16 @@ document.getElementById('fgCount').textContent = fc > 0 ? fc : '';
                 }
             }
 
-            // 嘗試讀取本地快取的 Reel ROI，用來裁切縮圖
+            // 讀取截圖所需的 Reel ROI，優先用載入檔案中的，如果沒有再用本地快取的
             let cachedReelROI = null;
-            try {
-                const saved = JSON.parse(localStorage.getItem('slot_rois') || '{}');
-                if (saved.reelROI) cachedReelROI = saved.reelROI;
-            } catch (e) {}
+            if (loadedRois && loadedRois.reel) {
+                cachedReelROI = loadedRois.reel;
+            } else {
+                try {
+                    const saved = JSON.parse(localStorage.getItem('SLOT_P4_ROI_V2') || '{}');
+                    if (saved.reel) cachedReelROI = saved.reel;
+                } catch (e) {}
+            }
 
             const generateThumbUrl = (canvas, roi) => {
                 if (!roi) return canvas.toDataURL('image/jpeg', 0.6);
@@ -635,7 +658,7 @@ document.getElementById('fgCount').textContent = fc > 0 ? fc : '';
             };
 
             // 3. 逐筆還原 candidate
-            const candidates = await Promise.all(jsonData.map(async (item) => {
+            const candidates = await Promise.all(loadedCandidates.map(async (item) => {
                 // 讀盤面圖片
                 let canvas = null;
                 let thumbUrl = '';

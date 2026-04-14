@@ -601,7 +601,9 @@ function App() {
                     cancelRecognition={autoRecognition.cancelRecognition}
                     // Report
                     stats={phase4Stats}
-                    exportHTMLReport={(c, game, dir) => reportGenerator.exportHTMLReport(c, gameName || 'slot', dir, template)}
+                    exportHTMLReport={(c, game, dir) => reportGenerator.exportHTMLReport(c, gameName || 'slot', dir, template, {
+                        reel: reelROI, win: winROI, balance: balanceROI, bet: betROI, orderId: orderIdROI
+                    })}
                     // ROI
                     reelROI={reelROI} setReelROI={setReelROI}
                     winROI={winROI} setWinROI={setWinROI}
