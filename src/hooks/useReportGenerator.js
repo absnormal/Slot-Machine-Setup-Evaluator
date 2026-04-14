@@ -614,6 +614,26 @@ document.getElementById('fgCount').textContent = fc > 0 ? fc : '';
                 }
             }
 
+            // 嘗試讀取本地快取的 Reel ROI，用來裁切縮圖
+            let cachedReelROI = null;
+            try {
+                const saved = JSON.parse(localStorage.getItem('slot_rois') || '{}');
+                if (saved.reelROI) cachedReelROI = saved.reelROI;
+            } catch (e) {}
+
+            const generateThumbUrl = (canvas, roi) => {
+                if (!roi) return canvas.toDataURL('image/jpeg', 0.6);
+                const thumbCanvas = document.createElement('canvas');
+                thumbCanvas.width = canvas.width * (roi.w / 100);
+                thumbCanvas.height = canvas.height * (roi.h / 100);
+                const ctx = thumbCanvas.getContext('2d');
+                ctx.drawImage(canvas, 
+                    canvas.width * (roi.x / 100), canvas.height * (roi.y / 100), thumbCanvas.width, thumbCanvas.height,
+                    0, 0, thumbCanvas.width, thumbCanvas.height
+                );
+                return thumbCanvas.toDataURL('image/jpeg', 0.6);
+            };
+
             // 3. 逐筆還原 candidate
             const candidates = await Promise.all(jsonData.map(async (item) => {
                 // 讀盤面圖片
@@ -628,7 +648,7 @@ document.getElementById('fgCount').textContent = fc > 0 ? fc : '';
                         canvas.height = imgBitmap.height;
                         const ctx = canvas.getContext('2d');
                         ctx.drawImage(imgBitmap, 0, 0);
-                        thumbUrl = canvas.toDataURL('image/jpeg', 0.6);
+                        thumbUrl = generateThumbUrl(canvas, cachedReelROI);
                     } catch (e) {
                         console.warn(`圖片 ${item.imageFile} 讀取失敗`, e);
                     }
@@ -646,7 +666,7 @@ document.getElementById('fgCount').textContent = fc > 0 ? fc : '';
                         winPollCanvas.height = wpBitmap.height;
                         const wpCtx = winPollCanvas.getContext('2d');
                         wpCtx.drawImage(wpBitmap, 0, 0);
-                        winPollThumbUrl = winPollCanvas.toDataURL('image/jpeg', 0.6);
+                        winPollThumbUrl = generateThumbUrl(winPollCanvas, cachedReelROI);
                     } catch (e) {
                         console.warn(`WIN 特工圖片 ${item.winPollImageFile} 讀取失敗`, e);
                     }
