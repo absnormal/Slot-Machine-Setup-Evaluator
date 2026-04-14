@@ -1024,8 +1024,12 @@ const Phase4Video = ({
                                                         )}
                                                         
                                                         <span className="ml-auto text-slate-400 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded-full shadow-sm">{group.length} 張</span>
-                                                        <button onClick={(e) => { e.stopPropagation(); onTransferToPhase3(group.map(g => g.kf)); }}
-                                                            title="送這局到 Phase 3"
+                                                        <button onClick={(e) => { 
+                                                            e.stopPropagation(); 
+                                                            const bestKf = group.find(g => g.kf.isSpinBest)?.kf || group[group.length - 1].kf;
+                                                            onTransferToPhase3([bestKf]); 
+                                                        }}
+                                                            title="送這局最佳結果到 Phase 3"
                                                             className="flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-full text-[10px] font-bold border border-emerald-200 transition-all active:scale-95 shadow-sm">
                                                             <Send size={10} /> P3
                                                         </button>
