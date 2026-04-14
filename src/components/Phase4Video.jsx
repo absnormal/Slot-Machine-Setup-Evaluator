@@ -1013,11 +1013,6 @@ const Phase4Video = ({
                                                                 onClick={() => handleCardClick(kf)}
                                                 >
                                                     {renderCardContent(kf, idx)}
-                                                    <button onClick={(e) => { e.stopPropagation(); recognizeLocalBatch(ocrDecimalPlaces, [kf]); }}
-                                                        title="單獨本地辨識盤面"
-                                                        className="absolute top-1.5 right-14 text-slate-300 hover:text-emerald-500 opacity-0 group-hover:opacity-100 transition-all">
-                                                        <Monitor size={12} />
-                                                    </button>
                                                     <button onClick={(e) => { e.stopPropagation(); onTransferToPhase3([kf]); }}
                                                         title="送到 Phase 3 手動調校"
                                                         className="absolute top-1.5 right-8 text-slate-300 hover:text-indigo-500 opacity-0 group-hover:opacity-100 transition-all">
@@ -1067,6 +1062,15 @@ const Phase4Video = ({
                                                         <button onClick={(e) => { 
                                                             e.stopPropagation(); 
                                                             const bestKf = group.find(g => g.kf.isSpinBest)?.kf || group[group.length - 1].kf;
+                                                            recognizeLocalBatch(ocrDecimalPlaces, [bestKf]); 
+                                                        }}
+                                                            title="本地辨識這局最佳結果"
+                                                            className="flex items-center gap-1 px-2 py-0.5 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-full text-[10px] font-bold border border-indigo-200 transition-all active:scale-95 shadow-sm">
+                                                            <Monitor size={10} /> 本地
+                                                        </button>
+                                                        <button onClick={(e) => { 
+                                                            e.stopPropagation(); 
+                                                            const bestKf = group.find(g => g.kf.isSpinBest)?.kf || group[group.length - 1].kf;
                                                             onTransferToPhase3([bestKf]); 
                                                         }}
                                                             title="送這局最佳結果到 Phase 3"
@@ -1102,11 +1106,6 @@ const Phase4Video = ({
                                                                     </button>
                                                                 )}
                                                                 {renderCardContent(kf, idx)}
-                                                                <button onClick={(e) => { e.stopPropagation(); recognizeLocalBatch(ocrDecimalPlaces, [kf]); }}
-                                                                    title="單獨本地辨識盤面"
-                                                                    className="absolute top-1.5 right-14 text-slate-300 hover:text-emerald-500 opacity-0 group-hover:opacity-100 transition-all">
-                                                                    <Monitor size={12} />
-                                                                </button>
                                                                 <button onClick={(e) => { e.stopPropagation(); onTransferToPhase3([kf]); }}
                                                                     title="送到 Phase 3 手動調校"
                                                                     className="absolute top-1.5 right-8 text-slate-300 hover:text-indigo-500 opacity-0 group-hover:opacity-100 transition-all">
