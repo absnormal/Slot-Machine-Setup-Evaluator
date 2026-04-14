@@ -6,6 +6,7 @@ import { validateVisionResponse } from '../utils/aiValidator';
 import { isCashSymbol, isCollectSymbol, isDynamicMultiplierSymbol } from '../utils/symbolUtils';
 import { apiKey } from '../utils/constants';
 import { computeGridResults } from '../engine/computeGridResults';
+import { buildReferenceIndex, recognizeBoard } from '../engine/localBoardRecognizer';
 import {
     buildCashRule, buildDynamicMultiplierRule, buildMultiplierReelRule,
     buildBetRule, buildPickRule, buildConfusableWarning,
@@ -270,6 +271,119 @@ export function useAutoRecognition({
         }
     };
 
+    /**
+     * 本地辨識盤面（純 Canvas Template Matching，不需要 API Key）
+     */
+    const referenceIndexRef = useRef(null);
+
+    const recognizeLocalBatch = async (candidates, updateCandidate, rois, ocrDecimalPlaces = 2) => {
+        if (!template || candidates.length === 0) {
+            setTemplateMessage?.('請確認已完成 Phase 1 模板設定，且有候選幀可辨識');
+            return;
+        }
+
+        const toProcess = candidates.filter(c =>
+            (c.status === 'pending' || c.status === 'error') &&
+            c.ocrData?.win && parseFloat(c.ocrData.win) > 0
+        );
+        if (toProcess.length === 0) {
+            setTemplateMessage?.('沒有需要辨識的贏分盤面（僅辨識 WIN > 0 的幀）');
+            return;
+        }
+
+        if (!template.symbolImagesAll || Object.keys(template.symbolImagesAll).length === 0) {
+            setTemplateMessage?.('⚠️ 模板中沒有符號參考圖，無法進行本地辨識');
+            return;
+        }
+
+        setIsRecognizing(true);
+        setIsStopping(false);
+        isCanceledRef.current = false;
+        setRecognitionProgress({ current: 0, total: toProcess.length });
+
+        // 建立參考索引（只需建一次，之後快取）
+        if (!referenceIndexRef.current) {
+            setTemplateMessage?.('🔧 正在建立符號參考索引...');
+            referenceIndexRef.current = await buildReferenceIndex(template.symbolImagesAll);
+        }
+        const refIndex = referenceIndexRef.current;
+
+        setTemplateMessage?.(`🖥️ 開始本地辨識 ${toProcess.length} 張候選幀...`);
+
+        const { reelROI } = rois;
+        const displayCols = template.hasMultiplierReel ? template.cols - 1 : template.cols;
+
+        // 將百分比 ROI 轉成像素座標的輔助函式
+        const toPixelROI = (canvas, pctROI) => ({
+            x: Math.floor(canvas.width * (pctROI.x / 100)),
+            y: Math.floor(canvas.height * (pctROI.y / 100)),
+            width: Math.floor(canvas.width * (pctROI.w / 100)),
+            height: Math.floor(canvas.height * (pctROI.h / 100)),
+        });
+
+        for (let i = 0; i < toProcess.length; i++) {
+            if (isCanceledRef.current) {
+                setTemplateMessage?.('已停止本地辨識');
+                break;
+            }
+
+            const kf = toProcess[i];
+            setRecognitionProgress({ current: i + 1, total: toProcess.length });
+            updateCandidate(kf.id, { status: 'recognizing' });
+
+            try {
+                const pixelROI = toPixelROI(kf.canvas, reelROI);
+                const { grid, details } = recognizeBoard(kf.canvas, pixelROI, template.rows, displayCols, refIndex);
+
+                // 讀 OCR 數值（與 Gemini 流程一致）
+                const [winText, balanceText, betText] = await Promise.all([
+                    recognizeROIText(kf.canvas, rois.winROI, ocrWorkerRef.current, ocrDecimalPlaces, true),
+                    recognizeROIText(kf.canvas, rois.balanceROI, ocrWorkerRef.current, ocrDecimalPlaces, true),
+                    recognizeROIText(kf.canvas, rois.betROI, ocrWorkerRef.current, ocrDecimalPlaces, false)
+                ]);
+
+                const betValue = parseFloat(betText) || 100;
+                const { results: settlement } = computeGridResults(template, grid, betValue);
+
+                // 計算平均 confidence
+                const allConf = details.flat().map(d => d.confidence);
+                const avgConf = allConf.reduce((s, v) => s + v, 0) / allConf.length;
+
+                updateCandidate(kf.id, {
+                    status: 'recognized',
+                    recognitionResult: {
+                        grid,
+                        win: winText,
+                        balance: balanceText,
+                        bet: betText,
+                        betValue,
+                        settlement,
+                        totalWin: settlement?.totalWin || 0,
+                        localMatch: true,
+                        avgConfidence: parseFloat(avgConf.toFixed(1)),
+                        matchDetails: details
+                    },
+                    error: ''
+                });
+
+            } catch (err) {
+                console.warn('本地辨識錯誤:', err);
+                updateCandidate(kf.id, {
+                    status: 'error',
+                    error: err.message
+                });
+            }
+        }
+
+        setIsRecognizing(false);
+        setIsStopping(false);
+        setRecognitionProgress({ current: 0, total: 0 });
+
+        if (!isCanceledRef.current) {
+            setTemplateMessage?.(`✅ 本地辨識完成！共處理 ${toProcess.length} 張候選幀`);
+        }
+    };
+
     const cancelRecognition = () => {
         isCanceledRef.current = true;
         setIsStopping(true);
@@ -279,6 +393,7 @@ export function useAutoRecognition({
         isRecognizing, isStopping,
         recognitionProgress,
         recognizeBatch,
+        recognizeLocalBatch,
         cancelRecognition
     };
 }

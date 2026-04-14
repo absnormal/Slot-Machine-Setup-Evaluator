@@ -10,7 +10,7 @@ const Phase4Video = ({
     updateCandidateOcr,
     // Auto Recognition
     isRecognizing, isStopping, recognitionProgress,
-    recognizeBatch, cancelRecognition,
+    recognizeBatch, recognizeLocalBatch, cancelRecognition,
     // Report
     stats, exportHTMLReport,
     // ROI (手動框選，從舊 Phase 4 保留)
@@ -1093,6 +1093,14 @@ const Phase4Video = ({
                                             <p className="text-[10px] text-slate-400 text-center">※ 只會辨識 WIN &gt; 0 的盤面，無贏分的可手動送 P3</p>
                                         </div>
                                     )
+                                )}
+
+                                {/* 本地辨識盤面 */}
+                                {candidates.length > 0 && winPendingCount > 0 && !isRecognizing && (
+                                    <button onClick={() => recognizeLocalBatch(ocrDecimalPlaces)}
+                                        className="w-full py-2 rounded-xl font-bold flex items-center justify-center gap-2 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-200 transition-all active:scale-95 text-xs">
+                                        <Monitor size={14} /> 本地辨識盤面（僅贏分 {winPendingCount} 張，零延遲）
+                                    </button>
                                 )}
 
                                 {/* 自動存檔區塊 */}

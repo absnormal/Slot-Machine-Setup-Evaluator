@@ -293,6 +293,16 @@ function App() {
         );
     }, [autoRecognition, keyframeExtractor, reelROI, winROI, balanceROI, betROI, ocrDecimalPlaces]);
 
+    const handleRecognizeLocalBatch = useCallback((decimalPlaces) => {
+        const rois = { reelROI, winROI, balanceROI, betROI, orderIdROI };
+        autoRecognition.recognizeLocalBatch(
+            keyframeExtractor.candidates,
+            keyframeExtractor.updateCandidate,
+            rois,
+            decimalPlaces ?? ocrDecimalPlaces
+        );
+    }, [autoRecognition, keyframeExtractor, reelROI, winROI, balanceROI, betROI, ocrDecimalPlaces]);
+
     // --- Phase 間數據傳遞 ---
     const handleTransferPhase4ToPhase3 = useCallback(async (specificCandidates) => {
         const kfCandidates = specificCandidates || keyframeExtractor.candidates;
@@ -585,6 +595,7 @@ function App() {
                     isStopping={autoRecognition.isStopping}
                     recognitionProgress={autoRecognition.recognitionProgress}
                     recognizeBatch={handleRecognizeBatch}
+                    recognizeLocalBatch={handleRecognizeLocalBatch}
                     cancelRecognition={autoRecognition.cancelRecognition}
                     // Report
                     stats={phase4Stats}
