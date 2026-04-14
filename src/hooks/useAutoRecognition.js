@@ -148,15 +148,16 @@ export function useAutoRecognition({
 
             try {
                 // ── A. Gemini Vision 辨識盤面符號 ──
+                const targetCanvas = kf.winPollCanvas || kf.canvas;
                 const gridResult = await recognizeGrid(
-                    kf.canvas, rois, template, availableSymbols, fixedPrefixParts, modelName, effectiveApiKey
+                    targetCanvas, rois, template, availableSymbols, fixedPrefixParts, modelName, effectiveApiKey
                 );
 
                 // ── B. Tesseract OCR 辨識數值 (並行) ──
                 const [winText, balanceText, betText] = await Promise.all([
-                    recognizeROIText(kf.canvas, rois.winROI, ocrWorkerRef.current, ocrDecimalPlaces, true),
-                    recognizeROIText(kf.canvas, rois.balanceROI, ocrWorkerRef.current, ocrDecimalPlaces, true),
-                    recognizeROIText(kf.canvas, rois.betROI, ocrWorkerRef.current, ocrDecimalPlaces, false)
+                    recognizeROIText(targetCanvas, rois.winROI, ocrWorkerRef.current, ocrDecimalPlaces, true),
+                    recognizeROIText(targetCanvas, rois.balanceROI, ocrWorkerRef.current, ocrDecimalPlaces, true),
+                    recognizeROIText(targetCanvas, rois.betROI, ocrWorkerRef.current, ocrDecimalPlaces, false)
                 ]);
 
                 // ── C. 結算 ──
@@ -262,14 +263,15 @@ export function useAutoRecognition({
             updateCandidate(kf.id, { status: 'recognizing' });
 
             try {
-                const pixelROI = toPixelROI(kf.canvas, reelROI);
-                const { grid, details } = recognizeBoard(kf.canvas, pixelROI, template.rows, displayCols, refIndex);
+                const targetCanvas = kf.winPollCanvas || kf.canvas;
+                const pixelROI = toPixelROI(targetCanvas, reelROI);
+                const { grid, details } = recognizeBoard(targetCanvas, pixelROI, template.rows, displayCols, refIndex);
 
                 // 讀 OCR 數值（與 Gemini 流程一致）
                 const [winText, balanceText, betText] = await Promise.all([
-                    recognizeROIText(kf.canvas, rois.winROI, ocrWorkerRef.current, ocrDecimalPlaces, true),
-                    recognizeROIText(kf.canvas, rois.balanceROI, ocrWorkerRef.current, ocrDecimalPlaces, true),
-                    recognizeROIText(kf.canvas, rois.betROI, ocrWorkerRef.current, ocrDecimalPlaces, false)
+                    recognizeROIText(targetCanvas, rois.winROI, ocrWorkerRef.current, ocrDecimalPlaces, true),
+                    recognizeROIText(targetCanvas, rois.balanceROI, ocrWorkerRef.current, ocrDecimalPlaces, true),
+                    recognizeROIText(targetCanvas, rois.betROI, ocrWorkerRef.current, ocrDecimalPlaces, false)
                 ]);
 
                 const betValue = parseFloat(betText) || 100;
