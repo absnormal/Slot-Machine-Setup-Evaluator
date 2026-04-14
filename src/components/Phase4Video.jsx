@@ -23,6 +23,7 @@ const Phase4Video = ({
     videoSrc, videoRef, handleVideoUpload,
     isStreamMode, handleStartScreenCapture, handleStopScreenCapture,
     onTransferToPhase3,
+    onImportSession,
     setTemplateMessage,
     template,
     gridRows: propGridRows, gridCols: propGridCols,
@@ -608,6 +609,10 @@ const Phase4Video = ({
     const recognizedCount = candidates.filter(c => c.status === 'recognized').length;
     const pendingCount = candidates.filter(c => c.status === 'pending').length;
     const errorCount = candidates.filter(c => c.status === 'error').length;
+    const winPendingCount = candidates.filter(c =>
+        (c.status === 'pending' || c.status === 'error') &&
+        c.ocrData?.win && parseFloat(c.ocrData.win) > 0
+    ).length;
 
     // ══════════════════════════════════════
     // RENDER
@@ -954,6 +959,11 @@ const Phase4Video = ({
                                                                 onClick={() => handleCardClick(kf)}
                                                 >
                                                     {renderCardContent(kf, idx)}
+                                                    <button onClick={(e) => { e.stopPropagation(); onTransferToPhase3([kf]); }}
+                                                        title="送到 Phase 3"
+                                                        className="absolute top-1.5 right-8 text-slate-300 hover:text-emerald-500 opacity-0 group-hover:opacity-100 transition-all">
+                                                        <Send size={12} />
+                                                    </button>
                                                     <button onClick={(e) => { e.stopPropagation(); removeCandidate(kf.id); }}
                                                         className="absolute top-1.5 right-1.5 text-slate-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all">
                                                         <X size={12} />
@@ -995,6 +1005,11 @@ const Phase4Video = ({
                                                         )}
                                                         
                                                         <span className="ml-auto text-slate-400 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded-full shadow-sm">{group.length} 張</span>
+                                                        <button onClick={(e) => { e.stopPropagation(); onTransferToPhase3(group.map(g => g.kf)); }}
+                                                            title="送這局到 Phase 3"
+                                                            className="flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-full text-[10px] font-bold border border-emerald-200 transition-all active:scale-95 shadow-sm">
+                                                            <Send size={10} /> P3
+                                                        </button>
                                                     </div>
                                                     {group.map(({ kf, idx }) => {
                                                         const isBest = kf.isSpinBest;
@@ -1062,18 +1077,21 @@ const Phase4Video = ({
                                     )
                                 )}
 
-                                {/* Gemini 盤面辨識 */}
-                                {candidates.length > 0 && pendingCount > 0 && (
+                                {/* Gemini 盤面辨識（僅贏分） */}
+                                {candidates.length > 0 && (isRecognizing || winPendingCount > 0) && (
                                     isRecognizing ? (
                                         <button onClick={cancelRecognition}
                                             className="w-full py-2.5 rounded-xl font-bold flex items-center justify-center gap-2 bg-rose-100 text-rose-600 border border-rose-200 hover:bg-rose-200 transition-all active:scale-95">
                                             <Square size={14} /> 停止辨識 ({recognitionProgress.current}/{recognitionProgress.total})
                                         </button>
                                     ) : (
-                                        <button onClick={() => recognizeBatch(ocrDecimalPlaces)}
-                                            className="w-full py-2 rounded-xl font-bold flex items-center justify-center gap-2 bg-violet-50 text-violet-600 hover:bg-violet-100 border border-violet-200 transition-all active:scale-95 text-xs">
-                                            <Sparkles size={14} /> Gemini 辨識盤面 ({pendingCount} 張)
-                                        </button>
+                                        <div className="space-y-1">
+                                            <button onClick={() => recognizeBatch(ocrDecimalPlaces)}
+                                                className="w-full py-2 rounded-xl font-bold flex items-center justify-center gap-2 bg-violet-50 text-violet-600 hover:bg-violet-100 border border-violet-200 transition-all active:scale-95 text-xs">
+                                                <Sparkles size={14} /> Gemini 辨識盤面（僅贏分 {winPendingCount} 張）
+                                            </button>
+                                            <p className="text-[10px] text-slate-400 text-center">※ 只會辨識 WIN &gt; 0 的盤面，無贏分的可手動送 P3</p>
+                                        </div>
                                     )
                                 )}
 
@@ -1120,16 +1138,16 @@ const Phase4Video = ({
                                         <button onClick={() => exportHTMLReport(candidates, 'slot_analysis', saveDirHandle)}
                                             disabled={!candidates.some(c => c.ocrData || c.recognitionResult)}
                                             className={`flex-1 py-2 rounded-lg font-bold flex items-center justify-center gap-1.5 text-xs transition-all ${!candidates.some(c => c.ocrData || c.recognitionResult) ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-violet-50 text-violet-700 hover:bg-violet-100 border border-violet-200 active:scale-95'}`}>
-                                            <ImageIcon size={14} /> 匯出完整 HTML 報告 (包含 AI 與 OCR 資料)
+                                            <ImageIcon size={14} /> 匯出報告 + JSON
                                         </button>
                                     </div>
                                     <div className="flex gap-2">
-                                        <button onClick={onTransferToPhase3}
-                                            disabled={candidates.length === 0}
-                                            className={`flex-1 py-2 rounded-lg font-bold flex items-center justify-center gap-1.5 text-xs transition-all ${candidates.length === 0 ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-emerald-100 active:scale-95'}`}>
-                                            <Send size={14} /> Phase 3
+                                        <button onClick={onImportSession}
+                                            className="flex-1 py-2 rounded-lg font-bold flex items-center justify-center gap-1.5 text-xs transition-all bg-sky-50 text-sky-600 hover:bg-sky-100 border border-sky-200 active:scale-95">
+                                            <FolderOpen size={14} /> 匯入歷史資料（選取資料夾）
                                         </button>
                                     </div>
+
                                 </div>
                             </div>
 

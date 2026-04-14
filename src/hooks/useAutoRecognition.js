@@ -140,9 +140,12 @@ export function useAutoRecognition({
             return;
         }
 
-        const toProcess = candidates.filter(c => c.status === 'pending' || c.status === 'error');
+        const toProcess = candidates.filter(c =>
+            (c.status === 'pending' || c.status === 'error') &&
+            c.ocrData?.win && parseFloat(c.ocrData.win) > 0
+        );
         if (toProcess.length === 0) {
-            setTemplateMessage?.('所有候選幀已辨識完成');
+            setTemplateMessage?.('沒有需要辨識的贏分盤面（僅辨識 WIN > 0 的幀）');
             return;
         }
 

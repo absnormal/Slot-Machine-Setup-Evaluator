@@ -294,8 +294,8 @@ function App() {
     }, [autoRecognition, keyframeExtractor, reelROI, winROI, balanceROI, betROI, ocrDecimalPlaces]);
 
     // --- Phase 間數據傳遞 ---
-    const handleTransferPhase4ToPhase3 = useCallback(async () => {
-        const kfCandidates = keyframeExtractor.candidates;
+    const handleTransferPhase4ToPhase3 = useCallback(async (specificCandidates) => {
+        const kfCandidates = specificCandidates || keyframeExtractor.candidates;
         if (kfCandidates.length === 0) return;
 
         const transformed = await Promise.all(kfCandidates.map(kf => {
@@ -327,6 +327,15 @@ function App() {
 
         if (transformed.length > 0) setActiveVisionId(transformed[0].id);
     }, [keyframeExtractor.candidates, setVisionImages, setTemplateMessage, setActiveVisionId, reelROI, betROI, setVisionP1, setVisionP1Bet, setHasBetBox]);
+
+    // --- 匯入歷史 Session ---
+    const handleImportSession = useCallback(async () => {
+        const imported = await reportGenerator.importSession();
+        if (imported && imported.length > 0) {
+            keyframeExtractor.setCandidates(prev => [...prev, ...imported]);
+            setTemplateMessage(`✅ 已匯入 ${imported.length} 張歷史關鍵幀`);
+        }
+    }, [reportGenerator, keyframeExtractor, setTemplateMessage]);
 
     // --- Vision 結算 ---
     const [visionCalcResults, setVisionCalcResults] = useState(null);
@@ -591,6 +600,7 @@ function App() {
                     isStreamMode={isStreamMode} handleStartScreenCapture={handleStartScreenCapture} handleStopScreenCapture={handleStopScreenCapture}
                     // Transfer
                     onTransferToPhase3={handleTransferPhase4ToPhase3}
+                    onImportSession={handleImportSession}
                     setTemplateMessage={setTemplateMessage}
                     template={template}
                     gridRows={gridRows} gridCols={gridCols}
