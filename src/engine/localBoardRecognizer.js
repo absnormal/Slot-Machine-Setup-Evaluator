@@ -9,7 +9,7 @@
  * 完全不需要任何 API，100% 在瀏覽器本地計算
  */
 
-const MATCH_SIZE = 48; // 統一縮放到 48x48 做比對（速度 vs 精度平衡）
+const MATCH_SIZE = 64; // 統一縮放到 64x64 做比對（提高細節解析度，區分字體）
 
 /**
  * 預處理符號參考圖：把每張圖載入 canvas 並縮放到 MATCH_SIZE
@@ -53,19 +53,24 @@ export async function buildReferenceIndex(symbolImagesAll) {
 }
 
 /**
- * 計算兩張 ImageData 之間的 MAE（Mean Absolute Error）
- * 只看 RGB，不看 Alpha
+ * 計算兩張 ImageData 之間的 MSE（Mean Squared Error）
+ * 取代 MAE，因為平方誤差會「放大」局部巨大色差（例如：文字 vs 背景），
+ * 就算 Crown 長得一模一樣，底下的字一旦不一樣，MSE 會劇烈飆升。
  */
-function computeMAE(a, b) {
+function computeMSE(a, b) {
     const d1 = a.data;
     const d2 = b.data;
     const len = d1.length;
     let sum = 0;
     let count = 0;
     for (let i = 0; i < len; i += 4) {
-        sum += Math.abs(d1[i] - d2[i]);       // R
-        sum += Math.abs(d1[i + 1] - d2[i + 1]); // G
-        sum += Math.abs(d1[i + 2] - d2[i + 2]); // B
+        const diffR = d1[i] - d2[i];
+        const diffG = d1[i + 1] - d2[i + 1];
+        const diffB = d1[i + 2] - d2[i + 2];
+        
+        // 為了讓黑邊/背景不那麼影響結果，我們引入 Alpha channel 或簡單的像素加權
+        // 但這裡最直接的方式是平方相加
+        sum += (diffR * diffR) + (diffG * diffG) + (diffB * diffB);
         count += 3;
     }
     return sum / count;
@@ -103,21 +108,21 @@ function extractCell(boardCanvas, roi, row, col, totalRows, totalCols) {
  */
 function matchCell(cellImageData, referenceIndex) {
     let bestSymbol = '?';
-    let bestMAE = Infinity;
+    let bestMSE = Infinity;
 
     for (const [symbol, imageDataList] of referenceIndex) {
         for (const refImageData of imageDataList) {
-            const mae = computeMAE(cellImageData, refImageData);
-            if (mae < bestMAE) {
-                bestMAE = mae;
+            const mse = computeMSE(cellImageData, refImageData);
+            if (mse < bestMSE) {
+                bestMSE = mse;
                 bestSymbol = symbol;
             }
         }
     }
 
-    // confidence: MAE=0 → 100%, MAE=50 → 0%
-    const confidence = Math.max(0, 100 - bestMAE * 2);
-    return { symbol: bestSymbol, confidence: parseFloat(confidence.toFixed(1)), mae: parseFloat(bestMAE.toFixed(2)) };
+    // 將 MSE 轉化為 0~100 的 confidence (經驗公式：MSE 0=100%, MSE 5000=0%)
+    const confidence = Math.max(0, 100 - (bestMSE / 50));
+    return { symbol: bestSymbol, confidence: parseFloat(confidence.toFixed(1)), mse: parseFloat(bestMSE.toFixed(2)) };
 }
 
 /**
