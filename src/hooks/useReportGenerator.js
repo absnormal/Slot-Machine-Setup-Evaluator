@@ -213,10 +213,10 @@ export function useReportGenerator() {
                     ${winPollDisplaySrc ? `<img src="${winPollDisplaySrc}" data-full="${winPollFullSrc}" alt="win-${i + 1}" onclick="openLb(this.getAttribute('data-full'))" style="margin-top:2px;border:2px solid #f59e0b;border-radius:6px;" />` : ''}
                 </td>
                 <td class="time">${c.time.toFixed(2)}s</td>
-                <td>${ocr.orderId || '-'}</td>
-                <td class="num">${ocr.balance || '-'}</td>
+                <td>${ocr.orderId ? `<span title="來源：${c.winPollCanvas ? 'WIN 特工幀' : 'Reel Stop 幀'}">${ocr.orderId} <span style="color:${c.winPollCanvas ? '#f59e0b' : '#10b981'};font-size:8px;">●</span></span>` : '-'}</td>
+                <td class="num"><span title="來源：Reel Stop 幀（pre-WIN）">${ocr.balance || '-'} ${ocr.balance ? '<span style="color:#10b981;font-size:8px;">●</span>' : ''}</span></td>
                 <td class="num">${ocr.bet || '-'}</td>
-                <td class="num ${winClass}">${ocr.win || '0'}</td>
+                <td class="num ${winClass}"><span title="來源：${c.winPollCanvas ? 'WIN 特工幀' : 'Reel Stop 幀'}">${ocr.win || '0'} ${(ocr.win && parseFloat(ocr.win) > 0 && c.winPollCanvas) ? '<span style="color:#f59e0b;font-size:8px;">●</span>' : ''}</span></td>
                 <td class="cont ${contClass}">${continuity}</td>
                 <td class="num ${aiWinClass}">${aiWin !== null ? `<span style="${aiWin !== ocrWin ? 'color:#dc2626;border-bottom:2px solid #dc2626;' : ''}">${aiWin}</span>` : '-'}</td>
                 <td class="lines-cell-container">${linesHtml}</td>
