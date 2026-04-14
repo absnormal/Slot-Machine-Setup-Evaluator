@@ -77,6 +77,7 @@ const Phase4Video = ({
     }, [isStreamMode]);
 
     // ── 截圖存檔狀態 (自動存入磁碟) ──
+    const [rootSaveDirHandle, setRootSaveDirHandle] = useState(null);
     const [saveDirHandle, setSaveDirHandle] = useState(null);
     const [saveCount, setSaveCount] = useState(0);
     const [saveFormat, setSaveFormat] = useState('jpeg'); // 'jpeg' | 'png'
@@ -85,7 +86,8 @@ const Phase4Video = ({
     const handlePickSaveDir = async () => {
         try {
             const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
-            setSaveDirHandle(handle);
+            setRootSaveDirHandle(handle);
+            setSaveDirHandle(null); // 換了 root 就清除原本的 saveDir
             setSaveCount(0);
             savedIdsRef.current.clear();
         } catch (e) {
@@ -561,8 +563,25 @@ const Phase4Video = ({
 
 
 
-    const handleStartLive = () => {
+    const handleStartLive = async () => {
         if (!videoRef.current || !reelROI) return;
+        
+        // 如果有綁定根目錄，每次偵測都自動建一個 Timestamp 的子資料夾
+        if (rootSaveDirHandle) {
+            try {
+                const now = new Date();
+                const ts = `${now.getFullYear()}${(now.getMonth()+1).toString().padStart(2,'0')}${now.getDate().toString().padStart(2,'0')}_${now.getHours().toString().padStart(2,'0')}${now.getMinutes().toString().padStart(2,'0')}${now.getSeconds().toString().padStart(2,'0')}`;
+                const folderName = `Session_${ts}`;
+                const newSaveHandle = await rootSaveDirHandle.getDirectoryHandle(folderName, { create: true });
+                setSaveDirHandle(newSaveHandle);
+                setSaveCount(0);
+                savedIdsRef.current.clear();
+                setTemplateMessage?.(`📁 已自動建立存檔資料夾：${folderName}`);
+            } catch (err) {
+                console.error("無法建立子資料夾", err);
+            }
+        }
+
         setIsLiveActive(true);
         if (videoRef.current.paused) videoRef.current.play();
         startLiveDetection(videoRef.current, reelROI, (candidate) => {
@@ -1105,21 +1124,27 @@ const Phase4Video = ({
 
                                 {/* 自動存檔區塊 */}
                                 <div className="space-y-2 pt-2 border-t border-slate-100">
-                                    {!saveDirHandle ? (
+                                    {!rootSaveDirHandle ? (
                                         <button onClick={handlePickSaveDir}
-                                            className="w-full py-2 rounded-xl font-bold flex items-center justify-center gap-2 bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200 transition-all active:scale-95 text-xs">
-                                            <FolderOpen size={14} /> 選擇儲存資料夾 (自動存檔防爆RAM)
+                                            className="w-full py-3 rounded-xl font-black flex items-center justify-center gap-2 bg-gradient-to-r from-amber-500 to-orange-500 text-white hover:from-amber-400 hover:to-orange-400 border border-orange-600 transition-all active:scale-95 text-sm shadow-lg shadow-orange-500/30 animate-pulse-slow">
+                                            <FolderOpen size={16} /> 設定靜默存檔目錄 (必選，點開始分析自動建子資料夾)
                                         </button>
                                     ) : (
                                         <div className="flex flex-col gap-1.5 p-2 bg-emerald-50 border border-emerald-200 rounded-xl">
                                             <div className="flex items-center justify-between text-xs font-bold text-emerald-800">
                                                 <div className="flex items-center gap-1">
                                                     <CheckCircle2 size={14} />
-                                                    <span>自動存檔中 (已存 {saveCount} 張)</span>
+                                                    <span>根目錄綁定成功</span>
                                                 </div>
-                                                <span className="truncate max-w-[100px]" title={saveDirHandle.name}>{saveDirHandle.name}</span>
+                                                <span className="truncate max-w-[120px] bg-white px-2 py-0.5 rounded shadow-sm border border-emerald-100" title={rootSaveDirHandle.name}>{rootSaveDirHandle.name}</span>
                                             </div>
-                                            <div className="flex items-center gap-2">
+                                            {saveDirHandle && (
+                                                <div className="text-[10px] text-emerald-600 flex justify-between items-center bg-white/50 px-2 rounded">
+                                                    <span>↳ 本局目標：{saveDirHandle.name}</span>
+                                                    <span>(已存 {saveCount} 張)</span>
+                                                </div>
+                                            )}
+                                            <div className="flex items-center gap-2 mt-1">
                                                 <select
                                                     value={saveFormat}
                                                     onChange={e => setSaveFormat(e.target.value)}
@@ -1128,10 +1153,10 @@ const Phase4Video = ({
                                                     <option value="png">PNG (無損)</option>
                                                 </select>
                                                 <button onClick={handlePickSaveDir}
-                                                    className="flex-1 py-1.5 rounded-lg font-bold text-emerald-700 bg-emerald-100 hover:bg-emerald-200 transition-all text-xs text-center" title="更換儲存目錄">
-                                                    更換資料夾
+                                                    className="flex-1 py-1.5 rounded-lg font-bold text-emerald-700 bg-emerald-100 hover:bg-emerald-200 transition-all text-xs text-center shadow-sm" title="更換根目錄">
+                                                    更換根目錄
                                                 </button>
-                                                <button onClick={() => setSaveDirHandle(null)}
+                                                <button onClick={() => { setRootSaveDirHandle(null); setSaveDirHandle(null); }}
                                                     className="flex items-center justify-center min-w-[32px] h-[32px] rounded-lg bg-white border border-rose-200 text-rose-500 hover:bg-rose-50 hover:text-rose-600 transition-all cursor-pointer shadow-sm" title="取消綁定並停止存檔">
                                                     <X size={14} />
                                                 </button>
