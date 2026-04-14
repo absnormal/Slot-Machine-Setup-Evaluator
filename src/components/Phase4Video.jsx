@@ -143,8 +143,12 @@ const Phase4Video = ({
     // ── 卡片內容渲染器（共用於平鋪與分組模式）──
     const renderCardContent = (kf, idx) => (
         <div className="flex gap-2.5 items-center">
-            <div className={`w-20 h-14 rounded-lg overflow-hidden shrink-0 flex items-center justify-center ${kf.winPollThumbUrl ? 'bg-amber-900 ring-2 ring-amber-400' : 'bg-slate-900'}`}>
-                <img src={kf.winPollThumbUrl || kf.thumbUrl} className="w-full h-full object-contain" alt="" />
+            <div 
+                className={`w-20 h-14 rounded-lg overflow-hidden shrink-0 flex items-center justify-center cursor-pointer hover:scale-110 hover:shadow-md hover:ring-2 hover:ring-indigo-400 transition-all z-10 ${kf.winPollThumbUrl ? 'bg-amber-900 ring-2 ring-amber-400' : 'bg-slate-900'}`}
+                onClick={(e) => { e.stopPropagation(); handleCardClick(kf); }}
+                title="點擊放大檢視盤面"
+            >
+                <img src={kf.winPollThumbUrl || kf.thumbUrl} className="w-full h-full object-contain pointer-events-none" alt="" />
             </div>
             <div className="flex-1 min-w-0 pr-5">
                 <div className="flex items-center justify-between">
@@ -1009,8 +1013,7 @@ const Phase4Video = ({
                                         if (!groupsWithMath) {
                                             return candidates.map((kf, idx) => (
                                                 <div key={kf.id} id={`kf-card-${kf.id}`}
-                                                    className={`group relative bg-white rounded-xl border p-2 shadow-sm hover:shadow-md transition-all cursor-pointer ${kf.status === 'recognized' ? 'border-emerald-200' : kf.status === 'error' ? 'border-rose-200' : kf.status === 'recognizing' ? 'border-indigo-300 ring-2 ring-indigo-200' : 'border-slate-200 hover:border-indigo-300'}`}
-                                                                onClick={() => handleCardClick(kf)}
+                                                    className={`group relative bg-white rounded-xl border p-2 shadow-sm hover:shadow-md transition-all ${kf.status === 'recognized' ? 'border-emerald-200' : kf.status === 'error' ? 'border-rose-200' : kf.status === 'recognizing' ? 'border-indigo-300 ring-2 ring-indigo-200' : 'border-slate-200 hover:border-indigo-300'}`}
                                                 >
                                                     {renderCardContent(kf, idx)}
                                                     <button onClick={(e) => { e.stopPropagation(); onTransferToPhase3([kf]); }}
@@ -1084,7 +1087,7 @@ const Phase4Video = ({
                                                         const isDimmed = isMulti && !isBest;
                                                         return (
                                                             <div key={kf.id} id={`kf-card-${kf.id}`}
-                                                                className={`group relative rounded-xl border p-2 shadow-sm hover:shadow-md transition-all cursor-pointer
+                                                                className={`group relative rounded-xl border p-2 shadow-sm hover:shadow-md transition-all
                                                                     ${isDimmed ? 'opacity-40 bg-slate-50 border-slate-200' : 'bg-white'}
                                                                     ${isBest && hasBeenGrouped ? 'ring-2 ring-emerald-400 border-emerald-300' :
                                                                         kf.status === 'recognized' ? 'border-emerald-200' :
@@ -1092,7 +1095,6 @@ const Phase4Video = ({
                                                                                 kf.status === 'recognizing' ? 'border-indigo-300 ring-2 ring-indigo-200' :
                                                                                     'border-slate-200 hover:border-indigo-300'
                                                                     }`}
-                                                                            onClick={() => handleCardClick(kf)}
                                                             >
                                                                 {isBest && hasBeenGrouped && (
                                                                     <div className="absolute -top-1.5 -left-1.5 bg-emerald-500 text-white text-[8px] font-bold px-1.5 py-0.5 rounded-full shadow z-10 pointer-events-none">
