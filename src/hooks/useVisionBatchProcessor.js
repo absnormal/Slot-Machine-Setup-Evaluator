@@ -1,5 +1,7 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { fetchWithRetry, resizeImageBase64 } from '../utils/helpers';
+import { recognizeROIText, createOcrWorker } from '../utils/ocrUtils';
+import { buildReferenceIndex, recognizeBoard } from '../engine/localBoardRecognizer';
 import { validateVisionResponse } from '../utils/aiValidator';
 import { isCashSymbol, isCollectSymbol, isDynamicMultiplierSymbol } from '../utils/symbolUtils';
 import { apiKey } from '../utils/constants';
@@ -34,7 +36,22 @@ export function useVisionBatchProcessor({
     const [isVisionProcessing, setIsVisionProcessing] = useState(false);
     const isVisionCanceled = useRef(false);
     const [isVisionStopping, setIsVisionStopping] = useState(false);
+    const [isVisionBatchStopping, setIsVisionBatchStopping] = useState(false); // To avoid conflict
     const [visionBatchProgress, setVisionBatchProgress] = useState({ current: 0, total: 0 });
+
+    const ocrWorkerRef = useRef(null);
+    const referenceIndexRef = useRef(null);
+
+    useEffect(() => {
+        let isMounted = true;
+        (async () => {
+            const ocr = await createOcrWorker();
+            if (isMounted && ocr) {
+                ocrWorkerRef.current = ocr;
+            }
+        })();
+        return () => { isMounted = false; };
+    }, []);
 
     const performAIVisionBatchMatching = async () => {
         if (visionImages.length === 0 || !template) {
@@ -265,11 +282,116 @@ export function useVisionBatchProcessor({
         setIsVisionStopping(true);
     };
 
+    const performLocalVisionBatchMatching = async (ocrDecimalPlaces = 2) => {
+        if (visionImages.length === 0 || !template) {
+            setTemplateError("請先上傳截圖，並確保已經完成 Phase 1 模板設定！");
+            return;
+        }
+
+        if (!template.symbolImagesAll || Object.keys(template.symbolImagesAll).length === 0) {
+            setTemplateError?.('⚠️ 模板中沒有符號參考圖，無法進行本地辨識');
+            return;
+        }
+
+        try {
+            localStorage.setItem(CACHE_KEYS.MAIN, JSON.stringify(visionP1));
+            localStorage.setItem(CACHE_KEYS.MULT, JSON.stringify(visionP1Mult));
+            localStorage.setItem(CACHE_KEYS.BET, JSON.stringify(visionP1Bet));
+        } catch (e) {}
+
+        let toProcess = visionImages.filter(img => !img.grid);
+        if (toProcess.length === 0) {
+            toProcess = visionImages;
+        }
+
+        setIsVisionProcessing(true);
+        setIsVisionStopping(false);
+        isVisionCanceled.current = false;
+        setVisionBatchProgress({ current: 0, total: toProcess.length });
+        
+        if (!referenceIndexRef.current) {
+            setTemplateMessage?.('🔧 正在建立符號參考索引...');
+            referenceIndexRef.current = await buildReferenceIndex(template.symbolImagesAll);
+        }
+        const refIndex = referenceIndexRef.current;
+
+        setTemplateMessage?.(`🖥️ 開始本地辨識 ${toProcess.length} 張候選幀...`);
+
+        let currentVisionImages = [...visionImages];
+        const displayCols = template.hasMultiplierReel ? template.cols - 1 : template.cols;
+
+        // 將百分比 ROI 轉成像素座標的輔助函式
+        const getPixelROI = (imgObj, pctROI) => ({
+            x: Math.floor(imgObj.width * (pctROI.x / 100)),
+            y: Math.floor(imgObj.height * (pctROI.y / 100)),
+            width: Math.floor(imgObj.width * (pctROI.w / 100)),
+            height: Math.floor(imgObj.height * (pctROI.h / 100)),
+        });
+
+        for (let i = 0; i < toProcess.length; i++) {
+            if (isVisionCanceled.current) {
+                setTemplateMessage("已停止批量辨識");
+                break;
+            }
+
+            const targetImg = toProcess[i];
+            const imgIndex = currentVisionImages.findIndex(img => img.id === targetImg.id);
+
+            setActiveVisionId(targetImg.id);
+            setVisionBatchProgress({ current: i + 1, total: toProcess.length });
+
+            try {
+                // 將圖片畫到 canvas 以供辨識
+                const targetCanvas = document.createElement('canvas');
+                targetCanvas.width = targetImg.obj.width;
+                targetCanvas.height = targetImg.obj.height;
+                const ctx = targetCanvas.getContext('2d');
+                ctx.drawImage(targetImg.obj, 0, 0);
+
+                const pixelROI = getPixelROI(targetImg.obj, visionP1);
+                const { grid } = recognizeBoard(targetCanvas, pixelROI, template.rows, displayCols, refIndex);
+
+                let validatedBet = null;
+                if (hasBetBox && ocrWorkerRef.current) {
+                    const betText = await recognizeROIText(targetCanvas, visionP1Bet, ocrWorkerRef.current, ocrDecimalPlaces, false);
+                    validatedBet = parseFloat(betText) || null;
+                }
+
+                const finalBet = (hasBetBox && validatedBet !== null) ? validatedBet : currentVisionImages[imgIndex].bet;
+
+                currentVisionImages[imgIndex] = {
+                    ...currentVisionImages[imgIndex],
+                    grid: grid,
+                    bet: finalBet,
+                    error: ''
+                };
+                setVisionImages([...currentVisionImages]);
+
+            } catch (err) {
+                console.warn("本地辨識錯誤:", err);
+                currentVisionImages[imgIndex] = { ...currentVisionImages[imgIndex], error: "辨識失敗：" + err.message };
+                setVisionImages([...currentVisionImages]);
+            }
+        }
+
+        setIsVisionProcessing(false);
+        setIsVisionStopping(false);
+        setVisionBatchProgress({ current: 0, total: 0 });
+
+        if (!isVisionCanceled.current) {
+            setTemplateMessage(`✅ 批次辨識完成！共處理 ${toProcess.length} 張圖片。`);
+            setTimeout(() => setTemplateMessage(''), 5000);
+        } else {
+            setTimeout(() => setTemplateMessage(''), 5000);
+        }
+    };
+
     return {
         isVisionProcessing,
         isVisionStopping,
         visionBatchProgress,
         performAIVisionBatchMatching,
+        performLocalVisionBatchMatching,
         cancelVisionProcessing
     };
 }

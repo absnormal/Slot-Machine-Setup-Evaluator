@@ -170,7 +170,7 @@ function App() {
         visionImages, activeVisionId, activeVisionImg, visionImageObj, visionImageSrc, visionGrid, visionError,
         isVisionProcessing, isVisionStopping, visionBatchProgress,
         setActiveVisionId, setVisionImages, handleVisionMouseDown, handleVisionMouseMove, handleVisionMouseUp,
-        handleVisionImageUpload, removeVisionImage, performAIVisionBatchMatching, cancelVisionProcessing,
+        handleVisionImageUpload, removeVisionImage, performAIVisionBatchMatching, performLocalVisionBatchMatching, cancelVisionProcessing,
         goToPrevVisionImage, goToNextVisionImage,
         hasBetBox, setHasBetBox,
         setVisionP1, setVisionP1Bet
@@ -563,6 +563,7 @@ function App() {
                     handleVisionMouseDown={handleVisionMouseDown} handleVisionMouseMove={handleVisionMouseMove} handleVisionMouseUp={handleVisionMouseUp}
                     goToPrevVisionImage={goToPrevVisionImage} goToNextVisionImage={goToNextVisionImage}
                     isVisionProcessing={isVisionProcessing} performAIVisionBatchMatching={performAIVisionBatchMatching}
+                    performLocalVisionBatchMatching={performLocalVisionBatchMatching} ocrDecimalPlaces={ocrDecimalPlaces}
                     isVisionStopping={isVisionStopping} visionBatchProgress={visionBatchProgress} cancelVisionProcessing={cancelVisionProcessing}
                     visionError={visionError} visionGrid={visionGrid} visionCalcResults={visionCalcResults} visionCalculateError={visionCalculateError}
                     getSafeGrid={getSafeGrid} betInput={visionBetInput} setBetInput={handleVisionBetInputChange}

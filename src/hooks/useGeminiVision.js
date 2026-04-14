@@ -64,6 +64,7 @@ export function useGeminiVision({
         isVisionStopping,
         visionBatchProgress,
         performAIVisionBatchMatching,
+        performLocalVisionBatchMatching,
         cancelVisionProcessing
     } = batchProcessor;
 
@@ -373,6 +374,7 @@ export function useGeminiVision({
         handleVisionImageUpload,
         removeVisionImage,
         performAIVisionBatchMatching,
+        performLocalVisionBatchMatching,
         cancelVisionProcessing,
         goToPrevVisionImage,
         goToNextVisionImage,

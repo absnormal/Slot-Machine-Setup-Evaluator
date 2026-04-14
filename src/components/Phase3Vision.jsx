@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BrainCircuit, ChevronDown, ChevronUp, X, Upload, ImageIcon, Trash2, ChevronLeft, ChevronRight, ListChecks, Loader2, StopCircle, AlertCircle, Trophy } from 'lucide-react';
+import { BrainCircuit, ChevronDown, ChevronUp, X, Upload, ImageIcon, Trash2, ChevronLeft, ChevronRight, ListChecks, Loader2, StopCircle, AlertCircle, Trophy, Monitor } from 'lucide-react';
 import ResultView from './ResultView';
 import { getBaseSymbol, getCashValue, isCashSymbol, formatShorthandValue, isJpSymbol, getCollectValue, getSymbolDisplayImage, isDynamicMultiplierSymbol, getSymbolMultiplier } from '../utils/symbolUtils';
 
@@ -12,6 +12,7 @@ export default function Phase3Vision({
     handleVisionMouseDown, handleVisionMouseMove, handleVisionMouseUp,
     goToPrevVisionImage, goToNextVisionImage,
     isVisionProcessing, performAIVisionBatchMatching,
+    performLocalVisionBatchMatching, ocrDecimalPlaces,
     isVisionStopping, visionBatchProgress, cancelVisionProcessing,
     visionGrid, visionError, visionCalcResults, visionCalculateError,
     getSafeGrid, betInput, setBetInput,
@@ -172,7 +173,15 @@ export default function Phase3Vision({
                                                     <ListChecks size={20} />
                                                     {visionImages.filter(img => !img.grid).length > 0
                                                         ? `批次辨識未處理圖片 (${visionImages.filter(img => !img.grid).length} 張)`
-                                                        : '重新辨識全部圖片'}
+                                                        : '重新辨識全部圖片'} (Gemini)
+                                                </button>
+                                                
+                                                <button
+                                                    onClick={() => performLocalVisionBatchMatching(ocrDecimalPlaces)}
+                                                    className="w-full py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-sm bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/30"
+                                                >
+                                                    <Monitor size={18} />
+                                                    本地辨識盤面 (零延遲支援，需精準對齊綠框)
                                                 </button>
                                                 {!hasApiKey && visionImages.length > 0 && (
                                                     <div className="px-3 py-2 bg-amber-950/40 border border-amber-900 rounded-lg text-xs text-amber-400 font-bold flex items-center gap-2">
