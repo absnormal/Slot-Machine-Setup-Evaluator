@@ -148,7 +148,7 @@ const Phase4Video = ({
                 onClick={(e) => { e.stopPropagation(); handleCardClick(kf); }}
                 title="點擊放大檢視盤面"
             >
-                <img src={kf.winPollThumbUrl || kf.thumbUrl} className="w-full h-full object-contain pointer-events-none" alt="" />
+                <img src={kf.winPollThumbUrl || kf.thumbUrl} className="w-full h-full object-cover object-center pointer-events-none" alt="" />
             </div>
             <div className="flex-1 min-w-0 pr-5">
                 <div className="flex items-center justify-between">
