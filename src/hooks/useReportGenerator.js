@@ -394,7 +394,7 @@ tr:hover { background:#f8fafc; }
 .grid-cell { background:linear-gradient(180deg, #334155 0%, #1e293b 100%); border:1px solid #475569; border-radius:6px; padding:2px; min-width:44px; min-height:44px; display:flex; justify-content:center; align-items:center; text-align:center; color:#f8fafc; font-weight:800; transition:all 0.15s; position:relative; box-shadow:inset 0 1px 0 rgba(255,255,255,0.1), 0 2px 4px rgba(0,0,0,0.2); word-break:break-all; font-size:9px; line-height:1.1; flex-direction:column; }
 .grid-table.dimmed .grid-cell { opacity:0.25; filter:grayscale(90%); box-shadow:none; }
 .grid-table.dimmed .grid-cell.highlight { opacity:1; filter:none; box-shadow:inset 0 0 12px rgba(253,224,71,0.5), 0 0 10px rgba(253,224,71,0.4); background:linear-gradient(180deg, #fef08a 0%, #eab308 100%); border-color:#ca8a04; color:#713f12; z-index:2; transform:scale(1.1); text-shadow:0 1px 0 rgba(255,255,255,0.4); }
-.sym-img { width:100%; height:36px; object-fit:contain; filter:drop-shadow(0 2px 3px rgba(0,0,0,0.4)); pointer-events:none; }
+.sym-img { width:36px; height:36px; object-fit:contain; filter:drop-shadow(0 2px 3px rgba(0,0,0,0.4)); pointer-events:none; }
 .grid-table.dimmed .grid-cell.highlight .sym-img { filter:drop-shadow(0 4px 6px rgba(0,0,0,0.5)); transform:scale(1.05); }
 .grid-win-popup { position:absolute; top:-12px; left:-8px; background:rgba(0,0,0,0.85); color:#fff; font-size:12px; padding:3px 6px; border-radius:4px; box-shadow:0 4px 12px rgba(0,0,0,0.3); z-index:10; display:none; flex-direction:row; align-items:center; opacity:0; pointer-events:none; transition:opacity 0.15s; font-family:sans-serif; letter-spacing:0.5px; }
 .grid-win-popup.show { display:flex; opacity:1; }
