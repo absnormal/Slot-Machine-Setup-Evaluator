@@ -165,23 +165,23 @@ export default function Phase3Vision({
                                         {!isVisionProcessing ? (
                                             <div className="flex flex-col gap-2">
                                                 <button
+                                                    onClick={() => performLocalVisionBatchMatching(ocrDecimalPlaces)}
+                                                    className="w-full py-3 rounded-lg text-lg font-bold flex items-center justify-center gap-2 transition-all shadow-md bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-500/20"
+                                                >
+                                                    <Monitor size={20} />
+                                                    本地辨識盤面 (零延遲)
+                                                </button>
+
+                                                <button
                                                     onClick={performAIVisionBatchMatching}
                                                     disabled={!hasApiKey}
-                                                    className={`w-full py-3 rounded-lg text-lg font-bold flex items-center justify-center gap-2 transition-all shadow-md 
-                                                    ${!hasApiKey ? 'bg-slate-700 text-slate-500 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-500/20'}`}
+                                                    className={`w-full py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-sm 
+                                                    ${!hasApiKey ? 'bg-slate-800/50 text-slate-600 cursor-not-allowed border border-slate-700/30' : 'bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-400 border border-indigo-500/30'}`}
                                                 >
-                                                    <ListChecks size={20} />
+                                                    <ListChecks size={18} />
                                                     {visionImages.filter(img => !img.grid).length > 0
-                                                        ? `批次辨識未處理圖片 (${visionImages.filter(img => !img.grid).length} 張)`
-                                                        : '重新辨識全部圖片'} (Gemini)
-                                                </button>
-                                                
-                                                <button
-                                                    onClick={() => performLocalVisionBatchMatching(ocrDecimalPlaces)}
-                                                    className="w-full py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-sm bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/30"
-                                                >
-                                                    <Monitor size={18} />
-                                                    本地辨識盤面 (零延遲支援，需精準對齊綠框)
+                                                        ? `Gemini 輔助辨識未處理圖片 (${visionImages.filter(img => !img.grid).length} 張)`
+                                                        : 'Gemini 重新辨識全部圖片'}
                                                 </button>
                                                 {!hasApiKey && visionImages.length > 0 && (
                                                     <div className="px-3 py-2 bg-amber-950/40 border border-amber-900 rounded-lg text-xs text-amber-400 font-bold flex items-center gap-2">

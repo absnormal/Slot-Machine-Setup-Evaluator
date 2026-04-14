@@ -1135,30 +1135,28 @@ const Phase4Video = ({
                                     )
                                 )}
 
-                                {/* Gemini 盤面辨識（僅贏分） */}
+                                {/* 辨識按鈕組 */}
                                 {candidates.length > 0 && (isRecognizing || winPendingCount > 0) && (
                                     isRecognizing ? (
                                         <button onClick={cancelRecognition}
-                                            className="w-full py-2.5 rounded-xl font-bold flex items-center justify-center gap-2 bg-rose-100 text-rose-600 border border-rose-200 hover:bg-rose-200 transition-all active:scale-95">
-                                            <Square size={14} /> 停止辨識 ({recognitionProgress.current}/{recognitionProgress.total})
+                                            className="w-full py-2.5 rounded-xl font-bold flex items-center justify-center gap-2 bg-rose-100 text-rose-600 border border-rose-200 hover:bg-rose-200 transition-all active:scale-95 text-sm">
+                                            <Square size={16} /> 停止辨識 ({recognitionProgress.current}/{recognitionProgress.total})
                                         </button>
                                     ) : (
-                                        <div className="space-y-1">
-                                            <button onClick={() => recognizeBatch(ocrDecimalPlaces)}
-                                                className="w-full py-2 rounded-xl font-bold flex items-center justify-center gap-2 bg-violet-50 text-violet-600 hover:bg-violet-100 border border-violet-200 transition-all active:scale-95 text-xs">
-                                                <Sparkles size={14} /> Gemini 辨識盤面（僅贏分 {winPendingCount} 張）
+                                        <div className="space-y-2">
+                                            <button onClick={() => recognizeLocalBatch(ocrDecimalPlaces)}
+                                                className="w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 bg-emerald-600 text-white hover:bg-emerald-500 transition-all active:scale-95 shadow-md shadow-emerald-500/20 text-sm">
+                                                <Monitor size={18} /> 本地為主：即時辨識盤面（未處理 {winPendingCount} 張）
                                             </button>
-                                            <p className="text-[10px] text-slate-400 text-center">※ 只會辨識 WIN &gt; 0 的盤面，無贏分的可手動送 P3</p>
+                                            <div className="space-y-1">
+                                                <button onClick={() => recognizeBatch(ocrDecimalPlaces)}
+                                                    className="w-full py-2 rounded-xl font-bold flex items-center justify-center gap-1.5 bg-violet-50/50 text-violet-600 hover:bg-violet-100 border border-violet-200 transition-all active:scale-95 text-xs">
+                                                    <Sparkles size={14} /> Gemini 為輔：雲端補充辨識（未處理 {winPendingCount} 張）
+                                                </button>
+                                                <p className="text-[10px] text-slate-400 text-center">※ 只會辨識 WIN &gt; 0 的盤面，無贏分的可手動送 P3</p>
+                                            </div>
                                         </div>
                                     )
-                                )}
-
-                                {/* 本地辨識盤面 */}
-                                {candidates.length > 0 && winPendingCount > 0 && !isRecognizing && (
-                                    <button onClick={() => recognizeLocalBatch(ocrDecimalPlaces)}
-                                        className="w-full py-2 rounded-xl font-bold flex items-center justify-center gap-2 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-200 transition-all active:scale-95 text-xs">
-                                        <Monitor size={14} /> 本地辨識盤面（僅贏分 {winPendingCount} 張，零延遲）
-                                    </button>
                                 )}
 
                                 {/* 自動存檔區塊 */}
