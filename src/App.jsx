@@ -598,6 +598,7 @@ function App() {
                     recognitionProgress={autoRecognition.recognitionProgress}
                     recognizeBatch={handleRecognizeBatch}
                     recognizeLocalBatch={handleRecognizeLocalBatch}
+                    autoSnapReelROI={autoRecognition.autoSnapReelROI}
                     cancelRecognition={autoRecognition.cancelRecognition}
                     // Report
                     stats={phase4Stats}
