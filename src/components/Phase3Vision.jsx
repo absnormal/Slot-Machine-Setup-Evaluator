@@ -206,7 +206,7 @@ export default function Phase3Vision({
                                                     <Loader2 size={20} className="animate-spin" />
                                                     {isVisionStopping
                                                         ? '正在等待當前回合完成並停止...'
-                                                        : `AI 批次辨識中 (${visionBatchProgress.current}/${visionBatchProgress.total})...`}
+                                                        : `批次辨識盤面中 (${visionBatchProgress.current}/${visionBatchProgress.total})...`}
                                                 </div>
                                                 <button
                                                     onClick={() => {

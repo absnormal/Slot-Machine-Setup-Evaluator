@@ -28,6 +28,27 @@ function toGray(imageData) {
     return gray;
 }
 
+/**
+ * 直方圖等化 — 將灰階分佈拉伸到 0~255 全範圍
+ * 能有效對抗「反灰/變暗」導致的對比度壓縮
+ */
+function histogramEqualize(gray) {
+    const hist = new Uint32Array(256);
+    for (let i = 0; i < gray.length; i++) hist[gray[i]]++;
+
+    const cdf = new Uint32Array(256);
+    cdf[0] = hist[0];
+    for (let i = 1; i < 256; i++) cdf[i] = cdf[i - 1] + hist[i];
+
+    const cdfMin = cdf.find(v => v > 0);
+    const total = gray.length;
+    const result = new Uint8Array(gray.length);
+    for (let i = 0; i < gray.length; i++) {
+        result[i] = Math.round(((cdf[gray[i]] - cdfMin) / (total - cdfMin)) * 255);
+    }
+    return result;
+}
+
 // ═══════════════════════════════════════════
 // ── HOG (Histogram of Oriented Gradients) ──
 // ═══════════════════════════════════════════
@@ -55,11 +76,31 @@ function computeHOG(gray) {
         for (let x = 1; x < W - 1; x++) {
             const gx = gray[y * W + x + 1] - gray[y * W + x - 1];
             const gy = gray[(y + 1) * W + x] - gray[(y - 1) * W + x];
-            const mag = Math.sqrt(gx * gx + gy * gy);
+            let mag = Math.sqrt(gx * gx + gy * gy);
             let angle = Math.atan2(gy, gx) * (180 / Math.PI); // -180 ~ 180
             if (angle < 0) angle += 180; // 轉成 unsigned: 0 ~ 180
             magnitudes[y * W + x] = mag;
             angles[y * W + x] = angle;
+        }
+    }
+
+    // Step 1.5: 梯度截尾 — 把最強的 10% 梯度值壓到 P90 閾值
+    // 閃電/發光線的梯度會超級大，壓住之後就不會主導整個 histogram
+    const sorted = Float32Array.from(magnitudes).sort();
+    const p90Idx = Math.floor(sorted.length * 0.90);
+    const magCap = sorted[p90Idx] || 1;
+    for (let i = 0; i < magnitudes.length; i++) {
+        if (magnitudes[i] > magCap) magnitudes[i] = magCap;
+    }
+
+    // Step 1.6: 中心加權 Gaussian — 格子中央的像素權重更高，邊緣特效影響降低
+    const sigma = W / 4;
+    const cx = W / 2, cy = H / 2;
+    for (let y = 0; y < H; y++) {
+        for (let x = 0; x < W; x++) {
+            const dx = x - cx, dy = y - cy;
+            const weight = Math.exp(-(dx * dx + dy * dy) / (2 * sigma * sigma));
+            magnitudes[y * W + x] *= weight;
         }
     }
 
@@ -213,7 +254,8 @@ export async function buildReferenceIndex(symbolImagesAll) {
                 ctx.drawImage(img, 0, 0, MATCH_SIZE, MATCH_SIZE);
                 const imageData = ctx.getImageData(0, 0, MATCH_SIZE, MATCH_SIZE);
                 const gray = toGray(imageData);
-                const hog = computeHOG(gray);
+                const eqGray = histogramEqualize(gray);
+                const hog = computeHOG(eqGray);
                 refList.push({ hog, gray });
             } catch (e) {
                 console.warn(`[LocalRecognizer] 載入符號 ${symbol} 參考圖失敗`, e);
@@ -260,7 +302,8 @@ const TIEBREAK_THRESHOLD = 0.05; // HOG 分差 < 5% 時啟動 SSIM 決勝
  */
 export function matchCell(cellImageData, referenceIndex) {
     const cellGray = toGray(cellImageData);
-    const cellHOG = computeHOG(cellGray);
+    const cellEqGray = histogramEqualize(cellGray);
+    const cellHOG = computeHOG(cellEqGray);
 
     // Pass 1: HOG Cosine Similarity
     const candidates = [];
