@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { BrainCircuit, ChevronDown, ChevronUp, X, Upload, ImageIcon, Trash2, ChevronLeft, ChevronRight, ListChecks, Loader2, StopCircle, AlertCircle, Trophy, Monitor, RotateCcw } from 'lucide-react';
 import ResultView from './ResultView';
 import { getBaseSymbol, getCashValue, isCashSymbol, formatShorthandValue, isJpSymbol, getCollectValue, getSymbolDisplayImage, isDynamicMultiplierSymbol, getSymbolMultiplier } from '../utils/symbolUtils';
-import { buildReferenceIndex, matchCell } from '../engine/localBoardRecognizer';
 
 export default function Phase3Vision({
     template,

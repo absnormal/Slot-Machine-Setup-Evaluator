@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { fetchWithRetry, resizeImageBase64 } from '../utils/helpers';
 import { recognizeROIText, createOcrWorker } from '../utils/ocrUtils';
-import { buildReferenceIndex, recognizeBoard, cleanupReferenceIndex } from '../engine/localBoardRecognizer';
+import { buildReferenceIndex, recognizeBoard } from '../engine/localBoardRecognizer';
 import { validateVisionResponse } from '../utils/aiValidator';
 import { isCashSymbol, isCollectSymbol, isDynamicMultiplierSymbol } from '../utils/symbolUtils';
 import { apiKey } from '../utils/constants';
@@ -42,17 +42,9 @@ export function useVisionBatchProcessor({
     const ocrWorkerRef = useRef(null);
     const referenceIndexRef = useRef(null);
 
+    // 當 template 變更時，清除快取讓下次辨識重建索引
     useEffect(() => {
-        if (referenceIndexRef.current) {
-            cleanupReferenceIndex(referenceIndexRef.current);
-            referenceIndexRef.current = null;
-        }
-        return () => {
-            if (referenceIndexRef.current) {
-                cleanupReferenceIndex(referenceIndexRef.current);
-                referenceIndexRef.current = null;
-            }
-        };
+        referenceIndexRef.current = null;
     }, [template?.id]);
 
     useEffect(() => {

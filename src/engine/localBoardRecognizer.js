@@ -1,35 +1,196 @@
 /**
- * localBoardRecognizer.js — OpenCV ORB 版盤面辨識引擎
+ * localBoardRecognizer.js — HOG + SSIM 混合辨識引擎
  *
- * 完全改用特徵點（Keypoints）算法，能夠無視大面積反灰、發光或遮擋特效。
+ * 架構：
+ * Pass 1: HOG (方向梯度長條圖) — 主引擎，天生不受亮度/反灰/閃電干擾
+ * Pass 2: SSIM (結構相似度) — 副引擎，僅在前兩名極接近時做決勝
+ *
+ * 零依賴：100% 純 JS，無需 OpenCV / WASM
  */
-import cv from '@techstark/opencv-js';
 
-const MATCH_SIZE = 150; 
+const MATCH_SIZE = 64; // 統一縮放到 64x64 做比對
 
-// ── OpenCV 初始化防呆 ──
-export const ensureOpenCV = () => {
-    return new Promise((resolve) => {
-        if (cv.getBuildInformation) {
-            resolve();
-            return;
-        }
-        cv.onRuntimeInitialized = resolve;
-        
-        const fallback = setInterval(() => {
-            if (cv.getBuildInformation) {
-                clearInterval(fallback);
-                resolve();
-            }
-        }, 100);
-    });
-};
+// ═══════════════════════════════════════════
+// ── 灰階轉換 ──
+// ═══════════════════════════════════════════
 
 /**
- * 預處理符號參考圖：建立 OpenCV ORB 特徵點與 Descriptors
+ * 將 ImageData 轉為灰階 Uint8Array（不做正規化，保留原始灰度資訊給 SSIM）
+ */
+function toGray(imageData) {
+    const d = imageData.data;
+    const len = d.length / 4;
+    const gray = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+        const idx = i * 4;
+        gray[i] = Math.round(d[idx] * 0.299 + d[idx + 1] * 0.587 + d[idx + 2] * 0.114);
+    }
+    return gray;
+}
+
+// ═══════════════════════════════════════════
+// ── HOG (Histogram of Oriented Gradients) ──
+// ═══════════════════════════════════════════
+
+const HOG_CELL_SIZE = 8;     // 每個 cell 為 8x8 像素
+const HOG_BLOCK_SIZE = 2;    // 每個 block 為 2x2 cells
+const HOG_NUM_BINS = 9;      // 梯度方向量化為 9 個 bin (0°–180°)
+
+/**
+ * 計算 HOG 特徵向量
+ * @param {Uint8Array} gray - 64x64 灰階影像
+ * @returns {Float32Array} HOG 特徵向量
+ */
+function computeHOG(gray) {
+    const W = MATCH_SIZE;
+    const H = MATCH_SIZE;
+    const cellsX = W / HOG_CELL_SIZE; // 8
+    const cellsY = H / HOG_CELL_SIZE; // 8
+
+    // Step 1: 計算每個像素的梯度大小和方向
+    const magnitudes = new Float32Array(W * H);
+    const angles = new Float32Array(W * H);
+
+    for (let y = 1; y < H - 1; y++) {
+        for (let x = 1; x < W - 1; x++) {
+            const gx = gray[y * W + x + 1] - gray[y * W + x - 1];
+            const gy = gray[(y + 1) * W + x] - gray[(y - 1) * W + x];
+            const mag = Math.sqrt(gx * gx + gy * gy);
+            let angle = Math.atan2(gy, gx) * (180 / Math.PI); // -180 ~ 180
+            if (angle < 0) angle += 180; // 轉成 unsigned: 0 ~ 180
+            magnitudes[y * W + x] = mag;
+            angles[y * W + x] = angle;
+        }
+    }
+
+    // Step 2: 為每個 cell 建立 9-bin 直方圖
+    const cellHists = new Array(cellsY);
+    for (let cy = 0; cy < cellsY; cy++) {
+        cellHists[cy] = new Array(cellsX);
+        for (let cx = 0; cx < cellsX; cx++) {
+            const hist = new Float32Array(HOG_NUM_BINS);
+            const startY = cy * HOG_CELL_SIZE;
+            const startX = cx * HOG_CELL_SIZE;
+
+            for (let dy = 0; dy < HOG_CELL_SIZE; dy++) {
+                for (let dx = 0; dx < HOG_CELL_SIZE; dx++) {
+                    const px = startX + dx;
+                    const py = startY + dy;
+                    const idx = py * W + px;
+                    const mag = magnitudes[idx];
+                    const ang = angles[idx];
+
+                    // 雙線性插值到相鄰的兩個 bin
+                    const binWidth = 180 / HOG_NUM_BINS; // 20°
+                    const binFloat = ang / binWidth;
+                    const binLow = Math.floor(binFloat) % HOG_NUM_BINS;
+                    const binHigh = (binLow + 1) % HOG_NUM_BINS;
+                    const ratio = binFloat - Math.floor(binFloat);
+
+                    hist[binLow] += mag * (1 - ratio);
+                    hist[binHigh] += mag * ratio;
+                }
+            }
+            cellHists[cy][cx] = hist;
+        }
+    }
+
+    // Step 3: Block 正規化 (2x2 cells / block, stride=1)
+    const blocksX = cellsX - HOG_BLOCK_SIZE + 1; // 7
+    const blocksY = cellsY - HOG_BLOCK_SIZE + 1; // 7
+    const featureSize = blocksX * blocksY * HOG_BLOCK_SIZE * HOG_BLOCK_SIZE * HOG_NUM_BINS;
+    const features = new Float32Array(featureSize);
+    let fIdx = 0;
+
+    for (let by = 0; by < blocksY; by++) {
+        for (let bx = 0; bx < blocksX; bx++) {
+            // 收集 block 內的所有 cell histogram
+            const blockVec = [];
+            for (let dy = 0; dy < HOG_BLOCK_SIZE; dy++) {
+                for (let dx = 0; dx < HOG_BLOCK_SIZE; dx++) {
+                    const h = cellHists[by + dy][bx + dx];
+                    for (let b = 0; b < HOG_NUM_BINS; b++) {
+                        blockVec.push(h[b]);
+                    }
+                }
+            }
+
+            // L2 正規化 — 這一步是 HOG 能免疫亮度變化的核心
+            const eps = 1e-6;
+            let norm = 0;
+            for (let i = 0; i < blockVec.length; i++) norm += blockVec[i] * blockVec[i];
+            norm = Math.sqrt(norm) + eps;
+            for (let i = 0; i < blockVec.length; i++) {
+                features[fIdx++] = blockVec[i] / norm;
+            }
+        }
+    }
+
+    return features;
+}
+
+/**
+ * 計算兩個 HOG 向量的餘弦相似度 (Cosine Similarity)
+ * 回傳值：-1 ~ 1，1 = 完全相同
+ */
+function cosineSimilarity(a, b) {
+    let dot = 0, normA = 0, normB = 0;
+    for (let i = 0; i < a.length; i++) {
+        dot += a[i] * b[i];
+        normA += a[i] * a[i];
+        normB += b[i] * b[i];
+    }
+    const denom = Math.sqrt(normA) * Math.sqrt(normB);
+    return denom > 0 ? dot / denom : 0;
+}
+
+// ═══════════════════════════════════════════
+// ── SSIM (Structural Similarity Index) ──
+// ═══════════════════════════════════════════
+
+/**
+ * 計算兩張灰階影像的 SSIM
+ * 回傳值：-1 ~ 1，1 = 完全相同
+ */
+function computeSSIM(grayA, grayB) {
+    const len = grayA.length;
+    let sumA = 0, sumB = 0;
+    for (let i = 0; i < len; i++) {
+        sumA += grayA[i];
+        sumB += grayB[i];
+    }
+    const muA = sumA / len;
+    const muB = sumB / len;
+
+    let varA = 0, varB = 0, covAB = 0;
+    for (let i = 0; i < len; i++) {
+        const dA = grayA[i] - muA;
+        const dB = grayB[i] - muB;
+        varA += dA * dA;
+        varB += dB * dB;
+        covAB += dA * dB;
+    }
+    varA /= len;
+    varB /= len;
+    covAB /= len;
+
+    const C1 = 6.5025;  // (0.01 * 255)^2
+    const C2 = 58.5225;  // (0.03 * 255)^2
+    const numerator = (2 * muA * muB + C1) * (2 * covAB + C2);
+    const denominator = (muA * muA + muB * muB + C1) * (varA + varB + C2);
+    return numerator / denominator;
+}
+
+// ═══════════════════════════════════════════
+// ── 參考索引建立 ──
+// ═══════════════════════════════════════════
+
+/**
+ * 預處理符號參考圖：計算 HOG 特徵向量 + 灰階陣列
+ * @param {Object} symbolImagesAll - { symbolName: [dataUrl1, dataUrl2, ...], ... }
+ * @returns {Promise<Map<string, { hog: Float32Array, gray: Uint8Array }[]>>}
  */
 export async function buildReferenceIndex(symbolImagesAll) {
-    await ensureOpenCV();
     const index = new Map();
 
     const loadImage = (url) => new Promise((resolve, reject) => {
@@ -39,8 +200,6 @@ export async function buildReferenceIndex(symbolImagesAll) {
         img.onerror = reject;
         img.src = url;
     });
-
-    const orb = new cv.ORB(500);
 
     for (const [symbol, urls] of Object.entries(symbolImagesAll)) {
         const refList = [];
@@ -53,26 +212,9 @@ export async function buildReferenceIndex(symbolImagesAll) {
                 const ctx = canvas.getContext('2d');
                 ctx.drawImage(img, 0, 0, MATCH_SIZE, MATCH_SIZE);
                 const imageData = ctx.getImageData(0, 0, MATCH_SIZE, MATCH_SIZE);
-                
-                const mat = cv.matFromImageData(imageData);
-                const gray = new cv.Mat();
-                cv.cvtColor(mat, gray, cv.COLOR_RGBA2GRAY, 0);
-
-                const keypoints = new cv.KeyPointVector();
-                const descriptors = new cv.Mat();
-                
-                orb.detectAndCompute(gray, new cv.Mat(), keypoints, descriptors);
-                
-                refList.push({ 
-                    rgb: imageData,
-                    kpCount: keypoints.size(),
-                    descriptors: descriptors.clone(),
-                });
-                
-                mat.delete();
-                gray.delete();
-                keypoints.delete();
-                descriptors.delete();
+                const gray = toGray(imageData);
+                const hog = computeHOG(gray);
+                refList.push({ hog, gray });
             } catch (e) {
                 console.warn(`[LocalRecognizer] 載入符號 ${symbol} 參考圖失敗`, e);
             }
@@ -81,24 +223,16 @@ export async function buildReferenceIndex(symbolImagesAll) {
             index.set(symbol, refList);
         }
     }
-    orb.delete();
-    console.log(`[LocalRecognizer] ORB 參考索引建立完成：${index.size} 個符號`);
+
+    const totalRefs = [...index.values()].reduce((s, v) => s + v.length, 0);
+    console.log(`[LocalRecognizer] HOG 參考索引建立完成：${index.size} 個符號，共 ${totalRefs} 張參考圖`);
     return index;
 }
 
-export function cleanupReferenceIndex(index) {
-    if (!index) return;
-    for (const [symbol, refList] of index) {
-        for (const ref of refList) {
-            try {
-                if (ref.descriptors) ref.descriptors.delete();
-            } catch(e) {}
-        }
-    }
-    index.clear();
-}
-
+// ═══════════════════════════════════════════
 // ── 格子擷取 ──
+// ═══════════════════════════════════════════
+
 function extractCell(boardCanvas, roi, row, col, totalRows, totalCols) {
     const cellW = roi.width / totalCols;
     const cellH = roi.height / totalRows;
@@ -113,80 +247,79 @@ function extractCell(boardCanvas, roi, row, col, totalRows, totalCols) {
     return ctx.getImageData(0, 0, MATCH_SIZE, MATCH_SIZE);
 }
 
+// ═══════════════════════════════════════════
+// ── 雙層比對 ──
+// ═══════════════════════════════════════════
+
+const TIEBREAK_THRESHOLD = 0.05; // HOG 分差 < 5% 時啟動 SSIM 決勝
+
 /**
- * 辨識單一格子（OpenCV ORB 匹配）
+ * 辨識單一格子（雙層比對）
+ * Pass 1: HOG 餘弦相似度（免疫亮度/反灰/閃電）
+ * Pass 2: 若前兩名接近且符號不同，用 SSIM 決勝（區分形狀相似但灰度分佈不同的符號）
  */
-export function matchCell(cellImageData, referenceIndex, r, c) {
-    const mat = cv.matFromImageData(cellImageData);
-    const gray = new cv.Mat();
-    cv.cvtColor(mat, gray, cv.COLOR_RGBA2GRAY, 0);
+export function matchCell(cellImageData, referenceIndex) {
+    const cellGray = toGray(cellImageData);
+    const cellHOG = computeHOG(cellGray);
 
-    const orb = new cv.ORB(500);
-    const keypoints = new cv.KeyPointVector();
-    const targetDesc = new cv.Mat();
-    
-    orb.detectAndCompute(gray, new cv.Mat(), keypoints, targetDesc);
-    const targetKpCount = keypoints.size();
-
+    // Pass 1: HOG Cosine Similarity
     const candidates = [];
-    const bf = new cv.BFMatcher(cv.NORM_HAMMING, true); 
-
     for (const [symbol, refList] of referenceIndex) {
-        let bestScoreForSymbol = -1;
-        
+        let bestCosForSymbol = -1;
+        let bestRefForSymbol = null;
         for (const ref of refList) {
-            if (targetDesc.rows === 0 || ref.descriptors.rows === 0) continue;
-            
-            const matches = new cv.DMatchVector();
-            bf.match(targetDesc, ref.descriptors, matches);
-            
-            let goodMatches = 0;
-            for (let i = 0; i < matches.size(); i++) {
-                if (matches.get(i).distance < 60) {
-                    goodMatches++;
-                }
+            const cos = cosineSimilarity(cellHOG, ref.hog);
+            if (cos > bestCosForSymbol) {
+                bestCosForSymbol = cos;
+                bestRefForSymbol = ref;
             }
-            
-            const minKp = Math.min(targetKpCount, ref.kpCount);
-            let matchRate = minKp > 0 ? (goodMatches / minKp) : 0;
-            
-            // 權重調整：若特徵點太少，容易出現 1/1 = 100% 的極端，用數量打折
-            matchRate = matchRate * Math.min(1.0, goodMatches / 10.0);
-
-            if (matchRate > bestScoreForSymbol) {
-                bestScoreForSymbol = matchRate;
-            }
-            matches.delete();
         }
-        candidates.push({ symbol, score: bestScoreForSymbol });
+        candidates.push({ symbol, hogScore: bestCosForSymbol, ref: bestRefForSymbol });
     }
 
-    mat.delete();
-    gray.delete();
-    orb.delete();
-    keypoints.delete();
-    targetDesc.delete();
-    bf.delete();
-
-    candidates.sort((a, b) => b.score - a.score);
+    // 按 HOG 分數降序
+    candidates.sort((a, b) => b.hogScore - a.hogScore);
 
     if (candidates.length === 0) {
         return { symbol: '?', confidence: 0, rawScore: 0 };
     }
 
     const top1 = candidates[0];
-    const top2 = candidates.length > 1 ? candidates[1] : null;
+    let bestSymbol = top1.symbol;
+    let bestScore = top1.hogScore;
 
-    // 將 0~1 的 matchRate 放大到 0~100 confidence
-    const confidence = Math.max(0, Math.min(100, Math.max(0, top1.score) * 120)); // ORB features Rarely hit 100%, 120x multiplier helps readability
+    // Pass 2: 若前兩名接近且不同符號，用 SSIM 做決勝
+    if (candidates.length >= 2) {
+        const top2 = candidates[1];
+        if (top1.symbol !== top2.symbol) {
+            const gap = top1.hogScore - top2.hogScore;
+            if (gap < TIEBREAK_THRESHOLD) {
+                const ssim1 = computeSSIM(cellGray, top1.ref.gray);
+                const ssim2 = computeSSIM(cellGray, top2.ref.gray);
+                if (ssim2 > ssim1) {
+                    bestSymbol = top2.symbol;
+                    bestScore = top2.hogScore;
+                }
+            }
+        }
+    }
 
-    return { 
-        symbol: top1.symbol, 
-        confidence: parseFloat(confidence.toFixed(1)), 
-        rawScore: parseFloat(top1.score.toFixed(3)) 
+    // HOG cosine similarity 0~1 → confidence 0~100
+    const confidence = Math.max(0, Math.min(100, bestScore * 100));
+    return {
+        symbol: bestSymbol,
+        confidence: parseFloat(confidence.toFixed(1)),
+        rawScore: parseFloat(bestScore.toFixed(3))
     };
 }
 
+// ═══════════════════════════════════════════
+// ── 盤面辨識 ──
+// ═══════════════════════════════════════════
+
+/**
+ * 辨識整個盤面
+ */
 export function recognizeBoard(boardCanvas, reelROI, gridRows, gridCols, referenceIndex) {
     const grid = [];
     const details = [];
@@ -215,10 +348,10 @@ export function recognizeBoard(boardCanvas, reelROI, gridRows, gridCols, referen
         cellScores[r] = [];
         for (let c = 0; c < gridCols; c++) {
             const cellData = extractCell(boardCanvas, reelROI, r, c, gridRows, gridCols);
-            const match = matchCell(cellData, referenceIndex, r, c);
+            const match = matchCell(cellData, referenceIndex);
             gridRow.push(match.symbol);
             detailRow.push(match);
-            
+
             const sym = match.symbol;
             const score = `(${match.rawScore.toFixed(2)})`;
             cellSyms[r][c] = sym;
@@ -230,7 +363,7 @@ export function recognizeBoard(boardCanvas, reelROI, gridRows, gridCols, referen
     }
 
     const logRows = [];
-    logRows.push(''); // top padding
+    logRows.push('');
     for (let r = 0; r < gridRows; r++) {
         const symRow = [];
         const scoreRow = [];
@@ -243,7 +376,7 @@ export function recognizeBoard(boardCanvas, reelROI, gridRows, gridCols, referen
         if (r < gridRows - 1) logRows.push('');
     }
 
-    console.log(`\n=== 盤面辨識結果 (OpenCV ORB) ===${logRows.join('\n')}\n==============================================\n`);
+    console.log(`\n=== 盤面辨識結果 (HOG + SSIM) ===${logRows.join('\n')}\n==============================================\n`);
 
     return { grid, details };
 }
