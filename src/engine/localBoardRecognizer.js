@@ -5,7 +5,7 @@
  */
 import cv from '@techstark/opencv-js';
 
-const MATCH_SIZE = 64; 
+const MATCH_SIZE = 150; 
 
 // ── OpenCV 初始化防呆 ──
 export const ensureOpenCV = () => {
@@ -178,10 +178,10 @@ export function matchCell(cellImageData, referenceIndex, r, c) {
     const top2 = candidates.length > 1 ? candidates[1] : null;
 
     // 將 0~1 的 matchRate 放大到 0~100 confidence
-    const confidence = Math.max(0, Math.min(100, top1.score * 120)); // ORB features Rarely hit 100%, 120x multiplier helps readability
+    const confidence = Math.max(0, Math.min(100, Math.max(0, top1.score) * 120)); // ORB features Rarely hit 100%, 120x multiplier helps readability
 
     // User logging requirement
-    console.log(`[ORB Grid R:${r} C:${c}] Winner: ${top1.symbol} (Score: ${(top1.score).toFixed(3)}). Top2: ${top2 ? top2.symbol : 'N/A'} (Score: ${top2 ? (top2.score).toFixed(3) : 0})`);
+    console.log(`[ORB Grid R:${r} C:${c}] KPs=${targetKpCount}. Winner: ${top1.symbol} (Score: ${(top1.score).toFixed(3)}). Top2: ${top2 ? top2.symbol : 'N/A'} (Score: ${top2 ? (top2.score).toFixed(3) : 0})`);
 
     return { 
         symbol: top1.symbol, 
