@@ -180,9 +180,6 @@ export function matchCell(cellImageData, referenceIndex, r, c) {
     // 將 0~1 的 matchRate 放大到 0~100 confidence
     const confidence = Math.max(0, Math.min(100, Math.max(0, top1.score) * 120)); // ORB features Rarely hit 100%, 120x multiplier helps readability
 
-    // User logging requirement
-    console.log(`[ORB Grid R:${r} C:${c}] KPs=${targetKpCount}. Winner: ${top1.symbol} (Score: ${(top1.score).toFixed(3)}). Top2: ${top2 ? top2.symbol : 'N/A'} (Score: ${top2 ? (top2.score).toFixed(3) : 0})`);
-
     return { 
         symbol: top1.symbol, 
         confidence: parseFloat(confidence.toFixed(1)), 
@@ -193,19 +190,25 @@ export function matchCell(cellImageData, referenceIndex, r, c) {
 export function recognizeBoard(boardCanvas, reelROI, gridRows, gridCols, referenceIndex) {
     const grid = [];
     const details = [];
+    const logRows = [];
 
     for (let r = 0; r < gridRows; r++) {
         const gridRow = [];
         const detailRow = [];
+        const logCols = [];
         for (let c = 0; c < gridCols; c++) {
             const cellData = extractCell(boardCanvas, reelROI, r, c, gridRows, gridCols);
             const match = matchCell(cellData, referenceIndex, r, c);
             gridRow.push(match.symbol);
             detailRow.push(match);
+            logCols.push(`${match.symbol.padEnd(8)}(${match.rawScore.toFixed(2)})`);
         }
         grid.push(gridRow);
         details.push(detailRow);
+        logRows.push(logCols.join(' | '));
     }
+
+    console.log(`\n=== 盤面辨識結果 (OpenCV ORB) ===\n${logRows.join('\n')}\n==============================================\n`);
 
     return { grid, details };
 }
