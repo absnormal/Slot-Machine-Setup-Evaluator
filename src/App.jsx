@@ -170,7 +170,7 @@ function App() {
         visionImages, activeVisionId, activeVisionImg, visionImageObj, visionImageSrc, visionGrid, visionError,
         isVisionProcessing, isVisionStopping, visionBatchProgress,
         setActiveVisionId, setVisionImages, handleVisionMouseDown, handleVisionMouseMove, handleVisionMouseUp,
-        handleVisionImageUpload, removeVisionImage, performAIVisionBatchMatching, performLocalVisionBatchMatching, cancelVisionProcessing,
+        handleVisionImageUpload, removeVisionImage, resetVisionImage, performAIVisionBatchMatching, performLocalVisionBatchMatching, cancelVisionProcessing,
         goToPrevVisionImage, goToNextVisionImage,
         hasBetBox, setHasBetBox,
         setVisionP1, setVisionP1Bet
@@ -559,7 +559,7 @@ function App() {
                     isPhase3Minimized={isPhase3Minimized} setIsPhase3Minimized={setIsPhase3Minimized}
                     onToggle={() => handlePhaseToggle('phase3')}
                     visionImages={visionImages} activeVisionId={activeVisionId} setActiveVisionId={setActiveVisionId}
-                    removeVisionImage={removeVisionImage} handleVisionImageUpload={handleVisionImageUpload}
+                    removeVisionImage={removeVisionImage} resetVisionImage={resetVisionImage} handleVisionImageUpload={handleVisionImageUpload}
                     activeVisionImg={activeVisionImg} visionContainerRef={visionContainerRef} visionCanvasRef={visionCanvasRef}
                     handleVisionMouseDown={handleVisionMouseDown} handleVisionMouseMove={handleVisionMouseMove} handleVisionMouseUp={handleVisionMouseUp}
                     goToPrevVisionImage={goToPrevVisionImage} goToNextVisionImage={goToNextVisionImage}

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BrainCircuit, ChevronDown, ChevronUp, X, Upload, ImageIcon, Trash2, ChevronLeft, ChevronRight, ListChecks, Loader2, StopCircle, AlertCircle, Trophy, Monitor } from 'lucide-react';
+import { BrainCircuit, ChevronDown, ChevronUp, X, Upload, ImageIcon, Trash2, ChevronLeft, ChevronRight, ListChecks, Loader2, StopCircle, AlertCircle, Trophy, Monitor, RotateCcw } from 'lucide-react';
 import ResultView from './ResultView';
 import { getBaseSymbol, getCashValue, isCashSymbol, formatShorthandValue, isJpSymbol, getCollectValue, getSymbolDisplayImage, isDynamicMultiplierSymbol, getSymbolMultiplier } from '../utils/symbolUtils';
 
@@ -7,7 +7,7 @@ export default function Phase3Vision({
     template,
     isPhase3Minimized, setIsPhase3Minimized,
     onToggle,
-    visionImages, activeVisionId, setActiveVisionId, removeVisionImage, handleVisionImageUpload,
+    visionImages, activeVisionId, setActiveVisionId, removeVisionImage, resetVisionImage, handleVisionImageUpload,
     activeVisionImg, visionContainerRef, visionCanvasRef,
     handleVisionMouseDown, handleVisionMouseMove, handleVisionMouseUp,
     goToPrevVisionImage, goToNextVisionImage,
@@ -66,6 +66,11 @@ export default function Phase3Vision({
                                             <button onClick={(e) => { e.stopPropagation(); removeVisionImage(img.id); }} className="absolute top-0 right-0 bg-rose-500 text-white p-0.5 rounded-bl-lg hover:bg-rose-600 transition-colors z-10">
                                                 <X size={12} />
                                             </button>
+                                            {img.grid && (
+                                                <button onClick={(e) => { e.stopPropagation(); resetVisionImage(img.id); }} className="absolute bottom-0 left-0 bg-amber-500 text-white p-0.5 rounded-tr-lg hover:bg-amber-400 transition-colors z-10" title="還原到辨識前">
+                                                    <RotateCcw size={10} />
+                                                </button>
+                                            )}
                                             <div className="absolute bottom-0 right-0 bg-black/80 text-white text-[10px] px-1.5 font-bold rounded-tl-md z-10">{idx + 1}</div>
                                         </div>
                                     ))}
@@ -122,6 +127,11 @@ export default function Phase3Vision({
                                                 />
                                                 <span className="text-xs font-bold text-cyan-400">🎯 啟用辨識 BET</span>
                                             </label>
+                                            {visionImages.some(img => img.grid) && (
+                                                <button onClick={() => resetVisionImage('ALL')} className="text-xs font-bold text-amber-400 hover:text-amber-300 px-3 py-1.5 rounded bg-amber-500/10 hover:bg-amber-500/20 transition-colors flex items-center gap-1" title="還原全部截圖到辨識前狀態">
+                                                    <RotateCcw size={14} /> 還原全部辨識
+                                                </button>
+                                            )}
                                             <button onClick={() => { removeVisionImage('ALL'); setActiveVisionId(''); }} className="text-xs font-bold text-rose-400 hover:text-rose-300 px-3 py-1.5 rounded bg-rose-500/10 hover:bg-rose-500/20 transition-colors flex items-center gap-1">
                                                 <Trash2 size={14} /> 清空全部截圖
                                             </button>

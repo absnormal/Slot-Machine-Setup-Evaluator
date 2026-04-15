@@ -62,6 +62,15 @@ export function useVisionImageManager(isPhase3Minimized) {
         });
     };
 
+    const resetVisionImage = useCallback((id) => {
+        setVisionImages(prev => prev.map(img => {
+            if (id === 'ALL' || img.id === id) {
+                return { ...img, grid: null, error: '', bet: undefined };
+            }
+            return img;
+        }));
+    }, []);
+
     const goToPrevVisionImage = useCallback(() => {
         if (!activeVisionId || visionImages.length === 0) return;
         const curIdx = visionImages.findIndex(img => img.id === activeVisionId);
@@ -106,6 +115,7 @@ export function useVisionImageManager(isPhase3Minimized) {
         visionError,
         handleVisionImageUpload,
         removeVisionImage,
+        resetVisionImage,
         goToPrevVisionImage,
         goToNextVisionImage
     };

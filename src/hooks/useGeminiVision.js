@@ -33,7 +33,7 @@ export function useGeminiVision({
         visionImages, setVisionImages,
         activeVisionId, setActiveVisionId,
         activeVisionImg, visionImageObj, visionImageSrc, visionGrid, visionError,
-        handleVisionImageUpload, removeVisionImage, goToPrevVisionImage, goToNextVisionImage
+        handleVisionImageUpload, removeVisionImage, resetVisionImage, goToPrevVisionImage, goToNextVisionImage
     } = imageManager;
 
     const [visionP1, setVisionP1] = useState(() => loadCache(CACHE_KEYS.MAIN, { x: 10, y: 10, w: 80, h: 80 }));
@@ -373,6 +373,7 @@ export function useGeminiVision({
         handleVisionMouseUp,
         handleVisionImageUpload,
         removeVisionImage,
+        resetVisionImage,
         performAIVisionBatchMatching,
         performLocalVisionBatchMatching,
         cancelVisionProcessing,
