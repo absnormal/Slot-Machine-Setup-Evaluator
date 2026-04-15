@@ -605,7 +605,8 @@ const Phase4Video = ({
             try {
                 const now = new Date();
                 const ts = `${now.getFullYear()}${(now.getMonth()+1).toString().padStart(2,'0')}${now.getDate().toString().padStart(2,'0')}_${now.getHours().toString().padStart(2,'0')}${now.getMinutes().toString().padStart(2,'0')}${now.getSeconds().toString().padStart(2,'0')}`;
-                const folderName = `Session_${ts}`;
+                const gameSuffix = template?.name ? `_${template.name}` : '';
+                const folderName = `Session_${ts}${gameSuffix}`;
                 const newSaveHandle = await rootSaveDirHandle.getDirectoryHandle(folderName, { create: true });
                 setSaveDirHandle(newSaveHandle);
                 setSaveCount(0);
@@ -1223,7 +1224,7 @@ const Phase4Video = ({
                                 {/* 匯出 & 傳送 */}
                                 <div className="space-y-2 pt-2 border-t border-slate-100">
                                     <div className="flex gap-2">
-                                        <button onClick={() => exportHTMLReport(candidates, 'slot_analysis', saveDirHandle)}
+                                        <button onClick={() => exportHTMLReport(candidates, template?.name || 'slot_analysis', saveDirHandle)}
                                             disabled={!candidates.some(c => c.ocrData || c.recognitionResult)}
                                             className={`flex-1 py-2 rounded-lg font-bold flex items-center justify-center gap-1.5 text-xs transition-all ${!candidates.some(c => c.ocrData || c.recognitionResult) ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-violet-50 text-violet-700 hover:bg-violet-100 border border-violet-200 active:scale-95'}`}>
                                             <ImageIcon size={14} /> 匯出報告 + JSON

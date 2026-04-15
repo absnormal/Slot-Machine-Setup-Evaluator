@@ -52,6 +52,7 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                 if (isMounted) {
                     ocrWorkerRef.current = ocr;
                     winPollWorkerRef.current = ocr;
+                    console.log("[OCR] PaddleOCR (Keyframe) 載入完成！");
                 }
             } catch (err) {
                 console.error("[OCR] 初始化 PaddleOCR (Keyframe) 失敗:", err);

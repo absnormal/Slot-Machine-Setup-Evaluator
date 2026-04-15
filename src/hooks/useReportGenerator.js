@@ -90,7 +90,7 @@ export function useReportGenerator() {
                 payouts.forEach((mult, idx) => {
                     const count = idx + 1;
                     if (mult > 0) {
-                        countsObj[count] = { multiplier: mult, hitBets: new Set() };
+                        countsObj[count] = { multiplier: mult, hitBets: new Map() };
                     }
                 });
                 if (Object.keys(countsObj).length > 0) {
@@ -220,12 +220,20 @@ export function useReportGenerator() {
                     }
                     const stat = symbolStats.get(d.symbol);
                     if (!stat.counts[d.count]) {
-                        stat.counts[d.count] = { multiplier: d.payoutMult || 0, hitBets: new Set() };
+                        stat.counts[d.count] = { multiplier: d.payoutMult || 0, hitBets: new Map() };
                     }
                     
                     const betValue = parseFloat(aiData.betValue) || parseFloat(c.ocrData?.bet) || 0;
                     if (betValue > 0) {
-                        stat.counts[d.count].hitBets.add(betValue);
+                        const isMatch = (aiWin !== null && aiWin === ocrWin);
+                        if (!stat.counts[d.count].hitBets.has(betValue)) {
+                            stat.counts[d.count].hitBets.set(betValue, { matched: false, mismatched: false });
+                        }
+                        if (isMatch) {
+                            stat.counts[d.count].hitBets.get(betValue).matched = true;
+                        } else {
+                            stat.counts[d.count].hitBets.get(betValue).mismatched = true;
+                        }
                     }
                 });
 
@@ -307,9 +315,14 @@ export function useReportGenerator() {
                 if (item) {
                     const multStr = item.multiplier;
                     let flowStr = '';
-                    if (item.hitBets.size > 0) {
-                        const sortedBets = Array.from(item.hitBets).sort((x, y) => x - y);
-                        flowStr = `O(${sortedBets.join('、')})`;
+                    if (item.hitBets && item.hitBets.size > 0) {
+                        const sortedBetEntries = Array.from(item.hitBets.entries()).sort((a, b) => a[0] - b[0]);
+                        const tokens = [];
+                        for (const [bet, status] of sortedBetEntries) {
+                            if (status.matched) tokens.push(`O(${bet})`);
+                            if (status.mismatched) tokens.push(`<span style="color:#ef4444;">X(${bet})</span>`);
+                        }
+                        flowStr = tokens.join('、');
                     }
                     // 沒中獎時，直接留白
                     rowHtml += `<td class="num" style="text-align: center;">${multStr}</td>

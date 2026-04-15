@@ -22,6 +22,7 @@ export const createOcrWorker = async () => {
                 dictionaryPath: `${baseUrl}ocr-models/ppocr_keys_v1.txt`
             }
         });
+        console.log("[OCR] PaddleOCR (Utils) 載入完成！");
         return ocr;
     } catch (err) {
         console.error("[OCR] 初始化 PaddleOCR 失敗:", err);
