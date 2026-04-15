@@ -4,7 +4,7 @@ import { validateVisionResponse } from '../utils/aiValidator';
 import { isCashSymbol, isCollectSymbol, isDynamicMultiplierSymbol } from '../utils/symbolUtils';
 import { apiKey } from '../utils/constants';
 import { computeGridResults } from '../engine/computeGridResults';
-import { buildReferenceIndex, recognizeBoard } from '../engine/localBoardRecognizer';
+import { buildReferenceIndex, recognizeBoard, cleanupReferenceIndex } from '../engine/localBoardRecognizer';
 import {
     buildCashRule, buildDynamicMultiplierRule, buildMultiplierReelRule,
     buildBetRule, buildPickRule, buildConfusableWarning,
@@ -206,6 +206,19 @@ export function useAutoRecognition({
      * 本地辨識盤面（純 Canvas Template Matching，不需要 API Key）
      */
     const referenceIndexRef = useRef(null);
+
+    useEffect(() => {
+        if (referenceIndexRef.current) {
+            cleanupReferenceIndex(referenceIndexRef.current);
+            referenceIndexRef.current = null;
+        }
+        return () => {
+            if (referenceIndexRef.current) {
+                cleanupReferenceIndex(referenceIndexRef.current);
+                referenceIndexRef.current = null;
+            }
+        };
+    }, [template?.id]);
 
     const recognizeLocalBatch = async (candidates, updateCandidate, rois, ocrDecimalPlaces = 2) => {
         if (!template || candidates.length === 0) {

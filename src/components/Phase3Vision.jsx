@@ -28,41 +28,6 @@ export default function Phase3Vision({
     const [visionHoveredLineId, setVisionHoveredLineId] = useState(null);
     const [visionShowAllLines, setVisionShowAllLines] = useState(false);
 
-    const handleSingleCellTestUpload = async (e) => {
-        const file = e.target.files?.[0];
-        if (!file || !template || !template.symbolImagesAll) return;
-
-        try {
-            // 讀取圖片建立 ImageData
-            const img = new Image();
-            const url = URL.createObjectURL(file);
-            await new Promise((resolve, reject) => {
-                img.onload = resolve;
-                img.onerror = reject;
-                img.src = url;
-            });
-            const canvas = document.createElement('canvas');
-            canvas.width = 64; // MATCH_SIZE
-            canvas.height = 64;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0, 64, 64);
-            const imageData = ctx.getImageData(0, 0, 64, 64);
-            
-            // 載入即時參照表
-            const refIndex = await buildReferenceIndex(template.symbolImagesAll);
-            
-            // 辨識單格
-            const result = matchCell(imageData, refIndex);
-            
-            alert(`【單格測試結果】\n判斷符號：${result.symbol}\n信心度：${result.confidence}%\nSSIM 分數：${result.mse} (極限值 1.0)`);
-            URL.revokeObjectURL(url);
-        } catch (err) {
-            console.error("單格測試失敗", err);
-            alert("測試失敗：" + err.message);
-        }
-        e.target.value = '';
-    };
-
     return (
         <div className={`bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden transition-all duration-300 ${!template ? 'opacity-60 pointer-events-none' : ''}`}>
             <div
@@ -217,12 +182,6 @@ export default function Phase3Vision({
                                                     <Monitor size={20} />
                                                     本地辨識盤面 (零延遲)
                                                 </button>
-
-                                                {/* 單格測試區塊 */}
-                                                <label className="w-full py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-sm cursor-pointer bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700">
-                                                    <Upload size={16} /> 上傳單格裁圖測試 SSIM (反灰分析)
-                                                    <input type="file" accept="image/*" className="hidden" onChange={handleSingleCellTestUpload} />
-                                                </label>
 
                                                 <button
                                                     onClick={performAIVisionBatchMatching}

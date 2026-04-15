@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { fetchWithRetry, resizeImageBase64 } from '../utils/helpers';
 import { recognizeROIText, createOcrWorker } from '../utils/ocrUtils';
-import { buildReferenceIndex, recognizeBoard } from '../engine/localBoardRecognizer';
+import { buildReferenceIndex, recognizeBoard, cleanupReferenceIndex } from '../engine/localBoardRecognizer';
 import { validateVisionResponse } from '../utils/aiValidator';
 import { isCashSymbol, isCollectSymbol, isDynamicMultiplierSymbol } from '../utils/symbolUtils';
 import { apiKey } from '../utils/constants';
@@ -41,6 +41,19 @@ export function useVisionBatchProcessor({
 
     const ocrWorkerRef = useRef(null);
     const referenceIndexRef = useRef(null);
+
+    useEffect(() => {
+        if (referenceIndexRef.current) {
+            cleanupReferenceIndex(referenceIndexRef.current);
+            referenceIndexRef.current = null;
+        }
+        return () => {
+            if (referenceIndexRef.current) {
+                cleanupReferenceIndex(referenceIndexRef.current);
+                referenceIndexRef.current = null;
+            }
+        };
+    }, [template?.id]);
 
     useEffect(() => {
         let isMounted = true;
