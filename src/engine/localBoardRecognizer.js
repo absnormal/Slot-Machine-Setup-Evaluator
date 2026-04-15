@@ -86,7 +86,7 @@ function computeMSE(a, b) {
  * @param {number} totalCols
  * @returns {ImageData} 縮放到 MATCH_SIZE 的格子 ImageData
  */
-const CELL_PADDING_RATIO = 0.15; // 每邊內縮 15%，只取中心 70%
+const CELL_PADDING_RATIO = 0.10; // 每邊內縮 10%，只取中心 80%
 
 function extractCell(boardCanvas, roi, row, col, totalRows, totalCols) {
     const cellW = roi.width / totalCols;
