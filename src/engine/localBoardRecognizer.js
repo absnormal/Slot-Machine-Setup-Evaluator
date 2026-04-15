@@ -77,7 +77,7 @@ function computeMSE(a, b) {
 }
 
 /**
- * 從盤面截圖中切出一個格子（內縮裁切：只取中心 70% 面積）
+ * 從盤面截圖中切出一個格子
  * @param {HTMLCanvasElement} boardCanvas - 盤面截圖
  * @param {Object} roi - { x, y, width, height } 由 reelROI 定義
  * @param {number} row - 行 index
@@ -86,29 +86,17 @@ function computeMSE(a, b) {
  * @param {number} totalCols
  * @returns {ImageData} 縮放到 MATCH_SIZE 的格子 ImageData
  */
-const CELL_PADDING_RATIO = 0.10; // 每邊內縮 10%，只取中心 80%
-
 function extractCell(boardCanvas, roi, row, col, totalRows, totalCols) {
     const cellW = roi.width / totalCols;
     const cellH = roi.height / totalRows;
-
-    // 先算出完整格子位置
-    const rawX = roi.x + col * cellW;
-    const rawY = roi.y + row * cellH;
-
-    // 內縮裁切：跳過外圍 padding，只取中心區域
-    const padX = cellW * CELL_PADDING_RATIO;
-    const padY = cellH * CELL_PADDING_RATIO;
-    const sx = rawX + padX;
-    const sy = rawY + padY;
-    const sw = cellW - padX * 2;
-    const sh = cellH - padY * 2;
+    const sx = roi.x + col * cellW;
+    const sy = roi.y + row * cellH;
 
     const canvas = document.createElement('canvas');
     canvas.width = MATCH_SIZE;
     canvas.height = MATCH_SIZE;
     const ctx = canvas.getContext('2d');
-    ctx.drawImage(boardCanvas, sx, sy, sw, sh, 0, 0, MATCH_SIZE, MATCH_SIZE);
+    ctx.drawImage(boardCanvas, sx, sy, cellW, cellH, 0, 0, MATCH_SIZE, MATCH_SIZE);
     return ctx.getImageData(0, 0, MATCH_SIZE, MATCH_SIZE);
 }
 
