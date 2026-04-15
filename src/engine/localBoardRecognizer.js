@@ -190,37 +190,60 @@ export function matchCell(cellImageData, referenceIndex, r, c) {
 export function recognizeBoard(boardCanvas, reelROI, gridRows, gridCols, referenceIndex) {
     const grid = [];
     const details = [];
-    const logRows = [];
+
+    // 輔助函式：計算包含全形字的顯示長度
+    const getDispLen = (str) => {
+        let len = 0;
+        for (let i = 0; i < str.length; i++) len += str.charCodeAt(i) > 255 ? 2 : 1;
+        return len;
+    };
+    const padCenter = (str, targetLen) => {
+        const cur = getDispLen(str);
+        const pads = Math.max(0, targetLen - cur);
+        const left = Math.floor(pads / 2);
+        return ' '.repeat(left) + str + ' '.repeat(pads - left);
+    };
+
+    const colWidths = Array(gridCols).fill(0);
+    const cellSyms = [];
+    const cellScores = [];
 
     for (let r = 0; r < gridRows; r++) {
         const gridRow = [];
         const detailRow = [];
-        const logSymbolRows = [];
-        const logScoreRows = [];
+        cellSyms[r] = [];
+        cellScores[r] = [];
         for (let c = 0; c < gridCols; c++) {
             const cellData = extractCell(boardCanvas, reelROI, r, c, gridRows, gridCols);
             const match = matchCell(cellData, referenceIndex, r, c);
             gridRow.push(match.symbol);
             detailRow.push(match);
             
-            // 計算中英文字串長度（簡單抓個 10 寬度 padding）
-            let sym = match.symbol;
-            if(sym.length < 10) sym = sym + ' '.repeat(10 - sym.length);
-            
-            let score = `(${match.rawScore.toFixed(2)})`;
-            if(score.length < 10) score = score + ' '.repeat(10 - score.length);
-
-            logSymbolRows.push(sym);
-            logScoreRows.push(score);
+            const sym = match.symbol;
+            const score = `(${match.rawScore.toFixed(2)})`;
+            cellSyms[r][c] = sym;
+            cellScores[r][c] = score;
+            colWidths[c] = Math.max(colWidths[c], getDispLen(sym), getDispLen(score));
         }
         grid.push(gridRow);
         details.push(detailRow);
-        logRows.push(logSymbolRows.join(' | '));
-        logRows.push(logScoreRows.join(' | '));
-        logRows.push(''); // 分行確保閱讀體驗
     }
 
-    console.log(`\n=== 盤面辨識結果 (OpenCV ORB) ===\n${logRows.join('\n')}==============================================\n`);
+    const logRows = [];
+    logRows.push(''); // top padding
+    for (let r = 0; r < gridRows; r++) {
+        const symRow = [];
+        const scoreRow = [];
+        for (let c = 0; c < gridCols; c++) {
+            symRow.push(padCenter(cellSyms[r][c], colWidths[c]));
+            scoreRow.push(padCenter(cellScores[r][c], colWidths[c]));
+        }
+        logRows.push(symRow.join(' | '));
+        logRows.push(scoreRow.join(' | '));
+        if (r < gridRows - 1) logRows.push('');
+    }
+
+    console.log(`\n=== 盤面辨識結果 (OpenCV ORB) ===${logRows.join('\n')}\n==============================================\n`);
 
     return { grid, details };
 }
