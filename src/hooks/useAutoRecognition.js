@@ -4,7 +4,7 @@ import { validateVisionResponse } from '../utils/aiValidator';
 import { isCashSymbol, isCollectSymbol, isDynamicMultiplierSymbol } from '../utils/symbolUtils';
 import { apiKey } from '../utils/constants';
 import { computeGridResults } from '../engine/computeGridResults';
-import { buildReferenceIndex, recognizeBoard, autoSnapROI } from '../engine/localBoardRecognizer';
+import { buildReferenceIndex, recognizeBoard } from '../engine/localBoardRecognizer';
 import {
     buildCashRule, buildDynamicMultiplierRule, buildMultiplierReelRule,
     buildBetRule, buildPickRule, buildConfusableWarning,
@@ -323,61 +323,11 @@ export function useAutoRecognition({
         setIsStopping(true);
     };
 
-    /**
-     * Auto-Snap：自動微調 Reel ROI
-     * @param {HTMLVideoElement|HTMLCanvasElement} source - 影片或 canvas 來源
-     * @param {Object} currentReelROI - { x, y, w, h } 百分比
-     * @param {Function} setReelROI - 更新 reelROI 的 setter
-     */
-    const autoSnapReelROI = async (source, currentReelROI, setReelROI) => {
-        if (!template?.symbolImagesAll || Object.keys(template.symbolImagesAll).length === 0) {
-            setTemplateMessage?.('⚠️ 模板中沒有符號參考圖，無法自動對齊');
-            return;
-        }
-
-        setTemplateMessage?.('🎯 正在自動對齊 Reel ROI...');
-
-        // 建立參考索引
-        if (!referenceIndexRef.current) {
-            referenceIndexRef.current = await buildReferenceIndex(template.symbolImagesAll);
-        }
-
-        // 從 source 擷取一幀到 canvas
-        const canvas = document.createElement('canvas');
-        if (source instanceof HTMLVideoElement) {
-            canvas.width = source.videoWidth;
-            canvas.height = source.videoHeight;
-        } else {
-            canvas.width = source.width;
-            canvas.height = source.height;
-        }
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
-
-        const displayCols = template.hasMultiplierReel ? template.cols - 1 : template.cols;
-
-        try {
-            const result = autoSnapROI(
-                canvas, currentReelROI,
-                template.rows, displayCols,
-                referenceIndexRef.current
-            );
-
-            setReelROI(result.roi);
-            setTemplateMessage?.(`🎯 自動對齊完成！MSE 改善 ${result.improvement}%`);
-            setTimeout(() => setTemplateMessage?.(''), 4000);
-        } catch (err) {
-            console.error('[AutoSnap] Error:', err);
-            setTemplateMessage?.('❌ 自動對齊失敗: ' + err.message);
-        }
-    };
-
     return {
         isRecognizing, isStopping,
         recognitionProgress,
         recognizeBatch,
         recognizeLocalBatch,
-        autoSnapReelROI,
         cancelRecognition
     };
 }

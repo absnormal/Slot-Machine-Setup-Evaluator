@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Video, Scan, Play, Pause, Trash2, Send, Sparkles, ChevronDown, ChevronUp, X, Clock, Download, BarChart3, ImageIcon, RefreshCw, Square, Camera, Link2, AlertCircle, Star, Monitor, StopCircle, FolderOpen, CheckCircle2, Crosshair } from 'lucide-react';
+import { Video, Scan, Play, Pause, Trash2, Send, Sparkles, ChevronDown, ChevronUp, X, Clock, Download, BarChart3, ImageIcon, RefreshCw, Square, Camera, Link2, AlertCircle, Star, Monitor, StopCircle, FolderOpen, CheckCircle2 } from 'lucide-react';
 const Phase4Video = ({
     isPhase4Minimized,
     onToggle,
@@ -10,7 +10,7 @@ const Phase4Video = ({
     updateCandidateOcr,
     // Auto Recognition
     isRecognizing, isStopping, recognitionProgress,
-    recognizeBatch, recognizeLocalBatch, autoSnapReelROI, cancelRecognition,
+    recognizeBatch, recognizeLocalBatch, cancelRecognition,
     // Report
     stats, exportHTMLReport,
     // ROI (手動框選，從舊 Phase 4 保留)
@@ -755,18 +755,7 @@ const Phase4Video = ({
                                             </button>
                                         ))}
                                     </div>
-                                    {/* Auto-Snap 按鈕 */}
-                                    {roiMode === 'reel' && template && (
-                                        <button
-                                            onClick={() => autoSnapReelROI(videoRef.current, reelROI, setReelROI)}
-                                            disabled={!videoRef.current}
-                                            className="absolute top-4 right-4 mt-12 z-40 bg-amber-500/90 hover:bg-amber-400 text-white backdrop-blur-md px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-lg transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed border border-amber-400/50"
-                                            title="根據符號參考圖自動微調框選位置"
-                                        >
-                                            <Crosshair size={14} />
-                                            🎯 Auto-Snap
-                                        </button>
-                                    )}
+
 
 
 
