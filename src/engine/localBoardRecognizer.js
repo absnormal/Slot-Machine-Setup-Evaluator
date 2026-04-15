@@ -47,25 +47,41 @@ function toNormalizedGray(imageData) {
  * 將所有像素差異排序，丟掉最差的 trimRatio（預設 20%），
  * 只用剩下的 80% 計算。閃電/發光等局部異常值會被截掉。
  */
-const TRIM_RATIO = 0.20; // 丟掉最差 20% 的像素
-
-function computeTrimmedGrayMSE(grayA, grayB) {
+/**
+ * 計算兩張灰階影像的結構相似度 SSIM (Structural Similarity Index)
+ * 模擬人類視覺系統，對抗全局性的發光、亮度、對比度改變非常有效。
+ * 回傳值介於 -1 ~ 1，1 代表完全相同。
+ */
+function computeSSIM(grayA, grayB) {
     const len = grayA.length;
-    const diffs = new Float32Array(len);
-
+    let sumA = 0, sumB = 0;
+    
     for (let i = 0; i < len; i++) {
-        const d = grayA[i] - grayB[i];
-        diffs[i] = d * d;
+        sumA += grayA[i];
+        sumB += grayB[i];
     }
+    const muA = sumA / len;
+    const muB = sumB / len;
 
-    // 排序取前 80%
-    diffs.sort();
-    const keepCount = Math.floor(len * (1 - TRIM_RATIO));
-    let sum = 0;
-    for (let i = 0; i < keepCount; i++) {
-        sum += diffs[i];
+    let varA = 0, varB = 0, covAB = 0;
+    for (let i = 0; i < len; i++) {
+        const dA = grayA[i] - muA;
+        const dB = grayB[i] - muB;
+        varA += dA * dA;
+        varB += dB * dB;
+        covAB += dA * dB;
     }
-    return sum / keepCount;
+    varA /= len;
+    varB /= len;
+    covAB /= len;
+
+    const C1 = 6.5025; // (0.01 * 255)^2
+    const C2 = 58.5225; // (0.03 * 255)^2
+
+    const numerator = (2 * muA * muB + C1) * (2 * covAB + C2);
+    const denominator = (muA * muA + muB * muB + C1) * (varA + varB + C2);
+    
+    return numerator / denominator;
 }
 
 /**
@@ -152,27 +168,33 @@ function extractCell(boardCanvas, roi, row, col, totalRows, totalCols) {
 
 // ── 雙層比對 ──
 
-const TIEBREAK_THRESHOLD = 0.15; // Top1 與 Top2 差距 < 15% 時啟動 RGB 決勝
+const TIEBREAK_THRESHOLD = 0.05; // 絕對分數差距 < 0.05 時啟動 RGB 決勝
 
 /**
  * 辨識單一格子（雙層比對）
- * Pass 1: 灰階 + 正規化 + 截尾 MSE（免疫特效）
+ * Pass 1: 灰階 + 正規化 + SSIM 結構相似度（免疫亮度/對比特效）
  * Pass 2: 若前兩名接近，用 RGB MSE 決勝（保留顏色判斷力）
  */
 function matchCell(cellImageData, referenceIndex) {
     const cellGray = toNormalizedGray(cellImageData);
 
-    // Pass 1: 灰階截尾 MSE — 收集所有候選分數
+    // Pass 1: 灰階 SSIM — 收集所有候選分數
     const candidates = [];
     for (const [symbol, refList] of referenceIndex) {
+        let bestSSIMForSymbol = -1;
+        let bestRefForSymbol = null;
         for (const ref of refList) {
-            const grayMSE = computeTrimmedGrayMSE(cellGray, ref.gray);
-            candidates.push({ symbol, grayMSE, ref });
+            const ssimScore = computeSSIM(cellGray, ref.gray);
+            if (ssimScore > bestSSIMForSymbol) {
+                bestSSIMForSymbol = ssimScore;
+                bestRefForSymbol = ref;
+            }
         }
+        candidates.push({ symbol, ssimScore: bestSSIMForSymbol, ref: bestRefForSymbol });
     }
 
-    // 按灰階 MSE 排序
-    candidates.sort((a, b) => a.grayMSE - b.grayMSE);
+    // 按灰階 SSIM 降序排序（1 為最高分）
+    candidates.sort((a, b) => b.ssimScore - a.ssimScore);
 
     if (candidates.length === 0) {
         return { symbol: '?', confidence: 0, mse: Infinity };
@@ -180,27 +202,30 @@ function matchCell(cellImageData, referenceIndex) {
 
     const top1 = candidates[0];
     let bestSymbol = top1.symbol;
-    let bestMSE = top1.grayMSE;
+    let bestSSIM = top1.ssimScore;
 
     // Pass 2: 若前兩名接近（且不是同一個符號），用 RGB 決勝
     if (candidates.length >= 2) {
         const top2 = candidates[1];
-        if (top1.symbol !== top2.symbol && top1.grayMSE > 0) {
-            const gap = (top2.grayMSE - top1.grayMSE) / top1.grayMSE;
+        if (top1.symbol !== top2.symbol && top1.ssimScore > 0) {
+            const gap = top1.ssimScore - top2.ssimScore;
             if (gap < TIEBREAK_THRESHOLD) {
                 // 用 RGB MSE 在 Top1 和 Top2 之間做決勝
                 const rgbMSE1 = computeRgbMSE(cellImageData, top1.ref.rgb);
                 const rgbMSE2 = computeRgbMSE(cellImageData, top2.ref.rgb);
                 if (rgbMSE2 < rgbMSE1) {
                     bestSymbol = top2.symbol;
-                    bestMSE = top2.grayMSE;
+                    bestSSIM = top2.ssimScore;
                 }
             }
         }
     }
 
-    const confidence = Math.max(0, 100 - (bestMSE / 50));
-    return { symbol: bestSymbol, confidence: parseFloat(confidence.toFixed(1)), mse: parseFloat(bestMSE.toFixed(2)) };
+    // 將 SSIM (-1~1) 轉換為 0~100 的 confidence 分數
+    const confidence = Math.max(0, Math.min(100, bestSSIM * 100));
+    // 原本物件名為 mse，為了保持介面相容性此處用來放 SSIM 分數，若為負數轉 0
+    const returnVal = Math.max(0, bestSSIM);
+    return { symbol: bestSymbol, confidence: parseFloat(confidence.toFixed(1)), mse: parseFloat(returnVal.toFixed(3)) };
 }
 
 // ── 盤面辨識 ──
