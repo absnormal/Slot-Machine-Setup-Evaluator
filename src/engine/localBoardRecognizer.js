@@ -195,20 +195,32 @@ export function recognizeBoard(boardCanvas, reelROI, gridRows, gridCols, referen
     for (let r = 0; r < gridRows; r++) {
         const gridRow = [];
         const detailRow = [];
-        const logCols = [];
+        const logSymbolRows = [];
+        const logScoreRows = [];
         for (let c = 0; c < gridCols; c++) {
             const cellData = extractCell(boardCanvas, reelROI, r, c, gridRows, gridCols);
             const match = matchCell(cellData, referenceIndex, r, c);
             gridRow.push(match.symbol);
             detailRow.push(match);
-            logCols.push(`${match.symbol.padEnd(8)}(${match.rawScore.toFixed(2)})`);
+            
+            // 計算中英文字串長度（簡單抓個 10 寬度 padding）
+            let sym = match.symbol;
+            if(sym.length < 10) sym = sym + ' '.repeat(10 - sym.length);
+            
+            let score = `(${match.rawScore.toFixed(2)})`;
+            if(score.length < 10) score = score + ' '.repeat(10 - score.length);
+
+            logSymbolRows.push(sym);
+            logScoreRows.push(score);
         }
         grid.push(gridRow);
         details.push(detailRow);
-        logRows.push(logCols.join(' | '));
+        logRows.push(logSymbolRows.join(' | '));
+        logRows.push(logScoreRows.join(' | '));
+        logRows.push(''); // 分行確保閱讀體驗
     }
 
-    console.log(`\n=== 盤面辨識結果 (OpenCV ORB) ===\n${logRows.join('\n')}\n==============================================\n`);
+    console.log(`\n=== 盤面辨識結果 (OpenCV ORB) ===\n${logRows.join('\n')}==============================================\n`);
 
     return { grid, details };
 }
