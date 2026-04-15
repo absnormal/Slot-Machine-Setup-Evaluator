@@ -222,6 +222,52 @@ function computeSSIM(grayA, grayB) {
     return numerator / denominator;
 }
 
+/**
+ * 計算兩張 RGBA ImageData 之間的色相距離 (Hue Histogram Distance)
+ * 專門用來區分「形狀相同但顏色不同」的符號（如檸檬 vs 橘子）
+ * 回傳值：0 ~ 1，0 = 完全相同色相分佈
+ */
+function computeHueHistDistance(imgDataA, imgDataB) {
+    const BINS = 36; // 360° / 10°
+    const histA = new Float32Array(BINS);
+    const histB = new Float32Array(BINS);
+    const dA = imgDataA.data;
+    const dB = imgDataB.data;
+    const len = dA.length;
+    let countA = 0, countB = 0;
+
+    for (let i = 0; i < len; i += 4) {
+        // RGB → Hue (簡化版)
+        const processPixel = (r, g, b) => {
+            const max = Math.max(r, g, b);
+            const min = Math.min(r, g, b);
+            const delta = max - min;
+            if (delta < 15 || max < 30) return -1; // 太暗或灰色跳過
+            let hue;
+            if (max === r) hue = ((g - b) / delta) % 6;
+            else if (max === g) hue = (b - r) / delta + 2;
+            else hue = (r - g) / delta + 4;
+            hue *= 60;
+            if (hue < 0) hue += 360;
+            return hue;
+        };
+
+        const hueA = processPixel(dA[i], dA[i+1], dA[i+2]);
+        const hueB = processPixel(dB[i], dB[i+1], dB[i+2]);
+        if (hueA >= 0) { histA[Math.floor(hueA / 10) % BINS]++; countA++; }
+        if (hueB >= 0) { histB[Math.floor(hueB / 10) % BINS]++; countB++; }
+    }
+
+    // 正規化
+    if (countA > 0) for (let i = 0; i < BINS; i++) histA[i] /= countA;
+    if (countB > 0) for (let i = 0; i < BINS; i++) histB[i] /= countB;
+
+    // Bhattacharyya 距離
+    let bc = 0;
+    for (let i = 0; i < BINS; i++) bc += Math.sqrt(histA[i] * histB[i]);
+    return 1 - bc; // 0 = 完全相同, 1 = 完全不同
+}
+
 // ═══════════════════════════════════════════
 // ── 參考索引建立 ──
 // ═══════════════════════════════════════════
@@ -256,7 +302,7 @@ export async function buildReferenceIndex(symbolImagesAll) {
                 const gray = toGray(imageData);
                 const eqGray = histogramEqualize(gray);
                 const hog = computeHOG(eqGray);
-                refList.push({ hog, gray });
+                refList.push({ hog, gray, rgb: imageData });
             } catch (e) {
                 console.warn(`[LocalRecognizer] 載入符號 ${symbol} 參考圖失敗`, e);
             }
@@ -293,12 +339,12 @@ function extractCell(boardCanvas, roi, row, col, totalRows, totalCols) {
 // ── 雙層比對 ──
 // ═══════════════════════════════════════════
 
-const TIEBREAK_THRESHOLD = 0.05; // HOG 分差 < 5% 時啟動 SSIM 決勝
+const TIEBREAK_THRESHOLD = 0.08; // HOG 分差 < 8% 時啟動色彩決勝
 
 /**
- * 辨識單一格子（雙層比對）
+ * 辨識單一格子（三層比對）
  * Pass 1: HOG 餘弦相似度（免疫亮度/反灰/閃電）
- * Pass 2: 若前兩名接近且符號不同，用 SSIM 決勝（區分形狀相似但灰度分佈不同的符號）
+ * Pass 2: 若前兩名接近且符號不同，用 SSIM + 色相距離做決勝
  */
 export function matchCell(cellImageData, referenceIndex) {
     const cellGray = toGray(cellImageData);
@@ -331,15 +377,25 @@ export function matchCell(cellImageData, referenceIndex) {
     let bestSymbol = top1.symbol;
     let bestScore = top1.hogScore;
 
-    // Pass 2: 若前兩名接近且不同符號，用 SSIM 做決勝
+    // Pass 2: 若前兩名接近且不同符號，用 SSIM + 色相距離做決勝
     if (candidates.length >= 2) {
         const top2 = candidates[1];
         if (top1.symbol !== top2.symbol) {
             const gap = top1.hogScore - top2.hogScore;
             if (gap < TIEBREAK_THRESHOLD) {
+                // SSIM 分數（灰階結構相似度）
                 const ssim1 = computeSSIM(cellGray, top1.ref.gray);
                 const ssim2 = computeSSIM(cellGray, top2.ref.gray);
-                if (ssim2 > ssim1) {
+
+                // 色相距離（區分同形異色符號，如檸檬 vs 橘子）
+                const hueDist1 = computeHueHistDistance(cellImageData, top1.ref.rgb);
+                const hueDist2 = computeHueHistDistance(cellImageData, top2.ref.rgb);
+
+                // 綜合評分：SSIM 越高越好 + 色相距離越小越好
+                const combined1 = ssim1 - hueDist1 * 0.5;
+                const combined2 = ssim2 - hueDist2 * 0.5;
+
+                if (combined2 > combined1) {
                     bestSymbol = top2.symbol;
                     bestScore = top2.hogScore;
                 }
