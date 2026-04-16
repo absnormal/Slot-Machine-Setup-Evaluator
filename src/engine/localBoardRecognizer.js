@@ -49,41 +49,6 @@ function histogramEqualize(gray) {
     return result;
 }
 
-/**
- * 5×5 中位數濾波 — 消除細線型噪點（如閃電連線動畫）
- * 閃電線通常只有 1~3px 寬，中位數濾波會用周邊 25 個像素的中位值取代
- * 結果：細線被「吃掉」，圓潤的大面積符號（如葡萄）完整保留
- */
-function medianFilter(gray, width, height) {
-    const result = new Uint8Array(gray.length);
-    const R = 2; // 半徑 2 → 5x5 核
-    const buf = new Uint8Array(25);
-    for (let y = 0; y < height; y++) {
-        for (let x = 0; x < width; x++) {
-            let count = 0;
-            for (let dy = -R; dy <= R; dy++) {
-                for (let dx = -R; dx <= R; dx++) {
-                    const ny = y + dy, nx = x + dx;
-                    if (ny >= 0 && ny < height && nx >= 0 && nx < width) {
-                        buf[count++] = gray[ny * width + nx];
-                    }
-                }
-            }
-            // 部分排序找中位數（只需排到一半）
-            const half = count >> 1;
-            for (let i = 0; i <= half; i++) {
-                let minIdx = i;
-                for (let j = i + 1; j < count; j++) {
-                    if (buf[j] < buf[minIdx]) minIdx = j;
-                }
-                if (minIdx !== i) { const tmp = buf[i]; buf[i] = buf[minIdx]; buf[minIdx] = tmp; }
-            }
-            result[y * width + x] = buf[half];
-        }
-    }
-    return result;
-}
-
 // ═══════════════════════════════════════════
 // ── HOG (Histogram of Oriented Gradients) ──
 // ═══════════════════════════════════════════
@@ -369,58 +334,88 @@ function extractCell(boardCanvas, roi, row, col, totalRows, totalCols) {
     ctx.drawImage(boardCanvas, sx, sy, cellW, cellH, 0, 0, MATCH_SIZE, MATCH_SIZE);
     return ctx.getImageData(0, 0, MATCH_SIZE, MATCH_SIZE);
 }
+// ═══════════════════════════════════════════
+// ── 雙通道投票比對 ──
+// ═══════════════════════════════════════════
 
-const HOG_WEIGHT = 0.7;   // 形狀權重
-const COLOR_WEIGHT = 0.3; // 色彩權重
+const HOG_WEIGHT = 0.7;   // Pass A: 形狀權重
+const COLOR_WEIGHT = 0.3; // Pass A: 色彩權重
+const DISAGREE_PENALTY = 0.8; // 兩通道不一致時的信心懲罰
 
 /**
- * 辨識單一格子（融合評分）
- * 主評分 = HOG 餘弦相似度 × 0.7 + 色彩相似度 × 0.3
- * 色彩相似度 = 1 - Hue 直方圖距離
- * 這樣即使兩個符號形狀完全相同（如檸檬 vs 橘子），色彩差異也能直接影響排名
+ * 單通道匹配：找出某個評分策略下的最佳符號
+ * @param {Function} scoreFn - (hogScore, cellImageData, ref) => number
+ * @returns {{ symbol, score }}
+ */
+function runPass(cellHOG, cellImageData, referenceIndex, scoreFn) {
+    let bestSymbol = '?';
+    let bestScore = -1;
+    for (const [symbol, refList] of referenceIndex) {
+        for (const ref of refList) {
+            const hogScore = cosineSimilarity(cellHOG, ref.hog);
+            const score = scoreFn(hogScore, cellImageData, ref);
+            if (score > bestScore) {
+                bestScore = score;
+                bestSymbol = symbol;
+            }
+        }
+    }
+    return { symbol: bestSymbol, score: bestScore };
+}
+
+/**
+ * 辨識單一格子（雙通道投票）
+ *
+ * Pass A（標準模式）: HOG × 0.7 + Color × 0.3
+ *   → 擅長：正常盤面、反灰、同形異色（如檸檬 vs 橘子）
+ *
+ * Pass B（純形狀模式）: HOG × 1.0
+ *   → 擅長：任何顏色的特效覆蓋（閃電、發光、連線動畫）
+ *
+ * 投票：兩通道結果相同 → 採用；不同 → 取分數高者，信心打折
  */
 export function matchCell(cellImageData, referenceIndex) {
     const cellGray = toGray(cellImageData);
-    // 中位數濾波：消除閃電連線等細線干擾
-    const cellFiltered = medianFilter(cellGray, MATCH_SIZE, MATCH_SIZE);
-    const cellEqGray = histogramEqualize(cellFiltered);
+    const cellEqGray = histogramEqualize(cellGray);
     const cellHOG = computeHOG(cellEqGray);
 
-    const candidates = [];
-    for (const [symbol, refList] of referenceIndex) {
-        let bestFusedScore = -1;
-        let bestHogScore = -1;
-        let bestRefForSymbol = null;
-        for (const ref of refList) {
-            const hogScore = cosineSimilarity(cellHOG, ref.hog);
-            const hueDist = computeHueHistDistance(cellImageData, ref.rgb);
-            const colorSim = 1 - hueDist; // 0~1, 越高越像
-            const fused = hogScore * HOG_WEIGHT + colorSim * COLOR_WEIGHT;
+    // Pass A: HOG + Color
+    const passA = runPass(cellHOG, cellImageData, referenceIndex, (hogScore, cellImg, ref) => {
+        const hueDist = computeHueHistDistance(cellImg, ref.rgb);
+        const colorSim = 1 - hueDist;
+        return hogScore * HOG_WEIGHT + colorSim * COLOR_WEIGHT;
+    });
 
-            if (fused > bestFusedScore) {
-                bestFusedScore = fused;
-                bestHogScore = hogScore;
-                bestRefForSymbol = ref;
-            }
+    // Pass B: 純 HOG
+    const passB = runPass(cellHOG, cellImageData, referenceIndex, (hogScore) => {
+        return hogScore;
+    });
+
+    // 投票
+    let finalSymbol, finalScore, voted;
+    if (passA.symbol === passB.symbol) {
+        // 一致 → 高信心
+        finalSymbol = passA.symbol;
+        finalScore = Math.max(passA.score, passB.score);
+        voted = '✓';
+    } else {
+        // 不一致 → 取分數高者，信心打折
+        if (passA.score >= passB.score) {
+            finalSymbol = passA.symbol;
+            finalScore = passA.score * DISAGREE_PENALTY;
+        } else {
+            finalSymbol = passB.symbol;
+            finalScore = passB.score * DISAGREE_PENALTY;
         }
-        candidates.push({ symbol, fusedScore: bestFusedScore, hogScore: bestHogScore, ref: bestRefForSymbol });
+        voted = `⚠${passA.symbol}/${passB.symbol}`;
     }
 
-    // 按融合分數降序
-    candidates.sort((a, b) => b.fusedScore - a.fusedScore);
-
-    if (candidates.length === 0) {
-        return { symbol: '?', confidence: 0, rawScore: 0 };
-    }
-
-    const top1 = candidates[0];
-
-    // confidence 0~100
-    const confidence = Math.max(0, Math.min(100, top1.fusedScore * 100));
+    const confidence = Math.max(0, Math.min(100, finalScore * 100));
     return {
-        symbol: top1.symbol,
+        symbol: finalSymbol,
         confidence: parseFloat(confidence.toFixed(1)),
-        rawScore: parseFloat(top1.fusedScore.toFixed(3))
+        rawScore: parseFloat(finalScore.toFixed(3)),
+        voted // 供 Log 使用
     };
 }
 
@@ -464,7 +459,7 @@ export function recognizeBoard(boardCanvas, reelROI, gridRows, gridCols, referen
             detailRow.push(match);
 
             const sym = match.symbol;
-            const score = `(${match.rawScore.toFixed(2)})`;
+            const score = match.voted === '✓' ? `(${match.rawScore.toFixed(2)})` : `(${match.rawScore.toFixed(2)})${match.voted}`;
             cellSyms[r][c] = sym;
             cellScores[r][c] = score;
             colWidths[c] = Math.max(colWidths[c], getDispLen(sym), getDispLen(score));
@@ -487,7 +482,7 @@ export function recognizeBoard(boardCanvas, reelROI, gridRows, gridCols, referen
         if (r < gridRows - 1) logRows.push('');
     }
 
-    console.log(`\n=== 盤面辨識結果 (HOG + SSIM) ===${logRows.join('\n')}\n==============================================\n`);
+    console.log(`\n=== 盤面辨識結果 (雙通道投票) ===${logRows.join('\n')}\n==============================================\n`);
 
     return { grid, details };
 }
