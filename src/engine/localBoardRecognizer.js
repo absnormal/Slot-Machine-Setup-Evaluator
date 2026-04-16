@@ -49,6 +49,41 @@ function histogramEqualize(gray) {
     return result;
 }
 
+/**
+ * 5×5 中位數濾波 — 消除細線型噪點（如閃電連線動畫）
+ * 閃電線通常只有 1~3px 寬，中位數濾波會用周邊 25 個像素的中位值取代
+ * 結果：細線被「吃掉」，圓潤的大面積符號（如葡萄）完整保留
+ */
+function medianFilter(gray, width, height) {
+    const result = new Uint8Array(gray.length);
+    const R = 2; // 半徑 2 → 5x5 核
+    const buf = new Uint8Array(25);
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            let count = 0;
+            for (let dy = -R; dy <= R; dy++) {
+                for (let dx = -R; dx <= R; dx++) {
+                    const ny = y + dy, nx = x + dx;
+                    if (ny >= 0 && ny < height && nx >= 0 && nx < width) {
+                        buf[count++] = gray[ny * width + nx];
+                    }
+                }
+            }
+            // 部分排序找中位數（只需排到一半）
+            const half = count >> 1;
+            for (let i = 0; i <= half; i++) {
+                let minIdx = i;
+                for (let j = i + 1; j < count; j++) {
+                    if (buf[j] < buf[minIdx]) minIdx = j;
+                }
+                if (minIdx !== i) { const tmp = buf[i]; buf[i] = buf[minIdx]; buf[minIdx] = tmp; }
+            }
+            result[y * width + x] = buf[half];
+        }
+    }
+    return result;
+}
+
 // ═══════════════════════════════════════════
 // ── HOG (Histogram of Oriented Gradients) ──
 // ═══════════════════════════════════════════
@@ -346,7 +381,9 @@ const COLOR_WEIGHT = 0.3; // 色彩權重
  */
 export function matchCell(cellImageData, referenceIndex) {
     const cellGray = toGray(cellImageData);
-    const cellEqGray = histogramEqualize(cellGray);
+    // 中位數濾波：消除閃電連線等細線干擾
+    const cellFiltered = medianFilter(cellGray, MATCH_SIZE, MATCH_SIZE);
+    const cellEqGray = histogramEqualize(cellFiltered);
     const cellHOG = computeHOG(cellEqGray);
 
     const candidates = [];
