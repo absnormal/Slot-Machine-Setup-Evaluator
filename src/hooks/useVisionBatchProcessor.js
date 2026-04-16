@@ -42,10 +42,11 @@ export function useVisionBatchProcessor({
     const ocrWorkerRef = useRef(null);
     const referenceIndexRef = useRef(null);
 
-    // 當 template 變更時，清除快取讓下次辨識重建索引
+    // 當 template 符號列表變更時，清除快取讓下次辨識重建索引
+    const symbolKey = template?.symbolImagesAll ? Object.keys(template.symbolImagesAll).sort().join(',') : '';
     useEffect(() => {
         referenceIndexRef.current = null;
-    }, [template?.id]);
+    }, [symbolKey]);
 
     useEffect(() => {
         let isMounted = true;

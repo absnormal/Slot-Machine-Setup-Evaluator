@@ -207,10 +207,11 @@ export function useAutoRecognition({
      */
     const referenceIndexRef = useRef(null);
 
-    // 當 template 變更時，清除快取讓下次辨識重建索引
+    // 當 template 符號列表變更時，清除快取讓下次辨識重建索引
+    const symbolKey = template?.symbolImagesAll ? Object.keys(template.symbolImagesAll).sort().join(',') : '';
     useEffect(() => {
         referenceIndexRef.current = null;
-    }, [template?.id]);
+    }, [symbolKey]);
 
     const recognizeLocalBatch = async (candidates, updateCandidate, rois, ocrDecimalPlaces = 2) => {
         if (!template || candidates.length === 0) {
