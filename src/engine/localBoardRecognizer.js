@@ -335,80 +335,55 @@ function extractCell(boardCanvas, roi, row, col, totalRows, totalCols) {
     return ctx.getImageData(0, 0, MATCH_SIZE, MATCH_SIZE);
 }
 
-// ═══════════════════════════════════════════
-// ── 雙層比對 ──
-// ═══════════════════════════════════════════
-
-const TIEBREAK_THRESHOLD = 0.08; // HOG 分差 < 8% 時啟動色彩決勝
+const HOG_WEIGHT = 0.7;   // 形狀權重
+const COLOR_WEIGHT = 0.3; // 色彩權重
 
 /**
- * 辨識單一格子（三層比對）
- * Pass 1: HOG 餘弦相似度（免疫亮度/反灰/閃電）
- * Pass 2: 若前兩名接近且符號不同，用 SSIM + 色相距離做決勝
+ * 辨識單一格子（融合評分）
+ * 主評分 = HOG 餘弦相似度 × 0.7 + 色彩相似度 × 0.3
+ * 色彩相似度 = 1 - Hue 直方圖距離
+ * 這樣即使兩個符號形狀完全相同（如檸檬 vs 橘子），色彩差異也能直接影響排名
  */
 export function matchCell(cellImageData, referenceIndex) {
     const cellGray = toGray(cellImageData);
     const cellEqGray = histogramEqualize(cellGray);
     const cellHOG = computeHOG(cellEqGray);
 
-    // Pass 1: HOG Cosine Similarity
     const candidates = [];
     for (const [symbol, refList] of referenceIndex) {
-        let bestCosForSymbol = -1;
+        let bestFusedScore = -1;
+        let bestHogScore = -1;
         let bestRefForSymbol = null;
         for (const ref of refList) {
-            const cos = cosineSimilarity(cellHOG, ref.hog);
-            if (cos > bestCosForSymbol) {
-                bestCosForSymbol = cos;
+            const hogScore = cosineSimilarity(cellHOG, ref.hog);
+            const hueDist = computeHueHistDistance(cellImageData, ref.rgb);
+            const colorSim = 1 - hueDist; // 0~1, 越高越像
+            const fused = hogScore * HOG_WEIGHT + colorSim * COLOR_WEIGHT;
+
+            if (fused > bestFusedScore) {
+                bestFusedScore = fused;
+                bestHogScore = hogScore;
                 bestRefForSymbol = ref;
             }
         }
-        candidates.push({ symbol, hogScore: bestCosForSymbol, ref: bestRefForSymbol });
+        candidates.push({ symbol, fusedScore: bestFusedScore, hogScore: bestHogScore, ref: bestRefForSymbol });
     }
 
-    // 按 HOG 分數降序
-    candidates.sort((a, b) => b.hogScore - a.hogScore);
+    // 按融合分數降序
+    candidates.sort((a, b) => b.fusedScore - a.fusedScore);
 
     if (candidates.length === 0) {
         return { symbol: '?', confidence: 0, rawScore: 0 };
     }
 
     const top1 = candidates[0];
-    let bestSymbol = top1.symbol;
-    let bestScore = top1.hogScore;
 
-    // Pass 2: 若前兩名接近且不同符號，用 SSIM + 色相距離做決勝
-    if (candidates.length >= 2) {
-        const top2 = candidates[1];
-        if (top1.symbol !== top2.symbol) {
-            const gap = top1.hogScore - top2.hogScore;
-            if (gap < TIEBREAK_THRESHOLD) {
-                // SSIM 分數（灰階結構相似度）
-                const ssim1 = computeSSIM(cellGray, top1.ref.gray);
-                const ssim2 = computeSSIM(cellGray, top2.ref.gray);
-
-                // 色相距離（區分同形異色符號，如檸檬 vs 橘子）
-                const hueDist1 = computeHueHistDistance(cellImageData, top1.ref.rgb);
-                const hueDist2 = computeHueHistDistance(cellImageData, top2.ref.rgb);
-
-                // 綜合評分：SSIM 越高越好 + 色相距離越小越好
-                const combined1 = ssim1 - hueDist1 * 0.5;
-                const combined2 = ssim2 - hueDist2 * 0.5;
-
-                if (combined2 > combined1) {
-                    bestSymbol = top2.symbol;
-                    bestScore = top2.hogScore;
-                }
-            }
-        }
-    }
-
-    // HOG cosine similarity 0~1 → confidence 0~100
-    const confidence = Math.max(0, Math.min(100, bestScore * 100));
+    // confidence 0~100
+    const confidence = Math.max(0, Math.min(100, top1.fusedScore * 100));
     return {
-        symbol: bestSymbol,
+        symbol: top1.symbol,
         confidence: parseFloat(confidence.toFixed(1)),
-        rawScore: parseFloat(bestScore.toFixed(3))
+        rawScore: parseFloat(top1.fusedScore.toFixed(3))
     };
 }
 
