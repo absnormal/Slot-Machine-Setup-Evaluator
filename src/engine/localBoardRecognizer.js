@@ -227,6 +227,7 @@ function computeSSIM(grayA, grayB) {
 /**
  * 計算兩張 RGBA ImageData 之間的色相距離 (Hue Histogram Distance)
  * 專門用來區分「形狀相同但顏色不同」的符號（如檸檬 vs 橘子）
+ * 只比對中央 60% 區域，排除邊緣背景色污染
  * 回傳值：0 ~ 1，0 = 完全相同色相分佈
  */
 function computeHueHistDistance(imgDataA, imgDataB) {
@@ -235,29 +236,40 @@ function computeHueHistDistance(imgDataA, imgDataB) {
     const histB = new Float32Array(BINS);
     const dA = imgDataA.data;
     const dB = imgDataB.data;
-    const len = dA.length;
+    const W = imgDataA.width;
+    const H = imgDataA.height;
     let countA = 0, countB = 0;
 
-    for (let i = 0; i < len; i += 4) {
-        // RGB → Hue (簡化版)
-        const processPixel = (r, g, b) => {
-            const max = Math.max(r, g, b);
-            const min = Math.min(r, g, b);
-            const delta = max - min;
-            if (delta < 15 || max < 30) return -1; // 太暗或灰色跳過
-            let hue;
-            if (max === r) hue = ((g - b) / delta) % 6;
-            else if (max === g) hue = (b - r) / delta + 2;
-            else hue = (r - g) / delta + 4;
-            hue *= 60;
-            if (hue < 0) hue += 360;
-            return hue;
-        };
+    // 中央裁切：只取內部 60%（跳過外圍 20% 邊緣）
+    const margin = 0.20;
+    const x0 = Math.floor(W * margin);
+    const y0 = Math.floor(H * margin);
+    const x1 = Math.floor(W * (1 - margin));
+    const y1 = Math.floor(H * (1 - margin));
 
-        const hueA = processPixel(dA[i], dA[i+1], dA[i+2]);
-        const hueB = processPixel(dB[i], dB[i+1], dB[i+2]);
-        if (hueA >= 0) { histA[Math.floor(hueA / 10) % BINS]++; countA++; }
-        if (hueB >= 0) { histB[Math.floor(hueB / 10) % BINS]++; countB++; }
+    // RGB → Hue (簡化版)
+    const processPixel = (r, g, b) => {
+        const max = Math.max(r, g, b);
+        const min = Math.min(r, g, b);
+        const delta = max - min;
+        if (delta < 15 || max < 30) return -1; // 太暗或灰色跳過
+        let hue;
+        if (max === r) hue = ((g - b) / delta) % 6;
+        else if (max === g) hue = (b - r) / delta + 2;
+        else hue = (r - g) / delta + 4;
+        hue *= 60;
+        if (hue < 0) hue += 360;
+        return hue;
+    };
+
+    for (let y = y0; y < y1; y++) {
+        for (let x = x0; x < x1; x++) {
+            const i = (y * W + x) * 4;
+            const hueA = processPixel(dA[i], dA[i+1], dA[i+2]);
+            const hueB = processPixel(dB[i], dB[i+1], dB[i+2]);
+            if (hueA >= 0) { histA[Math.floor(hueA / 10) % BINS]++; countA++; }
+            if (hueB >= 0) { histB[Math.floor(hueB / 10) % BINS]++; countB++; }
+        }
     }
 
     // 正規化
@@ -379,37 +391,32 @@ function cleanEffectPixels(imageData) {
         mask[i] = lum[i] > threshold ? 1 : 0;
     }
 
-    // Step 5: 用 7×7 鄰域內的「正常像素平均 RGB」替換特效像素
-    const cleaned = new Uint8ClampedArray(d);
-    const R = 3; // 半徑 3 → 7×7 鄰域
-    for (let y = 0; y < H; y++) {
-        for (let x = 0; x < W; x++) {
-            const idx = y * W + x;
-            if (!mask[idx]) continue; // 正常像素不動
-
-            let sumR = 0, sumG = 0, sumB = 0, count = 0;
-            for (let dy = -R; dy <= R; dy++) {
-                for (let dx = -R; dx <= R; dx++) {
-                    const ny = y + dy, nx = x + dx;
-                    if (ny < 0 || ny >= H || nx < 0 || nx >= W) continue;
-                    const nIdx = ny * W + nx;
-                    if (mask[nIdx]) continue; // 跳過其他特效像素
-                    const nRgb = nIdx * 4;
-                    sumR += cleaned[nRgb];
-                    sumG += cleaned[nRgb + 1];
-                    sumB += cleaned[nRgb + 2];
-                    count++;
-                }
-            }
-
-            const pIdx = idx * 4;
-            if (count > 0) {
-                cleaned[pIdx] = Math.round(sumR / count);
-                cleaned[pIdx + 1] = Math.round(sumG / count);
-                cleaned[pIdx + 2] = Math.round(sumB / count);
-            }
-            // count === 0: 整個鄰域都是特效 → 保留原值（極端情況）
+    // Step 5: 計算所有「非特效像素」的 RGB 中位數（代表符號主色調）
+    const normalR = [], normalG = [], normalB = [];
+    for (let i = 0; i < len; i++) {
+        if (!mask[i]) {
+            const idx4 = i * 4;
+            normalR.push(d[idx4]);
+            normalG.push(d[idx4 + 1]);
+            normalB.push(d[idx4 + 2]);
         }
+    }
+    normalR.sort((a, b) => a - b);
+    normalG.sort((a, b) => a - b);
+    normalB.sort((a, b) => a - b);
+    const mid = normalR.length >> 1;
+    const medR = normalR[mid] || 128;
+    const medG = normalG[mid] || 128;
+    const medB = normalB[mid] || 128;
+
+    // Step 6: 用非特效 RGB 中位數替換特效像素（避免引入背景藍色偏差）
+    const cleaned = new Uint8ClampedArray(d);
+    for (let i = 0; i < len; i++) {
+        if (!mask[i]) continue;
+        const pIdx = i * 4;
+        cleaned[pIdx] = medR;
+        cleaned[pIdx + 1] = medG;
+        cleaned[pIdx + 2] = medB;
     }
 
     return new ImageData(cleaned, W, H);
@@ -419,15 +426,15 @@ function cleanEffectPixels(imageData) {
 // ── 融合比對 ──
 // ═══════════════════════════════════════════
 
-const HOG_WEIGHT = 0.7;   // 形狀權重
-const COLOR_WEIGHT = 0.3; // 色彩權重
+const HOG_WEIGHT = 0.85;   // 形狀權重
+const COLOR_WEIGHT = 0.15; // 色彩權重（降低以減少背景色干擾）
 
 /**
  * 辨識單一格子（清洗特效 → 融合評分）
  *
  * 1. 先清洗 RGB 原圖（移除閃電/發光等異常亮像素）
- * 2. 在清洗後的圖上跑 HOG（形狀）+ Hue（色彩）
- * 3. 融合評分 = HOG × 0.7 + Color × 0.3
+ * 2. 在清洗後的圖上跑 HOG（形狀）+ Hue（色彩，僅中央 60%）
+ * 3. 融合評分 = HOG × 0.85 + Color × 0.15
  */
 export function matchCell(cellImageData, referenceIndex) {
     // 清洗特效像素
