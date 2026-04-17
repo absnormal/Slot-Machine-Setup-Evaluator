@@ -890,10 +890,19 @@ const Phase4Video = ({
 
                                     <div className="flex flex-wrap items-center gap-3 ml-auto border-l border-slate-200 pl-4">
                                         <div className="flex flex-col gap-0.5">
-                                            <span className="text-[10px] font-bold text-slate-400">WIN 引擎模式</span>
-                                            <div className="h-7 flex items-center gap-1.5 px-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold shadow-sm">
-                                                📝 數據合併
-                                            </div>
+                                            <span className="text-[10px] font-bold text-slate-400">辨識來源</span>
+                                            <button onClick={() => {
+                                                const val = !useWinFrame;
+                                                setUseWinFrame(val);
+                                                candidates.forEach(kf => updateCandidate(kf.id, { useWinFrame: val }));
+                                            }}
+                                                className={`h-7 flex items-center gap-1.5 px-3 rounded-lg text-xs font-bold shadow-sm cursor-pointer transition-all active:scale-95 ${
+                                                    useWinFrame
+                                                        ? 'bg-amber-50 border border-amber-300 text-amber-700 hover:bg-amber-100'
+                                                        : 'bg-slate-100 border border-slate-300 text-slate-600 hover:bg-slate-200'
+                                                }`}>
+                                                {useWinFrame ? '🏆 WIN截圖' : '🎰 停輪截圖'}
+                                            </button>
                                         </div>
                                         <div className="flex flex-col gap-0.5">
                                             <span className="text-[10px] font-bold text-slate-400">FG 模式</span>
@@ -1179,18 +1188,7 @@ const Phase4Video = ({
                                                 className="w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 bg-emerald-600 text-white hover:bg-emerald-500 transition-all active:scale-95 shadow-md shadow-emerald-500/20 text-sm">
                                             <Monitor size={18} /> 本地為主：即時辨識盤面（未處理 {winPendingCount} 張）
                                         </button>
-                                        <label className="flex items-center gap-2 px-2 py-1 cursor-pointer select-none">
-                                            <input type="checkbox" checked={useWinFrame} onChange={e => {
-                                                const val = e.target.checked;
-                                                setUseWinFrame(val);
-                                                // 一鍵套用所有候選幀
-                                                candidates.forEach(kf => updateCandidate(kf.id, { useWinFrame: val }));
-                                            }}
-                                                className="accent-amber-500 w-4 h-4" />
-                                            <span className={`text-xs ${useWinFrame ? 'text-amber-400' : 'text-slate-400'}`}>
-                                                全部使用 WIN 截圖辨識（可在每張卡片獨立切換）
-                                            </span>
-                                        </label>
+
                                             <div className="space-y-1">
                                                 <button onClick={() => recognizeBatch(ocrDecimalPlaces)}
                                                     className="w-full py-2 rounded-xl font-bold flex items-center justify-center gap-1.5 bg-violet-50/50 text-violet-600 hover:bg-violet-100 border border-violet-200 transition-all active:scale-95 text-xs">
