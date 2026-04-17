@@ -283,23 +283,25 @@ function App() {
     const phase4Stats = useMemo(() => reportGenerator.computeStats(keyframeExtractor.candidates), [keyframeExtractor.candidates, reportGenerator]);
 
     // 辨識觸發器（封裝 updateCandidate + rois）
-    const handleRecognizeBatch = useCallback((decimalPlaces) => {
+    const handleRecognizeBatch = useCallback((decimalPlaces, useWinFrame = true) => {
         const rois = { reelROI, winROI, balanceROI, betROI, orderIdROI };
         autoRecognition.recognizeBatch(
             keyframeExtractor.candidates,
             keyframeExtractor.updateCandidate,
             rois,
-            decimalPlaces ?? ocrDecimalPlaces
+            decimalPlaces ?? ocrDecimalPlaces,
+            useWinFrame
         );
     }, [autoRecognition, keyframeExtractor, reelROI, winROI, balanceROI, betROI, ocrDecimalPlaces]);
 
-    const handleRecognizeLocalBatch = useCallback((decimalPlaces, specificCandidates = null) => {
+    const handleRecognizeLocalBatch = useCallback((decimalPlaces, specificCandidates = null, useWinFrame = true) => {
         const rois = { reelROI, winROI, balanceROI, betROI, orderIdROI };
         autoRecognition.recognizeLocalBatch(
             specificCandidates || keyframeExtractor.candidates,
             keyframeExtractor.updateCandidate,
             rois,
-            decimalPlaces ?? ocrDecimalPlaces
+            decimalPlaces ?? ocrDecimalPlaces,
+            useWinFrame
         );
     }, [autoRecognition, keyframeExtractor, reelROI, winROI, balanceROI, betROI, ocrDecimalPlaces]);
 
