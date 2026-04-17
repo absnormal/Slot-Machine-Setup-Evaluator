@@ -1,9 +1,11 @@
 /**
- * localBoardRecognizer.js — HOG + SSIM 混合辨識引擎
+ * localBoardRecognizer.js — HOG + Hue 融合辨識引擎（含亮度異常遮罩）
  *
  * 架構：
- * Pass 1: HOG (方向梯度長條圖) — 主引擎，天生不受亮度/反灰/閃電干擾
- * Pass 2: SSIM (結構相似度) — 副引擎，僅在前兩名極接近時做決勝
+ * 前處理: 亮度異常遮罩 — 偵測並移除閃電/發光等特效像素
+ * Pass 1: HOG (方向梯度長條圖) — 形狀比對，搭配直方圖等化 + 梯度截尾 + 中心加權
+ * Pass 2: Hue (色相直方圖距離) — 色彩比對，區分同形異色符號
+ * 融合: HOG × 0.7 + Color × 0.3
  *
  * 零依賴：100% 純 JS，無需 OpenCV / WASM
  */
@@ -335,87 +337,127 @@ function extractCell(boardCanvas, roi, row, col, totalRows, totalCols) {
     return ctx.getImageData(0, 0, MATCH_SIZE, MATCH_SIZE);
 }
 // ═══════════════════════════════════════════
-// ── 雙通道投票比對 ──
+// ── 亮度異常遮罩 (Brightness Outlier Masking) ──
 // ═══════════════════════════════════════════
 
-const HOG_WEIGHT = 0.7;   // Pass A: 形狀權重
-const COLOR_WEIGHT = 0.3; // Pass A: 色彩權重
-const DISAGREE_PENALTY = 0.8; // 兩通道不一致時的信心懲罰
+const BRIGHT_OFFSET = 60; // 亮度超過中位數 + 此值的像素被視為特效
 
 /**
- * 單通道匹配：找出某個評分策略下的最佳符號
- * @param {Function} scoreFn - (hogScore, cellImageData, ref) => number
- * @returns {{ symbol, score }}
+ * 清洗特效像素：偵測異常明亮的像素（閃電/發光/連線動畫）並替換
+ * 原理：特效像素不管什麼顏色，都會比正常符號像素明亮很多
+ * @param {ImageData} imageData - 原始 RGBA 影像
+ * @returns {ImageData} 清洗後的 RGBA 影像（新物件，不修改原始資料）
  */
-function runPass(cellHOG, cellImageData, referenceIndex, scoreFn) {
+function cleanEffectPixels(imageData) {
+    const d = imageData.data;
+    const W = imageData.width;
+    const H = imageData.height;
+    const len = W * H;
+
+    // Step 1: 計算每個像素的亮度
+    const lum = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+        const idx = i * 4;
+        lum[i] = Math.round(d[idx] * 0.299 + d[idx + 1] * 0.587 + d[idx + 2] * 0.114);
+    }
+
+    // Step 2: 找亮度中位數
+    const sorted = Uint8Array.from(lum).sort();
+    const median = sorted[len >> 1];
+    const threshold = median + BRIGHT_OFFSET;
+
+    // Step 3: 如果沒有異常像素（正常/反灰盤面），直接返回原圖
+    let brightCount = 0;
+    for (let i = 0; i < len; i++) {
+        if (lum[i] > threshold) brightCount++;
+    }
+    if (brightCount < len * 0.05) return imageData; // < 5% 異常像素 → 不需清洗
+
+    // Step 4: 建立遮罩 (true = 特效像素)
+    const mask = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+        mask[i] = lum[i] > threshold ? 1 : 0;
+    }
+
+    // Step 5: 用 7×7 鄰域內的「正常像素平均 RGB」替換特效像素
+    const cleaned = new Uint8ClampedArray(d);
+    const R = 3; // 半徑 3 → 7×7 鄰域
+    for (let y = 0; y < H; y++) {
+        for (let x = 0; x < W; x++) {
+            const idx = y * W + x;
+            if (!mask[idx]) continue; // 正常像素不動
+
+            let sumR = 0, sumG = 0, sumB = 0, count = 0;
+            for (let dy = -R; dy <= R; dy++) {
+                for (let dx = -R; dx <= R; dx++) {
+                    const ny = y + dy, nx = x + dx;
+                    if (ny < 0 || ny >= H || nx < 0 || nx >= W) continue;
+                    const nIdx = ny * W + nx;
+                    if (mask[nIdx]) continue; // 跳過其他特效像素
+                    const nRgb = nIdx * 4;
+                    sumR += cleaned[nRgb];
+                    sumG += cleaned[nRgb + 1];
+                    sumB += cleaned[nRgb + 2];
+                    count++;
+                }
+            }
+
+            const pIdx = idx * 4;
+            if (count > 0) {
+                cleaned[pIdx] = Math.round(sumR / count);
+                cleaned[pIdx + 1] = Math.round(sumG / count);
+                cleaned[pIdx + 2] = Math.round(sumB / count);
+            }
+            // count === 0: 整個鄰域都是特效 → 保留原值（極端情況）
+        }
+    }
+
+    return new ImageData(cleaned, W, H);
+}
+
+// ═══════════════════════════════════════════
+// ── 融合比對 ──
+// ═══════════════════════════════════════════
+
+const HOG_WEIGHT = 0.7;   // 形狀權重
+const COLOR_WEIGHT = 0.3; // 色彩權重
+
+/**
+ * 辨識單一格子（清洗特效 → 融合評分）
+ *
+ * 1. 先清洗 RGB 原圖（移除閃電/發光等異常亮像素）
+ * 2. 在清洗後的圖上跑 HOG（形狀）+ Hue（色彩）
+ * 3. 融合評分 = HOG × 0.7 + Color × 0.3
+ */
+export function matchCell(cellImageData, referenceIndex) {
+    // 清洗特效像素
+    const cleanedImg = cleanEffectPixels(cellImageData);
+
+    const cellGray = toGray(cleanedImg);
+    const cellEqGray = histogramEqualize(cellGray);
+    const cellHOG = computeHOG(cellEqGray);
+
     let bestSymbol = '?';
     let bestScore = -1;
     for (const [symbol, refList] of referenceIndex) {
         for (const ref of refList) {
             const hogScore = cosineSimilarity(cellHOG, ref.hog);
-            const score = scoreFn(hogScore, cellImageData, ref);
-            if (score > bestScore) {
-                bestScore = score;
+            const hueDist = computeHueHistDistance(cleanedImg, ref.rgb);
+            const colorSim = 1 - hueDist;
+            const fused = hogScore * HOG_WEIGHT + colorSim * COLOR_WEIGHT;
+
+            if (fused > bestScore) {
+                bestScore = fused;
                 bestSymbol = symbol;
             }
         }
     }
-    return { symbol: bestSymbol, score: bestScore };
-}
 
-/**
- * 辨識單一格子（雙通道投票）
- *
- * Pass A（標準模式）: HOG × 0.7 + Color × 0.3
- *   → 擅長：正常盤面、反灰、同形異色（如檸檬 vs 橘子）
- *
- * Pass B（純形狀模式）: HOG × 1.0
- *   → 擅長：任何顏色的特效覆蓋（閃電、發光、連線動畫）
- *
- * 投票：兩通道結果相同 → 採用；不同 → 取分數高者，信心打折
- */
-export function matchCell(cellImageData, referenceIndex) {
-    const cellGray = toGray(cellImageData);
-    const cellEqGray = histogramEqualize(cellGray);
-    const cellHOG = computeHOG(cellEqGray);
-
-    // Pass A: HOG + Color
-    const passA = runPass(cellHOG, cellImageData, referenceIndex, (hogScore, cellImg, ref) => {
-        const hueDist = computeHueHistDistance(cellImg, ref.rgb);
-        const colorSim = 1 - hueDist;
-        return hogScore * HOG_WEIGHT + colorSim * COLOR_WEIGHT;
-    });
-
-    // Pass B: 純 HOG
-    const passB = runPass(cellHOG, cellImageData, referenceIndex, (hogScore) => {
-        return hogScore;
-    });
-
-    // 投票
-    let finalSymbol, finalScore, voted;
-    if (passA.symbol === passB.symbol) {
-        // 一致 → 高信心
-        finalSymbol = passA.symbol;
-        finalScore = Math.max(passA.score, passB.score);
-        voted = '✓';
-    } else {
-        // 不一致 → 取分數高者，信心打折
-        if (passA.score >= passB.score) {
-            finalSymbol = passA.symbol;
-            finalScore = passA.score * DISAGREE_PENALTY;
-        } else {
-            finalSymbol = passB.symbol;
-            finalScore = passB.score * DISAGREE_PENALTY;
-        }
-        voted = `⚠${passA.symbol}/${passB.symbol}`;
-    }
-
-    const confidence = Math.max(0, Math.min(100, finalScore * 100));
+    const confidence = Math.max(0, Math.min(100, bestScore * 100));
     return {
-        symbol: finalSymbol,
+        symbol: bestSymbol,
         confidence: parseFloat(confidence.toFixed(1)),
-        rawScore: parseFloat(finalScore.toFixed(3)),
-        voted // 供 Log 使用
+        rawScore: parseFloat(bestScore.toFixed(3))
     };
 }
 
@@ -459,7 +501,7 @@ export function recognizeBoard(boardCanvas, reelROI, gridRows, gridCols, referen
             detailRow.push(match);
 
             const sym = match.symbol;
-            const score = match.voted === '✓' ? `(${match.rawScore.toFixed(2)})` : `(${match.rawScore.toFixed(2)})${match.voted}`;
+            const score = `(${match.rawScore.toFixed(2)})`;
             cellSyms[r][c] = sym;
             cellScores[r][c] = score;
             colWidths[c] = Math.max(colWidths[c], getDispLen(sym), getDispLen(score));
@@ -482,7 +524,7 @@ export function recognizeBoard(boardCanvas, reelROI, gridRows, gridCols, referen
         if (r < gridRows - 1) logRows.push('');
     }
 
-    console.log(`\n=== 盤面辨識結果 (雙通道投票) ===${logRows.join('\n')}\n==============================================\n`);
+    console.log(`\n=== 盤面辨識結果 (HOG+Hue 融合) ===${logRows.join('\n')}\n==============================================\n`);
 
     return { grid, details };
 }
