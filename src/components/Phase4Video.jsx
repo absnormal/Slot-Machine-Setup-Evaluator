@@ -864,8 +864,10 @@ const Phase4Video = ({
                                         </div>
                                     )}
                                 </div>
+                            </div>
+                        )}
 
-                                {/* 影片主控與參數欄 */}
+                                {/* 影片主控與參數欄 — 始終顯示 */}
                                 <div className="flex flex-wrap items-center gap-4 bg-slate-50 p-3 rounded-xl border border-slate-200 shadow-sm">
                                     <button onClick={isLiveActive ? handleStopLive : handleStartLive}
                                         disabled={!videoSrc}
@@ -904,8 +906,6 @@ const Phase4Video = ({
                                         </div>
                                     </div>
                                 </div>
-                            </div>
-                        )}
                     </div>
 
                     {/* ══ 右側面板 ══ */}
