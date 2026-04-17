@@ -65,7 +65,7 @@ export function useAutoRecognition({
      * @param {Object} rois - { reelROI, winROI, balanceROI, betROI }
      * @param {number} ocrDecimalPlaces
      */
-    const recognizeBatch = async (candidates, updateCandidate, rois, ocrDecimalPlaces = 2, useWinFrame = true) => {
+    const recognizeBatch = async (candidates, updateCandidate, rois, ocrDecimalPlaces = 2) => {
         if (!template || candidates.length === 0) {
             setTemplateError?.('請確認已完成 Phase 1 模板設定，且有候選幀可辨識');
             return;
@@ -148,7 +148,7 @@ export function useAutoRecognition({
 
             try {
                 // ── A. Gemini Vision 辨識盤面符號 ──
-                const targetCanvas = useWinFrame ? (kf.winPollCanvas || kf.canvas) : kf.canvas;
+                const targetCanvas = (kf.useWinFrame !== false) ? (kf.winPollCanvas || kf.canvas) : kf.canvas;
                 const gridResult = await recognizeGrid(
                     targetCanvas, rois, template, availableSymbols, fixedPrefixParts, modelName, effectiveApiKey
                 );
@@ -213,7 +213,7 @@ export function useAutoRecognition({
         referenceIndexRef.current = null;
     }, [symbolKey]);
 
-    const recognizeLocalBatch = async (candidates, updateCandidate, rois, ocrDecimalPlaces = 2, useWinFrame = true) => {
+    const recognizeLocalBatch = async (candidates, updateCandidate, rois, ocrDecimalPlaces = 2) => {
         if (!template || candidates.length === 0) {
             setTemplateMessage?.('請確認已完成 Phase 1 模板設定，且有候選幀可辨識');
             return;
@@ -271,7 +271,7 @@ export function useAutoRecognition({
             updateCandidate(kf.id, { status: 'recognizing' });
 
             try {
-                const targetCanvas = useWinFrame ? (kf.winPollCanvas || kf.canvas) : kf.canvas;
+                const targetCanvas = (kf.useWinFrame !== false) ? (kf.winPollCanvas || kf.canvas) : kf.canvas;
                 const pixelROI = toPixelROI(targetCanvas, reelROI);
                 const { grid, details } = recognizeBoard(targetCanvas, pixelROI, template.rows, displayCols, refIndex);
 

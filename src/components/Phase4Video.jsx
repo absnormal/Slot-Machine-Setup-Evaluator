@@ -7,7 +7,7 @@ const Phase4Video = ({
     candidates,
     startLiveDetection, stopLiveDetection,
     removeCandidate, clearCandidates, addManualCandidate, smartDedup, confirmDedup, healBreaks, setManualBestCandidate,
-    updateCandidateOcr,
+    updateCandidateOcr, updateCandidate,
     // Auto Recognition
     isRecognizing, isStopping, recognitionProgress,
     recognizeBatch, recognizeLocalBatch, cancelRecognition,
@@ -145,11 +145,22 @@ const Phase4Video = ({
     const renderCardContent = (kf, idx) => (
         <div className="flex gap-2.5 items-center">
             <div 
-                className={`w-20 h-14 rounded-lg overflow-hidden shrink-0 flex items-center justify-center cursor-pointer hover:scale-110 hover:shadow-md hover:ring-2 hover:ring-indigo-400 transition-all z-10 ${kf.winPollThumbUrl ? 'bg-amber-900 ring-2 ring-amber-400' : 'bg-slate-900'}`}
+                className={`w-20 h-14 rounded-lg overflow-hidden shrink-0 flex items-center justify-center cursor-pointer hover:scale-110 hover:shadow-md hover:ring-2 hover:ring-indigo-400 transition-all z-10 relative ${kf.winPollThumbUrl ? 'bg-amber-900 ring-2 ring-amber-400' : 'bg-slate-900'}`}
                 onClick={(e) => { e.stopPropagation(); handleCardClick(kf); }}
                 title="點擊放大檢視盤面"
             >
-                <img src={useWinFrame ? (kf.winPollThumbUrl || kf.thumbUrl) : kf.thumbUrl} className="w-full h-full object-contain pointer-events-none" alt="" />
+                <img src={(kf.useWinFrame !== false) ? (kf.winPollThumbUrl || kf.thumbUrl) : kf.thumbUrl} className="w-full h-full object-contain pointer-events-none" alt="" />
+                {kf.winPollThumbUrl && (
+                    <button
+                        onClick={(e) => { e.stopPropagation(); updateCandidate(kf.id, { useWinFrame: kf.useWinFrame === false }); }}
+                        className={`absolute bottom-0 right-0 px-1 text-[8px] font-bold rounded-tl-md transition-colors ${
+                            kf.useWinFrame !== false ? 'bg-amber-500 text-black' : 'bg-slate-600 text-white'
+                        }`}
+                        title={kf.useWinFrame !== false ? '目前：用 WIN 截圖辨識，點擊切換到停輪截圖' : '目前：用停輪截圖辨識，點擊切換到 WIN 截圖'}
+                    >
+                        {kf.useWinFrame !== false ? 'WIN' : '停輪'}
+                    </button>
+                )}
             </div>
             <div className="flex-1 min-w-0 pr-5">
                 <div className="flex items-center justify-between">
@@ -1163,19 +1174,24 @@ const Phase4Video = ({
                                         </button>
                                     ) : (
                                         <div className="space-y-2">
-                                            <button onClick={() => recognizeLocalBatch(ocrDecimalPlaces, null, useWinFrame)}
+                                            <button onClick={() => recognizeLocalBatch(ocrDecimalPlaces)}
                                                 className="w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 bg-emerald-600 text-white hover:bg-emerald-500 transition-all active:scale-95 shadow-md shadow-emerald-500/20 text-sm">
                                             <Monitor size={18} /> 本地為主：即時辨識盤面（未處理 {winPendingCount} 張）
                                         </button>
                                         <label className="flex items-center gap-2 px-2 py-1 cursor-pointer select-none">
-                                            <input type="checkbox" checked={useWinFrame} onChange={e => setUseWinFrame(e.target.checked)}
+                                            <input type="checkbox" checked={useWinFrame} onChange={e => {
+                                                const val = e.target.checked;
+                                                setUseWinFrame(val);
+                                                // 一鍵套用所有候選幀
+                                                candidates.forEach(kf => updateCandidate(kf.id, { useWinFrame: val }));
+                                            }}
                                                 className="accent-amber-500 w-4 h-4" />
                                             <span className={`text-xs ${useWinFrame ? 'text-amber-400' : 'text-slate-400'}`}>
-                                                使用 WIN 截圖辨識盤面（適合連線動畫晚於 WIN 出現的遊戲）
+                                                全部使用 WIN 截圖辨識（可在每張卡片獨立切換）
                                             </span>
                                         </label>
                                             <div className="space-y-1">
-                                                <button onClick={() => recognizeBatch(ocrDecimalPlaces, useWinFrame)}
+                                                <button onClick={() => recognizeBatch(ocrDecimalPlaces)}
                                                     className="w-full py-2 rounded-xl font-bold flex items-center justify-center gap-1.5 bg-violet-50/50 text-violet-600 hover:bg-violet-100 border border-violet-200 transition-all active:scale-95 text-xs">
                                                     <Sparkles size={14} /> Gemini 為輔：雲端補充辨識（未處理 {winPendingCount} 張）
                                                 </button>

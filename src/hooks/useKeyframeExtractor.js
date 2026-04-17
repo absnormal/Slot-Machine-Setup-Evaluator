@@ -219,7 +219,8 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                                 avgDiff: μ.toFixed(2),
                                 status: 'pending',
                                 recognitionResult: null,
-                                error: ''
+                                error: '',
+                                useWinFrame: true
                             };
 
                             setCandidates(prev => [...prev, candidate]);
@@ -517,7 +518,8 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
             avgDiff: '-',
             status: 'pending',
             recognitionResult: null,
-            error: ''
+            error: '',
+            useWinFrame: true
         };
 
         setCandidates(prev => {

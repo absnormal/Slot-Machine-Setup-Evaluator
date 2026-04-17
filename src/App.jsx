@@ -283,25 +283,23 @@ function App() {
     const phase4Stats = useMemo(() => reportGenerator.computeStats(keyframeExtractor.candidates), [keyframeExtractor.candidates, reportGenerator]);
 
     // 辨識觸發器（封裝 updateCandidate + rois）
-    const handleRecognizeBatch = useCallback((decimalPlaces, useWinFrame = true) => {
+    const handleRecognizeBatch = useCallback((decimalPlaces) => {
         const rois = { reelROI, winROI, balanceROI, betROI, orderIdROI };
         autoRecognition.recognizeBatch(
             keyframeExtractor.candidates,
             keyframeExtractor.updateCandidate,
             rois,
-            decimalPlaces ?? ocrDecimalPlaces,
-            useWinFrame
+            decimalPlaces ?? ocrDecimalPlaces
         );
     }, [autoRecognition, keyframeExtractor, reelROI, winROI, balanceROI, betROI, ocrDecimalPlaces]);
 
-    const handleRecognizeLocalBatch = useCallback((decimalPlaces, specificCandidates = null, useWinFrame = true) => {
+    const handleRecognizeLocalBatch = useCallback((decimalPlaces, specificCandidates = null) => {
         const rois = { reelROI, winROI, balanceROI, betROI, orderIdROI };
         autoRecognition.recognizeLocalBatch(
             specificCandidates || keyframeExtractor.candidates,
             keyframeExtractor.updateCandidate,
             rois,
-            decimalPlaces ?? ocrDecimalPlaces,
-            useWinFrame
+            decimalPlaces ?? ocrDecimalPlaces
         );
     }, [autoRecognition, keyframeExtractor, reelROI, winROI, balanceROI, betROI, ocrDecimalPlaces]);
 
@@ -593,6 +591,7 @@ function App() {
                     smartDedup={keyframeExtractor.smartDedup}
                     confirmDedup={keyframeExtractor.confirmDedup}
                     updateCandidateOcr={keyframeExtractor.updateCandidateOcr}
+                    updateCandidate={keyframeExtractor.updateCandidate}
                     setManualBestCandidate={keyframeExtractor.setManualBestCandidate}
                     // Auto Recognition
                     isRecognizing={autoRecognition.isRecognizing}
