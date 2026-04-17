@@ -479,59 +479,21 @@ export function recognizeBoard(boardCanvas, reelROI, gridRows, gridCols, referen
     const grid = [];
     const details = [];
 
-    // 輔助函式：計算包含全形字的顯示長度
-    const getDispLen = (str) => {
-        let len = 0;
-        for (let i = 0; i < str.length; i++) len += str.charCodeAt(i) > 255 ? 2 : 1;
-        return len;
-    };
-    const padCenter = (str, targetLen) => {
-        const cur = getDispLen(str);
-        const pads = Math.max(0, targetLen - cur);
-        const left = Math.floor(pads / 2);
-        return ' '.repeat(left) + str + ' '.repeat(pads - left);
-    };
-
-    const colWidths = Array(gridCols).fill(0);
-    const cellSyms = [];
-    const cellScores = [];
-
     for (let r = 0; r < gridRows; r++) {
         const gridRow = [];
         const detailRow = [];
-        cellSyms[r] = [];
-        cellScores[r] = [];
         for (let c = 0; c < gridCols; c++) {
             const cellData = extractCell(boardCanvas, reelROI, r, c, gridRows, gridCols);
             const match = matchCell(cellData, referenceIndex);
             gridRow.push(match.symbol);
             detailRow.push(match);
-
-            const sym = match.symbol;
-            const score = `(${match.rawScore.toFixed(2)})`;
-            cellSyms[r][c] = sym;
-            cellScores[r][c] = score;
-            colWidths[c] = Math.max(colWidths[c], getDispLen(sym), getDispLen(score));
         }
         grid.push(gridRow);
         details.push(detailRow);
     }
 
-    const logRows = [];
-    logRows.push('');
-    for (let r = 0; r < gridRows; r++) {
-        const symRow = [];
-        const scoreRow = [];
-        for (let c = 0; c < gridCols; c++) {
-            symRow.push(padCenter(cellSyms[r][c], colWidths[c]));
-            scoreRow.push(padCenter(cellScores[r][c], colWidths[c]));
-        }
-        logRows.push(symRow.join(' | '));
-        logRows.push(scoreRow.join(' | '));
-        if (r < gridRows - 1) logRows.push('');
-    }
-
-    console.log(`\n=== 盤面辨識結果 (HOG+Hue 融合) ===${logRows.join('\n')}\n==============================================\n`);
+    console.log(`=== 本地辨識結果 ===`);
+    console.table(grid);
 
     return { grid, details };
 }
