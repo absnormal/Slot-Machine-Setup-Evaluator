@@ -619,6 +619,7 @@ function App() {
                     onImportSession={handleImportSession}
                     setTemplateMessage={setTemplateMessage}
                     template={template}
+                    gameName={gameName}
                     gridRows={gridRows} gridCols={gridCols}
                     ocrDecimalPlaces={ocrDecimalPlaces} setOcrDecimalPlaces={setOcrDecimalPlaces}
                 />

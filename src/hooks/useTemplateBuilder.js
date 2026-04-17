@@ -151,6 +151,7 @@ export function useTemplateBuilder({
             const finalCols = (data.hasMultiplierReel || false) ? targetCols + 1 : targetCols;
 
             const tpl = {
+                name: data.gameName || data.name || '',
                 rows: targetRows,
                 cols: finalCols,
                 lineMode: loadedLineMode,
@@ -264,6 +265,7 @@ export function useTemplateBuilder({
             });
 
             const tpl = {
+                name: '',
                 rows: gridRows,
                 cols: hasMultiplierReel ? gridCols + 1 : gridCols,
                 lineMode,

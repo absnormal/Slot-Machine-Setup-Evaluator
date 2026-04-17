@@ -26,6 +26,7 @@ const Phase4Video = ({
     onImportSession,
     setTemplateMessage,
     template,
+    gameName,
     gridRows: propGridRows, gridCols: propGridCols,
     ocrDecimalPlaces, setOcrDecimalPlaces
 }) => {
@@ -617,7 +618,7 @@ const Phase4Video = ({
             try {
                 const now = new Date();
                 const ts = `${now.getFullYear()}${(now.getMonth()+1).toString().padStart(2,'0')}${now.getDate().toString().padStart(2,'0')}_${now.getHours().toString().padStart(2,'0')}${now.getMinutes().toString().padStart(2,'0')}${now.getSeconds().toString().padStart(2,'0')}`;
-                const gameSuffix = template?.name ? `_${template.name}` : '';
+                const gameSuffix = (gameName || template?.name) ? `_${gameName || template.name}` : '';
                 const folderName = `Session_${ts}${gameSuffix}`;
                 const newSaveHandle = await rootSaveDirHandle.getDirectoryHandle(folderName, { create: true });
                 setSaveDirHandle(newSaveHandle);
