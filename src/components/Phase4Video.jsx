@@ -542,50 +542,58 @@ const Phase4Video = ({
         }).map(g => g.gid);
     }, [groupsWithMath]);
 
-    const [currentBreakIndex, setCurrentBreakIndex] = useState(0);
-    useEffect(() => {
-        setCurrentBreakIndex(0);
-    }, [brokenGroupIds]);
+    const [lastBreakId, setLastBreakId] = useState(null);
+    const currentBreakIndex = useMemo(() => {
+        if (!lastBreakId || brokenGroupIds.length === 0) return 0;
+        const idx = brokenGroupIds.indexOf(lastBreakId);
+        return idx >= 0 ? idx : 0;
+    }, [lastBreakId, brokenGroupIds]);
 
     const scrollToNextBreak = useCallback(() => {
         if (brokenGroupIds.length === 0) return;
-        const gid = brokenGroupIds[currentBreakIndex];
+        const nextIdx = lastBreakId ? ((brokenGroupIds.indexOf(lastBreakId) + 1) % brokenGroupIds.length || 0) : 0;
+        const gid = brokenGroupIds[nextIdx];
         const el = document.getElementById(`spin-group-${gid}`);
         if (el) {
             el.scrollIntoView({ behavior: 'smooth', block: 'center' });
             el.classList.add('ring-4', 'ring-rose-400', 'ring-offset-2', 'transition-all', 'duration-500');
             setTimeout(() => el.classList.remove('ring-4', 'ring-rose-400', 'ring-offset-2'), 1500);
         }
-        setCurrentBreakIndex(prev => (prev + 1) % brokenGroupIds.length);
-    }, [brokenGroupIds, currentBreakIndex]);
+        setLastBreakId(gid);
+    }, [brokenGroupIds, lastBreakId]);
 
-    const [currentWrongWinIndex, setCurrentWrongWinIndex] = useState(0);
-    useEffect(() => {
-        setCurrentWrongWinIndex(0);
-    }, [wrongWinGroupIds]);
+    const [lastWrongWinId, setLastWrongWinId] = useState(null);
+    const currentWrongWinIndex = useMemo(() => {
+        if (!lastWrongWinId || wrongWinGroupIds.length === 0) return 0;
+        const idx = wrongWinGroupIds.indexOf(lastWrongWinId);
+        return idx >= 0 ? idx : 0;
+    }, [lastWrongWinId, wrongWinGroupIds]);
 
     const scrollToNextWrongWin = useCallback(() => {
         if (wrongWinGroupIds.length === 0) return;
-        const gid = wrongWinGroupIds[currentWrongWinIndex];
+        const nextIdx = lastWrongWinId ? ((wrongWinGroupIds.indexOf(lastWrongWinId) + 1) % wrongWinGroupIds.length || 0) : 0;
+        const gid = wrongWinGroupIds[nextIdx];
         const el = document.getElementById(`spin-group-${gid}`);
-        // If grouped, scroll to the group block. If ungrouped, scroll to the card.
         const targetEl = el || document.getElementById(`kf-card-${gid.replace('ungrouped_', '')}`);
         if (targetEl) {
             targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
             targetEl.classList.add('ring-4', 'ring-amber-400', 'ring-offset-2', 'transition-all', 'duration-500');
             setTimeout(() => targetEl.classList.remove('ring-4', 'ring-amber-400', 'ring-offset-2'), 1500);
         }
-        setCurrentWrongWinIndex(prev => (prev + 1) % wrongWinGroupIds.length);
-    }, [wrongWinGroupIds, currentWrongWinIndex]);
+        setLastWrongWinId(gid);
+    }, [wrongWinGroupIds, lastWrongWinId]);
 
-    const [currentNonZeroWinIndex, setCurrentNonZeroWinIndex] = useState(0);
-    useEffect(() => {
-        setCurrentNonZeroWinIndex(0);
-    }, [nonZeroWinGroupIds]);
+    const [lastNonZeroWinId, setLastNonZeroWinId] = useState(null);
+    const currentNonZeroWinIndex = useMemo(() => {
+        if (!lastNonZeroWinId || nonZeroWinGroupIds.length === 0) return 0;
+        const idx = nonZeroWinGroupIds.indexOf(lastNonZeroWinId);
+        return idx >= 0 ? idx : 0;
+    }, [lastNonZeroWinId, nonZeroWinGroupIds]);
 
     const scrollToNextNonZeroWin = useCallback(() => {
         if (nonZeroWinGroupIds.length === 0) return;
-        const gid = nonZeroWinGroupIds[currentNonZeroWinIndex];
+        const nextIdx = lastNonZeroWinId ? ((nonZeroWinGroupIds.indexOf(lastNonZeroWinId) + 1) % nonZeroWinGroupIds.length || 0) : 0;
+        const gid = nonZeroWinGroupIds[nextIdx];
         const el = document.getElementById(`spin-group-${gid}`);
         const targetEl = el || document.getElementById(`kf-card-${gid.replace('ungrouped_', '')}`);
         if (targetEl) {
@@ -593,8 +601,8 @@ const Phase4Video = ({
             targetEl.classList.add('ring-4', 'ring-emerald-400', 'ring-offset-2', 'transition-all', 'duration-500');
             setTimeout(() => targetEl.classList.remove('ring-4', 'ring-emerald-400', 'ring-offset-2'), 1500);
         }
-        setCurrentNonZeroWinIndex(prev => (prev + 1) % nonZeroWinGroupIds.length);
-    }, [nonZeroWinGroupIds, currentNonZeroWinIndex]);
+        setLastNonZeroWinId(gid);
+    }, [nonZeroWinGroupIds, lastNonZeroWinId]);
 
     // ── 操作處理 ──
     const scanOpts = { winROI, balanceROI, betROI, orderIdROI: enableOrderId ? orderIdROI : null, ocrDecimalPlaces, requireStableWin: false, sliceCols: template?.cols || propGridCols || 5 };
