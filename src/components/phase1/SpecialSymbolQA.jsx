@@ -184,7 +184,7 @@ export default function SpecialSymbolQA({
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                             <div>
                                 <p className="text-sm font-bold text-slate-800">6. 此遊戲是否支援調整押注線數？</p>
-                                <p className="text-xs text-slate-500 mt-1">部分遊戲可只押注前 N 條連線（如 40 線只押 10 線），啟用後可在 P2 手動調整</p>
+                                <p className="text-xs text-slate-500 mt-1">部分遊戲可只押注前 N 條連線（如 40 線只押 10 線），啟用後可在 P2 手動調整。(開啟此設定後，所有常規贏分都會自動除以啟用的線數，轉換為單線押注來計算)</p>
                             </div>
                             <div className="flex bg-slate-100 p-1 rounded-lg shrink-0">
                                 <button onClick={() => setHasAdjustableLines(true)} className={`px-4 py-1.5 text-sm font-bold rounded-md transition-all ${hasAdjustableLines ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>有</button>

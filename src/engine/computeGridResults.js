@@ -47,6 +47,9 @@ export function computeGridResults(template, targetGrid, betAmount, options = {}
         const parsedBet = parseFloat(betAmount);
         if (isNaN(parsedBet) || parsedBet <= 0) throw new Error('押注金額必須為大於 0 的有效數字。');
 
+        const activeLineCount = options.activeLineCount || evalTemplate.linesCount || 1;
+        const lineBet = (evalTemplate.hasAdjustableLines && activeLineCount > 0) ? (parsedBet / activeLineCount) : parsedBet;
+
         const calculatedResults = [];
         let totalWin = 0;
         const allPaySymbols = Object.keys(evalTemplate.paytable);
@@ -187,7 +190,7 @@ export function computeGridResults(template, targetGrid, betAmount, options = {}
 
                     if (payoutMult > 0) {
                         const finalLineMult = (template.multiplierCalcType === 'sum' ? Math.max(1, lineMultiplierMultiplier) : lineMultiplierMultiplier);
-                        const payout = safeMul(payoutMult, parsedBet, ways, finalLineMult);
+                        const payout = safeMul(payoutMult, lineBet, ways, finalLineMult);
                         calculatedResults.push({
                             lineId: `WAYS_${targetSymbol}`,
                             symbol: targetSymbol,
@@ -240,7 +243,7 @@ export function computeGridResults(template, targetGrid, betAmount, options = {}
 
                     if (payoutMult > 0) {
                         const finalLineMult = hasLineMultiplier ? (template.multiplierCalcType === 'sum' ? Math.max(1, lineMultiplierMultiplier) : lineMultiplierMultiplier) : 1;
-                        const payout = safeMul(payoutMult, parsedBet, finalLineMult);
+                        const payout = safeMul(payoutMult, lineBet, finalLineMult);
                         calculatedResults.push({
                             lineId: `COUNT_${targetSymbol}`,
                             symbol: targetSymbol,
@@ -311,7 +314,7 @@ export function computeGridResults(template, targetGrid, betAmount, options = {}
                             const payIndex = Math.min(currentCount - 1, payArray.length - 1);
                             const payoutMult = payIndex >= 0 ? payArray[payIndex] : 0;
                             const finalLineMult = (template.multiplierCalcType === 'sum' ? Math.max(1, lineMultiplierMultiplier) : lineMultiplierMultiplier);
-                            const payout = safeMul(payoutMult, parsedBet, finalLineMult);
+                            const payout = safeMul(payoutMult, lineBet, finalLineMult);
 
                             if (payout > dirBestPayout) {
                                 dirBestPayout = payout;
