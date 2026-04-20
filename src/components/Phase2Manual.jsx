@@ -23,7 +23,9 @@ const Phase2Manual = ({
     onReturn,
     totalBalance, setTotalBalance,
     setTemplateMessage,
-    isBalanceExpanded, setIsBalanceExpanded
+    isBalanceExpanded, setIsBalanceExpanded,
+    enableBidirectional, setEnableBidirectional,
+    activeLineCount, setActiveLineCount
 }) => {
     const [showCashModal, setShowCashModal] = React.useState(false);
     const [modalCell, setModalCell] = React.useState({ row: 0, col: 0 });
@@ -35,7 +37,11 @@ const Phase2Manual = ({
             let baseBrush = getBaseSymbol(activeBrush, template?.jpConfig);
             let newSymbol = `${baseBrush}_${cashValueInput}${isDouble ? '_double' : ''}`;
             if (template?.hasDynamicMultiplier && isDynamicMultiplierSymbol(activeBrush)) {
-                newSymbol = `x${cashValueInput}`;
+                if (activeBrush.startsWith('x')) {
+                    newSymbol = cashValueInput ? `x${cashValueInput}` : 'x';
+                } else {
+                    newSymbol = cashValueInput ? `${baseBrush}_x${cashValueInput}` : `${baseBrush}_xN`;
+                }
             }
             handleCellChange(modalCell.row, modalCell.col, newSymbol);
         }
@@ -120,6 +126,15 @@ const Phase2Manual = ({
                                     availableSymbols={availableSymbols}
                                     handleRandomizePanel={handleRandomizePanel} handleClearPanel={handleClearPanel}
                                 />
+
+                                {/* Bi-directional Paylines Runtime Toggle */}
+                                {template?.hasBidirectionalPaylines && (
+                                    <label className="flex items-center gap-2 mt-2 mb-1 cursor-pointer bg-amber-500/10 border border-amber-500/30 px-3 py-2 rounded-lg">
+                                        <input type="checkbox" checked={enableBidirectional} onChange={e => setEnableBidirectional(e.target.checked)} className="w-4 h-4 text-amber-500 border-amber-400 rounded focus:ring-amber-400" />
+                                        <span className="text-xs font-bold text-amber-300">啟用雙向連線算分</span>
+                                        <span className="text-[10px] text-amber-400/70 ml-1">(左至右 + 右至左取最高)</span>
+                                    </label>
+                                )}
 
                                 <div className="space-y-5">
                                     <div>
@@ -223,11 +238,11 @@ const Phase2Manual = ({
                                                                                     <React.Fragment>
                                                                                         <img src={displayImg} className={`max-w-full max-h-full object-contain p-1.5 drop-shadow-md pointer-events-none select-none ${(isGridSymCash || isGridSymCollect || isCellDynamic) ? 'opacity-80' : ''}`} draggable={false} alt={symbol} />
                                                                                         {cashVal > 0 && <div className="absolute inset-0 flex items-center justify-center font-black text-white drop-shadow-[0_2px_3px_rgba(0,0,0,1)] text-sm sm:text-base z-20 pointer-events-none">{isJpSymbol(symbol, template?.jpConfig) ? cashVal + 'x' : formatShorthandValue(cashVal)}</div>}
-                                                                                        {isCellDynamic && <div className="absolute inset-0 flex items-center justify-center font-black text-white drop-shadow-[0_2px_3px_rgba(0,0,0,1)] text-sm sm:text-base z-20 pointer-events-none">{multVal > 1 ? `x${multVal}` : 'xN'}</div>}
+                                                                                        {isCellDynamic && <div className="absolute bottom-0.5 left-1 font-black text-emerald-400 drop-shadow-[0_2px_3px_rgba(0,0,0,1)] text-xs sm:text-sm z-20 pointer-events-none">{multVal > 1 ? `x${multVal}` : 'xN'}</div>}
                                                                                     </React.Fragment>
                                                                                 ) : (
                                                                                     <span className="z-10 pointer-events-none select-none drop-shadow-md text-sm sm:text-xl flex flex-col items-center">
-                                                                                        {(isGridSymCash || isGridSymCollect) && cashVal > 0 ? `💰${isJpSymbol(symbol, template?.jpConfig) ? cashVal + 'x' : formatShorthandValue(cashVal)}` : (isCellDynamic ? (multVal > 1 ? `x${multVal}` : 'xN') : baseSym)}
+                                                                                        {(isGridSymCash || isGridSymCollect) && cashVal > 0 ? `💰${isJpSymbol(symbol, template?.jpConfig) ? cashVal + 'x' : formatShorthandValue(cashVal)}` : (isCellDynamic ? (multVal > 1 ? (baseSym === 'xN' ? <span className="text-emerald-400">x{multVal}</span> : <>{baseSym} <span className="text-emerald-400">x{multVal}</span></>) : (baseSym === 'xN' ? <span className="text-emerald-400">xN</span> : <>{baseSym} <span className="text-emerald-400">xN</span></>)) : baseSym)}
                                                                                         {symbol.toLowerCase().endsWith('_double') && <span className="text-[8px] sm:text-[10px] text-indigo-300 font-black mt-1">DOUBLE</span>}
                                                                                     </span>
                                                                                 );
@@ -249,7 +264,7 @@ const Phase2Manual = ({
                         </div>
 
                         {/* ResultView */}
-                        <ResultView template={template} calcData={calcResults} calcErr={calculateError} hoveredId={hoveredLineId} setHoveredId={setHoveredLineId} showAll={showAllLines} setShowAll={setShowAllLines} betInput={betInput} setBetInput={setBetInput} totalBalance={totalBalance} setTotalBalance={setTotalBalance} setTemplateMessage={setTemplateMessage} isBalanceExpanded={isBalanceExpanded} setIsBalanceExpanded={setIsBalanceExpanded} />
+                        <ResultView template={template} calcData={calcResults} calcErr={calculateError} hoveredId={hoveredLineId} setHoveredId={setHoveredLineId} showAll={showAllLines} setShowAll={setShowAllLines} betInput={betInput} setBetInput={setBetInput} totalBalance={totalBalance} setTotalBalance={setTotalBalance} setTemplateMessage={setTemplateMessage} isBalanceExpanded={isBalanceExpanded} setIsBalanceExpanded={setIsBalanceExpanded} activeLineCount={activeLineCount} setActiveLineCount={setActiveLineCount} />
                     </div>
                 </div>
             )}

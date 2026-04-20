@@ -99,6 +99,7 @@ export function useCloud() {
         platformName, gameName, gridRows, gridCols, lineMode, extractResults,
         paytableInput, ptResultItems, jpConfig, hasJackpot, hasMultiplierReel,
         requiresCollectToWin, hasDoubleSymbol, hasDynamicMultiplier, multiplierCalcType,
+        hasBidirectionalPaylines, hasAdjustableLines,
         localUserId, actualForceId
     }) => {
         setCloudMessage('');
@@ -179,6 +180,8 @@ export function useCloud() {
                 hasDoubleSymbol,
                 hasDynamicMultiplier,
                 multiplierCalcType,
+                hasBidirectionalPaylines,
+                hasAdjustableLines,
                 creatorId: localUserId,
                 createdAt: new Date().toISOString()
             };

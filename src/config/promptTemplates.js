@@ -95,7 +95,7 @@ export function buildCashRule(hasCashOrCollect, collectShowsTotalWin) {
  */
 export function buildDynamicMultiplierRule(hasDynamicMultiplier) {
     if (!hasDynamicMultiplier) return "";
-    return "xN RULE: There is a generic multiplier wild symbol in this game. If you see a symbol containing a multiplier value (e.g., '5x', '10X'), extract it and output exactly in the format 'x{value}' (e.g., 'x5', 'x10'). Do NOT ignore the number. ";
+    return "SYMBOL MULTIPLIER RULE: In this game, symbols may have a multiplier value attached to them (e.g. x2, 5x, x10). If you see a multiplier on top of a normal symbol, you MUST output the base symbol name followed by '_x{value}' (e.g., if you see an orange with '5x', output '橘子_x5'; if you see WILD with '2x', output 'WILD_x2'). Do NOT separate the symbol and the multiplier. If you see a stand-alone generic multiplier, output exactly 'x{value}'. ";
 }
 
 /**

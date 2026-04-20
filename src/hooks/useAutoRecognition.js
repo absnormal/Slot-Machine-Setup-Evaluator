@@ -37,7 +37,8 @@ export function useAutoRecognition({
     availableSymbols,
     customApiKey,
     setTemplateMessage,
-    setTemplateError
+    setTemplateError,
+    enableBidirectional = false
 }) {
     const [isRecognizing, setIsRecognizing] = useState(false);
     const [recognitionProgress, setRecognitionProgress] = useState({ current: 0, total: 0 });
@@ -163,7 +164,7 @@ export function useAutoRecognition({
 
                 // ── C. 結算 ──
                 const betValue = gridResult.bet || parseFloat(betText) || 100;
-                const { results: settlement } = computeGridResults(template, gridResult.grid, betValue);
+                const { results: settlement } = computeGridResults(template, gridResult.grid, betValue, { enableBidirectional });
 
                 updateCandidate(kf.id, {
                     status: 'recognized',
@@ -285,7 +286,7 @@ export function useAutoRecognition({
                 ]);
 
                 const betValue = parseFloat(betText) || 100;
-                const { results: settlement } = computeGridResults(template, grid, betValue);
+                const { results: settlement } = computeGridResults(template, grid, betValue, { enableBidirectional });
 
                 // 計算平均 confidence
                 const allConf = details.flat().map(d => d.confidence);

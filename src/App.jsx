@@ -98,6 +98,8 @@ function App() {
         hasDoubleSymbol, setHasDoubleSymbol,
         hasDynamicMultiplier, setHasDynamicMultiplier,
         multiplierCalcType, setMultiplierCalcType,
+        hasBidirectionalPaylines, setHasBidirectionalPaylines,
+        hasAdjustableLines, setHasAdjustableLines,
         lineImages, setLineImages, activeLineImageId, setActiveLineImageId,
         activeLineImage, imageSrc, imageObj,
         patternRows, setPatternRows, patternCols, setPatternCols,
@@ -122,6 +124,9 @@ function App() {
     const [vLineThreshold, setVLineThreshold] = useState(0.25);
     const [ocrDecimalPlaces, setOcrDecimalPlaces] = useState(2);
 
+    // --- Bi-directional Paylines Runtime Toggle ---
+    const [enableBidirectional, setEnableBidirectional] = useState(false);
+
     // --- Template IO (匯入/匯出/雲端存取) ---
     const templateIO = useTemplateIO({
         setGridRows, setGridCols, setLineMode, setExtractResults,
@@ -129,6 +134,8 @@ function App() {
         setJpConfig, setHasJackpot, setHasMultiplierReel,
         setRequiresCollectToWin, setHasCashCollectFeature, setHasDoubleSymbol,
         setHasDynamicMultiplier, setMultiplierCalcType,
+        setHasBidirectionalPaylines,
+        setHasAdjustableLines,
         setLineImages, setActiveLineImageId, setLinesTextInput,
         setTemplateError,
         performAutoBuild, resetTemplateBuilder,
@@ -138,6 +145,7 @@ function App() {
         paytableInput, ptResultItems, jpConfig,
         hasJackpot, hasMultiplierReel, requiresCollectToWin, hasCashCollectFeature,
         hasDoubleSymbol, hasDynamicMultiplier, multiplierCalcType,
+        hasBidirectionalPaylines, hasAdjustableLines,
         motionCoverageMin, vLineThreshold, ocrDecimalPlaces,
         setMotionCoverageMin, setVLineThreshold, setOcrDecimalPlaces,
     });
@@ -159,8 +167,9 @@ function App() {
         panelInputMode, setPanelInputMode, activeBrush, setActiveBrush,
         showPtModal, setShowPtModal, availableSymbols,
         generateRandomPanelGrid, handleRandomizePanel, handleClearPanel,
-        getSafeGrid, handleGridPaste, handleCellChange, computeGridResultsCb
-    } = useSlotEngine({ template });
+        getSafeGrid, handleGridPaste, handleCellChange, computeGridResultsCb,
+        activeLineCount, setActiveLineCount
+    } = useSlotEngine({ template, enableBidirectional });
 
     // --- Phase 3 (AI 視覺批次辨識) ---
     const visionCanvasRef = useRef(null);
@@ -275,7 +284,8 @@ function App() {
     const keyframeExtractor = useKeyframeExtractor({ setTemplateMessage });
     const autoRecognition = useAutoRecognition({
         template, availableSymbols, customApiKey,
-        setTemplateMessage, setTemplateError
+        setTemplateMessage, setTemplateError,
+        enableBidirectional
     });
     const reportGenerator = useReportGenerator();
 
@@ -515,6 +525,8 @@ function App() {
                     hasDoubleSymbol={hasDoubleSymbol} setHasDoubleSymbol={setHasDoubleSymbol}
                     hasDynamicMultiplier={hasDynamicMultiplier} setHasDynamicMultiplier={setHasDynamicMultiplier}
                     multiplierCalcType={multiplierCalcType} setMultiplierCalcType={setMultiplierCalcType}
+                    hasBidirectionalPaylines={hasBidirectionalPaylines} setHasBidirectionalPaylines={setHasBidirectionalPaylines}
+                    hasAdjustableLines={hasAdjustableLines} setHasAdjustableLines={setHasAdjustableLines}
                     lineImages={lineImages} removeLineImage={removeLineImage} activeLineImageId={activeLineImageId} setActiveLineImageId={setActiveLineImageId} handleLineImageUpload={handleLineImageUpload}
                     isPtProcessing={isPtProcessing} handlePtExtract={handlePtExtract} ptImages={ptImages} removePtImage={removePtImage} clearPtAll={clearPtAll} handlePtFileChange={handlePtFileChange} handlePtDrop={handlePtDrop}
                     dragState={dragState} setDragState={setDragState} containerRef={containerRef} layoutStyle={layoutStyle} handleMouseDown={handleMouseDown} handleMouseMove={handleMouseMove} handleMouseUp={handleMouseUp}
@@ -550,6 +562,8 @@ function App() {
                     totalBalance={totalBalance} setTotalBalance={setTotalBalance}
                     setTemplateMessage={setTemplateMessage}
                     isBalanceExpanded={isBalanceExpanded} setIsBalanceExpanded={setIsBalanceExpanded}
+                    enableBidirectional={enableBidirectional} setEnableBidirectional={setEnableBidirectional}
+                    activeLineCount={activeLineCount} setActiveLineCount={setActiveLineCount}
                 />
                 </ErrorBoundary>
 
@@ -622,6 +636,7 @@ function App() {
                     gameName={gameName}
                     gridRows={gridRows} gridCols={gridCols}
                     ocrDecimalPlaces={ocrDecimalPlaces} setOcrDecimalPlaces={setOcrDecimalPlaces}
+                    enableBidirectional={enableBidirectional} setEnableBidirectional={setEnableBidirectional}
                 />
                 </ErrorBoundary>
 

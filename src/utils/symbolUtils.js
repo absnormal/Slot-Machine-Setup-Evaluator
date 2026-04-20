@@ -3,12 +3,14 @@ export const isScatterSymbol = (sym) => sym && sym.toUpperCase().includes('SCATT
 export const isCollectSymbol = (sym) => sym && sym.toUpperCase().includes('COLLECT');
 export const isDynamicMultiplierSymbol = (sym) => {
     if (!sym || typeof sym !== 'string') return false;
-    return /^x\d+(?:\.\d+)?$/i.test(sym) || /^WILD_x\d+(?:\.\d+)?$/i.test(sym) || /^xN$/i.test(sym);
+    return /(?:^|_)x(\d+(?:\.\d+)?|N)$/i.test(sym);
 };
 
 export const isWildSymbol = (sym) => {
     if (!sym || typeof sym !== 'string') return false;
-    return sym.toUpperCase().includes('WILD') || isDynamicMultiplierSymbol(sym);
+    // Standalone multiplier (x5, xN) is intrinsically Wild unless overridden.
+    const isStandaloneMultiplier = /^x(\d+(?:\.\d+)?|N)$/i.test(sym);
+    return sym.toUpperCase().includes('WILD') || isStandaloneMultiplier;
 };
 
 // JP 符號需透過 template.jpConfig 來判定
@@ -79,15 +81,17 @@ export const getCollectValue = (sym) => {
 
 export const getBaseSymbol = (sym, jpConfig = {}) => {
     if (!sym || typeof sym !== 'string') return sym;
-    if (isDynamicMultiplierSymbol(sym) && sym.toUpperCase() !== 'XN') return 'xN';
+    // Only standalone abstract multipliers (e.g. x5, x2) coalesce to 'xN' base
+    if (/^x\d+(?:\.\d+)?$/i.test(sym)) return 'xN';
+    
     let base = sym;
     if (isDoubleSymbol(base)) {
         base = base.slice(0, -7); // strip '_double'
     }
-    // Handle xN multiplier: e.g. "Grape_x5" -> "Grape"
-    const multMatch = base.match(/_x(\d+(?:\.\d+)?)$/i);
+    // Handle xN multiplier: e.g. "Grape_x5" -> "Grape", "H1_xN" -> "H1"
+    const multMatch = base.match(/_x(\d+(?:\.\d+)?|N)$/i);
     if (multMatch) {
-        base = base.replace(/_x(\d+(?:\.\d+)?)$/i, '');
+        base = base.replace(/_x(\d+(?:\.\d+)?|N)$/i, '');
     }
     if (isJpSymbol(base, jpConfig)) return base.toUpperCase();
     if (isCashSymbol(base, jpConfig) || isCollectSymbol(base)) {

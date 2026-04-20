@@ -2,7 +2,7 @@ import React from 'react';
 import { Trophy, AlertCircle, Zap, Coins, ArrowLeft, ChevronDown, ChevronUp } from 'lucide-react';
 import { getBaseSymbol, isJpSymbol } from '../utils/symbolUtils';
 
-export default function ResultView({ template, calcData, calcErr, hoveredId, setHoveredId, showAll, setShowAll, betInput, setBetInput, totalBalance, setTotalBalance, setTemplateMessage, isBalanceExpanded, setIsBalanceExpanded }) {
+export default function ResultView({ template, calcData, calcErr, hoveredId, setHoveredId, showAll, setShowAll, betInput, setBetInput, totalBalance, setTotalBalance, setTemplateMessage, isBalanceExpanded, setIsBalanceExpanded, activeLineCount, setActiveLineCount }) {
     const handleUpdateBalance = (e) => {
         if (e) {
             if (e.preventDefault) e.preventDefault();
@@ -46,20 +46,53 @@ export default function ResultView({ template, calcData, calcErr, hoveredId, set
 
                         {/* 第一排：[押注] [自動即時結算] */}
                         <div className="flex flex-col sm:flex-row justify-between items-end gap-4">
-                            <div className="flex-1 w-full">
-                                <div className="mb-1.5">
-                                    <label className="block text-sm font-bold text-slate-700">押注 (Total Bet)</label>
+                            <div className="flex flex-col sm:flex-row w-full flex-1 gap-4">
+                                <div className="flex-1 w-full">
+                                    <div className="mb-1.5">
+                                        <label className="block text-sm font-bold text-slate-700">押注 (Total Bet)</label>
+                                    </div>
+                                    <div className="relative">
+                                        <Coins className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                                        <input 
+                                            type="number" 
+                                            value={betInput} 
+                                            onChange={(e) => setBetInput(e.target.value)} 
+                                            onKeyDown={(e) => e.key === 'Enter' && handleUpdateBalance(e)}
+                                            className="w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none font-black text-lg text-indigo-700 shadow-sm transition-shadow" 
+                                        />
+                                    </div>
                                 </div>
-                                <div className="relative">
-                                    <Coins className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                                    <input 
-                                        type="number" 
-                                        value={betInput} 
-                                        onChange={(e) => setBetInput(e.target.value)} 
-                                        onKeyDown={(e) => e.key === 'Enter' && handleUpdateBalance(e)}
-                                        className="w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none font-black text-lg text-indigo-700 shadow-sm transition-shadow" 
-                                    />
-                                </div>
+
+                                {/* 可調押注線數 (Adjustable Active Lines) */}
+                                {template?.hasAdjustableLines && template?.lineMode === 'paylines' && (
+                                    <div className="flex-1 w-full">
+                                        <div className="mb-1.5 flex items-center justify-between">
+                                            <label className="block text-sm font-bold text-slate-700">押注線數 (Active Lines)</label>
+                                            <span className="text-[10px] bg-indigo-100 text-indigo-700 font-bold px-2 py-0.5 rounded-full shadow-sm">Max {template.linesCount || 0}</span>
+                                        </div>
+                                        <div className="relative">
+                                            <input 
+                                                type="number"
+                                                min={1}
+                                                max={template.linesCount || 999}
+                                                placeholder={`預設: ${template.linesCount || ''}`}
+                                                value={activeLineCount === null ? '' : activeLineCount}
+                                                onChange={(e) => {
+                                                    let val = parseInt(e.target.value);
+                                                    if (isNaN(val)) return setActiveLineCount(null);
+                                                    val = Math.max(1, Math.min(val, template.linesCount || val));
+                                                    setActiveLineCount(val);
+                                                }}
+                                                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none font-black text-lg text-indigo-700 shadow-sm transition-shadow text-center"
+                                            />
+                                            {activeLineCount !== null && (
+                                                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-bold pointer-events-none">
+                                                    / {template.linesCount} 條
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                             {isBalanceExpanded ? (
                                 <button 

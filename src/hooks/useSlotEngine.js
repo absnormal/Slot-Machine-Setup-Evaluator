@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useMemo } from 'react';
 import { isCashSymbol, isWildSymbol } from '../utils/symbolUtils';
 import { computeGridResults } from '../engine/computeGridResults';
 
-export function useSlotEngine({ template }) {
+export function useSlotEngine({ template, enableBidirectional = false }) {
     const defaultPanelGrid = Array.from({ length: 3 }, () => Array(5).fill(''));
 
     const [panelGrid, setPanelGrid] = useState(defaultPanelGrid);
@@ -11,6 +11,9 @@ export function useSlotEngine({ template }) {
     const [calculateError, setCalculateError] = useState('');
     const [hoveredLineId, setHoveredLineId] = useState(null);
     const [showAllLines, setShowAllLines] = useState(false);
+
+    // Adjustable line count (null = all lines)
+    const [activeLineCount, setActiveLineCount] = useState(null);
 
     const [panelInputMode, setPanelInputMode] = useState('paint');
     const [activeBrush, setActiveBrush] = useState('');
@@ -188,8 +191,8 @@ export function useSlotEngine({ template }) {
     }, [template]);
 
     const computeGridResultsCb = useCallback((targetGrid, betAmount) => {
-        return computeGridResults(template, targetGrid, betAmount);
-    }, [template]);
+        return computeGridResults(template, targetGrid, betAmount, { enableBidirectional, activeLineCount });
+    }, [template, enableBidirectional, activeLineCount]);
 
     useEffect(() => {
         const { results, error } = computeGridResultsCb(panelGrid, betInput);
@@ -214,6 +217,7 @@ export function useSlotEngine({ template }) {
         getSafeGrid,
         handleGridPaste,
         handleCellChange,
-        computeGridResultsCb
+        computeGridResultsCb,
+        activeLineCount, setActiveLineCount
     };
 }

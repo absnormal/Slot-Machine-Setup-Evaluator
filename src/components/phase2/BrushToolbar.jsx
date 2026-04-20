@@ -49,16 +49,25 @@ const BrushPalette = ({ template, panelInputMode, activeBrush, setActiveBrush, a
             <span className="block text-[10px] font-bold text-slate-400 mb-2 uppercase tracking-wider">選擇畫筆 (點擊或拖曳下方網格填色)</span>
             <div className="flex flex-wrap gap-2">
                 {availableSymbols.filter(sym => {
-                    const hasImage = template?.symbolImages?.[sym];
+                    const baseMatch = getBaseSymbol(sym, template?.jpConfig);
+                    const hasImage = template?.symbolImages?.[baseMatch];
                     const isBase = !sym.includes('_x') && !sym.includes('_double');
-                    return hasImage || isBase;
+                    const isDynamicVariant = sym.endsWith('_xN');
+                    return hasImage || isBase || isDynamicVariant;
                 }).map(sym => {
                     const isCash = isCashSymbol(sym, template?.jpConfig);
                     const isDynamic = template?.hasDynamicMultiplier && isDynamicMultiplierSymbol(sym);
                     const baseSym = getBaseSymbol(sym, template?.jpConfig);
-                    const isActive = getBaseSymbol(activeBrush, template?.jpConfig) === baseSym &&
-                        isDoubleSymbol(activeBrush) === isDoubleSymbol(sym) &&
-                        getSymbolMultiplier(activeBrush) === getSymbolMultiplier(sym);
+                    let isActive = false;
+                    if (isDynamic) {
+                        isActive = isDynamicMultiplierSymbol(activeBrush) && getBaseSymbol(activeBrush, template?.jpConfig) === baseSym;
+                    } else if (isCash) {
+                        isActive = isCashSymbol(activeBrush, template?.jpConfig) && getBaseSymbol(activeBrush, template?.jpConfig) === baseSym;
+                    } else {
+                        isActive = activeBrush === sym || (getBaseSymbol(activeBrush, template?.jpConfig) === baseSym &&
+                            isDoubleSymbol(activeBrush) === isDoubleSymbol(sym) &&
+                            !isDynamicMultiplierSymbol(activeBrush) && !isCashSymbol(activeBrush, template?.jpConfig));
+                    }
                     const brushDisplayImg = getSymbolDisplayImage(sym, template?.symbolImages, template?.jpConfig);
 
                     return (
@@ -83,7 +92,7 @@ const BrushPalette = ({ template, panelInputMode, activeBrush, setActiveBrush, a
                                         </div>
                                     )}
                                     {isDynamic && (
-                                        <div className="absolute inset-0 flex items-center justify-center font-black text-white drop-shadow-[0_2px_3px_rgba(0,0,0,1)] text-[10px] z-20 pointer-events-none">
+                                        <div className="absolute bottom-0.5 left-1 flex items-center justify-center font-black text-white drop-shadow-[0_2px_3px_rgba(0,0,0,1)] text-[10px] z-20 pointer-events-none">
                                             {(isActive && getSymbolMultiplier(activeBrush) > 1) ? `x${getSymbolMultiplier(activeBrush)}` : 'xN'}
                                         </div>
                                     )}
@@ -95,7 +104,7 @@ const BrushPalette = ({ template, panelInputMode, activeBrush, setActiveBrush, a
                                 </React.Fragment>
                             ) : (
                                 <span className="text-[10px] sm:text-xs font-black leading-tight text-center px-1 text-slate-200">
-                                    {isCash ? (isActive && getCashValue(activeBrush, template?.jpConfig) > 0 ? `💰${isJpSymbol(activeBrush, template?.jpConfig) ? getCashValue(activeBrush, template?.jpConfig) + 'x' : formatShorthandValue(getCashValue(activeBrush, template?.jpConfig))}` : '💰設定') : (isDynamic ? (isActive && getSymbolMultiplier(activeBrush) > 1 ? `x${getSymbolMultiplier(activeBrush)}` : 'xN') : sym)}
+                                    {isCash ? (isActive && getCashValue(activeBrush, template?.jpConfig) > 0 ? `💰${isJpSymbol(activeBrush, template?.jpConfig) ? getCashValue(activeBrush, template?.jpConfig) + 'x' : formatShorthandValue(getCashValue(activeBrush, template?.jpConfig))}` : '💰設定') : (isDynamic ? (isActive && getSymbolMultiplier(activeBrush) > 1 ? (baseSym === 'xN' ? <span className="text-[14px] text-emerald-400">x{getSymbolMultiplier(activeBrush)}</span> : <>{baseSym}<div className="text-[10px] text-emerald-400">x{getSymbolMultiplier(activeBrush)}</div></>) : (baseSym === 'xN' ? <span className="text-[14px] text-emerald-400">xN</span> : <>{baseSym}<div className="text-[10px] text-emerald-400">xN</div></>)) : sym)}
                                     {sym.toLowerCase().endsWith('_double') && <div className="text-[8px] text-indigo-400 mt-0.5">DOUBLE</div>}
                                 </span>
                             )}
@@ -114,7 +123,6 @@ const BrushPalette = ({ template, panelInputMode, activeBrush, setActiveBrush, a
                     </div>
                 </button>
 
-                {/* Multiplier Reel Brush */}
                 {template?.hasMultiplierReel && (
                     <React.Fragment>
                         <div className="w-px h-10 bg-slate-700 mx-1 self-center"></div>
@@ -130,24 +138,34 @@ const BrushPalette = ({ template, panelInputMode, activeBrush, setActiveBrush, a
                                 {activeBrush.startsWith('x') ? activeBrush : 'x?'}
                             </span>
                         </button>
-
-                        {activeBrush.startsWith('x') && (
-                            <div className="flex flex-col justify-center bg-amber-500/20 border border-amber-400/50 rounded-lg px-3 h-[48px] sm:h-[52px] animate-in fade-in slide-in-from-left-2 duration-200">
-                                <label className="text-[9px] font-bold text-amber-300 mb-0.5">設定倍數值</label>
-                                <div className="flex items-center gap-1">
-                                    <span className="text-amber-400 font-bold text-xs italic">x</span>
-                                    <input
-                                        type="number"
-                                        step="any"
-                                        value={activeBrush.substring(1) || ''}
-                                        onChange={(e) => setActiveBrush(`x${e.target.value}`)}
-                                        className="w-16 px-1.5 py-0.5 text-xs font-black text-amber-900 bg-amber-50 hover:bg-white focus:bg-white rounded outline-none text-center focus:ring-2 focus:ring-amber-400 transition-all shadow-inner"
-                                        placeholder="數值"
-                                    />
-                                </div>
-                            </div>
-                        )}
                     </React.Fragment>
+                )}
+
+                {/* Multiplier Value Input (For standalone xN OR symbol_xN) */}
+                {((activeBrush.startsWith('x') && template?.hasMultiplierReel) || 
+                  (template?.hasDynamicMultiplier && isDynamicMultiplierSymbol(activeBrush))) && (
+                    <div className="flex flex-col justify-center bg-amber-500/20 border border-amber-400/50 rounded-lg px-3 h-[48px] sm:h-[52px] animate-in fade-in slide-in-from-left-2 duration-200 ml-1">
+                        <label className="text-[9px] font-bold text-amber-300 mb-0.5">自訂倍率值</label>
+                        <div className="flex items-center gap-1">
+                            <span className="text-amber-400 font-bold text-xs italic">x</span>
+                            <input
+                                type="number"
+                                step="any"
+                                value={activeBrush.startsWith('x') ? activeBrush.substring(1) : (activeBrush.match(/_x(\d+(?:\.\d+)?)$/i)?.[1] || '')}
+                                onChange={(e) => {
+                                    const val = e.target.value;
+                                    if (activeBrush.startsWith('x')) {
+                                        setActiveBrush(val ? `x${val}` : 'x');
+                                    } else {
+                                        const base = getBaseSymbol(activeBrush, template?.jpConfig);
+                                        setActiveBrush(val ? `${base}_x${val}` : `${base}_xN`);
+                                    }
+                                }}
+                                className="w-16 px-1.5 py-0.5 text-xs font-black text-amber-900 bg-amber-50 hover:bg-white focus:bg-white rounded outline-none text-center focus:ring-2 focus:ring-amber-400 transition-all shadow-inner"
+                                placeholder="數值"
+                            />
+                        </div>
+                    </div>
                 )}
 
                 <div className="w-px h-10 bg-slate-700 mx-1 self-center"></div>

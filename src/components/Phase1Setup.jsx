@@ -46,6 +46,8 @@ export default function Phase1Setup(props) {
         hasCashCollectFeature, setHasCashCollectFeature,
         hasDynamicMultiplier, setHasDynamicMultiplier,
         multiplierCalcType, setMultiplierCalcType,
+        hasBidirectionalPaylines, setHasBidirectionalPaylines,
+        hasAdjustableLines, setHasAdjustableLines,
         hasApiKey
     } = props;
 
@@ -134,6 +136,7 @@ export default function Phase1Setup(props) {
 
                         {/* 4. Special Symbol Q&A */}
                         <SpecialSymbolQA
+                            lineMode={lineMode}
                             hasDoubleSymbol={hasDoubleSymbol} setHasDoubleSymbol={setHasDoubleSymbol}
                             hasMultiplierReel={hasMultiplierReel} setHasMultiplierReel={setHasMultiplierReel}
                             multiplierCalcType={multiplierCalcType} setMultiplierCalcType={setMultiplierCalcType}
@@ -142,6 +145,8 @@ export default function Phase1Setup(props) {
                             hasCashCollectFeature={hasCashCollectFeature} setHasCashCollectFeature={setHasCashCollectFeature}
                             hasJackpot={hasJackpot} setHasJackpot={setHasJackpot}
                             jpConfig={jpConfig} setJpConfig={setJpConfig}
+                            hasBidirectionalPaylines={hasBidirectionalPaylines} setHasBidirectionalPaylines={setHasBidirectionalPaylines}
+                            hasAdjustableLines={hasAdjustableLines} setHasAdjustableLines={setHasAdjustableLines}
                         />
 
                         {/* 5. Paytable */}

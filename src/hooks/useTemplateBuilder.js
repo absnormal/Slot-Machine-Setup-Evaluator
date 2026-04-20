@@ -42,6 +42,8 @@ export function useTemplateBuilder({
     const [hasDoubleSymbol, setHasDoubleSymbol] = useState(false);
     const [hasDynamicMultiplier, setHasDynamicMultiplier] = useState(false);
     const [multiplierCalcType, setMultiplierCalcType] = useState('sum');
+    const [hasBidirectionalPaylines, setHasBidirectionalPaylines] = useState(false);
+    const [hasAdjustableLines, setHasAdjustableLines] = useState(false);
     const prevHasDoubleSymbol = useRef(hasDoubleSymbol);
 
     // Grid dimensions
@@ -112,10 +114,24 @@ export function useTemplateBuilder({
             const maxCols = Math.max(...Object.values(paytable).map(p => p.length), 5);
             const zeroPays = Array(maxCols).fill(0);
 
-            if ((data.hasDynamicMultiplier || false) && !paytable['xN']) {
-                paytable['xN'] = [...zeroPays];
-            }
             const loadedJpConfig = data.jpConfig || jpConfig || {};
+            if ((data.hasDynamicMultiplier || false)) {
+                if (!paytable['xN']) paytable['xN'] = [...zeroPays];
+                
+                // 為這款遊戲所有的一般基底符號註冊一個 _xN 版本
+                const existingKeys = Object.keys(paytable);
+                existingKeys.forEach(sym => {
+                    const isSpecial = sym.toUpperCase().includes('SCATTER') || sym.toUpperCase().includes('COLLECT') || 
+                                      Object.keys(loadedJpConfig).includes(sym.toUpperCase()) || 
+                                      sym.toUpperCase().startsWith('CASH_');
+                    if (sym !== 'xN' && !sym.endsWith('_xN') && !isSpecial) {
+                        const xnName = `${sym}_xN`;
+                        if (!paytable[xnName]) {
+                            paytable[xnName] = [...paytable[sym]];
+                        }
+                    }
+                });
+            }
             if (data.hasJackpot || Object.values(loadedJpConfig).some(v => v !== '')) {
                 Object.keys(loadedJpConfig).forEach(jpKey => {
                     if (jpKey.trim() !== '' && !paytable[jpKey.toUpperCase()]) {
@@ -165,7 +181,9 @@ export function useTemplateBuilder({
                 requiresCollectToWin: data.requiresCollectToWin !== undefined ? data.requiresCollectToWin : true,
                 hasDoubleSymbol: data.hasDoubleSymbol || false,
                 hasDynamicMultiplier: data.hasDynamicMultiplier || false,
-                multiplierCalcType: data.multiplierCalcType || 'product'
+                multiplierCalcType: data.multiplierCalcType || 'product',
+                hasBidirectionalPaylines: data.hasBidirectionalPaylines || false,
+                hasAdjustableLines: data.hasAdjustableLines || false
             };
 
             setTemplate(tpl);
@@ -174,6 +192,8 @@ export function useTemplateBuilder({
             setHasDoubleSymbol(parseBool(data.hasDoubleSymbol || false));
             setHasDynamicMultiplier(parseBool(data.hasDynamicMultiplier || false));
             setMultiplierCalcType(data.multiplierCalcType || 'product');
+            setHasBidirectionalPaylines(parseBool(data.hasBidirectionalPaylines || false));
+            setHasAdjustableLines(parseBool(data.hasAdjustableLines || false));
 
             if (setIsPhase2Minimized) setIsPhase2Minimized(false);
             if (setIsPhase3Minimized) setIsPhase3Minimized(true);
@@ -231,8 +251,23 @@ export function useTemplateBuilder({
             const maxCols = Math.max(...Object.values(paytable).map(p => p.length), 5);
             const zeroPays = Array(maxCols).fill(0);
 
-            if (hasDynamicMultiplier && !paytable['xN']) {
-                paytable['xN'] = [...zeroPays];
+            if (hasDynamicMultiplier) {
+                if (!paytable['xN']) paytable['xN'] = [...zeroPays];
+                
+                // 為這款遊戲所有的一般基底符號註冊一個 _xN 版本
+                const existingKeys = Object.keys(paytable);
+                existingKeys.forEach(sym => {
+                    const isSpecial = sym.toUpperCase().includes('SCATTER') || sym.toUpperCase().includes('COLLECT') || 
+                                      Object.keys(jpConfig).includes(sym.toUpperCase()) || 
+                                      sym.toUpperCase().startsWith('CASH_');
+                    if (sym !== 'xN' && !sym.endsWith('_xN') && !isSpecial) {
+                        const xnName = `${sym}_xN`;
+                        if (!paytable[xnName]) {
+                            // 複製該基底符號的賠率
+                            paytable[xnName] = [...paytable[sym]];
+                        }
+                    }
+                });
             }
             if (hasJackpot) {
                 Object.keys(jpConfig).forEach(jpKey => {
@@ -279,7 +314,9 @@ export function useTemplateBuilder({
                 requiresCollectToWin,
                 hasDoubleSymbol,
                 hasDynamicMultiplier,
-                multiplierCalcType
+                multiplierCalcType,
+                hasBidirectionalPaylines,
+                hasAdjustableLines
             };
 
             setTemplate(tpl);
@@ -312,6 +349,8 @@ export function useTemplateBuilder({
         setHasDoubleSymbol(false);
         setHasDynamicMultiplier(false);
         setMultiplierCalcType('product');
+        setHasBidirectionalPaylines(false);
+        setHasAdjustableLines(false);
         setPatternRows(6);
         setPatternCols(5);
         setGridRows(3);
@@ -362,6 +401,8 @@ export function useTemplateBuilder({
         hasCashCollectFeature, setHasCashCollectFeature,
         hasDoubleSymbol, setHasDoubleSymbol,
         hasDynamicMultiplier, setHasDynamicMultiplier,
+        hasBidirectionalPaylines, setHasBidirectionalPaylines,
+        hasAdjustableLines, setHasAdjustableLines,
 
         // Grid dimensions
         patternRows, setPatternRows,

@@ -12,7 +12,7 @@ const safeAdd = (...args) => args.reduce((acc, val) => acc.plus(val || 0), Big(0
  * @param {number} betAmount - 押注金額
  * @returns {{ results: Object|null, error: string }}
  */
-export function computeGridResults(template, targetGrid, betAmount) {
+export function computeGridResults(template, targetGrid, betAmount, options = {}) {
     if (!template || !targetGrid) {
         return { results: null, error: '' };
     }
@@ -261,6 +261,9 @@ export function computeGridResults(template, targetGrid, betAmount) {
             Object.entries(evalTemplate.lines).forEach(([lineIdStr, positions]) => {
                 const lineId = parseInt(lineIdStr);
 
+                // 若指定 activeLineCount，僅計算前 N 條線
+                if (options.activeLineCount && lineId > options.activeLineCount) return;
+
                 const symbolsOnLine = positions.map((row, colIndex) => {
                     const rIndex = row - 1;
                     if (rIndex < 0 || rIndex >= evalTemplate.rows || !safeGrid[rIndex]) {
@@ -269,57 +272,77 @@ export function computeGridResults(template, targetGrid, betAmount) {
                     return safeGrid[rIndex][colIndex];
                 });
 
-                let bestPayout = 0;
-                let bestSymbol = null;
-                let bestCount = 0;
-                let bestLineMult = 1;
+                // --- 共用的單方向掃描函數 ---
+                const scanDirection = (syms) => {
+                    let dirBestPayout = 0;
+                    let dirBestSymbol = null;
+                    let dirBestCount = 0;
+                    let dirBestLineMult = 1;
 
-                for (const targetSymbol of allPaySymbols) {
-                    if (isScatterSymbol(targetSymbol)) continue;
-                    if (isCashSymbol(targetSymbol, evalTemplate.jpConfig)) continue;
-                    if (isCollectSymbol(targetSymbol) && !isWildSymbol(targetSymbol)) continue;
+                    for (const targetSymbol of allPaySymbols) {
+                        if (isScatterSymbol(targetSymbol)) continue;
+                        if (isCashSymbol(targetSymbol, evalTemplate.jpConfig)) continue;
+                        if (isCollectSymbol(targetSymbol) && !isWildSymbol(targetSymbol)) continue;
 
-                    let currentCount = 0;
-                    let hasTargetSymbol = false;
-                    let lineMultiplierMultiplier = (template.multiplierCalcType === 'sum' ? 0 : 1);
+                        let currentCount = 0;
+                        let hasTargetSymbol = false;
+                        let lineMultiplierMultiplier = (template.multiplierCalcType === 'sum' ? 0 : 1);
 
-                    for (let i = 0; i < symbolsOnLine.length; i++) {
-                        const sym = symbolsOnLine[i];
-                        if (!sym) break;
-                        const symBase = getBaseSymbol(sym, evalTemplate.jpConfig);
+                        for (let i = 0; i < syms.length; i++) {
+                            const sym = syms[i];
+                            if (!sym) break;
+                            const symBase = getBaseSymbol(sym, evalTemplate.jpConfig);
 
-                        if (symBase === targetSymbol || isWildSymbol(sym)) {
-                            currentCount += getSymbolCount(sym);
-                            if (symBase === targetSymbol) hasTargetSymbol = true;
-                            
-                            // xN Multiplier logic
-                            const m = getSymbolMultiplier(sym);
-                            if (m > 1) {
-                                if (template.multiplierCalcType === 'sum') lineMultiplierMultiplier = safeAdd(lineMultiplierMultiplier, m);
-                                else lineMultiplierMultiplier = safeMul(lineMultiplierMultiplier, m);
+                            if (symBase === targetSymbol || isWildSymbol(sym)) {
+                                currentCount += getSymbolCount(sym);
+                                if (symBase === targetSymbol) hasTargetSymbol = true;
+                                const m = getSymbolMultiplier(sym);
+                                if (m > 1) {
+                                    if (template.multiplierCalcType === 'sum') lineMultiplierMultiplier = safeAdd(lineMultiplierMultiplier, m);
+                                    else lineMultiplierMultiplier = safeMul(lineMultiplierMultiplier, m);
+                                }
+                            } else {
+                                break;
                             }
-                        } else {
-                            break;
+                        }
+
+                        if (currentCount > 0 && (isWildSymbol(targetSymbol) || hasTargetSymbol)) {
+                            const payArray = evalTemplate.paytable[targetSymbol];
+                            const payIndex = Math.min(currentCount - 1, payArray.length - 1);
+                            const payoutMult = payIndex >= 0 ? payArray[payIndex] : 0;
+                            const finalLineMult = (template.multiplierCalcType === 'sum' ? Math.max(1, lineMultiplierMultiplier) : lineMultiplierMultiplier);
+                            const payout = safeMul(payoutMult, parsedBet, finalLineMult);
+
+                            if (payout > dirBestPayout) {
+                                dirBestPayout = payout;
+                                dirBestSymbol = targetSymbol;
+                                dirBestCount = currentCount;
+                                dirBestLineMult = finalLineMult;
+                            }
                         }
                     }
+                    return { bestPayout: dirBestPayout, bestSymbol: dirBestSymbol, bestCount: dirBestCount, bestLineMult: dirBestLineMult };
+                };
 
-                    if (currentCount > 0 && (isWildSymbol(targetSymbol) || hasTargetSymbol)) {
-                        const payArray = evalTemplate.paytable[targetSymbol];
-                        const payIndex = Math.min(currentCount - 1, payArray.length - 1);
-                        const payoutMult = payIndex >= 0 ? payArray[payIndex] : 0;
-                        const finalLineMult = (template.multiplierCalcType === 'sum' ? Math.max(1, lineMultiplierMultiplier) : lineMultiplierMultiplier);
-                        const payout = safeMul(payoutMult, parsedBet, finalLineMult);
+                // --- 左至右掃描 ---
+                const ltr = scanDirection(symbolsOnLine);
+                let bestPayout = ltr.bestPayout;
+                let bestSymbol = ltr.bestSymbol;
+                let bestCount = ltr.bestCount;
+                let bestLineMult = ltr.bestLineMult;
+                let isRtl = false;
 
-                        if (payout > bestPayout) {
-                            bestPayout = payout;
-                            bestSymbol = targetSymbol;
-                            bestCount = currentCount;
-                            bestLineMult = finalLineMult;
-                        }
+                // --- 右至左掃描（若啟用雙向連線）---
+                if (options.enableBidirectional) {
+                    const rtl = scanDirection([...symbolsOnLine].reverse());
+                    if (rtl.bestPayout > bestPayout) {
+                        bestPayout = rtl.bestPayout;
+                        bestSymbol = rtl.bestSymbol;
+                        bestCount = rtl.bestCount;
+                        bestLineMult = rtl.bestLineMult;
+                        isRtl = true;
                     }
                 }
-                
-                // Track bestLineMult for the actual result push
 
                 if (bestPayout === 0) {
                     bestSymbol = symbolsOnLine[0] || '空';
@@ -340,16 +363,28 @@ export function computeGridResults(template, targetGrid, betAmount) {
 
                 const winCoords = [];
                 if (bestPayout > 0) {
-                    let cumulativeIdx = 0;
-                    for (let i = 0; i < symbolsOnLine.length; i++) {
-                        const sym = symbolsOnLine[i];
-                        cumulativeIdx += getSymbolCount(sym);
-                        winCoords.push({ row: positions[i] - 1, col: i });
-                        if (cumulativeIdx >= bestCount) break;
+                    if (isRtl) {
+                        // 右至左：座標從最後一格往前數
+                        let cumulativeIdx = 0;
+                        for (let i = symbolsOnLine.length - 1; i >= 0; i--) {
+                            const sym = symbolsOnLine[i];
+                            cumulativeIdx += getSymbolCount(sym);
+                            winCoords.push({ row: positions[i] - 1, col: i });
+                            if (cumulativeIdx >= bestCount) break;
+                        }
+                    } else {
+                        let cumulativeIdx = 0;
+                        for (let i = 0; i < symbolsOnLine.length; i++) {
+                            const sym = symbolsOnLine[i];
+                            cumulativeIdx += getSymbolCount(sym);
+                            winCoords.push({ row: positions[i] - 1, col: i });
+                            if (cumulativeIdx >= bestCount) break;
+                        }
                     }
                 }
 
                 if (!isScatterSymbol(bestSymbol) && !isCashSymbol(bestSymbol, evalTemplate.jpConfig)) {
+                    const dirLabel = isRtl ? '(右至左) ' : '';
                     calculatedResults.push({
                         lineId,
                         symbol: bestSymbol,
@@ -358,7 +393,7 @@ export function computeGridResults(template, targetGrid, betAmount) {
                         winAmount: bestPayout,
                         multiplier: bestLineMult > 1 ? bestLineMult : null,
                         symbolsOnLine,
-                        positions: [...positions, ...(bestLineMult > 1 ? [`x${bestLineMult}`] : [])],
+                        positions: [`${dirLabel}${positions.join(', ')}`, ...(bestLineMult > 1 ? [`x${bestLineMult}`] : [])],
                         winCoords
                     });
                     totalWin = safeAdd(totalWin, bestPayout);

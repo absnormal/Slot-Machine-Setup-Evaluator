@@ -28,7 +28,8 @@ const Phase4Video = ({
     template,
     gameName,
     gridRows: propGridRows, gridCols: propGridCols,
-    ocrDecimalPlaces, setOcrDecimalPlaces
+    ocrDecimalPlaces, setOcrDecimalPlaces,
+    enableBidirectional, setEnableBidirectional
 }) => {
     // ── 本地狀態 ──
     const [isPlaying, setIsPlaying] = useState(false);
@@ -1181,6 +1182,15 @@ const Phase4Video = ({
                                             🧹 智慧標記（辨識同局 → 凸顯最佳）
                                         </button>
                                     )
+                                )}
+
+                                {/* Bi-directional Paylines Runtime Toggle */}
+                                {template?.hasBidirectionalPaylines && (
+                                    <label className="flex items-center gap-2 cursor-pointer bg-amber-50 border border-amber-200 px-3 py-2 rounded-lg">
+                                        <input type="checkbox" checked={enableBidirectional} onChange={e => setEnableBidirectional(e.target.checked)} className="w-4 h-4 text-amber-500 border-amber-300 rounded focus:ring-amber-400" />
+                                        <span className="text-xs font-bold text-amber-700">啟用雙向連線算分</span>
+                                        <span className="text-[10px] text-amber-500 ml-1">(左至右 + 右至左取最高)</span>
+                                    </label>
                                 )}
 
                                 {/* 辨識按鈕組 */}

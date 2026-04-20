@@ -5,13 +5,16 @@ import { Settings, Trophy, Plus, X } from 'lucide-react';
  * 特殊遊戲設定 Q&A 面板：Double Symbol / Multiplier / Collect / JP
  */
 export default function SpecialSymbolQA({
+    lineMode,
     hasDoubleSymbol, setHasDoubleSymbol,
     hasMultiplierReel, setHasMultiplierReel,
     multiplierCalcType, setMultiplierCalcType,
     hasDynamicMultiplier, setHasDynamicMultiplier,
     requiresCollectToWin, setRequiresCollectToWin,
     hasCashCollectFeature, setHasCashCollectFeature,
-    hasJackpot, setHasJackpot, jpConfig, setJpConfig
+    hasJackpot, setHasJackpot, jpConfig, setJpConfig,
+    hasBidirectionalPaylines, setHasBidirectionalPaylines,
+    hasAdjustableLines, setHasAdjustableLines
 }) {
 
     return (
@@ -50,36 +53,22 @@ export default function SpecialSymbolQA({
                     </div>
                 </div>
 
-                {/* Q3: Multiplier Calc Type */}
+                {/* Q3: Multiplier Config */}
                 <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm transition-all hover:border-indigo-300">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                         <div>
-                            <p className="text-sm font-bold text-slate-800">3. 此遊戲有無單筆連線的乘倍機制?</p>
-                            <p className="text-xs text-slate-500 mt-1">若有，需要在下方賠付表新增各xN符號設定，賠率皆設定0。EX. WILD_x2、WILD_x3</p>
+                            <p className="text-sm font-bold text-slate-800">3. 此遊戲是否有乘倍機制 (如附加在符號上的倍率)？</p>
+                            <p className="text-xs text-slate-500 mt-1">選「有」將為全部符號自動衍生 _xN 乘倍版本。請選擇連續乘倍發生時的計算方式。</p>
                         </div>
                         <div className="flex bg-slate-100 p-1 rounded-lg shrink-0">
-                            <button onClick={() => setMultiplierCalcType('product')} className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${multiplierCalcType === 'product' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>有 (相乘)</button>
-                            <button onClick={() => setMultiplierCalcType('sum')} className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${multiplierCalcType === 'sum' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>有 (相加) 或 無</button>
+                            <button onClick={() => { setMultiplierCalcType('product'); setHasDynamicMultiplier(true); }} className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${multiplierCalcType === 'product' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>有 (相乘)</button>
+                            <button onClick={() => { setMultiplierCalcType('sum'); setHasDynamicMultiplier(true); }} className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${multiplierCalcType === 'sum' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>有 (相加)</button>
+                            <button onClick={() => { setMultiplierCalcType('none'); setHasDynamicMultiplier(false); }} className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${multiplierCalcType === 'none' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>無</button>
                         </div>
                     </div>
                 </div>
 
-                {/* Q3-1: Dynamic Multiplier */}
-                <div className="ml-6 border-l-2 border-indigo-200 pl-4 py-2 mt-2">
-                    <div className="bg-indigo-50/50 p-4 rounded-lg border border-indigo-100 shadow-sm animate-in fade-in slide-in-from-left-4 duration-300">
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                            <div>
-                                <p className="text-sm font-bold text-indigo-900">3-1. 此遊戲是否有動態乘倍符號?</p>
-                                <p className="text-xs text-indigo-700 mt-1">動態乘倍符號：視作WILD且共用賠率，連線贏分乘以該數字</p>
-                                <p className="text-xs text-indigo-700 mt-0.5">若有，賠付表資料設定會有"xN"符號，賠率預設為0</p>
-                            </div>
-                            <div className="flex bg-white border border-indigo-200 p-0.5 rounded-lg shrink-0 shadow-sm">
-                                <button onClick={() => setHasDynamicMultiplier(true)} className={`px-4 py-1.5 text-sm font-bold rounded-md transition-all ${hasDynamicMultiplier ? 'bg-indigo-600 text-white shadow-sm' : 'text-indigo-400 hover:text-indigo-600'}`}>有</button>
-                                <button onClick={() => setHasDynamicMultiplier(false)} className={`px-4 py-1.5 text-sm font-bold rounded-md transition-all ${!hasDynamicMultiplier ? 'bg-indigo-600 text-white shadow-sm' : 'text-indigo-400 hover:text-indigo-600'}`}>無</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+
 
                 {/* Q4: Cash Collect Feature */}
                 <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm transition-all hover:border-indigo-300">
@@ -169,6 +158,38 @@ export default function SpecialSymbolQA({
                                     </div>
                                 </div>
                             )}
+                        </div>
+                    </div>
+                )}
+
+                {/* Q5: Bi-directional Paylines (only for paylines mode) */}
+                {lineMode === 'paylines' && (
+                    <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm transition-all hover:border-indigo-300">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                            <div>
+                                <p className="text-sm font-bold text-slate-800">5. 此遊戲是否支援雙向連線機制?</p>
+                                <p className="text-xs text-slate-500 mt-1">雙向連線：同一條賠付線左至右與右至左皆可連線，並取最高獎金做為該線結果</p>
+                            </div>
+                            <div className="flex bg-slate-100 p-1 rounded-lg shrink-0">
+                                <button onClick={() => setHasBidirectionalPaylines(true)} className={`px-4 py-1.5 text-sm font-bold rounded-md transition-all ${hasBidirectionalPaylines ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>有</button>
+                                <button onClick={() => setHasBidirectionalPaylines(false)} className={`px-4 py-1.5 text-sm font-bold rounded-md transition-all ${!hasBidirectionalPaylines ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>無</button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Q6: Adjustable Line Count (only for paylines mode) */}
+                {lineMode === 'paylines' && (
+                    <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm transition-all hover:border-indigo-300">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                            <div>
+                                <p className="text-sm font-bold text-slate-800">6. 此遊戲是否支援調整押注線數？</p>
+                                <p className="text-xs text-slate-500 mt-1">部分遊戲可只押注前 N 條連線（如 40 線只押 10 線），啟用後可在 P2 手動調整</p>
+                            </div>
+                            <div className="flex bg-slate-100 p-1 rounded-lg shrink-0">
+                                <button onClick={() => setHasAdjustableLines(true)} className={`px-4 py-1.5 text-sm font-bold rounded-md transition-all ${hasAdjustableLines ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>有</button>
+                                <button onClick={() => setHasAdjustableLines(false)} className={`px-4 py-1.5 text-sm font-bold rounded-md transition-all ${!hasAdjustableLines ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>無</button>
+                            </div>
                         </div>
                     </div>
                 )}
