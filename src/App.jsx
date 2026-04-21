@@ -307,7 +307,9 @@ function App() {
 
         const transformed = await Promise.all(kfCandidates.map(kf => {
             return new Promise((resolve) => {
-                const targetCanvas = kf.winPollCanvas || kf.canvas;
+                // 根據每張卡片的 useWinFrame 設定，決定送哪張截圖到 Phase 3
+                const showingWin = kf.useWinFrame !== false;
+                const targetCanvas = showingWin ? (kf.winPollCanvas || kf.canvas) : kf.canvas;
                 const dataUrl = targetCanvas.toDataURL('image/jpeg', 0.8);
                 const img = new Image();
                 img.onload = () => {

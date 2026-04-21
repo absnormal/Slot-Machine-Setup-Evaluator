@@ -70,8 +70,11 @@ const Phase4Video = ({
                 time2: kf.winPollTime || null
             });
         } else {
-            // 影片模式：跳到時間點
-            if (videoRef.current) videoRef.current.currentTime = kf.time;
+            // 影片模式：根據當前顯示的截圖類型跳到對應時間點
+            if (videoRef.current) {
+                const showingWin = kf.useWinFrame !== false;
+                videoRef.current.currentTime = (showingWin && kf.winPollTime) ? kf.winPollTime : kf.time;
+            }
         }
     }, [isStreamMode, videoSrc, videoRef]);
 
