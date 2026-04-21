@@ -130,6 +130,7 @@ function App() {
 
     // --- Bi-directional Paylines Runtime Toggle (from Zustand Store) ---
     const enableBidirectional = usePhase4Store(s => s.enableBidirectional);
+    const setEnableBidirectional = usePhase4Store(s => s.setEnableBidirectional);
 
     // --- Template IO (匯入/匯出/雲端存取) ---
     const templateIO = useTemplateIO({
