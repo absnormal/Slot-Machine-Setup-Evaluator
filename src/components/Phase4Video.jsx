@@ -398,18 +398,45 @@ const Phase4Video = ({
         return idx >= 0 ? idx : 0;
     }, [lastBreakId, brokenGroupIds]);
 
+    /** 通用：找出清單中「目前可視區域之後」的下一個項目 index */
+    const findNextVisibleIndex = useCallback((ids, lastId, idPrefix = 'spin-group-') => {
+        if (ids.length === 0) return -1;
+        // 如果有上次記錄，直接循環到下一個
+        if (lastId !== null) {
+            const lastIdx = ids.indexOf(lastId);
+            if (lastIdx >= 0) return (lastIdx + 1) % ids.length;
+        }
+        // 首次或 lastId 無效：找出第一個在可視區域下方的項目
+        const listContainer = document.querySelector('.custom-scrollbar');
+        if (listContainer) {
+            const containerRect = listContainer.getBoundingClientRect();
+            const viewportMid = containerRect.top + containerRect.height / 2;
+            for (let i = 0; i < ids.length; i++) {
+                const el = document.getElementById(`${idPrefix}${ids[i]}`)
+                    || document.getElementById(`kf-card-${String(ids[i]).replace('ungrouped_', '')}`);
+                if (el) {
+                    const elRect = el.getBoundingClientRect();
+                    if (elRect.top >= viewportMid) return i;
+                }
+            }
+        }
+        return 0; // fallback：從頭開始
+    }, []);
+
+    const highlightAndScroll = useCallback((el, ringColor) => {
+        if (!el) return;
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.classList.add('ring-4', ringColor, 'ring-offset-2', 'transition-all', 'duration-500');
+        setTimeout(() => el.classList.remove('ring-4', ringColor, 'ring-offset-2'), 1500);
+    }, []);
+
     const scrollToNextBreak = useCallback(() => {
         if (brokenGroupIds.length === 0) return;
-        const nextIdx = lastBreakId ? ((brokenGroupIds.indexOf(lastBreakId) + 1) % brokenGroupIds.length || 0) : 0;
+        const nextIdx = findNextVisibleIndex(brokenGroupIds, lastBreakId);
         const gid = brokenGroupIds[nextIdx];
-        const el = document.getElementById(`spin-group-${gid}`);
-        if (el) {
-            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            el.classList.add('ring-4', 'ring-rose-400', 'ring-offset-2', 'transition-all', 'duration-500');
-            setTimeout(() => el.classList.remove('ring-4', 'ring-rose-400', 'ring-offset-2'), 1500);
-        }
+        highlightAndScroll(document.getElementById(`spin-group-${gid}`), 'ring-rose-400');
         setLastBreakId(gid);
-    }, [brokenGroupIds, lastBreakId]);
+    }, [brokenGroupIds, lastBreakId, findNextVisibleIndex, highlightAndScroll]);
 
     const [lastWrongWinId, setLastWrongWinId] = useState(null);
     const currentWrongWinIndex = useMemo(() => {
@@ -420,17 +447,13 @@ const Phase4Video = ({
 
     const scrollToNextWrongWin = useCallback(() => {
         if (wrongWinGroupIds.length === 0) return;
-        const nextIdx = lastWrongWinId ? ((wrongWinGroupIds.indexOf(lastWrongWinId) + 1) % wrongWinGroupIds.length || 0) : 0;
+        const nextIdx = findNextVisibleIndex(wrongWinGroupIds, lastWrongWinId);
         const gid = wrongWinGroupIds[nextIdx];
-        const el = document.getElementById(`spin-group-${gid}`);
-        const targetEl = el || document.getElementById(`kf-card-${gid.replace('ungrouped_', '')}`);
-        if (targetEl) {
-            targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            targetEl.classList.add('ring-4', 'ring-amber-400', 'ring-offset-2', 'transition-all', 'duration-500');
-            setTimeout(() => targetEl.classList.remove('ring-4', 'ring-amber-400', 'ring-offset-2'), 1500);
-        }
+        const el = document.getElementById(`spin-group-${gid}`)
+            || document.getElementById(`kf-card-${String(gid).replace('ungrouped_', '')}`);
+        highlightAndScroll(el, 'ring-amber-400');
         setLastWrongWinId(gid);
-    }, [wrongWinGroupIds, lastWrongWinId]);
+    }, [wrongWinGroupIds, lastWrongWinId, findNextVisibleIndex, highlightAndScroll]);
 
     const [lastNonZeroWinId, setLastNonZeroWinId] = useState(null);
     const currentNonZeroWinIndex = useMemo(() => {
@@ -441,17 +464,13 @@ const Phase4Video = ({
 
     const scrollToNextNonZeroWin = useCallback(() => {
         if (nonZeroWinGroupIds.length === 0) return;
-        const nextIdx = lastNonZeroWinId ? ((nonZeroWinGroupIds.indexOf(lastNonZeroWinId) + 1) % nonZeroWinGroupIds.length || 0) : 0;
+        const nextIdx = findNextVisibleIndex(nonZeroWinGroupIds, lastNonZeroWinId);
         const gid = nonZeroWinGroupIds[nextIdx];
-        const el = document.getElementById(`spin-group-${gid}`);
-        const targetEl = el || document.getElementById(`kf-card-${gid.replace('ungrouped_', '')}`);
-        if (targetEl) {
-            targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            targetEl.classList.add('ring-4', 'ring-emerald-400', 'ring-offset-2', 'transition-all', 'duration-500');
-            setTimeout(() => targetEl.classList.remove('ring-4', 'ring-emerald-400', 'ring-offset-2'), 1500);
-        }
+        const el = document.getElementById(`spin-group-${gid}`)
+            || document.getElementById(`kf-card-${String(gid).replace('ungrouped_', '')}`);
+        highlightAndScroll(el, 'ring-emerald-400');
         setLastNonZeroWinId(gid);
-    }, [nonZeroWinGroupIds, lastNonZeroWinId]);
+    }, [nonZeroWinGroupIds, lastNonZeroWinId, findNextVisibleIndex, highlightAndScroll]);
 
     // ── 操作處理 ──
     const scanOpts = { winROI, balanceROI, betROI, orderIdROI: enableOrderId ? orderIdROI : null, ocrDecimalPlaces, requireStableWin: false, sliceCols: template?.cols || propGridCols || 5 };

@@ -944,19 +944,34 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
             // 群組內只有一張，不需要切換
             if (sameGroup.length <= 1) return prev;
 
-            // 找到舊 best 中有 WIN 數據的那張，準備搬遷 OCR 數據
-            const donor = sameGroup.find(c => c.isSpinBest && c.ocrData?.win && parseFloat(c.ocrData.win) > 0);
+            // 找到舊 best，準備搬遷 OCR 數據
+            const donor = sameGroup.find(c => c.isSpinBest);
 
             return prev.map(c => {
                 if (c.spinGroupId === targetGroupId) {
                     const isNewBest = c.id === candidateId;
-                    return {
-                        ...c,
-                        isSpinBest: isNewBest,
-                        // 新 best 繼承舊 best 的 OCR 數據（贏分合併搬遷）
-                        ocrData: isNewBest && donor ? donor.ocrData : c.ocrData,
-                        captureDelay: isNewBest && donor ? donor.captureDelay : c.captureDelay,
-                    };
+                    const isDonor = donor && c.id === donor.id;
+
+                    if (isNewBest && donor && donor.id !== candidateId) {
+                        // 新 best：繼承舊 best 的 OCR 數據
+                        return {
+                            ...c,
+                            isSpinBest: true,
+                            ocrData: donor.ocrData,
+                            captureDelay: donor.captureDelay,
+                        };
+                    } else if (isDonor && donor.id !== candidateId) {
+                        // 舊 best（donor）：清除 OCR 數據，避免兩張都帶數據
+                        return {
+                            ...c,
+                            isSpinBest: false,
+                            ocrData: target.ocrData || null, // 把新 best 原本的 OCR 搬回來（交換）
+                            captureDelay: target.captureDelay,
+                        };
+                    } else {
+                        // 其他同群卡片：只更新 isSpinBest
+                        return { ...c, isSpinBest: isNewBest };
+                    }
                 }
                 return c;
             });
