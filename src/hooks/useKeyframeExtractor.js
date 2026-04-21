@@ -944,34 +944,11 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
             // 群組內只有一張，不需要切換
             if (sameGroup.length <= 1) return prev;
 
-            // 找到舊 best，準備搬遷 OCR 數據
-            const donor = sameGroup.find(c => c.isSpinBest);
-
+            // 只切換 isSpinBest 標記，每偵保留自己的 OCR 數據
+            // （OCR 數據屬於該偵的截圖時間點，不應搬移）
             return prev.map(c => {
                 if (c.spinGroupId === targetGroupId) {
-                    const isNewBest = c.id === candidateId;
-                    const isDonor = donor && c.id === donor.id;
-
-                    if (isNewBest && donor && donor.id !== candidateId) {
-                        // 新 best：繼承舊 best 的 OCR 數據
-                        return {
-                            ...c,
-                            isSpinBest: true,
-                            ocrData: donor.ocrData,
-                            captureDelay: donor.captureDelay,
-                        };
-                    } else if (isDonor && donor.id !== candidateId) {
-                        // 舊 best（donor）：清除 OCR 數據，避免兩張都帶數據
-                        return {
-                            ...c,
-                            isSpinBest: false,
-                            ocrData: target.ocrData || null, // 把新 best 原本的 OCR 搬回來（交換）
-                            captureDelay: target.captureDelay,
-                        };
-                    } else {
-                        // 其他同群卡片：只更新 isSpinBest
-                        return { ...c, isSpinBest: isNewBest };
-                    }
+                    return { ...c, isSpinBest: c.id === candidateId };
                 }
                 return c;
             });
