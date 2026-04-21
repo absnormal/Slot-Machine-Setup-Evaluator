@@ -28,6 +28,7 @@ import { useAutoRecognition } from './hooks/useAutoRecognition';
 import { useReportGenerator } from './hooks/useReportGenerator';
 import { useTemplateIO } from './hooks/useTemplateIO';
 import useAppStore from './stores/useAppStore';
+import usePhase4Store from './stores/usePhase4Store';
 
 function App() {
     // --- Zustand Store ---
@@ -119,13 +120,16 @@ function App() {
     } = templateBuilder;
 
 
-    // --- Phase 4 偵測參數（保留供 templateIO 使用）---
-    const [motionCoverageMin, setMotionCoverageMin] = useState(60);
-    const [vLineThreshold, setVLineThreshold] = useState(0.25);
-    const [ocrDecimalPlaces, setOcrDecimalPlaces] = useState(2);
+    // --- Phase 4 偵測參數 (from Zustand Store) ---
+    const motionCoverageMin = usePhase4Store(s => s.motionCoverageMin);
+    const setMotionCoverageMin = usePhase4Store(s => s.setMotionCoverageMin);
+    const vLineThreshold = usePhase4Store(s => s.vLineThreshold);
+    const setVLineThreshold = usePhase4Store(s => s.setVLineThreshold);
+    const ocrDecimalPlaces = usePhase4Store(s => s.ocrDecimalPlaces);
+    const setOcrDecimalPlaces = usePhase4Store(s => s.setOcrDecimalPlaces);
 
-    // --- Bi-directional Paylines Runtime Toggle ---
-    const [enableBidirectional, setEnableBidirectional] = useState(false);
+    // --- Bi-directional Paylines Runtime Toggle (from Zustand Store) ---
+    const enableBidirectional = usePhase4Store(s => s.enableBidirectional);
 
     // --- Template IO (匯入/匯出/雲端存取) ---
     const templateIO = useTemplateIO({
@@ -255,30 +259,12 @@ function App() {
         setTimeout(() => setTemplateMessage(''), 3000);
     }, [setTemplateMessage]);
 
-    // ROI 狀態 (保留手動框選)
-    const ROI_CACHE_KEY = 'SLOT_P4_ROI_V2';
-    const loadCachedROI = (key, fallback) => {
-        try { const saved = JSON.parse(localStorage.getItem(ROI_CACHE_KEY))?.[key]; return saved || fallback; } catch { return fallback; }
-    };
-    const [reelROI, setReelROIRaw] = useState(() => loadCachedROI('reel', { x: 10, y: 15, w: 80, h: 55 }));
-    const [winROI, setWinROIRaw] = useState(() => loadCachedROI('win', { x: 38, y: 72, w: 24, h: 8 }));
-    const [balanceROI, setBalanceROIRaw] = useState(() => loadCachedROI('balance', { x: 5, y: 90, w: 24, h: 6 }));
-    const [betROI, setBetROIRaw] = useState(() => loadCachedROI('bet', { x: 70, y: 90, w: 24, h: 6 }));
-    const [orderIdROI, setOrderIdROIRaw] = useState(() => loadCachedROI('orderId', { x: 40, y: 5, w: 20, h: 5 }));
-
-    // ROI 持久化
-    const saveROI = useCallback((key, val) => {
-        try {
-            const all = JSON.parse(localStorage.getItem(ROI_CACHE_KEY) || '{}');
-            all[key] = val;
-            localStorage.setItem(ROI_CACHE_KEY, JSON.stringify(all));
-        } catch {}
-    }, []);
-    const setReelROI = useCallback((v) => { setReelROIRaw(v); saveROI('reel', v); }, [saveROI]);
-    const setWinROI = useCallback((v) => { setWinROIRaw(v); saveROI('win', v); }, [saveROI]);
-    const setBalanceROI = useCallback((v) => { setBalanceROIRaw(v); saveROI('balance', v); }, [saveROI]);
-    const setBetROI = useCallback((v) => { setBetROIRaw(v); saveROI('bet', v); }, [saveROI]);
-    const setOrderIdROI = useCallback((v) => { setOrderIdROIRaw(v); saveROI('orderId', v); }, [saveROI]);
+    // ROI 狀態 (from Zustand Store — 自動持久化至 localStorage)
+    const reelROI = usePhase4Store(s => s.reelROI);
+    const winROI = usePhase4Store(s => s.winROI);
+    const balanceROI = usePhase4Store(s => s.balanceROI);
+    const betROI = usePhase4Store(s => s.betROI);
+    const orderIdROI = usePhase4Store(s => s.orderIdROI);
 
     // 新 Phase 4 Hooks
     const keyframeExtractor = useKeyframeExtractor({ setTemplateMessage });
@@ -619,12 +605,6 @@ function App() {
                     exportHTMLReport={(c, game, dir) => reportGenerator.exportHTMLReport(c, gameName || 'slot', dir, template, {
                         reel: reelROI, win: winROI, balance: balanceROI, bet: betROI, orderId: orderIdROI
                     })}
-                    // ROI
-                    reelROI={reelROI} setReelROI={setReelROI}
-                    winROI={winROI} setWinROI={setWinROI}
-                    balanceROI={balanceROI} setBalanceROI={setBalanceROI}
-                    betROI={betROI} setBetROI={setBetROI}
-                    orderIdROI={orderIdROI} setOrderIdROI={setOrderIdROI}
                     // Video
                     videoSrc={videoSrc} videoRef={videoRef} handleVideoUpload={handleVideoUpload}
                     isStreamMode={isStreamMode} handleStartScreenCapture={handleStartScreenCapture} handleStopScreenCapture={handleStopScreenCapture}
@@ -635,8 +615,6 @@ function App() {
                     template={template}
                     gameName={gameName}
                     gridRows={gridRows} gridCols={gridCols}
-                    ocrDecimalPlaces={ocrDecimalPlaces} setOcrDecimalPlaces={setOcrDecimalPlaces}
-                    enableBidirectional={enableBidirectional} setEnableBidirectional={setEnableBidirectional}
                 />
                 </ErrorBoundary>
 

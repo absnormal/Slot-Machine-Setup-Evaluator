@@ -3,6 +3,7 @@ import { Video, Scan, Play, Pause, Trash2, Send, Sparkles, ChevronDown, ChevronU
 import CandidateCard from './phase4/CandidateCard';
 import ActionPanel from './phase4/ActionPanel';
 import DiagnosticDashboard from './phase4/DiagnosticDashboard';
+import usePhase4Store from '../stores/usePhase4Store';
 const Phase4Video = ({
     isPhase4Minimized,
     onToggle,
@@ -16,12 +17,6 @@ const Phase4Video = ({
     recognizeBatch, recognizeLocalBatch, cancelRecognition,
     // Report
     stats, exportHTMLReport,
-    // ROI (手動框選，從舊 Phase 4 保留)
-    reelROI, setReelROI,
-    winROI, setWinROI,
-    balanceROI, setBalanceROI,
-    betROI, setBetROI,
-    orderIdROI, setOrderIdROI,
     // Video
     videoSrc, videoRef, handleVideoUpload,
     isStreamMode, handleStartScreenCapture, handleStopScreenCapture,
@@ -31,9 +26,21 @@ const Phase4Video = ({
     template,
     gameName,
     gridRows: propGridRows, gridCols: propGridCols,
-    ocrDecimalPlaces, setOcrDecimalPlaces,
-    enableBidirectional, setEnableBidirectional
 }) => {
+    // ── 從 Zustand Store 取得 ROI 與偵測參數 ──
+    const reelROI = usePhase4Store(s => s.reelROI);
+    const setReelROI = usePhase4Store(s => s.setReelROI);
+    const winROI = usePhase4Store(s => s.winROI);
+    const setWinROI = usePhase4Store(s => s.setWinROI);
+    const balanceROI = usePhase4Store(s => s.balanceROI);
+    const setBalanceROI = usePhase4Store(s => s.setBalanceROI);
+    const betROI = usePhase4Store(s => s.betROI);
+    const setBetROI = usePhase4Store(s => s.setBetROI);
+    const orderIdROI = usePhase4Store(s => s.orderIdROI);
+    const setOrderIdROI = usePhase4Store(s => s.setOrderIdROI);
+    const ocrDecimalPlaces = usePhase4Store(s => s.ocrDecimalPlaces);
+    const enableBidirectional = usePhase4Store(s => s.enableBidirectional);
+    const setEnableBidirectional = usePhase4Store(s => s.setEnableBidirectional);
     // ── 本地狀態 ──
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
