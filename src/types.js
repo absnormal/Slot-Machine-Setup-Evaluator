@@ -55,23 +55,60 @@
  */
 
 /**
- * 結算引擎輸出
+ * 結算引擎輸出（computeGridResults 的回傳值）
  * @typedef {Object} SettlementResult
- * @property {number} totalWin         - 所有線的總贏分
- * @property {WinLine[]} winLines      - 每條中獎線的詳細資訊
- * @property {Object} [scatterResult]  - SCATTER 結算結果
- * @property {Object} [cashCollectResult] - CASH/COLLECT 結算結果
+ * @property {number} totalWin                 - 所有線/路的總贏分（已乘 BET 的最終金額）
+ * @property {WinLineResult[]} results         - 每條中獎線/路的詳細資訊
+ * @property {ScatterResult[]} [scatterResults] - SCATTER 結算結果陣列
+ * @property {CashCollectResult} [cashCollectResult] - CASH/COLLECT 結算結果
  */
 
 /**
- * 單條中獎線資訊
- * @typedef {Object} WinLine
- * @property {number} lineIndex  - 線獎編號 (0-based)
- * @property {string} symbol     - 中獎符號名稱
- * @property {number} matchCount - 連續匹配數量
- * @property {number} payout     - 該線的賠付倍率
- * @property {number} winAmount  - 該線的實際贏分
- * @property {number[]} positions - 匹配的位置索引陣列
+ * 單條中獎結果（由 computeGridResults 產出）
+ *
+ * ⚠️ 命名對照表（歷史遺留，請勿混淆）：
+ * ┌──────────────┬────────────────────────────────────────────┐
+ * │ 欄位名稱      │ 實際含義                                    │
+ * ├──────────────┼────────────────────────────────────────────┤
+ * │ payoutMult   │ 賠付表的「原始倍率」(如 paytable[sym][2]=50) │
+ * │ winAmount    │ 最終贏分金額 = payoutMult × lineBet × ways  │
+ * │ multiplier   │ 乘數轉軸的額外倍率 (null=無乘數)             │
+ * └──────────────┴────────────────────────────────────────────┘
+ *
+ * 引擎內部的 bestPayout 變數 = 已經算完的 winAmount，名稱容易誤會為「倍率」
+ *
+ * @typedef {Object} WinLineResult
+ * @property {string} lineId        - 線獎識別碼 ("1", "2"... 或 "WAYS_A", "SCATTER_SCATTER")
+ * @property {string} symbol        - 中獎符號名稱 (如 "A", "WILD")
+ * @property {number} count         - 連續匹配數量 (3連, 4連, 5連...)
+ * @property {number} payoutMult    - 賠付表原始倍率（不含 BET，純查表值）
+ * @property {number} winAmount     - 最終贏分金額（= payoutMult × lineBet × ways × multiplier）
+ * @property {number|null} multiplier - 乘數轉軸倍率（null=無乘數，>1=有乘數）
+ * @property {number} [ways]        - All Ways 模式的路數（paylines 模式無此欄位）
+ * @property {string[]} symbolsOnLine - 該線上的所有符號名稱陣列
+ * @property {string[]} positions   - 位置描述字串陣列（如 ["2, 1, 1, 2, 3"] 或 ["3 連 × 27 Ways"]）
+ * @property {Array<{row: number, col: number}>} winCoords - 中獎格子的座標陣列
+ */
+
+/**
+ * SCATTER 結算結果
+ * @typedef {Object} ScatterResult
+ * @property {string} lineId        - 識別碼 (如 "SCATTER_SCATTER")
+ * @property {string} symbol        - SCATTER 符號名稱
+ * @property {number} count         - 出現次數
+ * @property {number} payoutMult    - 賠付表原始倍率
+ * @property {number} winAmount     - 最終贏分金額（= payoutMult × totalBet）
+ * @property {Array<{row: number, col: number}>} winCoords - SCATTER 位置座標
+ */
+
+/**
+ * CASH/COLLECT 結算結果
+ * @typedef {Object} CashCollectResult
+ * @property {string} lineId        - 識別碼 (如 "CASH_COLLECT")
+ * @property {string} symbol        - COLLECT 符號名稱
+ * @property {number} payoutMult    - CASH 面額總和
+ * @property {number} winAmount     - 最終贏分金額
+ * @property {Array<{row: number, col: number}>} winCoords - 相關格子座標
  */
 
 // ═══════════════════════════════════════════════

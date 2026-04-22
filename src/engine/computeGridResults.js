@@ -44,6 +44,10 @@ export function computeGridResults(template, targetGrid, betAmount, options = {}
             }
         }
 
+        // ── 金額名詞定義 ──
+        // parsedBet = 使用者輸入的「總押注」(Total Bet)
+        // lineBet   = 每條線的押注 (hasAdjustableLines 時 = parsedBet / 線數，否則 = parsedBet)
+        // bestPayout (下方局部變數) = 已算完的最終贏分金額，命名歷史遺留（容易誤會為倍率）
         const parsedBet = parseFloat(betAmount);
         if (isNaN(parsedBet) || parsedBet <= 0) throw new Error('押注金額必須為大於 0 的有效數字。');
 
