@@ -1,11 +1,14 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Video, Scan, Play, Trash2, Send, Sparkles, ChevronDown, ChevronUp, X, Download, BarChart3, ImageIcon, Square, Camera, Link2, AlertCircle, Star, Monitor, FolderOpen, CheckCircle2 } from 'lucide-react';
+import { Video, Scan, Play, Trash2, Send, Sparkles, ChevronDown, ChevronUp, Download, BarChart3, ImageIcon, Square, Camera, Link2, AlertCircle, Star, Monitor, FolderOpen, CheckCircle2 } from 'lucide-react';
 import CandidateCard from './phase4/CandidateCard';
 import CardErrorBoundary from './phase4/CardErrorBoundary';
 import ActionPanel from './phase4/ActionPanel';
 import DiagnosticDashboard from './phase4/DiagnosticDashboard';
 import VideoPlayer from './phase4/VideoPlayer';
+import PreviewLightbox from './phase4/PreviewLightbox';
 import usePhase4Store from '../stores/usePhase4Store';
+import useAutoSave from '../hooks/useAutoSave';
+import useSpinGroupAnalysis from '../hooks/useSpinGroupAnalysis';
 const Phase4Video = ({
     isPhase4Minimized,
     onToggle,
@@ -70,69 +73,16 @@ const Phase4Video = ({
     }, [isStreamMode, videoSrc, videoRef]);
 
 
-    // ── 截圖存檔狀態 (自動存入磁碟) ──
-    const [rootSaveDirHandle, setRootSaveDirHandle] = useState(null);
-    const [saveDirHandle, setSaveDirHandle] = useState(null);
-    const [saveCount, setSaveCount] = useState(0);
-    const [saveFormat, setSaveFormat] = useState('jpeg'); // 'jpeg' | 'png'
-    const savedIdsRef = useRef(new Set());
-
-    const handlePickSaveDir = async () => {
-        try {
-            const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
-            setRootSaveDirHandle(handle);
-            setSaveDirHandle(null); // 換了 root 就清除原本的 saveDir
-            setSaveCount(0);
-            savedIdsRef.current.clear();
-        } catch (e) {
-            console.log("使用者取消選取目錄", e);
-        }
-    };
-
-    // 自動存檔 useEffect
-    useEffect(() => {
-        if (!saveDirHandle) return;
-        candidates.forEach(async (kf) => {
-            // ── 存盤面截圖 ──
-            if (!savedIdsRef.current.has(kf.id) && kf.canvas) {
-                savedIdsRef.current.add(kf.id);
-                try {
-                    const mimeType = saveFormat === 'png' ? 'image/png' : 'image/jpeg';
-                    const ext = saveFormat === 'png' ? 'png' : 'jpg';
-                    const blob = await new Promise(r => kf.canvas.toBlob(r, mimeType, 0.92));
-                    const prefix = kf.id.startsWith('win-') ? 'win_' : 'spin_';
-                    const fileName = `${prefix}${kf.time.toFixed(2)}s_${kf.id}.${ext}`;
-                    const fileHandle = await saveDirHandle.getFileHandle(fileName, { create: true });
-                    const writable = await fileHandle.createWritable();
-                    await writable.write(blob);
-                    await writable.close();
-                    kf.canvas = null; // 釋放記憶體
-                    setSaveCount(prev => prev + 1);
-                } catch (e) {
-                    console.error('自動存檔失敗:', e);
-                }
-            }
-            // ── 存 WIN 特工截圖 ──
-            const wpKey = `wp_${kf.id}`;
-            if (!savedIdsRef.current.has(wpKey) && kf.winPollCanvas) {
-                savedIdsRef.current.add(wpKey);
-                try {
-                    const mimeType = saveFormat === 'png' ? 'image/png' : 'image/jpeg';
-                    const ext = saveFormat === 'png' ? 'png' : 'jpg';
-                    const blob = await new Promise(r => kf.winPollCanvas.toBlob(r, mimeType, 0.92));
-                    const fileName = `winpoll_${kf.time.toFixed(2)}s_${kf.id}.${ext}`;
-                    const fileHandle = await saveDirHandle.getFileHandle(fileName, { create: true });
-                    const writable = await fileHandle.createWritable();
-                    await writable.write(blob);
-                    await writable.close();
-                    // 不釋放 winPollCanvas，報表匯出時還需要
-                    setSaveCount(prev => prev + 1);
-                } catch (e) {
-                    console.error('WIN 特工截圖存檔失敗:', e);
-                }
-            }
-        });
-    }, [candidates, saveDirHandle, saveFormat]);
+    // ── 自動存檔 (hook) ──
+    const {
+        rootSaveDirHandle, setRootSaveDirHandle,
+        saveDirHandle, setSaveDirHandle,
+        saveCount,
+        saveFormat, setSaveFormat,
+        savedIdsRef,
+        handlePickSaveDir,
+        handleConfirmDedup,
+    } = useAutoSave(candidates, confirmDedup);
 
     // ── 卡片渲染已抽離至 CandidateCard 元件 ──
     // ── 影片播放器已抽離至 VideoPlayer 元件 ──
@@ -159,7 +109,6 @@ const Phase4Video = ({
                 const folderName = `Session_${ts}${gameSuffix}`;
                 const newSaveHandle = await rootSaveDirHandle.getDirectoryHandle(folderName, { create: true });
                 setSaveDirHandle(newSaveHandle);
-                setSaveCount(0);
                 savedIdsRef.current.clear();
                 setTemplateMessage?.(`📁 已自動建立存檔資料夾：${folderName}`);
             } catch (err) {
@@ -179,36 +128,6 @@ const Phase4Video = ({
         stopLiveDetection();
     };
 
-    // ── 智慧刪除（含資料夾圖片清理）──
-    const handleConfirmDedup = async () => {
-        // 先找出即將被刪除的候選幀（isSpinBest === false）
-        const toRemove = candidates.filter(c => c.isSpinBest === false);
-
-        // 如果有選擇資料夾，嘗試刪除對應的截圖檔
-        if (saveDirHandle && toRemove.length > 0) {
-            const exts = ['jpg', 'jpeg', 'png'];
-            let deletedCount = 0;
-            for (const kf of toRemove) {
-                for (const ext of exts) {
-                    const prefix = kf.id.startsWith('win-') ? 'win_' : 'spin_';
-                    const fileName = `${prefix}${kf.time.toFixed(2)}s_${kf.id}.${ext}`;
-                    try {
-                        await saveDirHandle.removeEntry(fileName);
-                        deletedCount++;
-                    } catch (e) {
-                        // 檔案不存在或無權限，靜默跳過
-                    }
-                }
-            }
-            if (deletedCount > 0) {
-                console.log(`🗑️ 已從資料夾刪除 ${deletedCount} 張被淘汰的截圖`);
-            }
-        }
-
-        // 再執行原本的 confirmDedup（從 state 中移除非最佳候選幀）
-        confirmDedup();
-    };
-
     // ── 統計數據 ──
     const recognizedCount = candidates.filter(c => c.status === 'recognized').length;
     const pendingCount = candidates.filter(c => c.status === 'pending').length;
@@ -217,6 +136,7 @@ const Phase4Video = ({
         (c.status === 'pending' || c.status === 'error') &&
         c.ocrData?.win && parseFloat(c.ocrData.win) > 0
     ).length;
+
 
     // ── 新卡片滾動邏輯 ──
     const prevLengthRef = useRef(candidates.length);
@@ -242,198 +162,21 @@ const Phase4Video = ({
         prevLengthRef.current = candidates.length;
     }, [candidates.length, isLiveActive, lastAddedManualId]);
 
-    // ── 分局與連續性計算 ──
-    const groupsWithMath = useMemo(() => {
-        const hasSpinData = candidates.some(c => c.spinGroupId !== undefined);
-        if (!hasSpinData) return null;
+    // ── 分局與連續性計算 (hook) ──
+    const {
+        groupsWithMath,
+        brokenGroupIds,
+        diagnosticStats,
+        wrongWinGroupIds,
+        nonZeroWinGroupIds,
+        scrollToNextBreak,
+        scrollToNextWrongWin,
+        scrollToNextNonZeroWin,
+        currentBreakIndex,
+        currentWrongWinIndex,
+        currentNonZeroWinIndex,
+    } = useSpinGroupAnalysis(candidates);
 
-        const sortedCandidates = [...candidates].sort((a, b) => a.time - b.time);
-
-        const blocksByGid = new Map();
-        
-        sortedCandidates.forEach((kf, idx) => {
-            const gid = kf.spinGroupId !== undefined ? kf.spinGroupId : `ungrouped_${kf.id}`;
-            if (!blocksByGid.has(gid)) {
-                blocksByGid.set(gid, []);
-            }
-            blocksByGid.get(gid).push({ kf, idx });
-        });
-
-        const blocksArray = Array.from(blocksByGid.entries()).map(([gid, group]) => ({
-            gid,
-            group
-        }));
-
-        // 依據每個群組的【第一張卡片出現時間】進行排序，讓 UI 邏輯與時間線保持自然
-        blocksArray.sort((a, b) => a.group[0].kf.time - b.group[0].kf.time);
-
-        let currentBase = null;
-        return blocksArray.map((block) => {
-            const { gid, group } = block;
-            const bestFrame = group.find(g => g.kf.isSpinBest)?.kf || group[0].kf;
-            const parse = v => parseFloat(v) || 0;
-            const bal = parse(bestFrame.ocrData?.balance);
-            const win = parse(bestFrame.ocrData?.win);
-            const bet = parse(bestFrame.ocrData?.bet);
-            
-            let mathValid = true;
-            let mathState = 0; 
-            let mathDiff = 0;
-            let expectedBase = currentBase;
-
-            const hasData = bestFrame.ocrData && typeof bestFrame.ocrData.balance !== 'undefined' && typeof bestFrame.ocrData.bet !== 'undefined';
-
-            // 由底層 smartDedup 引擎的 isFGSequence 標記驅動，不再用 UI 層啟發式猜測
-            const isFGSequence = group.some(c => c.kf?.isFGSequence);
-
-            if (hasData && bet > 0) { 
-                if (currentBase === null) {
-                    mathState = win > 0 ? 2 : 1;
-                    currentBase = bal + win; 
-                } else if (isFGSequence) {
-                    // FG 模式：不檢查 BAL+BET=上局結餘（因為不扣 BET），直接視為連續
-                    mathState = 4; // FG 模式
-                    mathValid = true;
-                    currentBase = bal + win; // 追蹤 FG 結束後的結餘
-                } else {
-                    const eps = 0.5;
-                    if (Math.abs(bal + bet - currentBase) < eps) {
-                        mathState = win > 0 ? 2 : 1;
-                        currentBase = bal + win;
-                    } else if (Math.abs(bal + bet - win - currentBase) < eps) {
-                        mathState = 3;
-                        currentBase = bal;
-                    } else {
-                        mathValid = false;
-                        mathDiff = (bal + bet) - currentBase;
-                        currentBase = bal + win; 
-                    }
-                }
-            }
-
-            return { gid, group, mathValid, mathState, mathDiff, expectedBase, nextBase: currentBase, isFGSequence };
-        });
-    }, [candidates]);
-
-    const brokenGroupIds = useMemo(() => {
-        if (!groupsWithMath) return [];
-        return groupsWithMath.filter(g => !g.mathValid).map(g => parseInt(g.gid));
-    }, [groupsWithMath]);
-
-    const diagnosticStats = useMemo(() => {
-        if (!groupsWithMath) return null;
-        let total = groupsWithMath.length;
-        let unbroken = groupsWithMath.filter(g => g.mathValid).length;
-        let broken = groupsWithMath.filter(g => !g.mathValid).length;
-        return { total, unbroken, broken };
-    }, [groupsWithMath]);
-
-    const wrongWinGroupIds = useMemo(() => {
-        if (!groupsWithMath) return [];
-        return groupsWithMath.filter(g => {
-            return g.group.some(c => {
-                const kf = c.kf;
-                const hasResult = kf.status === 'recognized' && kf.recognitionResult;
-                if (!hasResult) return false;
-                const ocrWin = kf.ocrData ? Math.floor(parseFloat(kf.ocrData.win) || 0) : 0;
-                const aiWin = Math.floor(parseFloat(kf.recognitionResult.totalWin) || 0);
-                return ocrWin !== aiWin;
-            });
-        }).map(g => g.gid);
-    }, [groupsWithMath]);
-
-    const nonZeroWinGroupIds = useMemo(() => {
-        if (!groupsWithMath) return [];
-        return groupsWithMath.filter(g => {
-            return g.group.some(c => {
-                const kf = c.kf;
-                const ocrWin = kf.ocrData ? Math.floor(parseFloat(kf.ocrData.win) || 0) : 0;
-                const aiWin = (kf.status === 'recognized' && kf.recognitionResult) ? Math.floor(parseFloat(kf.recognitionResult.totalWin) || 0) : 0;
-                return Math.max(ocrWin, aiWin) > 0;
-            });
-        }).map(g => g.gid);
-    }, [groupsWithMath]);
-
-    const [lastBreakId, setLastBreakId] = useState(null);
-    const currentBreakIndex = useMemo(() => {
-        if (!lastBreakId || brokenGroupIds.length === 0) return 0;
-        const idx = brokenGroupIds.indexOf(lastBreakId);
-        return idx >= 0 ? idx : 0;
-    }, [lastBreakId, brokenGroupIds]);
-
-    /** 通用：找出清單中「目前可視區域之後」的下一個項目 index */
-    const findNextVisibleIndex = useCallback((ids, lastId, idPrefix = 'spin-group-') => {
-        if (ids.length === 0) return -1;
-        // 如果有上次記錄，直接循環到下一個
-        if (lastId !== null) {
-            const lastIdx = ids.indexOf(lastId);
-            if (lastIdx >= 0) return (lastIdx + 1) % ids.length;
-        }
-        // 首次或 lastId 無效：找出第一個在可視區域下方的項目
-        const listContainer = document.querySelector('.custom-scrollbar');
-        if (listContainer) {
-            const containerRect = listContainer.getBoundingClientRect();
-            const viewportMid = containerRect.top + containerRect.height / 2;
-            for (let i = 0; i < ids.length; i++) {
-                const el = document.getElementById(`${idPrefix}${ids[i]}`)
-                    || document.getElementById(`kf-card-${String(ids[i]).replace('ungrouped_', '')}`);
-                if (el) {
-                    const elRect = el.getBoundingClientRect();
-                    if (elRect.top >= viewportMid) return i;
-                }
-            }
-        }
-        return 0; // fallback：從頭開始
-    }, []);
-
-    const highlightAndScroll = useCallback((el, ringColor) => {
-        if (!el) return;
-        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        el.classList.add('ring-4', ringColor, 'ring-offset-2', 'transition-all', 'duration-500');
-        setTimeout(() => el.classList.remove('ring-4', ringColor, 'ring-offset-2'), 1500);
-    }, []);
-
-    const scrollToNextBreak = useCallback(() => {
-        if (brokenGroupIds.length === 0) return;
-        const nextIdx = findNextVisibleIndex(brokenGroupIds, lastBreakId);
-        const gid = brokenGroupIds[nextIdx];
-        highlightAndScroll(document.getElementById(`spin-group-${gid}`), 'ring-rose-400');
-        setLastBreakId(gid);
-    }, [brokenGroupIds, lastBreakId, findNextVisibleIndex, highlightAndScroll]);
-
-    const [lastWrongWinId, setLastWrongWinId] = useState(null);
-    const currentWrongWinIndex = useMemo(() => {
-        if (!lastWrongWinId || wrongWinGroupIds.length === 0) return 0;
-        const idx = wrongWinGroupIds.indexOf(lastWrongWinId);
-        return idx >= 0 ? idx : 0;
-    }, [lastWrongWinId, wrongWinGroupIds]);
-
-    const scrollToNextWrongWin = useCallback(() => {
-        if (wrongWinGroupIds.length === 0) return;
-        const nextIdx = findNextVisibleIndex(wrongWinGroupIds, lastWrongWinId);
-        const gid = wrongWinGroupIds[nextIdx];
-        const el = document.getElementById(`spin-group-${gid}`)
-            || document.getElementById(`kf-card-${String(gid).replace('ungrouped_', '')}`);
-        highlightAndScroll(el, 'ring-amber-400');
-        setLastWrongWinId(gid);
-    }, [wrongWinGroupIds, lastWrongWinId, findNextVisibleIndex, highlightAndScroll]);
-
-    const [lastNonZeroWinId, setLastNonZeroWinId] = useState(null);
-    const currentNonZeroWinIndex = useMemo(() => {
-        if (!lastNonZeroWinId || nonZeroWinGroupIds.length === 0) return 0;
-        const idx = nonZeroWinGroupIds.indexOf(lastNonZeroWinId);
-        return idx >= 0 ? idx : 0;
-    }, [lastNonZeroWinId, nonZeroWinGroupIds]);
-
-    const scrollToNextNonZeroWin = useCallback(() => {
-        if (nonZeroWinGroupIds.length === 0) return;
-        const nextIdx = findNextVisibleIndex(nonZeroWinGroupIds, lastNonZeroWinId);
-        const gid = nonZeroWinGroupIds[nextIdx];
-        const el = document.getElementById(`spin-group-${gid}`)
-            || document.getElementById(`kf-card-${String(gid).replace('ungrouped_', '')}`);
-        highlightAndScroll(el, 'ring-emerald-400');
-        setLastNonZeroWinId(gid);
-    }, [nonZeroWinGroupIds, lastNonZeroWinId, findNextVisibleIndex, highlightAndScroll]);
     const handleHealBreaksGlobally = () => {
         if (brokenGroupIds.length === 0) return;
         healBreaks(brokenGroupIds, scanOpts);
@@ -722,32 +465,7 @@ const Phase4Video = ({
                                     handleHealBreaksGlobally={handleHealBreaksGlobally}
                                 />
 
-            {/* 全幀截圖預覽 Lightbox */}
-            {previewImage && (
-                <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-center justify-center cursor-pointer animate-in fade-in duration-200"
-                    onClick={() => setPreviewImage(null)}>
-                    <div className="relative flex gap-4 max-w-[95vw] max-h-[90vh]" onClick={e => e.stopPropagation()}>
-                        <div className="relative">
-                            <img src={previewImage.url} alt="reel-stop" className="max-w-full max-h-[85vh] rounded-xl shadow-2xl border border-white/10" />
-                            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-3 rounded-b-xl">
-                                <span className="text-white text-sm font-mono">🎰 盤面 @ {previewImage.time.toFixed(2)}s</span>
-                            </div>
-                        </div>
-                        {previewImage.url2 && (
-                            <div className="relative">
-                                <img src={previewImage.url2} alt="win-poll" className="max-w-full max-h-[85vh] rounded-xl shadow-2xl border-2 border-amber-400/60" />
-                                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-3 rounded-b-xl">
-                                    <span className="text-amber-300 text-sm font-mono">🕵️ WIN 特工 @ {previewImage.time2?.toFixed(2) || '?'}s</span>
-                                </div>
-                            </div>
-                        )}
-                        <button onClick={() => setPreviewImage(null)}
-                            className="absolute -top-3 -right-3 w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-lg hover:bg-slate-100 transition-colors">
-                            <X size={16} className="text-slate-700" />
-                        </button>
-                    </div>
-                </div>
-            )}
+            <PreviewLightbox previewImage={previewImage} onClose={() => setPreviewImage(null)} />
                         </div>
                     </div>
                 </div>
