@@ -243,7 +243,7 @@ export function useTemplateBuilder({
                 hasDynamicMultiplier: data.hasDynamicMultiplier || false,
                 multiplierCalcType: data.multiplierCalcType || 'product',
                 hasBidirectionalPaylines: data.hasBidirectionalPaylines || false,
-                hasAdjustableLines: data.hasAdjustableLines || false,
+                hasAdjustableLines: false, // Q6 可調線數：載入時一律預設「無」
                 validateStrict: false
             });
 
@@ -256,7 +256,7 @@ export function useTemplateBuilder({
             setHasDynamicMultiplier(parseBool(data.hasDynamicMultiplier || false));
             setMultiplierCalcType(data.multiplierCalcType || 'product');
             setHasBidirectionalPaylines(parseBool(data.hasBidirectionalPaylines || false));
-            setHasAdjustableLines(parseBool(data.hasAdjustableLines || false));
+            setHasAdjustableLines(false); // Q6 載入時一律預設「無」
 
             if (setIsPhase2Minimized) setIsPhase2Minimized(false);
             if (setIsPhase3Minimized) setIsPhase3Minimized(true);
