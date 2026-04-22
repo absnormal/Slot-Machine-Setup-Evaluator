@@ -20,6 +20,8 @@ export function useSlotEngine({ template, enableBidirectional = false }) {
 
     const [showPtModal, setShowPtModal] = useState(false);
 
+    const [globalMultiplier, setGlobalMultiplier] = useState(1);
+
     const availableSymbols = useMemo(() => {
         if (!template) return [];
         const result = [];
@@ -78,13 +80,7 @@ export function useSlotEngine({ template, enableBidirectional = false }) {
                 const currentRows = prev.length;
                 const currentCols = prev[0]?.length || 0;
                 if (currentRows !== template.rows || currentCols !== template.cols) {
-                    const newGrid = Array.from({ length: template.rows }, () => Array(template.cols).fill(''));
-                    if (template.hasMultiplierReel) {
-                        const midRow = Math.floor(template.rows / 2);
-                        const lastCol = template.cols - 1;
-                        if (newGrid[midRow]) newGrid[midRow][lastCol] = "x1";
-                    }
-                    return newGrid;
+                    return Array.from({ length: template.rows }, () => Array(template.cols).fill(''));
                 }
                 return prev;
             });
@@ -93,27 +89,18 @@ export function useSlotEngine({ template, enableBidirectional = false }) {
 
     useEffect(() => {
         if (template && availableSymbols.length > 0) {
-            const isMultiplierBrush = activeBrush && activeBrush.startsWith('x');
-            if (activeBrush !== '' && (!availableSymbols.includes(activeBrush) && !isCashSymbol(activeBrush) && !isMultiplierBrush)) {
+            if (activeBrush !== '' && !availableSymbols.includes(activeBrush) && !isCashSymbol(activeBrush)) {
                 setActiveBrush(availableSymbols.includes('WILD') ? 'WILD' : availableSymbols[0]);
             }
         }
     }, [template, availableSymbols, activeBrush]);
 
-    const generateRandomPanelGrid = useCallback((rows, cols, symbols, hasMultiplierReel = false) => {
+    const generateRandomPanelGrid = useCallback((rows, cols, symbols) => {
         if (!symbols || symbols.length === 0) return [];
         const grid = [];
         for (let r = 0; r < rows; r++) {
             const rowArr = [];
             for (let c = 0; c < cols; c++) {
-                if (hasMultiplierReel && c === cols - 1) {
-                    if (r === Math.floor(rows / 2)) {
-                        rowArr.push("x1");
-                    } else {
-                        rowArr.push("");
-                    }
-                    continue;
-                }
                 let sym = symbols[Math.floor(Math.random() * symbols.length)];
                 if (sym === 'CASH') {
                     sym = `CASH_${[0.5, 1, 2, 5, 10][Math.floor(Math.random() * 5)]}`;
@@ -128,18 +115,12 @@ export function useSlotEngine({ template, enableBidirectional = false }) {
     const handleRandomizePanel = useCallback(() => {
         if (!template) return;
         const allSymbols = Object.keys(template.paytable);
-        setPanelGrid(generateRandomPanelGrid(template.rows, template.cols, allSymbols, template.hasMultiplierReel));
+        setPanelGrid(generateRandomPanelGrid(template.rows, template.cols, allSymbols));
     }, [template, generateRandomPanelGrid]);
 
     const handleClearPanel = useCallback(() => {
         if (!template) return;
-        const grid = Array.from({ length: template.rows }, () => Array(template.cols).fill(''));
-        if (template.hasMultiplierReel) {
-            const midRow = Math.floor(template.rows / 2);
-            const lastCol = template.cols - 1;
-            if (grid[midRow]) grid[midRow][lastCol] = "x1";
-        }
-        setPanelGrid(grid);
+        setPanelGrid(Array.from({ length: template.rows }, () => Array(template.cols).fill('')));
     }, [template]);
 
     const getSafeGrid = useCallback((sourceGrid) => {
@@ -206,8 +187,8 @@ export function useSlotEngine({ template, enableBidirectional = false }) {
     }, [template]);
 
     const computeGridResultsCb = useCallback((targetGrid, betAmount) => {
-        return computeGridResults(template, targetGrid, betAmount, { enableBidirectional, activeLineCount });
-    }, [template, enableBidirectional, activeLineCount]);
+        return computeGridResults(template, targetGrid, betAmount, { enableBidirectional, activeLineCount, globalMultiplier });
+    }, [template, enableBidirectional, activeLineCount, globalMultiplier]);
 
     useEffect(() => {
         const { results, error } = computeGridResultsCb(panelGrid, betInput);
@@ -225,6 +206,7 @@ export function useSlotEngine({ template, enableBidirectional = false }) {
         panelInputMode, setPanelInputMode,
         activeBrush, setActiveBrush,
         showPtModal, setShowPtModal,
+        globalMultiplier, setGlobalMultiplier,
         availableSymbols,
         generateRandomPanelGrid,
         handleRandomizePanel,

@@ -173,7 +173,8 @@ function App() {
         showPtModal, setShowPtModal, availableSymbols,
         generateRandomPanelGrid, handleRandomizePanel, handleClearPanel,
         getSafeGrid, handleGridPaste, handleCellChange, computeGridResultsCb,
-        activeLineCount, setActiveLineCount
+        activeLineCount, setActiveLineCount,
+        globalMultiplier, setGlobalMultiplier
     } = useSlotEngine({ template, enableBidirectional });
 
     // --- Phase 3 (AI 視覺批次辨識) ---
@@ -553,6 +554,7 @@ function App() {
                     isBalanceExpanded={isBalanceExpanded} setIsBalanceExpanded={setIsBalanceExpanded}
                     enableBidirectional={enableBidirectional} setEnableBidirectional={setEnableBidirectional}
                     activeLineCount={activeLineCount} setActiveLineCount={setActiveLineCount}
+                    globalMultiplier={globalMultiplier} setGlobalMultiplier={setGlobalMultiplier}
                 />
                 </ErrorBoundary>
 

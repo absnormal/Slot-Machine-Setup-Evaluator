@@ -23,25 +23,9 @@ export function computeGridResults(template, targetGrid, betAmount, options = {}
         let activeMultiplier = 1;
         let multiplierSymStr = "";
 
-        if (template.hasMultiplierReel && template.cols > 1) {
-            evalTemplate = { ...template, cols: template.cols - 1 };
-            safeGrid = targetGrid.map(row => row.slice(0, evalTemplate.cols));
-            // Check the entire last column for multipliers (Global Multiplier)
-            multiplierSymStr = "";
-            let foundMultipliers = [];
-            
-            for (let r = 0; r < template.rows; r++) {
-                const rawSym = targetGrid[r]?.[template.cols - 1] || "";
-                const m = getSymbolMultiplier(rawSym);
-                if (m > 1) {
-                    if (activeMultiplier === 1) activeMultiplier = m;
-                    else activeMultiplier *= m;
-                    foundMultipliers.push({ row: r, col: template.cols - 1, m });
-                }
-            }
-            if (activeMultiplier > 1) {
-                multiplierSymStr = `x${activeMultiplier.toFixed(2).replace(/\.00$/, '')}`;
-            }
+        if (template.hasMultiplierReel && options.globalMultiplier && options.globalMultiplier > 1) {
+            activeMultiplier = options.globalMultiplier;
+            multiplierSymStr = `x${activeMultiplier.toFixed(2).replace(/\.00$/, '')}`;
         }
 
         // ── 金額名詞定義 ──
@@ -523,17 +507,6 @@ export function computeGridResults(template, targetGrid, betAmount, options = {}
                     }
                 } else if (res.positions && res.positions.length > 0) {
                     res.positions = [...res.positions, multiplierSymStr];
-                }
-                // Add the multiplier coordinate for highlighting
-                // Add all multiplier coordinates from the last column for highlighting
-                const multCol = template.cols - 1;
-                for (let r = 0; r < template.rows; r++) {
-                    const rawSym = targetGrid[r]?.[multCol] || "";
-                    if (getSymbolMultiplier(rawSym) > 1) {
-                        if (!res.winCoords.some(c => c.row === r && c.col === multCol)) {
-                            res.winCoords.push({ row: r, col: multCol });
-                        }
-                    }
                 }
             });
         }

@@ -225,11 +225,10 @@ export function useTemplateBuilder({
         });
 
         // ── 5. tpl 物件組裝 ──
-        const finalCols = hasMR ? cols + 1 : cols;
         return {
             name: gameName || '',
             rows,
-            cols: finalCols,
+            cols,
             lineMode: lm,
             linesCount: lm === 'allways' ? Math.pow(rows, cols) : (er?.length || 0),
             lines,

@@ -123,50 +123,7 @@ const BrushPalette = ({ template, panelInputMode, activeBrush, setActiveBrush, a
                     </div>
                 </button>
 
-                {template?.hasMultiplierReel && (
-                    <React.Fragment>
-                        <div className="w-px h-10 bg-slate-700 mx-1 self-center"></div>
-                        <button
-                            onClick={() => {
-                                if (!activeBrush.startsWith('x')) setActiveBrush('x2');
-                            }}
-                            className={`relative w-[48px] h-[48px] sm:w-[52px] sm:h-[52px] rounded-lg border-2 flex flex-col items-center justify-center transition-all ${activeBrush.startsWith('x') ? 'border-amber-400 bg-amber-500/20 shadow-[0_0_10px_rgba(245,158,11,0.3)] scale-105 z-10' : 'border-slate-600 bg-slate-800 hover:border-slate-500 hover:bg-slate-700'}`}
-                            title="全盤乘倍畫筆 (點擊對應格子)"
-                        >
-                            <span className="text-[10px] font-bold text-amber-500 mb-0.5 leading-none">MULT</span>
-                            <span className="text-sm font-black text-amber-400 leading-none">
-                                {activeBrush.startsWith('x') ? activeBrush : 'x?'}
-                            </span>
-                        </button>
-                    </React.Fragment>
-                )}
 
-                {/* Multiplier Value Input (For standalone xN OR symbol_xN) */}
-                {((activeBrush.startsWith('x') && template?.hasMultiplierReel) || 
-                  (template?.hasDynamicMultiplier && isDynamicMultiplierSymbol(activeBrush))) && (
-                    <div className="flex flex-col justify-center bg-amber-500/20 border border-amber-400/50 rounded-lg px-3 h-[48px] sm:h-[52px] animate-in fade-in slide-in-from-left-2 duration-200 ml-1">
-                        <label className="text-[9px] font-bold text-amber-300 mb-0.5">自訂倍率值</label>
-                        <div className="flex items-center gap-1">
-                            <span className="text-amber-400 font-bold text-xs italic">x</span>
-                            <input
-                                type="number"
-                                step="any"
-                                value={activeBrush.startsWith('x') ? activeBrush.substring(1) : (activeBrush.match(/_x(\d+(?:\.\d+)?)$/i)?.[1] || '')}
-                                onChange={(e) => {
-                                    const val = e.target.value;
-                                    if (activeBrush.startsWith('x')) {
-                                        setActiveBrush(val ? `x${val}` : 'x');
-                                    } else {
-                                        const base = getBaseSymbol(activeBrush, template?.jpConfig);
-                                        setActiveBrush(val ? `${base}_x${val}` : `${base}_xN`);
-                                    }
-                                }}
-                                className="w-16 px-1.5 py-0.5 text-xs font-black text-amber-900 bg-amber-50 hover:bg-white focus:bg-white rounded outline-none text-center focus:ring-2 focus:ring-amber-400 transition-all shadow-inner"
-                                placeholder="數值"
-                            />
-                        </div>
-                    </div>
-                )}
 
                 <div className="w-px h-10 bg-slate-700 mx-1 self-center"></div>
 

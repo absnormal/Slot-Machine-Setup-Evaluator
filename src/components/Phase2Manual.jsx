@@ -25,7 +25,8 @@ const Phase2Manual = ({
     setTemplateMessage,
     isBalanceExpanded, setIsBalanceExpanded,
     enableBidirectional, setEnableBidirectional,
-    activeLineCount, setActiveLineCount
+    activeLineCount, setActiveLineCount,
+    globalMultiplier, setGlobalMultiplier
 }) => {
     const [showCashModal, setShowCashModal] = React.useState(false);
     const [modalCell, setModalCell] = React.useState({ row: 0, col: 0 });
@@ -145,6 +146,42 @@ const Phase2Manual = ({
                                             availableSymbols={availableSymbols}
                                             handleClearPanel={handleClearPanel}
                                         />
+
+                                        {/* Global Multiplier Top Bar */}
+                                        {template?.hasMultiplierReel && (
+                                            <div className="flex flex-col sm:flex-row items-center gap-3 bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 mb-4 animate-in fade-in slide-in-from-top-2">
+                                                <div className="flex items-center gap-2">
+                                                    <div className="w-8 h-8 rounded-full bg-amber-500/20 flex items-center justify-center border border-amber-400/50">
+                                                        <span className="text-amber-400 font-black text-lg text-center leading-none mt-0.5">X</span>
+                                                    </div>
+                                                    <span className="text-amber-300 font-bold">目前全盤乘倍：</span>
+                                                </div>
+                                                <div className="flex items-center gap-2 flex-1 w-full sm:w-auto">
+                                                    <div className="relative flex items-center">
+                                                        <span className="absolute left-3 text-amber-500 font-black italic">x</span>
+                                                        <input 
+                                                            type="number" 
+                                                            step="any"
+                                                            min="1"
+                                                            value={globalMultiplier}
+                                                            onChange={e => setGlobalMultiplier(Math.max(1, parseFloat(e.target.value) || 1))}
+                                                            className="w-24 pl-7 pr-3 py-1.5 bg-slate-900 border-2 border-amber-500/50 rounded-lg text-amber-400 font-black text-lg focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-all shadow-inner"
+                                                        />
+                                                    </div>
+                                                    <div className="flex gap-1.5">
+                                                        {[1, 2, 3, 5, 10].map(m => (
+                                                            <button 
+                                                                key={m}
+                                                                onClick={() => setGlobalMultiplier(m)}
+                                                                className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-colors ${globalMultiplier === m ? 'bg-amber-500 text-amber-950 shadow-md' : 'bg-slate-800 text-amber-400/70 border border-slate-700 hover:bg-slate-700 hover:text-amber-400'}`}
+                                                            >
+                                                                x{m}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
 
                                         {/* Line Hover Indicator */}
                                         <div className="flex items-center h-8 mb-4">
