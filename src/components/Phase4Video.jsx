@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Video, Scan, Play, Pause, Trash2, Send, Sparkles, ChevronDown, ChevronUp, X, Clock, Download, BarChart3, ImageIcon, RefreshCw, Square, Camera, Link2, AlertCircle, Star, Monitor, StopCircle, FolderOpen, CheckCircle2 } from 'lucide-react';
 import CandidateCard from './phase4/CandidateCard';
+import CardErrorBoundary from './phase4/CardErrorBoundary';
 import ActionPanel from './phase4/ActionPanel';
 import DiagnosticDashboard from './phase4/DiagnosticDashboard';
 import usePhase4Store from '../stores/usePhase4Store';
@@ -919,6 +920,7 @@ const Phase4Video = ({
                                                         const hasBeenGrouped = kf.isSpinBest !== undefined; // smartDedup 有跑過
                                                         const isDimmed = isMulti && !isBest;
                                                         return (
+                                                            <CardErrorBoundary key={`eb-${kf.id}`}>
                                                             <CandidateCard
                                                                 key={kf.id} kf={kf} idx={idx}
                                                                 editingOcr={editingOcr} setEditingOcr={setEditingOcr}
@@ -931,6 +933,7 @@ const Phase4Video = ({
                                                                 isDimmed={isDimmed}
                                                                 setManualBestCandidate={setManualBestCandidate}
                                                             />
+                                                            </CardErrorBoundary>
                                                         );
                                                     })}
                                                 </div>
