@@ -116,8 +116,8 @@ export function useTemplateIO({
         if (data.hasBidirectionalPaylines !== undefined) setHasBidirectionalPaylines(parseBool(data.hasBidirectionalPaylines));
         else setHasBidirectionalPaylines(false);
 
-        // Q6 可調線數：載入模板時一律預設「無」，需要時由使用者手動開啟
-        setHasAdjustableLines(false);
+        if (data.hasAdjustableLines !== undefined) setHasAdjustableLines(parseBool(data.hasAdjustableLines));
+        else setHasAdjustableLines(false);
 
         // Paytable result items
         if (data.ptResultItems) {
