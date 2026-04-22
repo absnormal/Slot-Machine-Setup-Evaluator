@@ -17,7 +17,7 @@ export default function Phase1Setup(props) {
         onToggle,
         template, templateError,
         showCloudModal, setShowCloudModal,
-        handleImportLocalTemplate, handleExportLocalTemplate,
+
         handleClearTemplate,
         templateName, setTemplateName, defaultSaveName,
         handleSaveToCloud, isSaving, activeSaveAction,
@@ -83,10 +83,8 @@ export default function Phase1Setup(props) {
 
                         {/* 1. Toolbar */}
                         <TemplateToolbar
-                            handleImportLocalTemplate={handleImportLocalTemplate}
                             setShowCloudModal={setShowCloudModal}
                             handleClearTemplate={handleClearTemplate}
-                            handleExportLocalTemplate={handleExportLocalTemplate}
                             templateName={templateName}
                             setTemplateName={setTemplateName}
                             handleSaveToCloud={handleSaveToCloud}

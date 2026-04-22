@@ -158,7 +158,7 @@ function App() {
     const {
         platformName, setPlatformName, gameName, setGameName,
         templateName, setTemplateName, defaultSaveName, localUserId,
-        loadCloudTemplate, handleImportLocalTemplate, handleExportLocalTemplate,
+        loadCloudTemplate,
         handleClearTemplate, handleSaveToCloud,
         showOverwriteConfirm, setShowOverwriteConfirm,
         pendingOverwriteData, activeSaveAction,
@@ -497,7 +497,7 @@ function App() {
                     onToggle={() => handlePhaseToggle('phase1')}
                     template={template} templateError={templateError}
                     showCloudModal={showCloudModal} setShowCloudModal={setShowCloudModal}
-                    handleImportLocalTemplate={handleImportLocalTemplate} handleExportLocalTemplate={handleExportLocalTemplate}
+
                     templateName={templateName} setTemplateName={setTemplateName} defaultSaveName={defaultSaveName}
                     handleSaveToCloud={handleSaveToCloud} isSaving={isSaving} activeSaveAction={activeSaveAction}
                     platformName={platformName} setPlatformName={setPlatformName}

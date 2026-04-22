@@ -22,16 +22,38 @@ export function useSlotEngine({ template, enableBidirectional = false }) {
 
     const availableSymbols = useMemo(() => {
         if (!template) return [];
-        const symbols = new Set();
+        const result = [];
+        const added = new Set();
+
+        const addSymbol = (sym) => {
+            if (!added.has(sym)) {
+                result.push(sym);
+                added.add(sym);
+            }
+        };
         
-        // Add base symbols from paytable
+        // Add base symbols from paytable, grouped with their variants
         if (template.paytable) {
             Object.keys(template.paytable).forEach(sym => {
-                symbols.add(sym);
-                // If double symbol feature is enabled AND a double screenshot exists, add _double variant
-                if (template.hasDoubleSymbol && template.symbolImages?.[`${sym}_double` ?? '']) {
-                    symbols.add(`${sym}_double`);
+                // Skip _xN variants in the first pass to group them with their base
+                if (sym.endsWith('_xN')) return;
+
+                addSymbol(sym);
+
+                // Add Double variant right after base
+                if (template.hasDoubleSymbol && template.symbolImages?.[`${sym}_double`]) {
+                    addSymbol(`${sym}_double`);
                 }
+
+                // Add _xN variant right after base
+                if (template.paytable[`${sym}_xN`]) {
+                    addSymbol(`${sym}_xN`);
+                }
+            });
+
+            // Second pass: catch any remaining symbols (e.g. standalone xN or custom _xN without base)
+            Object.keys(template.paytable).forEach(sym => {
+                addSymbol(sym);
             });
         }
 
@@ -39,22 +61,15 @@ export function useSlotEngine({ template, enableBidirectional = false }) {
             Object.keys(template.jpConfig).forEach(jp => {
                 if (jp.trim() !== '' && template.jpConfig[jp] !== '') {
                     const jpSym = jp.toUpperCase();
-                    symbols.add(jpSym);
-                    if (template.hasDoubleSymbol && template.symbolImages?.[`${jpSym}_double` ?? '']) {
-                        symbols.add(`${jpSym}_double`);
+                    addSymbol(jpSym);
+                    if (template.hasDoubleSymbol && template.symbolImages?.[`${jpSym}_double`]) {
+                        addSymbol(`${jpSym}_double`);
                     }
                 }
             });
         }
         
-        if (!symbols.has('WILD') && !Array.from(symbols).some(s => isWildSymbol(s))) {
-            symbols.add('WILD');
-            if (template.hasDoubleSymbol && template.symbolImages?.['WILD_double']) {
-                symbols.add('WILD_double');
-            }
-        }
-        
-        return Array.from(symbols);
+        return result;
     }, [template]);
 
     useEffect(() => {

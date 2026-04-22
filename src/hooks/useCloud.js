@@ -98,8 +98,9 @@ export function useCloud() {
         templateName, generatedName,
         platformName, gameName, gridRows, gridCols, lineMode, extractResults,
         paytableInput, ptResultItems, jpConfig, hasJackpot, hasMultiplierReel,
-        requiresCollectToWin, hasDoubleSymbol, hasDynamicMultiplier, multiplierCalcType,
+        requiresCollectToWin, hasCashCollectFeature, hasDoubleSymbol, hasDynamicMultiplier, multiplierCalcType,
         hasBidirectionalPaylines, hasAdjustableLines,
+        motionCoverageMin, vLineThreshold, ocrDecimalPlaces,
         localUserId, actualForceId
     }) => {
         setCloudMessage('');
@@ -177,11 +178,15 @@ export function useCloud() {
                 jpConfig: hasJackpot ? jpConfig : {},
                 hasMultiplierReel,
                 requiresCollectToWin,
+                hasCashCollectFeature,
                 hasDoubleSymbol,
                 hasDynamicMultiplier,
                 multiplierCalcType,
                 hasBidirectionalPaylines,
                 hasAdjustableLines,
+                motionCoverageMin,
+                vLineThreshold,
+                ocrDecimalPlaces,
                 creatorId: localUserId,
                 createdAt: new Date().toISOString()
             };

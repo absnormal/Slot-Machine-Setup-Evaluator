@@ -1,21 +1,17 @@
 import React from 'react';
-import { FolderOpen, Cloud, Trash2, Save, Upload, Loader2 } from 'lucide-react';
+import { Cloud, Trash2, Upload, Loader2 } from 'lucide-react';
 
 /**
- * 模板工具列：載入/存檔/匯出/清除
+ * 模板工具列：雲端載入/存檔/清除
  */
 export default function TemplateToolbar({
-    handleImportLocalTemplate, setShowCloudModal, handleClearTemplate,
-    handleExportLocalTemplate, templateName, setTemplateName,
+    setShowCloudModal, handleClearTemplate,
+    templateName, setTemplateName,
     handleSaveToCloud, isSaving, activeSaveAction
 }) {
     return (
         <div className="bg-indigo-50/70 p-4 rounded-xl border border-indigo-100 flex flex-col lg:flex-row justify-between gap-4 items-center">
             <div className="flex w-full lg:w-auto gap-2">
-                <label className="flex-1 lg:flex-none py-2.5 px-4 bg-white hover:bg-slate-50 text-slate-700 font-bold rounded-lg text-sm flex items-center justify-center gap-1.5 cursor-pointer transition-colors shadow-sm border border-slate-200">
-                    <FolderOpen size={16} />載入本地模板
-                    <input type="file" className="hidden" accept=".json" onChange={handleImportLocalTemplate} />
-                </label>
                 <button onClick={() => setShowCloudModal(true)} className="flex-1 lg:flex-none py-2.5 px-4 bg-white hover:bg-indigo-50 text-indigo-700 font-bold rounded-lg text-sm flex items-center justify-center gap-1.5 shadow-sm transition-colors border border-indigo-200">
                     <Cloud size={16} />瀏覽雲端模板庫
                 </button>
@@ -24,9 +20,6 @@ export default function TemplateToolbar({
                 </button>
             </div>
             <div className="flex w-full lg:w-auto gap-2 items-stretch">
-                <button onClick={handleExportLocalTemplate} className="py-2.5 px-4 bg-white hover:bg-slate-50 text-slate-700 font-bold rounded-lg text-sm flex items-center justify-center gap-1.5 transition-colors shadow-sm border border-slate-200 shrink-0">
-                    <Save size={16} />匯出
-                </button>
                 <div className="flex bg-white rounded-lg shadow-sm border border-indigo-200 overflow-hidden flex-1 lg:flex-none">
                     <input
                         type="text"

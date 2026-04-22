@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { parseBool } from '../utils/helpers';
+import { applyDefaults } from '../utils/templateDefaults';
 import useAppStore from '../stores/useAppStore';
 import usePhase4Store from '../stores/usePhase4Store';
 
@@ -57,67 +58,41 @@ export function useTemplateIO({
      * 統一 loadCloudTemplate + handleImportLocalTemplate 的重複邏輯
      */
     const applyTemplateData = useCallback((data, { source = 'local' } = {}) => {
-        if (data.platformName !== undefined) setPlatformName(data.platformName);
-        if (data.gameName !== undefined) setGameName(data.gameName);
-        if (data.gridRows) setGridRows(data.gridRows);
-        if (data.gridCols) setGridCols(data.gridCols);
+        const d = applyDefaults(data);
+        if (d.platformName !== undefined) setPlatformName(d.platformName);
+        if (d.gameName !== undefined) setGameName(d.gameName);
+        if (d.gridRows) setGridRows(d.gridRows);
+        if (d.gridCols) setGridCols(d.gridCols);
 
-        setLineMode(data.lineMode || (!data.extractResults || data.extractResults.length === 0 ? 'allways' : 'paylines'));
+        setLineMode(d.lineMode || (!d.extractResults || d.extractResults.length === 0 ? 'allways' : 'paylines'));
 
-        if (data.extractResults) {
-            setExtractResults(data.extractResults);
+        if (d.extractResults) {
+            setExtractResults(d.extractResults);
             // 本地匯入時同時同步文字模式
             if (source === 'local' && setLinesTextInput) {
-                setLinesTextInput(data.extractResults.map(r => r.data.join(' ')).join('\n'));
+                setLinesTextInput(d.extractResults.map(r => r.data.join(' ')).join('\n'));
             }
         }
 
-        if (data.paytableInput) setPaytableInput(data.paytableInput);
+        if (d.paytableInput) setPaytableInput(d.paytableInput);
 
         // JP Config
-        let isJpActive = false;
-        if (data.jpConfig) {
-            setJpConfig(data.jpConfig);
-            isJpActive = Object.keys(data.jpConfig).some(k => data.jpConfig[k] !== '');
-            setHasJackpot(isJpActive);
+        if (d.jpConfig) {
+            setJpConfig(d.jpConfig);
         } else {
             setJpConfig(defaultJpConfig);
-            setHasJackpot(false);
         }
 
-        // Boolean flags
-        if (data.hasMultiplierReel !== undefined) setHasMultiplierReel(parseBool(data.hasMultiplierReel));
-        else setHasMultiplierReel(false);
-
-        let reqCollect = true;
-        if (data.requiresCollectToWin !== undefined) {
-            reqCollect = parseBool(data.requiresCollectToWin);
-            setRequiresCollectToWin(reqCollect);
-        }
-        else setRequiresCollectToWin(true);
-
-        if (data.hasCashCollectFeature !== undefined) {
-            setHasCashCollectFeature(parseBool(data.hasCashCollectFeature));
-        } else {
-            // 向後兼容：舊模板中沒有 hasCashCollectFeature 欄位。
-            // 我們如果看到 JP 有值，或者不需要收集符號，就代表這一定是個特殊贏分收集遊戲！
-            setHasCashCollectFeature(isJpActive || reqCollect === false);
-        }
-
-        if (data.hasDoubleSymbol !== undefined) setHasDoubleSymbol(parseBool(data.hasDoubleSymbol));
-        else setHasDoubleSymbol(false);
-
-        if (data.hasDynamicMultiplier !== undefined) setHasDynamicMultiplier(parseBool(data.hasDynamicMultiplier));
-        else setHasDynamicMultiplier(false);
-
-        if (data.multiplierCalcType !== undefined) setMultiplierCalcType(data.multiplierCalcType);
-        else setMultiplierCalcType('product');
-
-        if (data.hasBidirectionalPaylines !== undefined) setHasBidirectionalPaylines(parseBool(data.hasBidirectionalPaylines));
-        else setHasBidirectionalPaylines(false);
-
-        if (data.hasAdjustableLines !== undefined) setHasAdjustableLines(parseBool(data.hasAdjustableLines));
-        else setHasAdjustableLines(false);
+        // Boolean flags / Config
+        setHasJackpot(parseBool(d.hasJackpot));
+        setHasMultiplierReel(parseBool(d.hasMultiplierReel));
+        setRequiresCollectToWin(parseBool(d.requiresCollectToWin));
+        setHasCashCollectFeature(parseBool(d.hasCashCollectFeature));
+        setHasDoubleSymbol(parseBool(d.hasDoubleSymbol));
+        setHasDynamicMultiplier(parseBool(d.hasDynamicMultiplier));
+        setMultiplierCalcType(d.multiplierCalcType);
+        setHasBidirectionalPaylines(parseBool(d.hasBidirectionalPaylines));
+        setHasAdjustableLines(parseBool(d.hasAdjustableLines));
 
         // Paytable result items
         if (data.ptResultItems) {
@@ -142,10 +117,9 @@ export function useTemplateIO({
         setLineImages([]);
         setActiveLineImageId(null);
 
-        // Phase 4 偵測參數（向後兼容：舊模板無此欄位則保持預設）
-        if (data.motionCoverageMin !== undefined) setMotionCoverageMin(data.motionCoverageMin);
-        if (data.vLineThreshold !== undefined) setVLineThreshold(parseFloat(data.vLineThreshold));
-        if (data.ocrDecimalPlaces !== undefined) setOcrDecimalPlaces(parseInt(data.ocrDecimalPlaces, 10));
+        if (d.motionCoverageMin !== undefined) setMotionCoverageMin(d.motionCoverageMin);
+        if (d.vLineThreshold !== undefined) setVLineThreshold(parseFloat(d.vLineThreshold));
+        if (d.ocrDecimalPlaces !== undefined) setOcrDecimalPlaces(parseInt(d.ocrDecimalPlaces, 10));
     }, [setGridRows, setGridCols, setLineMode, setExtractResults, setPaytableInput, setPtResultItems,
         setPaytableMode, setJpConfig, setHasJackpot, setHasMultiplierReel, setRequiresCollectToWin,
         setHasCashCollectFeature, setHasDoubleSymbol, setHasDynamicMultiplier, setMultiplierCalcType,
@@ -168,70 +142,7 @@ export function useTemplateIO({
         }
     }, [applyTemplateData, useCloudInstance, setShowCloudModal, setTemplateMessage, performAutoBuild]);
 
-    /**
-     * 從本地 JSON 匯入模板
-     */
-    const handleImportLocalTemplate = useCallback((e) => {
-        const file = e.target.files[0];
-        if (!file) return;
 
-        const reader = new FileReader();
-        reader.onload = (evt) => {
-            try {
-                const data = JSON.parse(evt.target.result);
-                applyTemplateData(data, { source: 'local' });
-                setTemplateMessage('✅ 本地模板載入成功！已自動為您建構並進入結算畫面。');
-                setTimeout(() => setTemplateMessage(''), 4000);
-                performAutoBuild(data);
-            } catch (err) {
-                setTemplateError("匯入失敗：檔案格式錯誤，請確定是有效的 JSON 模板檔案。");
-            }
-        };
-        reader.readAsText(file);
-        e.target.value = '';
-    }, [applyTemplateData, setTemplateMessage, setTemplateError, performAutoBuild]);
-
-    /**
-     * 匯出本地 JSON 模板
-     */
-    const handleExportLocalTemplate = useCallback(() => {
-        setTemplateMessage('');
-        if (extractResults.length === 0 && !paytableInput) {
-            setTemplateError('沒有可匯出的資料！');
-            return;
-        }
-
-        const data = {
-            version: "1.2",
-            platformName: platformNameState,
-            gameName: gameNameState,
-            gridRows, gridCols, extractResults,
-            paytableInput, ptResultItems,
-            jpConfig, hasMultiplierReel, requiresCollectToWin, hasCashCollectFeature,
-            hasDoubleSymbol, hasDynamicMultiplier, multiplierCalcType,
-            hasBidirectionalPaylines, hasAdjustableLines,
-            motionCoverageMin, vLineThreshold, ocrDecimalPlaces
-        };
-
-        const jsonStr = JSON.stringify(data, null, 2);
-        const blob = new Blob([jsonStr], { type: "application/json" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-
-        const prefix = [platformNameState, gameNameState].filter(Boolean).join('-');
-        const safePrefix = prefix.replace(/[\/\\:*?"<>|]/g, '_');
-        a.download = safePrefix ? `${safePrefix}.json` : `slot_template_${gridRows}x${gridCols}_${extractResults.length}lines.json`;
-
-        a.click();
-        URL.revokeObjectURL(url);
-        setTemplateError('');
-        setTemplateMessage('✅ 本地模板已成功下載！');
-        setTimeout(() => setTemplateMessage(''), 3000);
-    }, [platformNameState, gameNameState, gridRows, gridCols, extractResults, paytableInput, ptResultItems,
-        jpConfig, hasMultiplierReel, requiresCollectToWin, hasCashCollectFeature, hasDoubleSymbol, hasDynamicMultiplier,
-        multiplierCalcType, hasBidirectionalPaylines, hasAdjustableLines,
-        motionCoverageMin, vLineThreshold, ocrDecimalPlaces, setTemplateMessage, setTemplateError]);
 
     /**
      * 清除模板
@@ -293,8 +204,6 @@ export function useTemplateIO({
 
         // Template IO actions
         loadCloudTemplate,
-        handleImportLocalTemplate,
-        handleExportLocalTemplate,
         handleClearTemplate,
         handleSaveToCloud,
 

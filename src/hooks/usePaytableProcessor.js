@@ -217,10 +217,7 @@ export function usePaytableProcessor({
                 match10: Number(item.match10) || 0
             }));
 
-            const hasWild = parsedData.some(item => isWildSymbol(item.name));
-            if (!hasWild) {
-                parsedData.push({ name: 'WILD', match1: 0, match2: 0, match3: 0, match4: 0, match5: 0 });
-            }
+
 
             setPtResultItems(parsedData.map(item => ({ ...item, thumbUrls: [], doubleThumbUrls: [] })));
 
