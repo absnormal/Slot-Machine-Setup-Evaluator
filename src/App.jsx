@@ -315,8 +315,8 @@ function App() {
                 const img = new Image();
                 img.onload = () => {
                     resolve({
-                        id: kf.id,
-                        file: { name: `Spin-${kf.time.toFixed(1)}s` },
+                        id: showingWin ? `${kf.id}_win` : `${kf.id}_stop`,
+                        file: { name: `Spin-${kf.time.toFixed(1)}s${showingWin ? '-WIN' : '-Stop'}` },
                         previewUrl: dataUrl,
                         obj: img,
                         grid: kf.recognitionResult?.grid || null,
