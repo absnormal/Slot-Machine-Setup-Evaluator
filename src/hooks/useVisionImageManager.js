@@ -48,6 +48,35 @@ export function useVisionImageManager(isPhase3Minimized) {
         e.target.value = '';
     };
 
+    // 供剪貼簿使用：讀取單一檔案並回傳 Promise，方便後續自動觸發辨識
+    const addVisionImageFromFile = useCallback((file) => {
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+                const img = new Image();
+                img.onload = () => {
+                    const newEntry = {
+                        id: Math.random().toString(36).substring(7),
+                        file,
+                        previewUrl: evt.target.result,
+                        obj: img,
+                        grid: null,
+                        error: ''
+                    };
+                    setVisionImages(prev => {
+                        const updated = [...prev, newEntry];
+                        setActiveVisionId(newEntry.id);
+                        return updated;
+                    });
+                    // 等待 state 更新
+                    setTimeout(() => resolve(newEntry), 50);
+                };
+                img.src = evt.target.result;
+            };
+            reader.readAsDataURL(file);
+        });
+    }, []);
+
     const removeVisionImage = (id) => {
         setVisionImages(prev => {
             if (id === 'ALL') {
@@ -114,6 +143,7 @@ export function useVisionImageManager(isPhase3Minimized) {
         visionGrid,
         visionError,
         handleVisionImageUpload,
+        addVisionImageFromFile,
         removeVisionImage,
         resetVisionImage,
         goToPrevVisionImage,

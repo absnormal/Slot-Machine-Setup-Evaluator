@@ -189,6 +189,7 @@ function App() {
         handleVisionImageUpload, removeVisionImage, resetVisionImage, performAIVisionBatchMatching, performLocalVisionBatchMatching, cancelVisionProcessing,
         goToPrevVisionImage, goToNextVisionImage,
         hasBetBox, setHasBetBox,
+        pasteFromClipboard,
         setVisionP1, setVisionP1Bet
     } = useGeminiVision({
         template, availableSymbols, customApiKey, setTemplateMessage, setTemplateError,
@@ -663,6 +664,7 @@ function App() {
                         visionError={visionError} visionGrid={visionGrid} visionCalcResults={visionCalcResults} visionCalculateError={visionCalculateError}
                         getSafeGrid={getSafeGrid} betInput={visionBetInput} setBetInput={handleVisionBetInputChange}
                         hasBetBox={hasBetBox} setHasBetBox={setHasBetBox}
+                        pasteFromClipboard={pasteFromClipboard}
                         onTransfer={handleTransferVisionToManual}
                         onSaveToPhase4={handleSaveVisionToPhase4}
                         hasApiKey={hasApiKey}

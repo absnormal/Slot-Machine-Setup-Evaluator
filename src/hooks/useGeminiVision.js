@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { toPx, toPct } from '../utils/helpers';
 import { useVisionImageManager } from './useVisionImageManager';
 import { useVisionBatchProcessor } from './useVisionBatchProcessor';
@@ -33,7 +33,7 @@ export function useGeminiVision({
         visionImages, setVisionImages,
         activeVisionId, setActiveVisionId,
         activeVisionImg, visionImageObj, visionImageSrc, visionGrid, visionError,
-        handleVisionImageUpload, removeVisionImage, resetVisionImage, goToPrevVisionImage, goToNextVisionImage
+        handleVisionImageUpload, addVisionImageFromFile, removeVisionImage, resetVisionImage, goToPrevVisionImage, goToNextVisionImage
     } = imageManager;
 
     const [visionP1, setVisionP1] = useState(() => loadCache(CACHE_KEYS.MAIN, { x: 10, y: 10, w: 80, h: 80 }));
@@ -349,6 +349,95 @@ export function useGeminiVision({
 
     const handleVisionMouseUp = () => setVisionDragState(null);
 
+    // ── 剪貼簿圖片貼上功能 ──
+
+    // 按鈕主動貼上
+    const pasteFromClipboard = useCallback(async () => {
+        try {
+            const clipboardItems = await navigator.clipboard.read();
+            for (const item of clipboardItems) {
+                const imageTypes = item.types.filter(type => type.startsWith('image/'));
+                if (imageTypes.length > 0) {
+                    const blob = await item.getType(imageTypes[0]);
+                    const file = new File([blob], `剪貼簿截圖-${new Date().toLocaleTimeString().replace(/:/g, '')}.png`, { type: blob.type });
+                    
+                    // 將選取框設定為全螢幕，因為貼上的通常是已經精準框選好的盤面
+                    setVisionP1({ x: 0, y: 0, w: 100, h: 100 });
+                    
+                    await addVisionImageFromFile(file);
+                    setTemplateMessage('📋 已從剪貼簿讀取圖片，正在自動辨識...');
+                    
+                    setTimeout(() => {
+                        performLocalVisionBatchMatching();
+                    }, 50);
+                    return;
+                }
+            }
+            setTemplateError('剪貼簿中沒有找到圖片！');
+        } catch (err) {
+            console.error('讀取剪貼簿失敗:', err);
+            setTemplateError('無法讀取剪貼簿，請確認瀏覽器權限，或直接在畫面按 Ctrl+V 貼上。');
+        }
+    }, [addVisionImageFromFile, performLocalVisionBatchMatching, setTemplateMessage, setTemplateError, setVisionP1]);
+
+    // 全域 Ctrl+V 監聽
+    useEffect(() => {
+        const handleGlobalPaste = async (e) => {
+            console.log('Paste event triggered!', e.clipboardData);
+            
+            // 如果焦點在輸入框，不攔截貼上行為
+            if (['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return;
+            // 如果 P3 最小化，不處理
+            if (isPhase3Minimized) return;
+
+            const files = e.clipboardData?.files;
+            const items = e.clipboardData?.items;
+            let targetFile = null;
+
+            // 優先嘗試從 files 中找圖片
+            if (files && files.length > 0) {
+                for (let i = 0; i < files.length; i++) {
+                    if (files[i].type.startsWith('image/')) {
+                        targetFile = files[i];
+                        break;
+                    }
+                }
+            }
+
+            // 如果 files 找不到，嘗試從 items 中找
+            if (!targetFile && items && items.length > 0) {
+                for (let i = 0; i < items.length; i++) {
+                    if (items[i].type.indexOf('image') !== -1) {
+                        targetFile = items[i].getAsFile();
+                        break;
+                    }
+                }
+            }
+
+            if (targetFile) {
+                console.log('Image found in clipboard:', targetFile);
+                e.preventDefault();
+                // 重新命名檔案以避免檔名衝突或無意義檔名
+                const renamedFile = new File([targetFile], `剪貼簿貼上-${new Date().toLocaleTimeString().replace(/:/g, '')}.png`, { type: targetFile.type });
+                
+                // 將選取框設定為全螢幕，因為貼上的通常是已經精準框選好的盤面
+                setVisionP1({ x: 0, y: 0, w: 100, h: 100 });
+
+                await addVisionImageFromFile(renamedFile);
+                setTemplateMessage('📋 已接收貼上圖片，自動開始辨識...');
+                
+                setTimeout(() => {
+                    performLocalVisionBatchMatching();
+                }, 50);
+            } else {
+                console.log('No image found in clipboard paste event.');
+            }
+        };
+
+        window.addEventListener('paste', handleGlobalPaste);
+        return () => window.removeEventListener('paste', handleGlobalPaste);
+    }, [addVisionImageFromFile, performLocalVisionBatchMatching, setTemplateMessage, isPhase3Minimized, setVisionP1]);
+
     return {
         visionImages,
         activeVisionId,
@@ -382,6 +471,7 @@ export function useGeminiVision({
         hasBetBox,
         setHasBetBox,
         collectShowsTotalWin,
-        setCollectShowsTotalWin
+        setCollectShowsTotalWin,
+        pasteFromClipboard
     };
 }

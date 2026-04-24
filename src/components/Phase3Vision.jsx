@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BrainCircuit, ChevronDown, ChevronUp, X, Upload, ImageIcon, Trash2, ChevronLeft, ChevronRight, ListChecks, Loader2, StopCircle, AlertCircle, Trophy, Monitor, RotateCcw } from 'lucide-react';
+import { BrainCircuit, ChevronDown, ChevronUp, X, Upload, ImageIcon, Trash2, ChevronLeft, ChevronRight, ListChecks, Loader2, StopCircle, AlertCircle, Trophy, Monitor, RotateCcw, ClipboardPaste } from 'lucide-react';
 import ResultView from './ResultView';
 import { getBaseSymbol, getCashValue, isCashSymbol, formatShorthandValue, isJpSymbol, getCollectValue, getSymbolDisplayImage, isDynamicMultiplierSymbol, getSymbolMultiplier } from '../utils/symbolUtils';
 
@@ -21,7 +21,8 @@ export default function Phase3Vision({
     hasApiKey,
     totalBalance, setTotalBalance,
     setTemplateMessage,
-    isBalanceExpanded, setIsBalanceExpanded
+    isBalanceExpanded, setIsBalanceExpanded,
+    pasteFromClipboard
 }) {
     // 獨立管理 Phase 3 專屬的 ResultView 懸停與線條顯示狀態
     const [visionHoveredLineId, setVisionHoveredLineId] = useState(null);
@@ -88,12 +89,11 @@ export default function Phase3Vision({
                                         <ImageIcon size={32} className="text-indigo-400" />
                                     </div>
                                     <label className="cursor-pointer bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-3 rounded-lg font-bold transition shadow-lg flex items-center gap-2">
-                                        <Upload size={20} /> 批次上傳實機截圖 (可多選)
+                                        <Upload size={20} /> 從檔案上傳
                                         <input type="file" multiple accept="image/*" className="hidden" onChange={handleVisionImageUpload} />
                                     </label>
                                     <p className="mt-4 text-sm text-slate-400 max-w-md leading-relaxed">
-                                        上傳多張截圖，共用一個裁切範圍，由 AI 自動為您「批次辨識盤面」並產出結算結果。<br />
-                                        <span className="text-emerald-400 font-bold inline-block mt-1">優勢：不受灰階、變暗或些微特效干擾，容錯率極高！</span>
+                                        利用系統內建截圖 (如 Windows 的 <kbd className="bg-slate-800 px-1.5 py-0.5 rounded text-xs mx-1">Win+Shift+S</kbd>) 框選遊戲盤面，然後在畫面上直接按 <kbd className="bg-slate-800 px-1.5 py-0.5 rounded text-xs mx-1">Ctrl+V</kbd> 貼上，系統會立即自動為您辨識並結算！
                                     </p>
                                 </div>
                             ) : (
@@ -329,20 +329,23 @@ export default function Phase3Vision({
                         </div>
                     </div>
 
-                    {/* Phase 3 專屬獨立結算 UI */}
-                    {activeVisionImg && visionGrid ? (
-                        <ResultView template={template} calcData={visionCalcResults} calcErr={visionCalculateError} hoveredId={visionHoveredLineId} setHoveredId={setVisionHoveredLineId} showAll={visionShowAllLines} setShowAll={setVisionShowAllLines} betInput={betInput} setBetInput={setBetInput} totalBalance={totalBalance} setTotalBalance={setTotalBalance} setTemplateMessage={setTemplateMessage} isBalanceExpanded={isBalanceExpanded} setIsBalanceExpanded={setIsBalanceExpanded} />
-                    ) : (
-                        <div className="relative flex flex-col h-full lg:block w-full">
-                            <div className="static lg:absolute lg:inset-0 flex flex-col w-full h-full">
-                                <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col items-center justify-center flex-1 min-h-0 text-slate-400 opacity-60 border-dashed">
-                                    <Trophy size={48} className="mb-3 opacity-50" />
-                                    <p className="font-bold text-lg">等待 AI 批次辨識結果...</p>
-                                    <p className="text-sm mt-1">結果將在此獨立呈現，不影響 Phase 2</p>
-                                </div>
-                            </div>
-                        </div>
-                    )}
+                    {/* Phase 3 專屬獨立結算 UI (常駐顯示) */}
+                    <ResultView 
+                        template={template} 
+                        calcData={visionCalcResults} 
+                        calcErr={visionCalculateError} 
+                        hoveredId={visionHoveredLineId} 
+                        setHoveredId={setVisionHoveredLineId} 
+                        showAll={visionShowAllLines} 
+                        setShowAll={setVisionShowAllLines} 
+                        betInput={betInput} 
+                        setBetInput={setBetInput} 
+                        totalBalance={totalBalance} 
+                        setTotalBalance={setTotalBalance} 
+                        setTemplateMessage={setTemplateMessage} 
+                        isBalanceExpanded={isBalanceExpanded} 
+                        setIsBalanceExpanded={setIsBalanceExpanded} 
+                    />
 
                 </div>
             </div>
