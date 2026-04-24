@@ -41,6 +41,11 @@ export function useVisionBatchProcessor({
 
     const ocrWorkerRef = useRef(null);
     const referenceIndexRef = useRef(null);
+    const visionImagesRef = useRef(visionImages);
+
+    useEffect(() => {
+        visionImagesRef.current = visionImages;
+    }, [visionImages]);
 
     // 當 template 符號列表變更時，清除快取讓下次辨識重建索引
     const symbolKey = template?.symbolImagesAll ? Object.keys(template.symbolImagesAll).sort().join(',') : '';
@@ -60,7 +65,7 @@ export function useVisionBatchProcessor({
     }, []);
 
     const performAIVisionBatchMatching = async () => {
-        if (visionImages.length === 0 || !template) {
+        if (visionImagesRef.current.length === 0 || !template) {
             setTemplateError("請先上傳截圖，並確保已經完成 Phase 1 模板設定！");
             return;
         }
@@ -77,9 +82,9 @@ export function useVisionBatchProcessor({
         const effectiveApiKey = customApiKey.trim() || apiKey;
         const modelName = "gemini-3.1-flash-lite-preview";
 
-        let toProcess = visionImages.filter(img => !img.grid);
+        let toProcess = visionImagesRef.current.filter(img => !img.grid);
         if (toProcess.length === 0) {
-            toProcess = visionImages;
+            toProcess = visionImagesRef.current;
         }
 
         setIsVisionProcessing(true);
@@ -88,7 +93,7 @@ export function useVisionBatchProcessor({
         setVisionBatchProgress({ current: 0, total: toProcess.length });
         setTemplateMessage(`AI 準備批次處理 ${toProcess.length} 張盤面中...`);
 
-        let currentVisionImages = [...visionImages];
+        let currentVisionImages = [...visionImagesRef.current];
 
         const referenceImages = [];
         let referenceText = "Symbol references:\n";
@@ -289,7 +294,7 @@ export function useVisionBatchProcessor({
     };
 
     const performLocalVisionBatchMatching = async (ocrDecimalPlaces = 2) => {
-        if (visionImages.length === 0 || !template) {
+        if (visionImagesRef.current.length === 0 || !template) {
             setTemplateError("請先上傳截圖，並確保已經完成 Phase 1 模板設定！");
             return;
         }
@@ -305,9 +310,9 @@ export function useVisionBatchProcessor({
             localStorage.setItem(CACHE_KEYS.BET, JSON.stringify(visionP1Bet));
         } catch (e) {}
 
-        let toProcess = visionImages.filter(img => !img.grid);
+        let toProcess = visionImagesRef.current.filter(img => !img.grid);
         if (toProcess.length === 0) {
-            toProcess = visionImages;
+            toProcess = visionImagesRef.current;
         }
 
         setIsVisionProcessing(true);
@@ -323,7 +328,7 @@ export function useVisionBatchProcessor({
 
         setTemplateMessage?.(`🖥️ 開始本地辨識 ${toProcess.length} 張候選幀...`);
 
-        let currentVisionImages = [...visionImages];
+        let currentVisionImages = [...visionImagesRef.current];
         const displayCols = template.hasMultiplierReel ? template.cols - 1 : template.cols;
 
         // 將百分比 ROI 轉成像素座標的輔助函式
