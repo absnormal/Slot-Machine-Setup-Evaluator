@@ -17,7 +17,7 @@ export default function Phase3Vision({
     visionGrid, visionError, visionCalcResults, visionCalculateError,
     getSafeGrid, betInput, setBetInput,
     hasBetBox, setHasBetBox,
-    onTransfer,
+    onTransfer, onSaveToPhase4,
     hasApiKey,
     totalBalance, setTotalBalance,
     setTemplateMessage,
@@ -235,13 +235,22 @@ export default function Phase3Vision({
                                         <div className="p-4 bg-black/60 border-t border-slate-800">
                                             <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-3">
                                                 <span className="text-xs text-slate-400 font-bold">目前 AI 辨識盤面狀態 (唯讀預覽)</span>
-                                                <button
-                                                    onClick={onTransfer}
-                                                    className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-bold transition-all shadow-lg shadow-emerald-900/20 active:scale-95 group"
-                                                >
-                                                    <ChevronUp size={16} className="group-hover:-translate-y-0.5 transition-transform" />
-                                                    傳送至 Phase 2 手動調整 (↑)
-                                                </button>
+                                                <div className="flex items-center gap-2">
+                                                    <button
+                                                        onClick={onSaveToPhase4}
+                                                        className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-bold transition-all shadow-lg shadow-indigo-900/20 active:scale-95 group"
+                                                        title="將此盤面與贏分回傳至 Phase 4 的截圖清單中"
+                                                    >
+                                                        💾 儲存盤面回 Phase 4 (↓)
+                                                    </button>
+                                                    <button
+                                                        onClick={onTransfer}
+                                                        className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-bold transition-all shadow-lg shadow-emerald-900/20 active:scale-95 group"
+                                                    >
+                                                        <ChevronUp size={16} className="group-hover:-translate-y-0.5 transition-transform" />
+                                                        傳送至 Phase 2 手動調整 (↑)
+                                                    </button>
+                                                </div>
                                             </div>
                                             <div className="flex flex-col gap-1 w-max mx-auto pointer-events-none">
                                                 {getSafeGrid(visionGrid).map((row, rIndex) => (

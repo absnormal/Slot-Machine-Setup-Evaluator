@@ -84,6 +84,12 @@ const CandidateCard = ({
                             {kf.useWinFrame !== false ? 'WIN' : '停輪'}
                         </button>
                     )}
+                    
+                    {kf.manualOverrides?.grid && (
+                        <div className="absolute top-1 left-1 bg-amber-500/90 text-white font-bold text-[9px] px-1.5 py-0.5 rounded shadow-sm border border-amber-400 z-10" title="盤面已人工手動修改">
+                            ✍️ 人工盤面
+                        </div>
+                    )}
                 </div>
 
                 {/* 資訊區 */}

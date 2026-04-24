@@ -409,6 +409,38 @@ function App() {
         setIsPhase3Minimized(false);
     }, [activeVisionId, panelGrid, betInput, setVisionImages, setVisionBetInput, setIsPhase2Minimized, setIsPhase3Minimized, setTemplateMessage]);
 
+    const handleSaveVisionToPhase4 = useCallback(() => {
+        if (!activeVisionImg || !activeVisionImg.grid || !visionCalcResults) return;
+        const originalId = activeVisionId.replace(/_(win|stop)$/, '');
+        
+        keyframeExtractor.setCandidates(prev => prev.map(c => {
+            if (c.id === originalId) {
+                const prevOverrides = c.manualOverrides || {};
+                return {
+                    ...c,
+                    recognitionResult: {
+                        ...(c.recognitionResult || {}),
+                        grid: activeVisionImg.grid,
+                        totalWin: visionCalcResults.totalWin,
+                        details: visionCalcResults.details,
+                        rawText: activeVisionImg.rawText || (c.recognitionResult?.rawText || '')
+                    },
+                    manualOverrides: {
+                        ...prevOverrides,
+                        grid: true
+                    },
+                    status: 'success'
+                };
+            }
+            return c;
+        }));
+        
+        setTemplateMessage('✅ 已將人工修正盤面儲存回 Phase 4 原卡片！');
+        setTimeout(() => setTemplateMessage(''), 3000);
+        setIsPhase3Minimized(true);
+        setIsPhase4Minimized(false);
+    }, [activeVisionImg, activeVisionId, visionCalcResults, keyframeExtractor.setCandidates, setTemplateMessage]);
+
     // --- 快捷鍵 (Enter) ---
     useEffect(() => {
         const handleKeyDown = (e) => {
@@ -575,6 +607,7 @@ function App() {
                     getSafeGrid={getSafeGrid} betInput={visionBetInput} setBetInput={handleVisionBetInputChange}
                     hasBetBox={hasBetBox} setHasBetBox={setHasBetBox}
                     onTransfer={handleTransferVisionToManual}
+                    onSaveToPhase4={handleSaveVisionToPhase4}
                     hasApiKey={hasApiKey}
                     totalBalance={totalBalance} setTotalBalance={setTotalBalance}
                     setTemplateMessage={setTemplateMessage}

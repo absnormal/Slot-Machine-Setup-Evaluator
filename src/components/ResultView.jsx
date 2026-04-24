@@ -5,6 +5,8 @@ import { getBaseSymbol, isJpSymbol } from '../utils/symbolUtils';
 export default function ResultView({ template, calcData, calcErr, hoveredId, setHoveredId, showAll, setShowAll, betInput, setBetInput, totalBalance, setTotalBalance, setTemplateMessage, isBalanceExpanded, setIsBalanceExpanded, activeLineCount, setActiveLineCount }) {
     const [isEditingBalance, setIsEditingBalance] = React.useState(false);
     const [balanceText, setBalanceText] = React.useState('');
+    const [isEditingBet, setIsEditingBet] = React.useState(false);
+    const [betText, setBetText] = React.useState('');
     const handleUpdateBalance = (e) => {
         if (e) {
             if (e.preventDefault) e.preventDefault();
@@ -56,10 +58,36 @@ export default function ResultView({ template, calcData, calcErr, hoveredId, set
                                     <div className="relative">
                                         <Coins className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                                         <input 
-                                            type="number" 
-                                            value={betInput} 
-                                            onChange={(e) => setBetInput(e.target.value)} 
-                                            onKeyDown={(e) => e.key === 'Enter' && handleUpdateBalance(e)}
+                                            type="text" 
+                                            value={isEditingBet ? betText : (parseFloat(betInput) ? parseFloat(betInput).toLocaleString() : betInput)} 
+                                            onFocus={() => {
+                                                setIsEditingBet(true);
+                                                setBetText(betInput === '0' || betInput === '' ? '' : betInput);
+                                            }}
+                                            onBlur={() => {
+                                                setIsEditingBet(false);
+                                                const num = parseFloat(betText) || 0;
+                                                setBetInput(String(num));
+                                            }}
+                                            onChange={(e) => {
+                                                const val = e.target.value;
+                                                if (val === '' || val === '.' ) {
+                                                    setBetText(val);
+                                                    return;
+                                                }
+                                                if (/^\d*\.?\d*$/.test(val)) {
+                                                    setBetText(val);
+                                                }
+                                            }} 
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') {
+                                                    const num = parseFloat(betText) || 0;
+                                                    setBetInput(String(num));
+                                                    setIsEditingBet(false);
+                                                    e.target.blur();
+                                                    handleUpdateBalance(e);
+                                                }
+                                            }}
                                             className="w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none font-black text-lg text-indigo-700 shadow-sm transition-shadow" 
                                         />
                                     </div>

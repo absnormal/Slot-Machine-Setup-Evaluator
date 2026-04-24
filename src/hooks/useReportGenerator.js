@@ -195,8 +195,9 @@ export function useReportGenerator() {
                     <div id="gw-${i}" class="grid-win-popup"></div>` + 
                     aiData.grid.map((row, rIdx) => 
                         `<div class="grid-row">${row.map((cell, cIdx) => {
-                            // 使用模板傳遞進來的 symbolImagesAll 尋找圖片的 Base64 網址
-                            const symImg = template?.symbolImagesAll?.[cell];
+                            // 使用模板傳遞進來的 symbolImagesAll 尋找圖片的 Base64 網址（取第一張）
+                            const symImgEntry = template?.symbolImagesAll?.[cell];
+                            const symImg = Array.isArray(symImgEntry) ? symImgEntry[0] : symImgEntry;
                             // 若此欄格含有換行符號（例如收集或帶有乘倍），確保能被換行顯示
                             const safeText = cell.replace ? cell.replace(/\n/g, '<br/>') : cell;
                             const content = symImg 
