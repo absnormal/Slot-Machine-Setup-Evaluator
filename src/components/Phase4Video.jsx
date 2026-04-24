@@ -25,6 +25,7 @@ const Phase4Video = ({
     // Video
     videoSrc, videoRef, handleVideoUpload,
     isStreamMode, handleStartScreenCapture, handleStopScreenCapture,
+    isNativeMode, handleStartNativeCapture, handleStopNativeCapture, nativeCapture,
     onTransferToPhase3,
     onImportSession,
     setTemplateMessage,
@@ -229,6 +230,10 @@ const Phase4Video = ({
                             handleVideoUpload={handleVideoUpload}
                             handleStartScreenCapture={handleStartScreenCapture}
                             handleStopScreenCapture={handleStopScreenCapture}
+                            isNativeMode={isNativeMode}
+                            handleStartNativeCapture={handleStartNativeCapture}
+                            handleStopNativeCapture={handleStopNativeCapture}
+                            nativeCapture={nativeCapture}
                             isLiveActive={isLiveActive}
                             enableOrderId={enableOrderId}
                             setEnableOrderId={setEnableOrderId}

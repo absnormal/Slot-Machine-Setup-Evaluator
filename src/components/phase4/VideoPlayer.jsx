@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Video, Play, Pause, Clock, RefreshCw, Monitor, StopCircle } from 'lucide-react';
+import { Video, Play, Pause, Clock, RefreshCw, Monitor, StopCircle, Cpu } from 'lucide-react';
 import usePhase4Store from '../../stores/usePhase4Store';
 import useROIDrag from '../../hooks/useROIDrag';
 
@@ -14,6 +14,10 @@ const VideoPlayer = ({
     handleVideoUpload,
     handleStartScreenCapture,
     handleStopScreenCapture,
+    isNativeMode,
+    handleStartNativeCapture,
+    handleStopNativeCapture,
+    nativeCapture,
     isLiveActive,
     enableOrderId,
     setEnableOrderId,
@@ -124,7 +128,12 @@ const VideoPlayer = ({
                         className="bg-violet-600 hover:bg-violet-700 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-violet-500/20 cursor-pointer transition-all active:scale-95 flex items-center gap-2">
                         <Monitor size={18} /> 螢幕擷取
                     </button>
+                    <button onClick={handleStartNativeCapture}
+                        className="bg-teal-600 hover:bg-teal-700 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-teal-500/20 cursor-pointer transition-all active:scale-95 flex items-center gap-2">
+                        <Cpu size={18} /> 本地擷取
+                    </button>
                 </div>
+                <p className="text-[11px] text-slate-400 mt-2">本地擷取需先啟動 screen-capture-server，可穩定擷取原生遊戲視窗</p>
             </div>
         );
     }
@@ -218,8 +227,13 @@ const VideoPlayer = ({
                     /* 串流模式：簡化狀態列 */
                     <div className="w-full bg-slate-900/90 backdrop-blur p-3 px-5 flex items-center gap-4 border-t border-white/10">
                         <div className="flex items-center gap-2">
-                            <div className="w-2.5 h-2.5 bg-rose-500 rounded-full animate-pulse" />
-                            <span className="text-xs font-bold text-rose-400">串流中</span>
+                            <div className={`w-2.5 h-2.5 rounded-full animate-pulse ${isNativeMode ? 'bg-teal-500' : 'bg-rose-500'}`} />
+                            <span className={`text-xs font-bold ${isNativeMode ? 'text-teal-400' : 'text-rose-400'}`}>
+                                {isNativeMode ? '本地擷取中' : '串流中'}
+                            </span>
+                            {isNativeMode && nativeCapture?.frameCount > 0 && (
+                                <span className="text-[10px] text-slate-500 font-mono">#{nativeCapture.frameCount}</span>
+                            )}
                         </div>
                         <div className="flex items-center gap-1.5 text-slate-400">
                             <Clock size={12} />
@@ -230,9 +244,9 @@ const VideoPlayer = ({
                             className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg text-xs font-bold transition-all border border-slate-600 active:scale-95">
                             <RefreshCw size={12} /> 切換影片
                         </button>
-                        <button onClick={handleStopScreenCapture}
-                            className="flex items-center gap-1.5 px-4 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold transition-all active:scale-95 shadow-sm">
-                            <StopCircle size={14} /> 結束串流
+                        <button onClick={isNativeMode ? handleStopNativeCapture : handleStopScreenCapture}
+                            className={`flex items-center gap-1.5 px-4 py-1.5 text-white rounded-lg text-xs font-bold transition-all active:scale-95 shadow-sm ${isNativeMode ? 'bg-teal-600 hover:bg-teal-700' : 'bg-rose-600 hover:bg-rose-700'}`}>
+                            <StopCircle size={14} /> 結束{isNativeMode ? '擷取' : '串流'}
                         </button>
                     </div>
                 ) : (
@@ -248,6 +262,10 @@ const VideoPlayer = ({
                         <button onClick={handleStartScreenCapture}
                             className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-100 hover:bg-violet-200 text-violet-700 rounded-lg text-xs font-bold transition-all border border-violet-200 active:scale-95">
                             <Monitor size={12} /> 螢幕
+                        </button>
+                        <button onClick={handleStartNativeCapture}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-teal-100 hover:bg-teal-200 text-teal-700 rounded-lg text-xs font-bold transition-all border border-teal-200 active:scale-95">
+                            <Cpu size={12} /> 本地
                         </button>
                         <div className="flex-1 flex items-center gap-3">
                             <span className="text-[10px] font-mono text-slate-400">{formatTime(currentTime)}</span>

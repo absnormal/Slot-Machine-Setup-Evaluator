@@ -197,6 +197,14 @@ export function useVideoProcessor({ setTemplateMessage, template, motionCoverage
         if (sourceCanvas) {
             // 使用預存的穩定幀快照
             canvas = sourceCanvas;
+        } else if (videoRef.current?.__nativeCanvas) {
+            // 本地擷取模式：從 __nativeCanvas 複製
+            const nc = videoRef.current.__nativeCanvas;
+            canvas = document.createElement('canvas');
+            canvas.width = nc.width;
+            canvas.height = nc.height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(nc, 0, 0);
         } else {
             // 從 live 影片擷取
             if (!videoRef.current) return;
@@ -278,7 +286,12 @@ export function useVideoProcessor({ setTemplateMessage, template, motionCoverage
 
     // 核心循環：格點位移偵測
     const processFrame = useCallback(() => {
-        if (!videoRef.current || videoRef.current.paused || videoRef.current.ended) {
+        const videoEl = videoRef.current;
+        // 本地擷取模式：從 __nativeCanvas 讀取；一般模式：從 video 元素讀取
+        const nativeCanvas = videoEl?.__nativeCanvas;
+        const isNative = !!nativeCanvas;
+
+        if (!isNative && (!videoEl || videoEl.paused || videoEl.ended)) {
             requestRef.current = requestAnimationFrame(processFrame);
             return;
         }
@@ -291,9 +304,13 @@ export function useVideoProcessor({ setTemplateMessage, template, motionCoverage
         isProcessingRef.current = true;
 
         try {
-            const video = videoRef.current;
-            // 防護：應用程式視窗在 metadata 就緒前 videoWidth/Height 為 0
-            if (!video.videoWidth || !video.videoHeight) {
+            // 決定畫面來源與尺寸
+            const source = isNative ? nativeCanvas : videoEl;
+            const sourceWidth = isNative ? (videoEl.__nativeWidth || nativeCanvas.width) : videoEl.videoWidth;
+            const sourceHeight = isNative ? (videoEl.__nativeHeight || nativeCanvas.height) : videoEl.videoHeight;
+
+            // 防護：尺寸尚未就緒
+            if (!sourceWidth || !sourceHeight) {
                 isProcessingRef.current = false;
                 requestRef.current = requestAnimationFrame(processFrame);
                 return;
@@ -316,14 +333,14 @@ export function useVideoProcessor({ setTemplateMessage, template, motionCoverage
             const ctx = scanCanvas.getContext('2d', { willReadFrequently: true });
 
             // 2. 獲取 ROI 影像
-            const sourceX = (reelROI.x / 100) * video.videoWidth;
-            const sourceY = (reelROI.y / 100) * video.videoHeight;
-            const sourceW = (reelROI.w / 100) * video.videoWidth;
-            const sourceH = (reelROI.h / 100) * video.videoHeight;
+            const sourceX = (reelROI.x / 100) * sourceWidth;
+            const sourceY = (reelROI.y / 100) * sourceHeight;
+            const sourceW = (reelROI.w / 100) * sourceWidth;
+            const sourceH = (reelROI.h / 100) * sourceHeight;
 
             if (sourceW <= 1 || sourceH <= 1) throw new Error("ROI 範圍過小");
 
-            ctx.drawImage(video, sourceX, sourceY, sourceW, sourceH, 0, 0, targetW, targetH);
+            ctx.drawImage(source, sourceX, sourceY, sourceW, sourceH, 0, 0, targetW, targetH);
             const imageData = ctx.getImageData(0, 0, targetW, targetH);
             const data = imageData.data;
 
@@ -336,7 +353,7 @@ export function useVideoProcessor({ setTemplateMessage, template, motionCoverage
 
             // 3b. WIN/BALANCE ROI 高對比差異檢測（獨立於盤面，作為主訊號）
             const computeHighContrastDiff = (roiDef, lastRef, canvasRef) => {
-                if (!roiDef || !video) return { diffCount: 0, changed: false };
+                if (!roiDef || !source) return { diffCount: 0, changed: false };
                 if (!canvasRef.current) {
                     canvasRef.current = document.createElement('canvas');
                 }
@@ -350,13 +367,13 @@ export function useVideoProcessor({ setTemplateMessage, template, motionCoverage
                     c.height = roiH;
                 }
                 const rCtx = c.getContext('2d', { willReadFrequently: true });
-                const sx = (roiDef.x / 100) * video.videoWidth;
-                const sy = (roiDef.y / 100) * video.videoHeight;
-                const sw = (roiDef.w / 100) * video.videoWidth;
-                const sh = (roiDef.h / 100) * video.videoHeight;
+                const sx = (roiDef.x / 100) * sourceWidth;
+                const sy = (roiDef.y / 100) * sourceHeight;
+                const sw = (roiDef.w / 100) * sourceWidth;
+                const sh = (roiDef.h / 100) * sourceHeight;
                 if (sw <= 1 || sh <= 1) return { diffCount: 0, changed: false };
 
-                rCtx.drawImage(video, sx, sy, sw, sh, 0, 0, roiW, roiH);
+                rCtx.drawImage(source, sx, sy, sw, sh, 0, 0, roiW, roiH);
                 const roiData = rCtx.getImageData(0, 0, roiW, roiH).data;
 
                 let highContrastCount = 0;

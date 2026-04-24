@@ -27,6 +27,7 @@ import { useKeyframeExtractor } from './hooks/useKeyframeExtractor';
 import { useAutoRecognition } from './hooks/useAutoRecognition';
 import { useReportGenerator } from './hooks/useReportGenerator';
 import { useTemplateIO } from './hooks/useTemplateIO';
+import { useNativeCapture } from './hooks/useNativeCapture';
 import useAppStore from './stores/useAppStore';
 import usePhase4Store from './stores/usePhase4Store';
 
@@ -198,6 +199,10 @@ function App() {
     const videoRef = useRef(null);
     const [videoSrc, setVideoSrc] = useState(null);
     const [isStreamMode, setIsStreamMode] = useState(false);
+    const [isNativeMode, setIsNativeMode] = useState(false);
+
+    // --- 本地擷取 (Python 後端) ---
+    const nativeCapture = useNativeCapture(videoRef);
     const handleVideoUpload = useCallback((e) => {
         const file = e.target?.files?.[0];
         if (!file) return;
@@ -277,6 +282,41 @@ function App() {
             pendingStreamRef.current = null;
         }
     }, [isStreamMode]);
+
+    // --- 本地擷取啟停 ---
+    const handleStartNativeCapture = useCallback(async () => {
+        try {
+            // 如果目前有其他來源，先清掉
+            if (isStreamMode) handleStopScreenCapture();
+            if (videoSrc && videoSrc !== '__stream__' && videoSrc !== '__native__') URL.revokeObjectURL(videoSrc);
+
+            const monitors = await nativeCapture.fetchMonitors();
+            if (!monitors || monitors.length === 0) {
+                setTemplateMessage('⚠️ 未偵測到螢幕');
+                return;
+            }
+            // 預設擷取螢幕 1（非合併螢幕）
+            const targetMonitor = monitors.length > 1 ? 1 : 0;
+            nativeCapture.startCapture(targetMonitor, 15, 60);
+            setVideoSrc('__native__');
+            setIsNativeMode(true);
+            setIsStreamMode(true);
+            setTemplateMessage('🖥️ 本地擷取已啟動（透過後端伺服器）');
+            setTimeout(() => setTemplateMessage(''), 3000);
+        } catch (err) {
+            setTemplateMessage(`⚠️ ${err.message}`);
+            setTimeout(() => setTemplateMessage(''), 8000);
+        }
+    }, [videoSrc, isStreamMode, handleStopScreenCapture, nativeCapture, setTemplateMessage]);
+
+    const handleStopNativeCapture = useCallback(() => {
+        nativeCapture.stopCapture();
+        setVideoSrc(null);
+        setIsStreamMode(false);
+        setIsNativeMode(false);
+        setTemplateMessage('🖥️ 本地擷取已結束');
+        setTimeout(() => setTemplateMessage(''), 3000);
+    }, [nativeCapture, setTemplateMessage]);
 
     // ROI 狀態 (from Zustand Store — 自動持久化至 localStorage)
     const reelROI = usePhase4Store(s => s.reelROI);
@@ -663,6 +703,8 @@ function App() {
                         // Video
                         videoSrc={videoSrc} videoRef={videoRef} handleVideoUpload={handleVideoUpload}
                         isStreamMode={isStreamMode} handleStartScreenCapture={handleStartScreenCapture} handleStopScreenCapture={handleStopScreenCapture}
+                        isNativeMode={isNativeMode} handleStartNativeCapture={handleStartNativeCapture} handleStopNativeCapture={handleStopNativeCapture}
+                        nativeCapture={nativeCapture}
                         // Transfer
                         onTransferToPhase3={handleTransferPhase4ToPhase3}
                         onImportSession={handleImportSession}
