@@ -3,6 +3,8 @@ import { Trophy, AlertCircle, Zap, Coins, ArrowLeft, ChevronDown, ChevronUp } fr
 import { getBaseSymbol, isJpSymbol } from '../utils/symbolUtils';
 
 export default function ResultView({ template, calcData, calcErr, hoveredId, setHoveredId, showAll, setShowAll, betInput, setBetInput, totalBalance, setTotalBalance, setTemplateMessage, isBalanceExpanded, setIsBalanceExpanded, activeLineCount, setActiveLineCount }) {
+    const [isEditingBalance, setIsEditingBalance] = React.useState(false);
+    const [balanceText, setBalanceText] = React.useState('');
     const handleUpdateBalance = (e) => {
         if (e) {
             if (e.preventDefault) e.preventDefault();
@@ -115,35 +117,61 @@ export default function ResultView({ template, calcData, calcErr, hoveredId, set
                                 <div className="w-full">
                                     <label className="block text-xs font-bold text-slate-700 mb-1">目前總財產 (Assets)</label>
                                     <div className="relative">
-                                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">$</span>
+                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">$</span>
                                         <input 
-                                            type="number" 
-                                            value={totalBalance} 
-                                            onChange={(e) => setTotalBalance(parseFloat(e.target.value) || 0)} 
-                                            onKeyDown={(e) => e.key === 'Enter' && handleUpdateBalance(e)}
-                                            className="w-full h-[28px] pl-6 pr-2 py-1 border border-slate-300 rounded-md focus:ring-2 focus:ring-indigo-500 outline-none font-black text-sm text-slate-700 shadow-sm transition-shadow" 
+                                            type="text" 
+                                            value={isEditingBalance ? balanceText : totalBalance.toLocaleString()} 
+                                            onFocus={() => {
+                                                setIsEditingBalance(true);
+                                                setBalanceText(totalBalance === 0 ? '' : String(totalBalance));
+                                            }}
+                                            onBlur={() => {
+                                                setIsEditingBalance(false);
+                                                const num = parseFloat(balanceText) || 0;
+                                                setTotalBalance(num);
+                                            }}
+                                            onChange={(e) => {
+                                                const val = e.target.value;
+                                                if (val === '' || val === '-' || val === '.' || val === '-.') {
+                                                    setBalanceText(val);
+                                                    return;
+                                                }
+                                                if (/^-?\d*\.?\d*$/.test(val)) {
+                                                    setBalanceText(val);
+                                                }
+                                            }} 
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') {
+                                                    const num = parseFloat(balanceText) || 0;
+                                                    setTotalBalance(num);
+                                                    setIsEditingBalance(false);
+                                                    e.target.blur();
+                                                    handleUpdateBalance(e);
+                                                }
+                                            }}
+                                            className="w-full h-[40px] pl-7 pr-2 py-1 border border-slate-300 rounded-md focus:ring-2 focus:ring-indigo-500 outline-none font-black text-xl text-slate-700 shadow-sm transition-shadow" 
                                         />
                                     </div>
                                 </div>
 
                                 {/* [+] 按鈕 (置中) */}
-                                <div className="flex items-center justify-center h-[28px]">
+                                <div className="flex items-center justify-center h-[40px]">
                                     <button 
                                         type="button"
                                         onClick={handleUpdateBalance}
-                                        className="w-[28px] h-[28px] bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-md shadow-md transition-all active:scale-95 flex items-center justify-center shrink-0"
+                                        className="w-[36px] h-[36px] bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-md shadow-md transition-all active:scale-95 flex items-center justify-center shrink-0"
                                         title="將贏分加入總財產 (Enter)"
                                     >
-                                        <ArrowLeft size={16} />
+                                        <ArrowLeft size={18} />
                                     </button>
                                 </div>
 
                                 {/* 預計結算後餘額 */}
                                 <div className="w-full">
                                     <label className="block text-xs font-bold text-slate-700 mb-1">預計結算後餘額 (Expected)</label>
-                                    <div className="relative bg-white h-[28px] rounded-md border border-slate-300 shadow-sm flex items-center">
-                                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">$</span>
-                                        <span className="w-full pl-6 pr-2 font-black text-sm text-slate-700 truncate">
+                                    <div className="relative bg-white h-[40px] rounded-md border border-slate-300 shadow-sm flex items-center">
+                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">$</span>
+                                        <span className="w-full pl-7 pr-2 font-black text-xl text-slate-700 truncate">
                                             {(parseFloat((totalBalance + (calcData?.totalWin || 0)).toFixed(4))).toLocaleString()}
                                         </span>
                                     </div>
