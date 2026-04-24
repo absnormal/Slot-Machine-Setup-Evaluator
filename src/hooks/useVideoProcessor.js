@@ -37,7 +37,7 @@ export function useVideoProcessor({ setTemplateMessage, template, motionCoverage
             return saved ? JSON.parse(saved) : { x: 10, y: 85, w: 25, h: 8 };
         } catch (e) { return { x: 10, y: 85, w: 25, h: 8 }; }
     });
-    
+
     const [betROI, setBetROI] = useState(() => {
         const saved = localStorage.getItem('slot_phase4_bet_roi');
         try {
@@ -84,7 +84,7 @@ export function useVideoProcessor({ setTemplateMessage, template, motionCoverage
                 const baseUrl = import.meta.env.BASE_URL;
                 ort.env.wasm.wasmPaths = baseUrl;
                 ort.env.wasm.numThreads = 1; // 關閉多執行緒，避免 SharedArrayBuffer 安全性警告
-                
+
                 const ocr = await Ocr.create({
                     models: {
                         detectionPath: `${baseUrl}ocr-models/ch_PP-OCRv4_det_infer.onnx`,
@@ -160,7 +160,7 @@ export function useVideoProcessor({ setTemplateMessage, template, motionCoverage
             cropCanvas.width = Math.floor(cw * scale) + (PADDING * 2);
             cropCanvas.height = Math.floor(ch * scale) + (PADDING * 2);
             const ctx = cropCanvas.getContext('2d');
-            
+
             // 填入常見的暗色背景防呆
             ctx.fillStyle = '#000000';
             ctx.fillRect(0, 0, cropCanvas.width, cropCanvas.height);
@@ -209,7 +209,7 @@ export function useVideoProcessor({ setTemplateMessage, template, motionCoverage
         }
 
         const previewUrl = canvas.toDataURL('image/jpeg', 0.8);
-        
+
         // 產生專用於列表顯示的裁切縮圖 (盤面範圍)
         let thumbUrl = previewUrl;
         if (reelROI) {
@@ -224,7 +224,7 @@ export function useVideoProcessor({ setTemplateMessage, template, motionCoverage
                 const tCtx = thumbCanvas.getContext('2d');
                 tCtx.drawImage(canvas, cx, cy, cw, ch, 0, 0, cw, ch);
                 thumbUrl = thumbCanvas.toDataURL('image/jpeg', 0.6);
-            } catch(e) {
+            } catch (e) {
                 console.error("Failed to generate thumb", e);
             }
         }
@@ -253,13 +253,13 @@ export function useVideoProcessor({ setTemplateMessage, template, motionCoverage
                     recognizeData(canvas, balanceROI, true),
                     recognizeData(canvas, betROI, false) // 押注不強制使用固定小數點，保留原本的靈活解析
                 ]);
-                
+
                 setCapturedImages(prev => prev.map(img =>
-                    img.id === captureId ? { 
-                        ...img, 
-                        extractedWin: winText, 
-                        extractedBalance: balanceText, 
-                        extractedBet: betText 
+                    img.id === captureId ? {
+                        ...img,
+                        extractedWin: winText,
+                        extractedBalance: balanceText,
+                        extractedBet: betText
                     } : img
                 ));
             } catch (err) {
@@ -292,6 +292,12 @@ export function useVideoProcessor({ setTemplateMessage, template, motionCoverage
 
         try {
             const video = videoRef.current;
+            // 防護：應用程式視窗在 metadata 就緒前 videoWidth/Height 為 0
+            if (!video.videoWidth || !video.videoHeight) {
+                isProcessingRef.current = false;
+                requestRef.current = requestAnimationFrame(processFrame);
+                return;
+            }
             const rows = template?.rows || 3;
             const cols = template?.cols || 5;
 

@@ -216,15 +216,34 @@ function App() {
     }, [videoSrc, isStreamMode, setTemplateMessage]);
 
     const pendingStreamRef = useRef(null);
+    const handleStopScreenCapture = useCallback((isTrackEnded = false) => {
+        const stream = videoRef.current?.srcObject;
+        if (stream) {
+            stream.getTracks().forEach(t => t.stop());
+            videoRef.current.srcObject = null;
+        }
+        pendingStreamRef.current = null;
+        setVideoSrc(null);
+        setIsStreamMode(false);
+        if (isTrackEnded) {
+            setTemplateMessage('⚠️ 串流被中斷！選擇「整個螢幕」而非單一視窗，可避免原生遊戲視窗擷取不穩定的問題');
+            setTimeout(() => setTemplateMessage(''), 8000);
+        } else {
+            setTemplateMessage('🖥️ 螢幕擷取已結束');
+            setTimeout(() => setTemplateMessage(''), 3000);
+        }
+    }, [setTemplateMessage]);
+
     const handleStartScreenCapture = useCallback(async () => {
         try {
             const stream = await navigator.mediaDevices.getDisplayMedia({
                 video: { frameRate: { ideal: 30 } },
                 audio: false
             });
-            // 使用者按瀏覽器原生「停止分享」時自動清理
-            stream.getVideoTracks()[0].onended = () => {
-                handleStopScreenCapture();
+            const track = stream.getVideoTracks()[0];
+            // 使用者按瀏覽器原生「停止分享」或 Chrome 終止視窗擷取時自動清理
+            track.onended = () => {
+                handleStopScreenCapture(true);
             };
             // 如果目前有影片，先清掉
             if (videoSrc && videoSrc !== '__stream__') URL.revokeObjectURL(videoSrc);
@@ -237,29 +256,27 @@ function App() {
         } catch (err) {
             console.log('螢幕擷取已取消', err);
         }
-    }, [videoSrc, setTemplateMessage]);
+    }, [videoSrc, setTemplateMessage, handleStopScreenCapture]);
 
     // 當 isStreamMode 切為 true 且 video 元素已掛載，附加 srcObject
     useEffect(() => {
         if (isStreamMode && pendingStreamRef.current && videoRef.current) {
-            videoRef.current.srcObject = pendingStreamRef.current;
-            videoRef.current.play().catch(() => {});
+            const video = videoRef.current;
+            video.srcObject = pendingStreamRef.current;
+            // 等待影片元數據就緒後再播放（應用程式視窗需要額外時間協商解析度）
+            const onMeta = () => {
+                video.play().catch(() => { });
+                video.removeEventListener('loadedmetadata', onMeta);
+            };
+            if (video.readyState >= 1) {
+                // 已經有 metadata（例如瀏覽器分頁），直接播放
+                video.play().catch(() => { });
+            } else {
+                video.addEventListener('loadedmetadata', onMeta);
+            }
             pendingStreamRef.current = null;
         }
     }, [isStreamMode]);
-
-    const handleStopScreenCapture = useCallback(() => {
-        const stream = videoRef.current?.srcObject;
-        if (stream) {
-            stream.getTracks().forEach(t => t.stop());
-            videoRef.current.srcObject = null;
-        }
-        pendingStreamRef.current = null;
-        setVideoSrc(null);
-        setIsStreamMode(false);
-        setTemplateMessage('🖥️ 螢幕擷取已結束');
-        setTimeout(() => setTemplateMessage(''), 3000);
-    }, [setTemplateMessage]);
 
     // ROI 狀態 (from Zustand Store — 自動持久化至 localStorage)
     const reelROI = usePhase4Store(s => s.reelROI);
@@ -412,7 +429,7 @@ function App() {
     const handleSaveVisionToPhase4 = useCallback(() => {
         if (!activeVisionImg || !activeVisionImg.grid || !visionCalcResults) return;
         const originalId = activeVisionId.replace(/_(win|stop)$/, '');
-        
+
         keyframeExtractor.setCandidates(prev => prev.map(c => {
             if (c.id === originalId) {
                 const prevOverrides = c.manualOverrides || {};
@@ -434,7 +451,7 @@ function App() {
             }
             return c;
         }));
-        
+
         setTemplateMessage('✅ 已將人工修正盤面儲存回 Phase 4 原卡片！');
         setTimeout(() => setTemplateMessage(''), 3000);
         setIsPhase3Minimized(true);
@@ -523,137 +540,137 @@ function App() {
                 <AppHeader onOpenSettings={() => setShowSettingsModal(true)} />
 
                 <ErrorBoundary label="Phase 1: 模板設定">
-                <Phase1Setup
-                    handleClearTemplate={handleClearTemplate}
-                    templateMessage={templateMessage}
-                    isTemplateMinimized={isTemplateMinimized} setIsTemplateMinimized={setIsTemplateMinimized}
-                    onToggle={() => handlePhaseToggle('phase1')}
-                    template={template} templateError={templateError}
-                    showCloudModal={showCloudModal} setShowCloudModal={setShowCloudModal}
+                    <Phase1Setup
+                        handleClearTemplate={handleClearTemplate}
+                        templateMessage={templateMessage}
+                        isTemplateMinimized={isTemplateMinimized} setIsTemplateMinimized={setIsTemplateMinimized}
+                        onToggle={() => handlePhaseToggle('phase1')}
+                        template={template} templateError={templateError}
+                        showCloudModal={showCloudModal} setShowCloudModal={setShowCloudModal}
 
-                    templateName={templateName} setTemplateName={setTemplateName} defaultSaveName={defaultSaveName}
-                    handleSaveToCloud={handleSaveToCloud} isSaving={isSaving} activeSaveAction={activeSaveAction}
-                    platformName={platformName} setPlatformName={setPlatformName}
-                    gameName={gameName} setGameName={setGameName}
-                    lineMode={lineMode} setLineMode={setLineMode}
-                    linesMode={linesMode} setLinesMode={setLinesMode}
-                    linesTextInput={linesTextInput} setLinesTextInput={setLinesTextInput}
-                    extractResults={extractResults} setExtractResults={setExtractResults}
-                    gridRows={gridRows} setGridRows={setGridRows}
-                    gridCols={gridCols} setGridCols={setGridCols}
-                    hasMultiplierReel={hasMultiplierReel} setHasMultiplierReel={setHasMultiplierReel}
-                    requiresCollectToWin={requiresCollectToWin} setRequiresCollectToWin={setRequiresCollectToWin}
-                    hasCashCollectFeature={hasCashCollectFeature} setHasCashCollectFeature={setHasCashCollectFeature}
-                    hasDoubleSymbol={hasDoubleSymbol} setHasDoubleSymbol={setHasDoubleSymbol}
-                    hasDynamicMultiplier={hasDynamicMultiplier} setHasDynamicMultiplier={setHasDynamicMultiplier}
-                    multiplierCalcType={multiplierCalcType} setMultiplierCalcType={setMultiplierCalcType}
-                    hasBidirectionalPaylines={hasBidirectionalPaylines} setHasBidirectionalPaylines={setHasBidirectionalPaylines}
-                    hasAdjustableLines={hasAdjustableLines} setHasAdjustableLines={setHasAdjustableLines}
-                    lineImages={lineImages} removeLineImage={removeLineImage} activeLineImageId={activeLineImageId} setActiveLineImageId={setActiveLineImageId} handleLineImageUpload={handleLineImageUpload}
-                    isPtProcessing={isPtProcessing} handlePtExtract={handlePtExtract} ptImages={ptImages} removePtImage={removePtImage} clearPtAll={clearPtAll} handlePtFileChange={handlePtFileChange} handlePtDrop={handlePtDrop}
-                    dragState={dragState} setDragState={setDragState} containerRef={containerRef} layoutStyle={layoutStyle} handleMouseDown={handleMouseDown} handleMouseMove={handleMouseMove} handleMouseUp={handleMouseUp}
-                    canvasRef={canvasRef} draw={draw} canvasSize={canvasSize} p1={p1} pEnd={pEnd} analyzeImage={analyzeImage} startIndex={startIndex} setStartIndex={setStartIndex} threshold={threshold} setThreshold={setThreshold}
-                    patternRows={patternRows} setPatternRows={setPatternRows} patternCols={patternCols} setPatternCols={setPatternCols} linesTabMode={linesTabMode} setLinesTabMode={setLinesTabMode}
-                    activeLineImage={activeLineImage} imageSrc={imageSrc} imageObj={imageObj}
-                    paytableMode={paytableMode} setPaytableMode={setPaytableMode} paytableInput={paytableInput} setPaytableInput={setPaytableInput} handlePaytableTextChange={handlePaytableTextChange}
-                    ptResultItems={ptResultItems} setPtResultItems={setPtResultItems} ptCropState={ptCropState} setPtCropState={setPtCropState} ptCropImageRef={ptCropImageRef} ptEnlargedImg={ptEnlargedImg} setPtEnlargedImg={setPtEnlargedImg}
-                    handlePtTableChange={handlePtTableChange} handlePtTableDelete={handlePtTableDelete} handleAddPtRow={handleAddPtRow} handleRemoveThumb={handleRemoveThumb}
-                    hasJackpot={hasJackpot} setHasJackpot={setHasJackpot} jpConfig={jpConfig} setJpConfig={setJpConfig} buildErrorMsg={buildErrorMsg} handleBuildTemplate={handleBuildTemplate}
-                    showPtModal={showPtModal} setShowPtModal={setShowPtModal}
-                    hasApiKey={hasApiKey}
-                />
+                        templateName={templateName} setTemplateName={setTemplateName} defaultSaveName={defaultSaveName}
+                        handleSaveToCloud={handleSaveToCloud} isSaving={isSaving} activeSaveAction={activeSaveAction}
+                        platformName={platformName} setPlatformName={setPlatformName}
+                        gameName={gameName} setGameName={setGameName}
+                        lineMode={lineMode} setLineMode={setLineMode}
+                        linesMode={linesMode} setLinesMode={setLinesMode}
+                        linesTextInput={linesTextInput} setLinesTextInput={setLinesTextInput}
+                        extractResults={extractResults} setExtractResults={setExtractResults}
+                        gridRows={gridRows} setGridRows={setGridRows}
+                        gridCols={gridCols} setGridCols={setGridCols}
+                        hasMultiplierReel={hasMultiplierReel} setHasMultiplierReel={setHasMultiplierReel}
+                        requiresCollectToWin={requiresCollectToWin} setRequiresCollectToWin={setRequiresCollectToWin}
+                        hasCashCollectFeature={hasCashCollectFeature} setHasCashCollectFeature={setHasCashCollectFeature}
+                        hasDoubleSymbol={hasDoubleSymbol} setHasDoubleSymbol={setHasDoubleSymbol}
+                        hasDynamicMultiplier={hasDynamicMultiplier} setHasDynamicMultiplier={setHasDynamicMultiplier}
+                        multiplierCalcType={multiplierCalcType} setMultiplierCalcType={setMultiplierCalcType}
+                        hasBidirectionalPaylines={hasBidirectionalPaylines} setHasBidirectionalPaylines={setHasBidirectionalPaylines}
+                        hasAdjustableLines={hasAdjustableLines} setHasAdjustableLines={setHasAdjustableLines}
+                        lineImages={lineImages} removeLineImage={removeLineImage} activeLineImageId={activeLineImageId} setActiveLineImageId={setActiveLineImageId} handleLineImageUpload={handleLineImageUpload}
+                        isPtProcessing={isPtProcessing} handlePtExtract={handlePtExtract} ptImages={ptImages} removePtImage={removePtImage} clearPtAll={clearPtAll} handlePtFileChange={handlePtFileChange} handlePtDrop={handlePtDrop}
+                        dragState={dragState} setDragState={setDragState} containerRef={containerRef} layoutStyle={layoutStyle} handleMouseDown={handleMouseDown} handleMouseMove={handleMouseMove} handleMouseUp={handleMouseUp}
+                        canvasRef={canvasRef} draw={draw} canvasSize={canvasSize} p1={p1} pEnd={pEnd} analyzeImage={analyzeImage} startIndex={startIndex} setStartIndex={setStartIndex} threshold={threshold} setThreshold={setThreshold}
+                        patternRows={patternRows} setPatternRows={setPatternRows} patternCols={patternCols} setPatternCols={setPatternCols} linesTabMode={linesTabMode} setLinesTabMode={setLinesTabMode}
+                        activeLineImage={activeLineImage} imageSrc={imageSrc} imageObj={imageObj}
+                        paytableMode={paytableMode} setPaytableMode={setPaytableMode} paytableInput={paytableInput} setPaytableInput={setPaytableInput} handlePaytableTextChange={handlePaytableTextChange}
+                        ptResultItems={ptResultItems} setPtResultItems={setPtResultItems} ptCropState={ptCropState} setPtCropState={setPtCropState} ptCropImageRef={ptCropImageRef} ptEnlargedImg={ptEnlargedImg} setPtEnlargedImg={setPtEnlargedImg}
+                        handlePtTableChange={handlePtTableChange} handlePtTableDelete={handlePtTableDelete} handleAddPtRow={handleAddPtRow} handleRemoveThumb={handleRemoveThumb}
+                        hasJackpot={hasJackpot} setHasJackpot={setHasJackpot} jpConfig={jpConfig} setJpConfig={setJpConfig} buildErrorMsg={buildErrorMsg} handleBuildTemplate={handleBuildTemplate}
+                        showPtModal={showPtModal} setShowPtModal={setShowPtModal}
+                        hasApiKey={hasApiKey}
+                    />
                 </ErrorBoundary>
 
                 <ErrorBoundary label="Phase 2: 手動結算">
-                <Phase2Manual
-                    template={template}
-                    isPhase2Minimized={isPhase2Minimized} setIsPhase2Minimized={setIsPhase2Minimized}
-                    onToggle={() => handlePhaseToggle('phase2')}
-                    handleRandomizePanel={handleRandomizePanel}
-                    panelInputMode={panelInputMode} setPanelInputMode={setPanelInputMode}
-                    activeBrush={activeBrush} setActiveBrush={setActiveBrush}
-                    availableSymbols={availableSymbols}
-                    handleClearPanel={handleClearPanel}
-                    hoveredLineId={hoveredLineId} setHoveredLineId={setHoveredLineId}
-                    calcResults={calcResults} calculateError={calculateError}
-                    showAllLines={showAllLines} setShowAllLines={setShowAllLines}
-                    betInput={betInput} setBetInput={setBetInput}
-                    panelGrid={panelGrid} handleCellChange={handleCellChange}
-                    getSafeGrid={getSafeGrid}
-                    onReturn={handleReturnToVision}
-                    totalBalance={totalBalance} setTotalBalance={setTotalBalance}
-                    setTemplateMessage={setTemplateMessage}
-                    isBalanceExpanded={isBalanceExpanded} setIsBalanceExpanded={setIsBalanceExpanded}
-                    enableBidirectional={enableBidirectional} setEnableBidirectional={setEnableBidirectional}
-                    activeLineCount={activeLineCount} setActiveLineCount={setActiveLineCount}
-                    globalMultiplier={globalMultiplier} setGlobalMultiplier={setGlobalMultiplier}
-                />
+                    <Phase2Manual
+                        template={template}
+                        isPhase2Minimized={isPhase2Minimized} setIsPhase2Minimized={setIsPhase2Minimized}
+                        onToggle={() => handlePhaseToggle('phase2')}
+                        handleRandomizePanel={handleRandomizePanel}
+                        panelInputMode={panelInputMode} setPanelInputMode={setPanelInputMode}
+                        activeBrush={activeBrush} setActiveBrush={setActiveBrush}
+                        availableSymbols={availableSymbols}
+                        handleClearPanel={handleClearPanel}
+                        hoveredLineId={hoveredLineId} setHoveredLineId={setHoveredLineId}
+                        calcResults={calcResults} calculateError={calculateError}
+                        showAllLines={showAllLines} setShowAllLines={setShowAllLines}
+                        betInput={betInput} setBetInput={setBetInput}
+                        panelGrid={panelGrid} handleCellChange={handleCellChange}
+                        getSafeGrid={getSafeGrid}
+                        onReturn={handleReturnToVision}
+                        totalBalance={totalBalance} setTotalBalance={setTotalBalance}
+                        setTemplateMessage={setTemplateMessage}
+                        isBalanceExpanded={isBalanceExpanded} setIsBalanceExpanded={setIsBalanceExpanded}
+                        enableBidirectional={enableBidirectional} setEnableBidirectional={setEnableBidirectional}
+                        activeLineCount={activeLineCount} setActiveLineCount={setActiveLineCount}
+                        globalMultiplier={globalMultiplier} setGlobalMultiplier={setGlobalMultiplier}
+                    />
                 </ErrorBoundary>
 
                 <ErrorBoundary label="Phase 3: AI 辨識">
-                <Phase3Vision
-                    template={template}
-                    isPhase3Minimized={isPhase3Minimized} setIsPhase3Minimized={setIsPhase3Minimized}
-                    onToggle={() => handlePhaseToggle('phase3')}
-                    visionImages={visionImages} activeVisionId={activeVisionId} setActiveVisionId={setActiveVisionId}
-                    removeVisionImage={removeVisionImage} resetVisionImage={resetVisionImage} handleVisionImageUpload={handleVisionImageUpload}
-                    activeVisionImg={activeVisionImg} visionContainerRef={visionContainerRef} visionCanvasRef={visionCanvasRef}
-                    handleVisionMouseDown={handleVisionMouseDown} handleVisionMouseMove={handleVisionMouseMove} handleVisionMouseUp={handleVisionMouseUp}
-                    goToPrevVisionImage={goToPrevVisionImage} goToNextVisionImage={goToNextVisionImage}
-                    isVisionProcessing={isVisionProcessing} performAIVisionBatchMatching={performAIVisionBatchMatching}
-                    performLocalVisionBatchMatching={performLocalVisionBatchMatching} ocrDecimalPlaces={ocrDecimalPlaces}
-                    isVisionStopping={isVisionStopping} visionBatchProgress={visionBatchProgress} cancelVisionProcessing={cancelVisionProcessing}
-                    visionError={visionError} visionGrid={visionGrid} visionCalcResults={visionCalcResults} visionCalculateError={visionCalculateError}
-                    getSafeGrid={getSafeGrid} betInput={visionBetInput} setBetInput={handleVisionBetInputChange}
-                    hasBetBox={hasBetBox} setHasBetBox={setHasBetBox}
-                    onTransfer={handleTransferVisionToManual}
-                    onSaveToPhase4={handleSaveVisionToPhase4}
-                    hasApiKey={hasApiKey}
-                    totalBalance={totalBalance} setTotalBalance={setTotalBalance}
-                    setTemplateMessage={setTemplateMessage}
-                    isBalanceExpanded={isBalanceExpanded} setIsBalanceExpanded={setIsBalanceExpanded}
-                />
+                    <Phase3Vision
+                        template={template}
+                        isPhase3Minimized={isPhase3Minimized} setIsPhase3Minimized={setIsPhase3Minimized}
+                        onToggle={() => handlePhaseToggle('phase3')}
+                        visionImages={visionImages} activeVisionId={activeVisionId} setActiveVisionId={setActiveVisionId}
+                        removeVisionImage={removeVisionImage} resetVisionImage={resetVisionImage} handleVisionImageUpload={handleVisionImageUpload}
+                        activeVisionImg={activeVisionImg} visionContainerRef={visionContainerRef} visionCanvasRef={visionCanvasRef}
+                        handleVisionMouseDown={handleVisionMouseDown} handleVisionMouseMove={handleVisionMouseMove} handleVisionMouseUp={handleVisionMouseUp}
+                        goToPrevVisionImage={goToPrevVisionImage} goToNextVisionImage={goToNextVisionImage}
+                        isVisionProcessing={isVisionProcessing} performAIVisionBatchMatching={performAIVisionBatchMatching}
+                        performLocalVisionBatchMatching={performLocalVisionBatchMatching} ocrDecimalPlaces={ocrDecimalPlaces}
+                        isVisionStopping={isVisionStopping} visionBatchProgress={visionBatchProgress} cancelVisionProcessing={cancelVisionProcessing}
+                        visionError={visionError} visionGrid={visionGrid} visionCalcResults={visionCalcResults} visionCalculateError={visionCalculateError}
+                        getSafeGrid={getSafeGrid} betInput={visionBetInput} setBetInput={handleVisionBetInputChange}
+                        hasBetBox={hasBetBox} setHasBetBox={setHasBetBox}
+                        onTransfer={handleTransferVisionToManual}
+                        onSaveToPhase4={handleSaveVisionToPhase4}
+                        hasApiKey={hasApiKey}
+                        totalBalance={totalBalance} setTotalBalance={setTotalBalance}
+                        setTemplateMessage={setTemplateMessage}
+                        isBalanceExpanded={isBalanceExpanded} setIsBalanceExpanded={setIsBalanceExpanded}
+                    />
                 </ErrorBoundary>
 
                 <ErrorBoundary label="Phase 4: 影片智慧分析">
-                <Phase4Video
-                    isPhase4Minimized={isPhase4Minimized}
-                    onToggle={() => handlePhaseToggle('phase4')}
-                    // Keyframe Extractor
-                    candidates={keyframeExtractor.candidates}
-                    startLiveDetection={keyframeExtractor.startLiveDetection}
-                    stopLiveDetection={keyframeExtractor.stopLiveDetection}
-                    removeCandidate={keyframeExtractor.removeCandidate}
-                    clearCandidates={keyframeExtractor.clearCandidates}
-                    addManualCandidate={keyframeExtractor.addManualCandidate}
-                    smartDedup={keyframeExtractor.smartDedup}
-                    confirmDedup={keyframeExtractor.confirmDedup}
-                    updateCandidateOcr={keyframeExtractor.updateCandidateOcr}
-                    updateCandidate={keyframeExtractor.updateCandidate}
-                    setManualBestCandidate={keyframeExtractor.setManualBestCandidate}
-                    // Auto Recognition
-                    isRecognizing={autoRecognition.isRecognizing}
-                    isStopping={autoRecognition.isStopping}
-                    recognitionProgress={autoRecognition.recognitionProgress}
-                    recognizeBatch={handleRecognizeBatch}
-                    recognizeLocalBatch={handleRecognizeLocalBatch}
-                    cancelRecognition={autoRecognition.cancelRecognition}
-                    // Report
-                    stats={phase4Stats}
-                    exportHTMLReport={(c, game, dir) => reportGenerator.exportHTMLReport(c, gameName || 'slot', dir, template, {
-                        reel: reelROI, win: winROI, balance: balanceROI, bet: betROI, orderId: orderIdROI
-                    })}
-                    // Video
-                    videoSrc={videoSrc} videoRef={videoRef} handleVideoUpload={handleVideoUpload}
-                    isStreamMode={isStreamMode} handleStartScreenCapture={handleStartScreenCapture} handleStopScreenCapture={handleStopScreenCapture}
-                    // Transfer
-                    onTransferToPhase3={handleTransferPhase4ToPhase3}
-                    onImportSession={handleImportSession}
-                    setTemplateMessage={setTemplateMessage}
-                    template={template}
-                    gameName={gameName}
-                    gridRows={gridRows} gridCols={gridCols}
-                />
+                    <Phase4Video
+                        isPhase4Minimized={isPhase4Minimized}
+                        onToggle={() => handlePhaseToggle('phase4')}
+                        // Keyframe Extractor
+                        candidates={keyframeExtractor.candidates}
+                        startLiveDetection={keyframeExtractor.startLiveDetection}
+                        stopLiveDetection={keyframeExtractor.stopLiveDetection}
+                        removeCandidate={keyframeExtractor.removeCandidate}
+                        clearCandidates={keyframeExtractor.clearCandidates}
+                        addManualCandidate={keyframeExtractor.addManualCandidate}
+                        smartDedup={keyframeExtractor.smartDedup}
+                        confirmDedup={keyframeExtractor.confirmDedup}
+                        updateCandidateOcr={keyframeExtractor.updateCandidateOcr}
+                        updateCandidate={keyframeExtractor.updateCandidate}
+                        setManualBestCandidate={keyframeExtractor.setManualBestCandidate}
+                        // Auto Recognition
+                        isRecognizing={autoRecognition.isRecognizing}
+                        isStopping={autoRecognition.isStopping}
+                        recognitionProgress={autoRecognition.recognitionProgress}
+                        recognizeBatch={handleRecognizeBatch}
+                        recognizeLocalBatch={handleRecognizeLocalBatch}
+                        cancelRecognition={autoRecognition.cancelRecognition}
+                        // Report
+                        stats={phase4Stats}
+                        exportHTMLReport={(c, game, dir) => reportGenerator.exportHTMLReport(c, gameName || 'slot', dir, template, {
+                            reel: reelROI, win: winROI, balance: balanceROI, bet: betROI, orderId: orderIdROI
+                        })}
+                        // Video
+                        videoSrc={videoSrc} videoRef={videoRef} handleVideoUpload={handleVideoUpload}
+                        isStreamMode={isStreamMode} handleStartScreenCapture={handleStartScreenCapture} handleStopScreenCapture={handleStopScreenCapture}
+                        // Transfer
+                        onTransferToPhase3={handleTransferPhase4ToPhase3}
+                        onImportSession={handleImportSession}
+                        setTemplateMessage={setTemplateMessage}
+                        template={template}
+                        gameName={gameName}
+                        gridRows={gridRows} gridCols={gridCols}
+                    />
                 </ErrorBoundary>
 
             </div>
