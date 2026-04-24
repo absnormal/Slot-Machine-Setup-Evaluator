@@ -1,14 +1,15 @@
 /**
- * localBoardRecognizer.js — HOG + Hue 融合辨識引擎（含亮度異常遮罩）
+ * localBoardRecognizer.js — HOG + Hue 融合辨識引擎（含亮度異常遮罩 + CASH OCR）
  *
  * 架構：
  * 前處理: 亮度異常遮罩 — 偵測並移除閃電/發光等特效像素
  * Pass 1: HOG (方向梯度長條圖) — 形狀比對，搭配直方圖等化 + 梯度截尾 + 中心加權
  * Pass 2: Hue (色相直方圖距離) — 色彩比對，區分同形異色符號
+ * Pass 3: CASH OCR — 對被辨識為 CASH 的格子讀取數字值
  * 融合: HOG × 0.7 + Color × 0.3
- *
- * 零依賴：100% 純 JS，無需 OpenCV / WASM
  */
+
+import { parseShorthandValue } from '../utils/symbolUtils';
 
 const MATCH_SIZE = 64; // 統一縮放到 64x64 做比對
 
@@ -348,6 +349,86 @@ function extractCell(boardCanvas, roi, row, col, totalRows, totalCols) {
     ctx.drawImage(boardCanvas, sx, sy, cellW, cellH, 0, 0, MATCH_SIZE, MATCH_SIZE);
     return ctx.getImageData(0, 0, MATCH_SIZE, MATCH_SIZE);
 }
+
+/**
+ * 從盤面擷取單一格子的原始解析度 Canvas（供 OCR 使用，不縮放到 64x64）
+ */
+function extractCellCanvas(boardCanvas, roi, row, col, totalRows, totalCols) {
+    const cellW = roi.width / totalCols;
+    const cellH = roi.height / totalRows;
+    const sx = roi.x + col * cellW;
+    const sy = roi.y + row * cellH;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.floor(cellW));
+    canvas.height = Math.max(1, Math.floor(cellH));
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(boardCanvas, sx, sy, cellW, cellH, 0, 0, canvas.width, canvas.height);
+    return canvas;
+}
+
+/**
+ * 對單一格子執行 PaddleOCR，回傳辨識到的原始文字
+ * @param {HTMLCanvasElement} cellCanvas - 格子的原始解析度 Canvas
+ * @param {Object} ocrWorker - PaddleOCR Worker 實例
+ * @returns {Promise<string>} 辨識到的原始文字，失敗回傳空字串
+ */
+async function ocrCellRawText(cellCanvas, ocrWorker) {
+    try {
+        const cw = cellCanvas.width;
+        const ch = cellCanvas.height;
+        if (cw < 2 || ch < 2) return '';
+
+        let scale = 48 / ch;
+        if (scale < 1) scale = 1;
+
+        const finalW = cw * scale;
+        const finalH = ch * scale;
+
+        const PADDING = 20;
+        const ocrCanvas = document.createElement('canvas');
+        ocrCanvas.width = Math.floor(finalW) + (PADDING * 2);
+        ocrCanvas.height = Math.floor(finalH) + (PADDING * 2);
+        const ctx = ocrCanvas.getContext('2d');
+
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, ocrCanvas.width, ocrCanvas.height);
+        ctx.filter = 'contrast(1.8) brightness(1.1)';
+        ctx.imageSmoothingEnabled = true;
+        ctx.drawImage(cellCanvas, 0, 0, cw, ch, PADDING, PADDING, finalW, finalH);
+
+        const detectedLines = await ocrWorker.detect(ocrCanvas.toDataURL('image/png'));
+        return (detectedLines || []).map(t => t.text).join(' ').trim();
+    } catch (err) {
+        console.warn('[LocalOCR] 格子 OCR 失敗:', err);
+        return '';
+    }
+}
+
+/**
+ * 將 OCR 原始文字解析為數值（支援 K/M/B 簡寫）
+ * @param {string} rawText - OCR 原始文字
+ * @returns {number} 解析出的數值，失敗回傳 0
+ */
+function parseOcrNumericValue(rawText) {
+    if (!rawText) return 0;
+
+    // 保留數字、小數點、逗號、K/M/B
+    let cleaned = rawText.replace(/[^0-9.,KMBkmb]/g, '');
+    if (!cleaned) return 0;
+
+    // 移除逗號
+    cleaned = cleaned.replace(/,/g, '');
+
+    // 處理 OCR 將千分位逗號誤判為小數點的情況 (例如 1.036.022)
+    const dotParts = cleaned.split('.');
+    if (dotParts.length > 2) {
+        const decimals = dotParts.pop();
+        cleaned = dotParts.join('') + '.' + decimals;
+    }
+
+    return parseShorthandValue(cleaned);
+}
 // ═══════════════════════════════════════════
 // ── 亮度異常遮罩 (Brightness Outlier Masking) ──
 // ═══════════════════════════════════════════
@@ -474,11 +555,22 @@ export function matchCell(cellImageData, referenceIndex) {
 
 /**
  * 辨識整個盤面
+ * @param {HTMLCanvasElement} boardCanvas - 完整截圖的 Canvas
+ * @param {Object} reelROI - 盤面區域 {x, y, width, height} (像素座標)
+ * @param {number} gridRows - 列數
+ * @param {number} gridCols - 欄數
+ * @param {Map} referenceIndex - HOG 參考索引
+ * @param {Object} [options] - 額外選項
+ * @param {Object} [options.ocrWorker] - PaddleOCR Worker，傳入後會對 CASH/JP 格子做 OCR
+ * @param {boolean} [options.hasCashCollect] - 是否啟用 CASH 收集功能
+ * @param {Object} [options.jpConfig] - JP 符號設定 { GRAND: 1000, MAJOR: 500, ... }
  */
-export function recognizeBoard(boardCanvas, reelROI, gridRows, gridCols, referenceIndex) {
+export async function recognizeBoard(boardCanvas, reelROI, gridRows, gridCols, referenceIndex, options = {}) {
+    const { ocrWorker, hasCashCollect, jpConfig } = options;
     const grid = [];
     const details = [];
 
+    // ── 第一輪：HOG + Hue 形狀辨識 ──
     for (let r = 0; r < gridRows; r++) {
         const gridRow = [];
         const detailRow = [];
@@ -490,6 +582,69 @@ export function recognizeBoard(boardCanvas, reelROI, gridRows, gridCols, referen
         }
         grid.push(gridRow);
         details.push(detailRow);
+    }
+
+    // ── 第二輪：對 CASH / JP 格子執行 OCR，用文字判定符號並提取數值 ──
+    // CASH 和 JP 金幣外觀幾乎一模一樣，先用 OCR 讀文字再決定是哪個
+    // 若 OCR 完全讀不到 → HOG 可能誤判（如閃電特效讓檸檬看起來像金幣），排除 CASH/JP 重新比對
+    if (hasCashCollect && ocrWorker) {
+        const jpNames = jpConfig ? Object.keys(jpConfig).map(k => k.toUpperCase()) : [];
+
+        // 預建排除 CASH/JP 的參考索引，供 OCR 失敗時重新比對
+        const filteredIndex = new Map(
+            [...referenceIndex].filter(([sym]) => {
+                const upper = sym.toUpperCase();
+                return !upper.startsWith('CASH') && !jpNames.includes(upper);
+            })
+        );
+
+        for (let r = 0; r < gridRows; r++) {
+            for (let c = 0; c < gridCols; c++) {
+                const sym = grid[r][c];
+                if (!sym) continue;
+
+                const upperSym = sym.toUpperCase();
+                const isCashLike = upperSym.startsWith('CASH');
+                const isJpLike = jpNames.includes(upperSym);
+
+                if (!isCashLike && !isJpLike) continue;
+
+                const cellCanvas = extractCellCanvas(boardCanvas, reelROI, r, c, gridRows, gridCols);
+                const rawText = await ocrCellRawText(cellCanvas, ocrWorker);
+                console.log(`[LocalOCR] (${r},${c}) 形狀辨識: ${sym}, OCR 文字: "${rawText}"`);
+
+                // 優先比對 JP 文字 — JP 金幣上印有 "GRAND", "MAJOR" 等文字
+                if (rawText) {
+                    const matchedJp = jpNames.find(jp => rawText.toUpperCase().includes(jp));
+                    if (matchedJp) {
+                        grid[r][c] = matchedJp;
+                        details[r][c] = { ...details[r][c], symbol: matchedJp, ocrText: rawText };
+                        console.log(`[LocalOCR] (${r},${c}) ${sym} → ${matchedJp} (JP 文字匹配)`);
+                        continue;
+                    }
+
+                    // 非 JP → 嘗試解析為 CASH 數值
+                    const value = parseOcrNumericValue(rawText);
+                    if (value > 0) {
+                        const newSymbol = `CASH_${value}`;
+                        grid[r][c] = newSymbol;
+                        details[r][c] = { ...details[r][c], symbol: newSymbol, ocrValue: value };
+                        console.log(`[LocalOCR] (${r},${c}) ${sym} → ${newSymbol}`);
+                        continue;
+                    }
+                }
+
+                // OCR 讀不到 JP 文字也讀不到數字 → HOG 可能誤判（如閃電特效讓普通符號像金幣）
+                // 排除 CASH/JP 重新比對，找回正確符號
+                if (filteredIndex.size > 0) {
+                    const cellData = extractCell(boardCanvas, reelROI, r, c, gridRows, gridCols);
+                    const reMatch = matchCell(cellData, filteredIndex);
+                    grid[r][c] = reMatch.symbol;
+                    details[r][c] = reMatch;
+                    console.log(`[LocalOCR] (${r},${c}) ${sym} → ${reMatch.symbol} (OCR 無結果，HOG 重新比對)`);
+                }
+            }
+        }
     }
 
     console.log(`=== 本地辨識結果 ===`);

@@ -355,7 +355,11 @@ export function useVisionBatchProcessor({
                 ctx.drawImage(targetImg.obj, 0, 0);
 
                 const pixelROI = getPixelROI(targetImg.obj, visionP1);
-                const { grid } = recognizeBoard(targetCanvas, pixelROI, template.rows, displayCols, refIndex);
+                const { grid } = await recognizeBoard(targetCanvas, pixelROI, template.rows, displayCols, refIndex, {
+                    ocrWorker: ocrWorkerRef.current,
+                    hasCashCollect: !!template.hasCashCollectFeature,
+                    jpConfig: template.jpConfig
+                });
 
                 let validatedBet = null;
                 if (hasBetBox && ocrWorkerRef.current) {

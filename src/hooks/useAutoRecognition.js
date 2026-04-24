@@ -276,7 +276,11 @@ export function useAutoRecognition({
             try {
                 const targetCanvas = (kf.useWinFrame !== false) ? (kf.winPollCanvas || kf.canvas) : kf.canvas;
                 const pixelROI = toPixelROI(targetCanvas, reelROI);
-                const { grid, details } = recognizeBoard(targetCanvas, pixelROI, template.rows, displayCols, refIndex);
+                const { grid, details } = await recognizeBoard(targetCanvas, pixelROI, template.rows, displayCols, refIndex, {
+                    ocrWorker: ocrWorkerRef.current,
+                    hasCashCollect: !!template.hasCashCollectFeature,
+                    jpConfig: template.jpConfig
+                });
 
                 // 讀 OCR 數值（與 Gemini 流程一致）
                 const [winText, balanceText, betText] = await Promise.all([
