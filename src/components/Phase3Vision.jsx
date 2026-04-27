@@ -234,7 +234,14 @@ export default function Phase3Vision({
                                     {!isVisionProcessing && visionGrid && visionCalcResults && (
                                         <div className="p-4 bg-black/60 border-t border-slate-800">
                                             <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-3">
-                                                <span className="text-xs text-slate-400 font-bold">目前 AI 辨識盤面狀態 (唯讀預覽)</span>
+                                                <div className="flex items-center gap-3">
+                                                    <span className="text-xs text-slate-400 font-bold">目前 AI 辨識盤面狀態 (唯讀預覽)</span>
+                                                    {template?.hasMultiplierReel && activeVisionImg?.multiplier && (
+                                                        <span className="px-2 py-0.5 bg-amber-500/20 text-amber-400 font-bold rounded-md text-xs border border-amber-500/30">
+                                                            乘倍: {activeVisionImg.multiplier}
+                                                        </span>
+                                                    )}
+                                                </div>
                                                 <div className="flex items-center gap-2">
                                                     <button
                                                         onClick={onSaveToPhase4}

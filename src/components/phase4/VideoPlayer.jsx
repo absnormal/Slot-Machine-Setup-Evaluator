@@ -24,6 +24,7 @@ const VideoPlayer = ({
     template,
     propGridRows,
     propGridCols,
+    propHasMultiplierReel,
     onVideoEnded,
 }) => {
     // ── ROI 從 Zustand Store 取得（唯讀，用於繪製覆蓋層）──
@@ -32,6 +33,7 @@ const VideoPlayer = ({
     const balanceROI = usePhase4Store(s => s.balanceROI);
     const betROI = usePhase4Store(s => s.betROI);
     const orderIdROI = usePhase4Store(s => s.orderIdROI);
+    const multiplierROI = usePhase4Store(s => s.multiplierROI);
 
     // ── 本地狀態 ──
     const [isPlaying, setIsPlaying] = useState(false);
@@ -94,6 +96,7 @@ const VideoPlayer = ({
     };
     const formatTime = (t) => `${Math.floor(t / 60)}:${Math.floor(t % 60).toString().padStart(2, '0')}`;
 
+    const showMultiplier = template ? template.hasMultiplierReel : propHasMultiplierReel;
     // ── 格線繪製 ──
     const renderGridLines = () => {
         const rows = template?.rows || propGridRows || 3;
@@ -149,7 +152,8 @@ const VideoPlayer = ({
                         { key: 'win', label: 'WIN', hex: '#10b981' },
                         { key: 'balance', label: 'BAL', hex: '#38bdf8' },
                         { key: 'bet', label: 'BET', hex: '#22d3ee' },
-                        { key: 'orderId', label: 'ID', hex: '#a855f7' }
+                        { key: 'orderId', label: 'ID', hex: '#a855f7' },
+                        ...(showMultiplier ? [{ key: 'multiplier', label: 'MULT', hex: '#f43f5e' }] : [])
                     ].map(r => (
                         <button key={r.key} onClick={() => setRoiMode(r.key)}
                             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm active:scale-95 ${roiMode === r.key
@@ -194,7 +198,8 @@ const VideoPlayer = ({
                         { roi: winROI, mode: 'win', hex: '#10b981', label: '贏分' },
                         { roi: balanceROI, mode: 'balance', hex: '#38bdf8', label: '總分' },
                         { roi: betROI, mode: 'bet', hex: '#22d3ee', label: '押分' },
-                        { roi: orderIdROI, mode: 'orderId', hex: '#a855f7', label: '單號' }
+                        { roi: orderIdROI, mode: 'orderId', hex: '#a855f7', label: '單號' },
+                        ...(showMultiplier ? [{ roi: multiplierROI, mode: 'multiplier', hex: '#f43f5e', label: '乘倍' }] : [])
                     ].map(r => {
                         const isActive = roiMode === r.mode;
                         return (

@@ -18,6 +18,8 @@ const useROIDrag = (containerRef, roiMode) => {
     const setBetROI = usePhase4Store(s => s.setBetROI);
     const orderIdROI = usePhase4Store(s => s.orderIdROI);
     const setOrderIdROI = usePhase4Store(s => s.setOrderIdROI);
+    const multiplierROI = usePhase4Store(s => s.multiplierROI);
+    const setMultiplierROI = usePhase4Store(s => s.setMultiplierROI);
 
     const [dragState, setDragState] = useState(null);
 
@@ -35,6 +37,7 @@ const useROIDrag = (containerRef, roiMode) => {
         else if (roiMode === 'balance') { targetROI = balanceROI; setTargetROI = setBalanceROI; }
         else if (roiMode === 'bet') { targetROI = betROI; setTargetROI = setBetROI; }
         else if (roiMode === 'orderId') { targetROI = orderIdROI; setTargetROI = setOrderIdROI; }
+        else if (roiMode === 'multiplier') { targetROI = multiplierROI; setTargetROI = setMultiplierROI; }
         else { targetROI = reelROI; setTargetROI = setReelROI; }
 
         const isOverHandle = pos.x >= targetROI.x + targetROI.w - handleSize && pos.x <= targetROI.x + targetROI.w &&
@@ -45,7 +48,7 @@ const useROIDrag = (containerRef, roiMode) => {
             startX: pos.x, startY: pos.y,
             initObj: { ...targetROI }, setter: setTargetROI
         });
-    }, [roiMode, reelROI, setReelROI, winROI, setWinROI, balanceROI, setBalanceROI, betROI, setBetROI, orderIdROI, setOrderIdROI, getMousePos]);
+    }, [roiMode, reelROI, setReelROI, winROI, setWinROI, balanceROI, setBalanceROI, betROI, setBetROI, orderIdROI, setOrderIdROI, multiplierROI, setMultiplierROI, getMousePos]);
 
     const handleMouseMove = useCallback((e) => {
         if (!dragState) return;

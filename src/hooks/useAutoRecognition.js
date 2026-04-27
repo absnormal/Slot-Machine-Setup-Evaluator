@@ -164,7 +164,15 @@ export function useAutoRecognition({
 
                 // ── C. 結算 ──
                 const betValue = gridResult.bet || parseFloat(betText) || 100;
-                const { results: settlement } = computeGridResults(template, gridResult.grid, betValue, { enableBidirectional });
+                
+                let multVal = 1;
+                let finalMultText = '';
+                if (template?.hasMultiplierReel && gridResult.multiplier) {
+                    multVal = parseFloat(gridResult.multiplier.replace(/[^0-9.]/g, '')) || 1;
+                    finalMultText = gridResult.multiplier.startsWith('x') ? gridResult.multiplier : `x${gridResult.multiplier}`;
+                }
+
+                const { results: settlement } = computeGridResults(template, gridResult.grid, betValue, { enableBidirectional, globalMultiplier: multVal });
 
                 updateCandidate(kf.id, {
                     status: 'recognized',
@@ -173,6 +181,7 @@ export function useAutoRecognition({
                         win: winText,
                         balance: balanceText,
                         bet: betText,
+                        multiplier: finalMultText,
                         betValue,
                         settlement,
                         totalWin: settlement?.totalWin || 0
@@ -253,7 +262,7 @@ export function useAutoRecognition({
         setTemplateMessage?.(`🖥️ 開始本地辨識 ${toProcess.length} 張候選幀...`);
 
         const { reelROI } = rois;
-        const displayCols = template.hasMultiplierReel ? template.cols - 1 : template.cols;
+        const displayCols = template.cols;
 
         // 將百分比 ROI 轉成像素座標的輔助函式
         const toPixelROI = (canvas, pctROI) => ({
@@ -275,6 +284,11 @@ export function useAutoRecognition({
 
             try {
                 const targetCanvas = (kf.useWinFrame !== false) ? (kf.winPollCanvas || kf.canvas) : kf.canvas;
+                
+                if (!targetCanvas) {
+                    throw new Error('找不到對應的截圖畫面 (可能為已匯入之歷史紀錄且未包含圖片)');
+                }
+
                 const pixelROI = toPixelROI(targetCanvas, reelROI);
                 const { grid, details } = await recognizeBoard(targetCanvas, pixelROI, template.rows, displayCols, refIndex, {
                     ocrWorker: ocrWorkerRef.current,
@@ -283,14 +297,21 @@ export function useAutoRecognition({
                 });
 
                 // 讀 OCR 數值（與 Gemini 流程一致）
-                const [winText, balanceText, betText] = await Promise.all([
+                const [winText, balanceText, betText, multiplierText] = await Promise.all([
                     recognizeROIText(targetCanvas, rois.winROI, ocrWorkerRef.current, ocrDecimalPlaces, true),
                     recognizeROIText(targetCanvas, rois.balanceROI, ocrWorkerRef.current, ocrDecimalPlaces, true),
-                    recognizeROIText(targetCanvas, rois.betROI, ocrWorkerRef.current, ocrDecimalPlaces, false)
+                    recognizeROIText(targetCanvas, rois.betROI, ocrWorkerRef.current, ocrDecimalPlaces, false),
+                    template.hasMultiplierReel && rois.multiplierROI ? recognizeROIText(targetCanvas, rois.multiplierROI, ocrWorkerRef.current, 0, false) : Promise.resolve('')
                 ]);
 
                 const betValue = parseFloat(betText) || 100;
-                const { results: settlement } = computeGridResults(template, grid, betValue, { enableBidirectional });
+                
+                let multVal = 1;
+                if (template?.hasMultiplierReel && multiplierText) {
+                    multVal = parseFloat(multiplierText.replace(/[^0-9.]/g, '')) || 1;
+                }
+
+                const { results: settlement } = computeGridResults(template, grid, betValue, { enableBidirectional, globalMultiplier: multVal });
 
                 // 計算平均 confidence
                 const allConf = details.flat().map(d => d.confidence);
@@ -303,6 +324,7 @@ export function useAutoRecognition({
                         win: winText,
                         balance: balanceText,
                         bet: betText,
+                        multiplier: multiplierText ? (multiplierText.startsWith('x') ? multiplierText : `x${multiplierText}`) : '',
                         betValue,
                         settlement,
                         totalWin: settlement?.totalWin || 0,
@@ -365,7 +387,7 @@ async function recognizeGrid(canvas, rois, template, availableSymbols, fixedPref
     ctx.drawImage(canvas, rx, ry, rw, rh, 0, 0, rw, rh);
 
     // 繪製紅色格線
-    const displayCols = template.hasMultiplierReel ? template.cols - 1 : template.cols;
+    const displayCols = template.cols;
     const cellW = rw / displayCols;
     const cellH = rh / template.rows;
     ctx.strokeStyle = 'rgba(255, 0, 0, 0.6)';
@@ -439,7 +461,7 @@ async function recognizeGrid(canvas, rois, template, availableSymbols, fixedPref
     if (!jsonText) throw new Error('AI 無回應，請確認 API Key');
 
     const responseData = JSON.parse(jsonText);
-    const { grid, bet } = validateVisionResponse(responseData, template, availableSymbols || []);
+    const { grid, bet, multiplier } = validateVisionResponse(responseData, template, availableSymbols || []);
 
-    return { grid, bet };
+    return { grid, bet, multiplier };
 }

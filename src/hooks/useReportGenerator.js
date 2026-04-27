@@ -261,6 +261,7 @@ export function useReportGenerator() {
             const manualBal = c.manualOverrides?.balance ? `<span style="background:#fef3c7;color:#d97706;border:1px solid #fcd34d;font-size:9px;padding:1px 3px;border-radius:3px;margin-left:4px;white-space:nowrap;" title="人工校正">✏️人工</span>` : '';
             const manualBet = c.manualOverrides?.bet ? `<span style="background:#fef3c7;color:#d97706;border:1px solid #fcd34d;font-size:9px;padding:1px 3px;border-radius:3px;margin-left:4px;white-space:nowrap;" title="人工校正">✏️人工</span>` : '';
             const manualWin = c.manualOverrides?.win ? `<span style="background:#fef3c7;color:#d97706;border:1px solid #fcd34d;font-size:9px;padding:1px 3px;border-radius:3px;margin-left:4px;white-space:nowrap;" title="人工校正">✏️人工</span>` : '';
+            const manualMult = c.manualOverrides?.multiplier ? `<span style="background:#fef3c7;color:#d97706;border:1px solid #fcd34d;font-size:9px;padding:1px 3px;border-radius:3px;margin-left:4px;white-space:nowrap;" title="人工校正">✏️人工</span>` : '';
 
             return `<tr ${dataAttrs}>
                 <td class="idx">${i + 1}</td>
@@ -272,6 +273,7 @@ export function useReportGenerator() {
                 <td>${ocr.orderId ? `<span title="來源：${c.winPollCanvas ? 'WIN 特工幀' : 'Reel Stop 幀'}">${ocr.orderId} <span style="color:${c.winPollCanvas ? '#f59e0b' : '#10b981'};font-size:8px;">●</span></span>` : '-'}</td>
                 <td class="num"><span title="來源：Reel Stop 幀（pre-WIN）">${ocr.balance || '-'} ${ocr.balance ? '<span style="color:#10b981;font-size:8px;">●</span>' : ''}</span>${manualBal}</td>
                 <td class="num">${ocr.bet || '-'}${manualBet}</td>
+                <td class="num" style="color:#f43f5e;">${ocr.multiplier !== undefined && ocr.multiplier !== '' ? '×' + ocr.multiplier : '-'}${manualMult}</td>
                 <td class="num ${winClass}"><span title="來源：${c.winPollCanvas ? 'WIN 特工幀' : 'Reel Stop 幀'}">${ocr.win || '0'} ${(ocr.win && parseFloat(ocr.win) > 0 && c.winPollCanvas) ? '<span style="color:#f59e0b;font-size:8px;">●</span>' : ''}</span>${manualWin}</td>
                 <td class="cont ${contClass}">${continuity}</td>
                 <td class="num ${aiWinClass}">${aiWin !== null ? `<span style="${aiWin !== ocrWin ? 'color:#dc2626;border-bottom:2px solid #dc2626;' : ''}">${aiWin}</span>` : '-'}</td>
@@ -449,7 +451,7 @@ tr.highlight { animation: rowFlash .6s ease; }
     </div>
     <table>
         <thead>
-            <tr><th>#</th><th>截圖</th><th>時間</th><th>單號</th><th>餘額</th><th>押注</th><th>OCR贏分</th><th>狀態</th><th>AI贏分</th><th>線獎結果</th><th>AI盤面</th><th>備註</th></tr>
+            <tr><th>#</th><th>截圖</th><th>時間</th><th>單號</th><th>餘額</th><th>押注</th><th>乘倍</th><th>OCR贏分</th><th>狀態</th><th>AI贏分</th><th>線獎結果</th><th>AI盤面</th><th>備註</th></tr>
         </thead>
         <tbody>
             ${tableRows}

@@ -30,19 +30,21 @@ const saveROI = (key, val) => {
 
 const usePhase4Store = create((set, get) => ({
     // ═══════════════════════════════════════
-    // ROI 狀態（5 組）
+    // ROI 狀態（6 組）
     // ═══════════════════════════════════════
     reelROI: loadCachedROI('reel', { x: 10, y: 15, w: 80, h: 55 }),
     winROI: loadCachedROI('win', { x: 38, y: 72, w: 24, h: 8 }),
     balanceROI: loadCachedROI('balance', { x: 5, y: 90, w: 24, h: 6 }),
     betROI: loadCachedROI('bet', { x: 70, y: 90, w: 24, h: 6 }),
     orderIdROI: loadCachedROI('orderId', { x: 40, y: 5, w: 20, h: 5 }),
+    multiplierROI: loadCachedROI('multiplier', { x: 45, y: 5, w: 10, h: 8 }),
 
     setReelROI: (v) => { const val = typeof v === 'function' ? v(get().reelROI) : v; set({ reelROI: val }); saveROI('reel', val); },
     setWinROI: (v) => { const val = typeof v === 'function' ? v(get().winROI) : v; set({ winROI: val }); saveROI('win', val); },
     setBalanceROI: (v) => { const val = typeof v === 'function' ? v(get().balanceROI) : v; set({ balanceROI: val }); saveROI('balance', val); },
     setBetROI: (v) => { const val = typeof v === 'function' ? v(get().betROI) : v; set({ betROI: val }); saveROI('bet', val); },
     setOrderIdROI: (v) => { const val = typeof v === 'function' ? v(get().orderIdROI) : v; set({ orderIdROI: val }); saveROI('orderId', val); },
+    setMultiplierROI: (v) => { const val = typeof v === 'function' ? v(get().multiplierROI) : v; set({ multiplierROI: val }); saveROI('multiplier', val); },
 
     // ═══════════════════════════════════════
     // 偵測參數
@@ -71,6 +73,7 @@ const usePhase4Store = create((set, get) => ({
             balanceROI: s.balanceROI,
             betROI: s.betROI,
             orderIdROI: s.orderIdROI,
+            multiplierROI: s.multiplierROI,
         };
     },
 }));

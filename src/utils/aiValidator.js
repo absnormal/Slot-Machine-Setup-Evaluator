@@ -27,26 +27,11 @@ export function validateVisionResponse(responseData, template, availableSymbols)
         throw new Error(`高度不符：預期 ${template.rows} 列，但 AI 回傳了 ${parsedGrid.length} 列。`);
     }
 
-    const displayCols = template.hasMultiplierReel ? template.cols - 1 : template.cols;
+    const displayCols = template.cols;
     const midRow = Math.floor(template.rows / 2);
     let detectedMultiplier = '';
 
-    // 倍數列處理 (提取中央的倍數)
-    if (template.hasMultiplierReel) {
-        for (let r = 0; r < template.rows; r++) {
-            if (parsedGrid[r] && parsedGrid[r].length >= template.cols) {
-                const sym = parsedGrid[r][template.cols - 1];
-                if (sym) {
-                    const strSym = String(sym);
-                    const match = strSym.match(/(\d+(?:\.\d+)?)/);
-                    if (match) {
-                        detectedMultiplier = "x" + match[0];
-                        break;
-                    }
-                }
-            }
-        }
-    }
+    // (乘倍區域由獨立 ROI OCR 處理，不再從 grid 最後一欄提取)
 
     // 行數維度與符號檢查
     const safeGrid = [];
@@ -67,26 +52,20 @@ export function validateVisionResponse(responseData, template, availableSymbols)
         const rowArr = [];
         for (let c = 0; c < template.cols; c++) {
             let sym = row[c] !== undefined && row[c] !== null ? String(row[c]).trim() : '';
-            const isMultiplierCol = template.hasMultiplierReel && c === template.cols - 1;
+            // 符號合法性檢查
+            if (sym !== "") {
+                const isValidBase = availableSymbols.includes(sym);
+                const isCash = isCashSymbol(sym, template?.jpConfig);
+                const isCollect = isCollectSymbol(sym);
+                const isDynamic = template?.hasDynamicMultiplier && isDynamicMultiplierSymbol(sym);
+                
+                // 特殊處理結尾結算字尾（如雙重圖案 _double）
+                const symBase = sym.toLowerCase().endsWith('_double') ? sym.slice(0, -7) : sym;
+                const isValidDoubleBase = availableSymbols.includes(symBase);
 
-            if (isMultiplierCol) {
-                sym = (r === midRow) ? detectedMultiplier : '';
-            } else {
-                // 一般列檢查合法性
-                if (sym !== "") {
-                    const isValidBase = availableSymbols.includes(sym);
-                    const isCash = isCashSymbol(sym, template?.jpConfig);
-                    const isCollect = isCollectSymbol(sym);
-                    const isDynamic = template?.hasDynamicMultiplier && isDynamicMultiplierSymbol(sym);
-                    
-                    // 特殊處理結尾結算字尾（如雙重圖案 _double）
-                    const symBase = sym.toLowerCase().endsWith('_double') ? sym.slice(0, -7) : sym;
-                    const isValidDoubleBase = availableSymbols.includes(symBase);
-
-                    if (!isValidBase && !isCash && !isCollect && !isDynamic && !isValidDoubleBase) {
-                        unknownSymbolsCount++;
-                        sym = ''; // 清洗為空字串，防止壞掉
-                    }
+                if (!isValidBase && !isCash && !isCollect && !isDynamic && !isValidDoubleBase) {
+                    unknownSymbolsCount++;
+                    sym = ''; // 清洗為空字串，防止壞掉
                 }
             }
             rowArr.push(sym);
@@ -110,5 +89,7 @@ export function validateVisionResponse(responseData, template, availableSymbols)
         recognizedBet = numericBet;
     }
 
-    return { grid: safeGrid, bet: recognizedBet };
+    let recognizedMult = responseData.multiplier !== undefined ? responseData.multiplier : null;
+
+    return { grid: safeGrid, bet: recognizedBet, multiplier: recognizedMult };
 }

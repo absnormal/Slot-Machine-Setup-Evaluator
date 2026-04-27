@@ -186,8 +186,9 @@ export function useSlotEngine({ template, enableBidirectional = false }) {
         });
     }, [template]);
 
-    const computeGridResultsCb = useCallback((targetGrid, betAmount) => {
-        return computeGridResults(template, targetGrid, betAmount, { enableBidirectional, activeLineCount, globalMultiplier });
+    const computeGridResultsCb = useCallback((targetGrid, betAmount, overrideMultiplier = null) => {
+        const finalMult = overrideMultiplier !== null ? overrideMultiplier : globalMultiplier;
+        return computeGridResults(template, targetGrid, betAmount, { enableBidirectional, activeLineCount, globalMultiplier: finalMult });
     }, [template, enableBidirectional, activeLineCount, globalMultiplier]);
 
     useEffect(() => {

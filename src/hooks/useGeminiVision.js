@@ -122,7 +122,7 @@ export function useGeminiVision({
                 if (template && template.rows > 0 && template.cols > 0) {
                     ctx.beginPath();
                     ctx.strokeStyle = 'rgba(16, 185, 129, 0.5)';
-                    const displayCols = template.hasMultiplierReel ? template.cols - 1 : template.cols;
+                    const displayCols = template.cols;
                     const cellW = rw / displayCols;
                     const cellH = rh / template.rows;
 
@@ -207,7 +207,7 @@ export function useGeminiVision({
                     ctx.beginPath();
                     ctx.strokeStyle = 'rgba(16, 185, 129, 0.5)';
 
-                    const displayCols = template.hasMultiplierReel ? template.cols - 1 : template.cols;
+                    const displayCols = template.cols;
                     const cellW = rect.w / displayCols;
                     const cellH = rect.h / template.rows;
 

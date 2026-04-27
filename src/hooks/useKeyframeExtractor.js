@@ -216,21 +216,23 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
 
                             // 非同步跑 OCR（不阻塞即時偵測迴圈）
                             const worker = ocrWorkerRef.current;
-                            const { winROI, balanceROI, betROI, orderIdROI, ocrDecimalPlaces } = ocrOptions;
-                            if (worker && (winROI || balanceROI || betROI || orderIdROI)) {
-                                // ── 初始 OCR：讀取截圖時的 BAL / BET / WIN / ID ──
+                            const { winROI, balanceROI, betROI, orderIdROI, multiplierROI, ocrDecimalPlaces } = ocrOptions;
+                            if (worker && (winROI || balanceROI || betROI || orderIdROI || multiplierROI)) {
+                                // ── 初始 OCR：讀取截圖時的 BAL / BET / WIN / ID / MULT ──
                                 Promise.allSettled([
                                     cropAndOCR(frameCanvas, winROI, worker, ocrDecimalPlaces ?? 2, 'WIN'),
                                     cropAndOCR(frameCanvas, balanceROI, worker, ocrDecimalPlaces ?? 2, 'BALANCE'),
                                     cropAndOCR(frameCanvas, betROI, worker, 0, 'BET'),
-                                    orderIdROI ? cropAndOCR(frameCanvas, orderIdROI, worker, 0, 'ORDER_ID') : Promise.resolve('')
-                                ]).then(([winR, balR, betR, orderIdR]) => {
+                                    orderIdROI ? cropAndOCR(frameCanvas, orderIdROI, worker, 0, 'ORDER_ID') : Promise.resolve(''),
+                                    multiplierROI ? cropAndOCR(frameCanvas, multiplierROI, worker, 0, 'MULTIPLIER') : Promise.resolve('')
+                                ]).then(([winR, balR, betR, orderIdR, multR]) => {
                                     const win = winR.status === 'fulfilled' ? winR.value : '';
                                     const balance = balR.status === 'fulfilled' ? balR.value : '';
                                     const bet = betR.status === 'fulfilled' ? betR.value : '';
                                     const orderId = orderIdR.status === 'fulfilled' ? orderIdR.value : '';
+                                    const multiplier = multR.status === 'fulfilled' ? multR.value : '';
                                     setCandidates(prev => prev.map(c =>
-                                        c.id === candidate.id ? { ...c, ocrData: { win, balance, bet, orderId } } : c
+                                        c.id === candidate.id ? { ...c, ocrData: { win, balance, bet, orderId, multiplier } } : c
                                     ));
 
                                     // 【快速短路機制】：Reel Stop 原圖已有清晰 WIN → 通知特工直接下班，不要再去抓更糊的圖
@@ -282,6 +284,7 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                                         const finalBal = balanceROI ? await cropAndOCR(bestWinCanvas, balanceROI, w, ocrDecimalPlaces ?? 2, 'BAL-FINAL') : '';
                                         const finalBet = betROI ? await cropAndOCR(bestWinCanvas, betROI, w, 0, 'BET-FINAL') : '';
                                         const finalOrderId = orderIdROI ? await cropAndOCR(bestWinCanvas, orderIdROI, w, 0, 'ORDER_ID') : '';
+                                        const finalMult = multiplierROI ? await cropAndOCR(bestWinCanvas, multiplierROI, w, 0, 'MULT-FINAL') : '';
 
                                         // 核心：寫回原卡片的 OCR 數據，canvas/thumbUrl 保持乾淨盤面不動！
                                         // 同時保存 WIN 特工截圖（winPollCanvas），讓匯出時兩張圖都有
@@ -290,7 +293,7 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                                             c.id === reelStopId
                                                 ? {
                                                     ...c,
-                                                    ocrData: { win: bestWinValue, balance: finalBal, bet: finalBet, orderId: finalOrderId },
+                                                    ocrData: { win: bestWinValue, balance: finalBal, bet: finalBet, orderId: finalOrderId, multiplier: finalMult },
                                                     captureDelay: bestWinTime - c.time,
                                                     reelStopTime: c.time,
                                                     winPollCanvas: bestWinCanvas,
@@ -521,16 +524,17 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
 
         // 背景排隊執行 OCR 以取得 win, balance, bet，確保後續能夠順利被 smartDedup 分析
         const worker = ocrWorkerRef.current;
-        const { winROI, balanceROI, betROI, orderIdROI, ocrDecimalPlaces } = ocrOptions;
-        if (worker && (winROI || balanceROI || betROI || orderIdROI)) {
+        const { winROI, balanceROI, betROI, orderIdROI, multiplierROI, ocrDecimalPlaces } = ocrOptions;
+        if (worker && (winROI || balanceROI || betROI || orderIdROI || multiplierROI)) {
             Promise.all([
                 cropAndOCR(canvas, winROI, worker, ocrDecimalPlaces ?? 2, 'WIN'),
                 cropAndOCR(canvas, balanceROI, worker, ocrDecimalPlaces ?? 2, 'BALANCE'),
                 cropAndOCR(canvas, betROI, worker, 0, 'BET'),
-                orderIdROI ? cropAndOCR(canvas, orderIdROI, worker, 0, 'ORDER_ID') : Promise.resolve('')
-            ]).then(([win, balance, bet, orderId]) => {
+                orderIdROI ? cropAndOCR(canvas, orderIdROI, worker, 0, 'ORDER_ID') : Promise.resolve(''),
+                multiplierROI ? cropAndOCR(canvas, multiplierROI, worker, 0, 'MULTIPLIER') : Promise.resolve('')
+            ]).then(([win, balance, bet, orderId, multiplier]) => {
                 setCandidates(prev => prev.map(c =>
-                    c.id === candidate.id ? { ...c, ocrData: { win, balance, bet, orderId } } : c
+                    c.id === candidate.id ? { ...c, ocrData: { win, balance, bet, orderId, multiplier } } : c
                 ));
             }).catch(() => { });
         }

@@ -105,7 +105,8 @@ export function buildDynamicMultiplierRule(hasDynamicMultiplier) {
  */
 export function buildMultiplierReelRule(template) {
     if (!template.hasMultiplierReel) return "";
-    return `The LAST column (Reel ${template.cols}) is a MULTIPLIER REEL. In Image 2, there might be a bar with multiple multiplier values (e.g. x1, x2, x3, x5). YOU MUST ONLY extract the "Highlighted" or "Activated" value (usually indicated by being brighter, yellow/gold color, or having a distinct frame vs the dimmed/dark green inactive ones). Output ONLY the format 'xN' (e.g., if you see '5x' or '5', output 'x5') for the center cell (Row ${Math.floor(template.rows / 2) + 1}). Top and bottom cells of this reel are empty, output "". `;
+    // 乘倍區域由獨立 ROI OCR 處理，不需要 AI 從 grid 中提取
+    return "";
 }
 
 /**
@@ -124,9 +125,6 @@ export function buildBetRule(hasBetBox) {
  * @returns {string}
  */
 export function buildPickRule(template) {
-    if (template.hasMultiplierReel) {
-        return `Rules: For columns 1 to ${template.cols - 1}, pick closest symbol from list only. For the LAST column, do NOT use the list, extract the raw text if any. `;
-    }
     return `Rules: Pick closest symbol from list only. `;
 }
 
@@ -166,7 +164,7 @@ export function buildConfusableWarning(availableSymbols) {
  * @returns {string}
  */
 export function buildVisionSystemPrompt(template, availableSymbols, pickRule, cashRule, multiplierRule, dynamicMultiplierRule, betRule, confusableWarning) {
-    return `Grid: ${template.rows}R x ${template.cols}C. Symbols: [${availableSymbols.join(',')}]. ${pickRule}${cashRule}${multiplierRule}${dynamicMultiplierRule}${betRule}${confusableWarning}JP names as-is. Dimmed/grayed cells: identify by shape. Truly unrecognizable cells: "". VISUAL EFFECTS: Some cells may be partially obscured by animation effects (sparkles, fire, glow, lightning, smoke, particle trails, shine, win-line highlights). These are NOT part of the symbol. Look THROUGH the effects and identify the underlying symbol based on its visible outline, color, and shape. Winning cells are often the ones with effects, so they are important — do NOT leave them empty just because of visual noise. IMPORTANT: The image has RED grid lines drawn on it to show exact cell boundaries. Analyze each cell INDIVIDUALLY within its red-bordered area. Do NOT let adjacent cell content influence your identification. Scan Row 1 left-to-right first, then Row 2, then Row 3, etc. Always identify each cell as a WHOLE tile/symbol. Do NOT decompose a single tile into sub-parts. For complex symbols (like Mahjong tiles with multiple bars/dots), match the ENTIRE tile pattern against reference images as one unit. If a cell clearly contains a visible symbol or value, you MUST identify it — do not skip it. Return a JSON object with "grid" (${template.rows}x${template.cols} 2D array) and "bet" (number).`;
+    return `Grid: ${template.rows}R x ${template.cols}C. Symbols: [${availableSymbols.join(',')}]. ${pickRule}${cashRule}${multiplierRule}${dynamicMultiplierRule}${betRule}${confusableWarning}JP names as-is. Dimmed/grayed cells: identify by shape. Truly unrecognizable cells: "". VISUAL EFFECTS: Some cells may be partially obscured by animation effects (sparkles, fire, glow, lightning, smoke, particle trails, shine, win-line highlights). These are NOT part of the symbol. Look THROUGH the effects and identify the underlying symbol based on its visible outline, color, and shape. Winning cells are often the ones with effects, so they are important — do NOT leave them empty just because of visual noise. IMPORTANT: The image has RED grid lines drawn on it to show exact cell boundaries. Analyze each cell INDIVIDUALLY within its red-bordered area. Do NOT let adjacent cell content influence your identification. Scan Row 1 left-to-right first, then Row 2, then Row 3, etc. Always identify each cell as a WHOLE tile/symbol. Do NOT decompose a single tile into sub-parts. For complex symbols (like Mahjong tiles with multiple bars/dots), match the ENTIRE tile pattern against reference images as one unit. If a cell clearly contains a visible symbol or value, you MUST identify it — do not skip it. Return a JSON object with "grid" (${template.rows}x${template.cols} 2D array), "bet" (number), and "multiplier" (string).`;
 }
 
 /**
@@ -187,7 +185,8 @@ export function buildVisionGenerationConfig() {
                         items: { type: "STRING" }
                     }
                 },
-                bet: { type: "NUMBER" }
+                bet: { type: "NUMBER" },
+                multiplier: { type: "STRING" }
             },
             required: ["grid"]
         }
@@ -200,7 +199,7 @@ export function buildVisionGenerationConfig() {
  * @returns {string}
  */
 export function buildMultiplierImagePrompt(template) {
-    return `Please extract the symbols from Image 1 for the main grid, and strictly extract the multiplier value for the center cell of the last column (Column ${template.cols}) from Image 2. Output ONLY the format "xN", for example, "5x" or "5" should be returned as "x5". Empty cells in the last column should be "".`;
+    return `Please extract the symbols from Image 1 for the main grid, and strictly extract the multiplier value for the cell in Image 2. Output ONLY the format "xN" in the "multiplier" JSON field, for example, "5x" or "5" should be returned as "x5". Empty cells should be "".`;
 }
 
 /**

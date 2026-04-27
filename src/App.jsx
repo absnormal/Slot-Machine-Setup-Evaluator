@@ -191,7 +191,7 @@ function App() {
         goToPrevVisionImage, goToNextVisionImage,
         hasBetBox, setHasBetBox,
         pasteFromClipboard,
-        setVisionP1, setVisionP1Bet
+        setVisionP1, setVisionP1Mult, setVisionP1Bet
     } = useGeminiVision({
         template, availableSymbols, customApiKey, setTemplateMessage, setTemplateError,
         visionCanvasRef, isPhase3Minimized
@@ -339,6 +339,7 @@ function App() {
     const balanceROI = usePhase4Store(s => s.balanceROI);
     const betROI = usePhase4Store(s => s.betROI);
     const orderIdROI = usePhase4Store(s => s.orderIdROI);
+    const multiplierROI = usePhase4Store(s => s.multiplierROI);
 
     // 新 Phase 4 Hooks
     const keyframeExtractor = useKeyframeExtractor({ setTemplateMessage });
@@ -354,24 +355,24 @@ function App() {
 
     // 辨識觸發器（封裝 updateCandidate + rois）
     const handleRecognizeBatch = useCallback((decimalPlaces) => {
-        const rois = { reelROI, winROI, balanceROI, betROI, orderIdROI };
+        const rois = { reelROI, winROI, balanceROI, betROI, orderIdROI, multiplierROI };
         autoRecognition.recognizeBatch(
             keyframeExtractor.candidates,
             keyframeExtractor.updateCandidate,
             rois,
             decimalPlaces ?? ocrDecimalPlaces
         );
-    }, [autoRecognition, keyframeExtractor, reelROI, winROI, balanceROI, betROI, ocrDecimalPlaces]);
+    }, [autoRecognition, keyframeExtractor, reelROI, winROI, balanceROI, betROI, orderIdROI, multiplierROI, ocrDecimalPlaces]);
 
     const handleRecognizeLocalBatch = useCallback((decimalPlaces, specificCandidates = null) => {
-        const rois = { reelROI, winROI, balanceROI, betROI, orderIdROI };
+        const rois = { reelROI, winROI, balanceROI, betROI, orderIdROI, multiplierROI };
         autoRecognition.recognizeLocalBatch(
             specificCandidates || keyframeExtractor.candidates,
             keyframeExtractor.updateCandidate,
             rois,
             decimalPlaces ?? ocrDecimalPlaces
         );
-    }, [autoRecognition, keyframeExtractor, reelROI, winROI, balanceROI, betROI, ocrDecimalPlaces]);
+    }, [autoRecognition, keyframeExtractor, reelROI, winROI, balanceROI, betROI, orderIdROI, multiplierROI, ocrDecimalPlaces]);
 
     // --- Phase 間數據傳遞 ---
     const handleTransferPhase4ToPhase3 = useCallback(async (specificCandidates) => {
@@ -393,6 +394,7 @@ function App() {
                         obj: img,
                         grid: kf.recognitionResult?.grid || null,
                         bet: kf.recognitionResult?.betValue || null,
+                        multiplier: kf.recognitionResult?.multiplier || null,
                         error: ''
                     });
                 };
@@ -402,6 +404,7 @@ function App() {
 
         setVisionP1({ ...reelROI });
         setVisionP1Bet({ ...betROI });
+        if (template?.hasMultiplierReel || hasMultiplierReel) setVisionP1Mult({ ...multiplierROI });
         setHasBetBox(true);
         setVisionImages(prev => [...prev, ...transformed]);
         setIsPhase4Minimized(true);
@@ -409,7 +412,7 @@ function App() {
         setTemplateMessage(`✅ 已從影片匯入 ${kfCandidates.length} 張關鍵幀至 Phase 3`);
 
         if (transformed.length > 0) setActiveVisionId(transformed[0].id);
-    }, [keyframeExtractor.candidates, setVisionImages, setTemplateMessage, setActiveVisionId, reelROI, betROI, setVisionP1, setVisionP1Bet, setHasBetBox]);
+    }, [keyframeExtractor.candidates, setVisionImages, setTemplateMessage, setActiveVisionId, reelROI, betROI, multiplierROI, template, hasMultiplierReel, setVisionP1, setVisionP1Mult, setVisionP1Bet, setHasBetBox]);
 
     // --- 匯入歷史 Session ---
     const handleImportSession = useCallback(async () => {
@@ -446,10 +449,16 @@ function App() {
             setVisionCalculateError('');
             return;
         }
-        const { results, error } = computeGridResultsCb(visionGrid, visionBetInput);
+        
+        let multVal = null;
+        if (template?.hasMultiplierReel && activeVisionImg?.multiplier) {
+            multVal = parseFloat(activeVisionImg.multiplier.replace(/[^0-9.]/g, '')) || 1;
+        }
+
+        const { results, error } = computeGridResultsCb(visionGrid, visionBetInput, multVal);
         setVisionCalcResults(results);
         setVisionCalculateError(error);
-    }, [visionGrid, visionBetInput, computeGridResultsCb]);
+    }, [visionGrid, visionBetInput, computeGridResultsCb, activeVisionImg, template]);
 
     // --- 盤面傳遞 (Phase 3 ↔ Phase 2) ---
     const handleTransferVisionToManual = useCallback(() => {
@@ -727,7 +736,7 @@ function App() {
                         setTemplateMessage={setTemplateMessage}
                         template={template}
                         gameName={gameName}
-                        gridRows={gridRows} gridCols={gridCols}
+                        gridRows={gridRows} gridCols={gridCols} hasMultiplierReel={hasMultiplierReel}
                     />
                 </ErrorBoundary>
 

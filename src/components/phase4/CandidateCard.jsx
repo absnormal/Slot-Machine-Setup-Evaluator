@@ -146,11 +146,12 @@ const CandidateCard = ({
 
                     {/* OCR 數據 */}
                     {kf.ocrData && (
-                        <div className="grid grid-cols-3 gap-1 mt-0.5 bg-slate-50 rounded-lg px-1.5 py-0.5">
+                        <div className={`grid ${kf.ocrData.multiplier !== undefined ? 'grid-cols-4' : 'grid-cols-3'} gap-1 mt-0.5 bg-slate-50 rounded-lg px-1.5 py-0.5`}>
                             {[
                                 { label: '贏分', field: 'win', defaultColor: parseFloat(kf.ocrData.win) > 0 ? 'text-emerald-600' : 'text-slate-400' },
                                 { label: '押注', field: 'bet', defaultColor: 'text-amber-600' },
-                                { label: '總分', field: 'balance', defaultColor: 'text-sky-600' }
+                                { label: '總分', field: 'balance', defaultColor: 'text-sky-600' },
+                                ...(kf.ocrData.multiplier !== undefined ? [{ label: '乘倍', field: 'multiplier', defaultColor: 'text-rose-600' }] : [])
                             ].map(({ label, field, defaultColor }) => {
                                 const isEditing = editingOcr?.id === kf.id && editingOcr?.field === field;
                                 const currentValue = kf.ocrData[field];

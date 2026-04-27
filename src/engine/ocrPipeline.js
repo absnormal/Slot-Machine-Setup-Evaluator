@@ -21,6 +21,7 @@ export function captureFullFrame(video) {
  * 從 canvas 產生盤面 ROI 縮圖 URL
  */
 export function generateThumbUrl(canvas, roi) {
+    if (!canvas) return '';
     try {
         const tc = document.createElement('canvas');
         const cw = Math.floor(canvas.width * (roi.w / 100));

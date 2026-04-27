@@ -156,7 +156,7 @@ export function useVisionBatchProcessor({
                 ctx1.drawImage(targetImg.obj, rx1, ry1, rw1, rh1, 0, 0, rw1, rh1);
 
                 // 繪製紅色格線標記，幫助 AI 識別格子邊界
-                const displayCols = template.hasMultiplierReel ? template.cols - 1 : template.cols;
+                const displayCols = template.cols;
                 const cellW = rw1 / displayCols;
                 const cellH = rh1 / template.rows;
                 ctx1.strokeStyle = 'rgba(255, 0, 0, 0.6)';
@@ -180,7 +180,7 @@ export function useVisionBatchProcessor({
                 const currentParts = [
                     ...fixedPrefixParts,
                     { text: "ANALYZE NOW:\n" },
-                    { text: "Image 1: Main Grid (Columns 1 to " + (template.hasMultiplierReel ? template.cols - 1 : template.cols) + ")\n" },
+                    { text: "Image 1: Main Grid (Columns 1 to " + template.cols + ")\n" },
                     { inlineData: { mimeType: resized1.mimeType, data: resized1.base64 } }
                 ];
 
@@ -244,8 +244,9 @@ export function useVisionBatchProcessor({
                 const responseData = JSON.parse(jsonText);
                 
                 // 套用全新的結構校驗機制 (若失敗會在內部拋出 Error 藉此標示發生幻覺)
-                const { grid: safeGrid, bet: validatedBet } = validateVisionResponse(responseData, template, availableSymbols);
+                const { grid: safeGrid, bet: validatedBet, multiplier: validatedMult } = validateVisionResponse(responseData, template, availableSymbols);
                 const finalBet = (hasBetBox && validatedBet !== null) ? validatedBet : currentVisionImages[imgIndex].bet;
+                const finalMult = (template.hasMultiplierReel && validatedMult !== null) ? validatedMult : currentVisionImages[imgIndex].multiplier;
 
                 console.log(`%c=== AI 辨識結果 (圖片: ${targetImg.file?.name || '未知'}) ===`, 'color: #4f46e5; font-weight: bold; font-size: 14px;');
                 if (hasBetBox && validatedBet !== null) {
@@ -257,6 +258,7 @@ export function useVisionBatchProcessor({
                     ...currentVisionImages[imgIndex],
                     grid: safeGrid,
                     bet: finalBet,
+                    multiplier: finalMult,
                     error: ''
                 };
                 setVisionImages([...currentVisionImages]);
@@ -329,7 +331,7 @@ export function useVisionBatchProcessor({
         setTemplateMessage?.(`🖥️ 開始本地辨識 ${toProcess.length} 張候選幀...`);
 
         let currentVisionImages = [...visionImagesRef.current];
-        const displayCols = template.hasMultiplierReel ? template.cols - 1 : template.cols;
+        const displayCols = template.cols;
 
         // 將百分比 ROI 轉成像素座標的輔助函式
         const getPixelROI = (imgObj, pctROI) => ({
@@ -372,12 +374,20 @@ export function useVisionBatchProcessor({
                     validatedBet = parseFloat(betText) || null;
                 }
 
+                let multiplierVal = null;
+                if (template?.hasMultiplierReel && ocrWorkerRef.current) {
+                    const multText = await recognizeROIText(targetCanvas, visionP1Mult, ocrWorkerRef.current, 0, false);
+                    multiplierVal = multText ? (multText.startsWith('x') ? multText : `x${multText}`) : null;
+                }
+
                 const finalBet = (hasBetBox && validatedBet !== null) ? validatedBet : currentVisionImages[imgIndex].bet;
+                const finalMult = (template?.hasMultiplierReel && multiplierVal !== null) ? multiplierVal : currentVisionImages[imgIndex].multiplier;
 
                 currentVisionImages[imgIndex] = {
                     ...currentVisionImages[imgIndex],
                     grid: grid,
                     bet: finalBet,
+                    multiplier: finalMult,
                     error: ''
                 };
                 setVisionImages([...currentVisionImages]);

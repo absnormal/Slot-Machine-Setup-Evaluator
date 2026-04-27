@@ -64,7 +64,7 @@ export default function Phase1Setup(props) {
                         {template && isTemplateMinimized && (
                             <div className="flex items-center space-x-2 text-emerald-600 text-sm font-medium">
                                 <CheckCircle2 size={16} />
-                                <span>已載入: {template.rows}x{template.hasMultiplierReel ? template.cols - 1 : template.cols} 盤面, {template.linesCount} 條連線{template.hasMultiplierReel && ", 啟用乘倍輪"}</span>
+                                <span>已載入: {template.rows}x{template.cols} 盤面, {template.linesCount} 條連線{template.hasMultiplierReel && ", 啟用乘倍區域"}</span>
                             </div>
                         )}
                         {isTemplateMinimized ? <ChevronDown className="text-slate-400" /> : <ChevronUp className="text-slate-400" />}
