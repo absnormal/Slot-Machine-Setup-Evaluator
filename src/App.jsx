@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { apiKey } from './utils/constants';
 import { computeGridResults } from './engine/computeGridResults';
+import { Cpu, X } from 'lucide-react';
 
 import AppHeader from './components/AppHeader';
 import ToastMessage from './components/ToastMessage';
@@ -201,6 +202,10 @@ function App() {
     const [videoSrc, setVideoSrc] = useState(null);
     const [isStreamMode, setIsStreamMode] = useState(false);
     const [isNativeMode, setIsNativeMode] = useState(false);
+    
+    // 視窗與螢幕選擇 Modal 狀態
+    const [showNativeSourceModal, setShowNativeSourceModal] = useState(false);
+    const [nativeSources, setNativeSources] = useState([]);
 
     // --- 本地擷取 (Python 後端) ---
     const nativeCapture = useNativeCapture(videoRef);
@@ -291,24 +296,33 @@ function App() {
             if (isStreamMode) handleStopScreenCapture();
             if (videoSrc && videoSrc !== '__stream__' && videoSrc !== '__native__') URL.revokeObjectURL(videoSrc);
 
-            const monitors = await nativeCapture.fetchMonitors();
-            if (!monitors || monitors.length === 0) {
-                setTemplateMessage('⚠️ 未偵測到螢幕');
+            const sources = await nativeCapture.fetchMonitors();
+            if (!sources || sources.length === 0) {
+                setTemplateMessage('⚠️ 未偵測到螢幕或視窗');
                 return;
             }
-            // 預設擷取螢幕 1（非合併螢幕）
-            const targetMonitor = monitors.length > 1 ? 1 : 0;
-            nativeCapture.startCapture(targetMonitor, 15, 60);
-            setVideoSrc('__native__');
-            setIsNativeMode(true);
-            setIsStreamMode(true);
-            setTemplateMessage('🖥️ 本地擷取已啟動（透過後端伺服器）');
-            setTimeout(() => setTemplateMessage(''), 3000);
+            setNativeSources(sources);
+            setShowNativeSourceModal(true);
         } catch (err) {
             setTemplateMessage(`⚠️ ${err.message}`);
             setTimeout(() => setTemplateMessage(''), 8000);
         }
     }, [videoSrc, isStreamMode, handleStopScreenCapture, nativeCapture, setTemplateMessage]);
+
+    const handleSelectNativeSource = useCallback((source) => {
+        setShowNativeSourceModal(false);
+        try {
+            nativeCapture.startCapture(source, 60, 60);
+            setVideoSrc('__native__');
+            setIsNativeMode(true);
+            setIsStreamMode(true);
+            setTemplateMessage(`🖥️ 本地擷取已啟動 (${source.label})`);
+            setTimeout(() => setTemplateMessage(''), 3000);
+        } catch (err) {
+            setTemplateMessage(`⚠️ ${err.message}`);
+            setTimeout(() => setTemplateMessage(''), 8000);
+        }
+    }, [nativeCapture, setTemplateMessage]);
 
     const handleStopNativeCapture = useCallback(() => {
         nativeCapture.stopCapture();
@@ -784,6 +798,64 @@ function App() {
                     setTimeout(() => setTemplateMessage(''), 3000);
                 }}
             />
+
+            {/* 本地擷取來源選擇 Modal */}
+            {showNativeSourceModal && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in">
+                    <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl overflow-hidden flex flex-col max-h-[80vh]">
+                        <div className="p-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center shrink-0">
+                            <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                                <Cpu size={20} className="text-teal-600" />
+                                選擇擷取來源 (本地伺服器)
+                            </h3>
+                            <button onClick={() => setShowNativeSourceModal(false)} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-full transition-colors">
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <div className="p-4 overflow-y-auto flex-1">
+                            <div className="space-y-6">
+                                {/* 螢幕區塊 */}
+                                <div>
+                                    <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 px-2">🖥️ 實體螢幕</h4>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        {nativeSources.filter(s => s.type === 'monitor').map(source => (
+                                            <button
+                                                key={source.id}
+                                                onClick={() => handleSelectNativeSource(source)}
+                                                className="text-left px-4 py-3 rounded-xl border border-slate-200 bg-white hover:border-teal-500 hover:shadow-md transition-all group flex flex-col gap-1"
+                                            >
+                                                <span className="font-bold text-slate-700 group-hover:text-teal-700">{source.label}</span>
+                                                <span className="text-xs text-slate-400">{source.width} x {source.height} @ 60fps</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                                {/* 視窗區塊 */}
+                                <div>
+                                    <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 px-2">🪟 應用程式視窗</h4>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        {nativeSources.filter(s => s.type === 'window').map(source => (
+                                            <button
+                                                key={source.id}
+                                                onClick={() => handleSelectNativeSource(source)}
+                                                className="text-left px-4 py-3 rounded-xl border border-slate-200 bg-white hover:border-indigo-500 hover:shadow-md transition-all group flex flex-col gap-1"
+                                            >
+                                                <span className="font-bold text-slate-700 group-hover:text-indigo-700 truncate w-full" title={source.label}>{source.label}</span>
+                                                <span className="text-xs text-slate-400">{source.rect.width} x {source.rect.height} @ 60fps</span>
+                                            </button>
+                                        ))}
+                                        {nativeSources.filter(s => s.type === 'window').length === 0 && (
+                                            <div className="col-span-full p-4 text-center text-sm text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                                                找不到足夠大的可見視窗
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

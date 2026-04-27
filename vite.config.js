@@ -17,6 +17,9 @@ export default defineConfig({
         tailwindcss(),
     ],
     base: '/Slot-Machine-Setup-Evaluator/',
+    worker: {
+        format: 'es',
+    },
     define: {
         __GIT_COMMIT_LOG__: JSON.stringify(commitLog),
     },

@@ -1,6 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import Ocr from '@gutenye/ocr-browser';
-import * as ort from 'onnxruntime-web';
+import { OcrWorkerBridge } from '../engine/ocrWorkerBridge';
 
 // -- Modularized imports --
 import { extractROIGray, computeMAE } from '../utils/videoUtils';
@@ -27,38 +26,27 @@ const DECAY_RATIO = 0.3;
 export function useKeyframeExtractor({ setTemplateMessage }) {
     const [candidates, setCandidates] = useState([]);
 
-    // OCR Worker (持久化) - 負責 BAL / BET 及初始 WIN 讀取
+    // OCR Worker (Web Worker 版，不阻塞主線程)
     const ocrWorkerRef = useRef(null);
-    // WIN 輪詢專屬 Worker - 獨立隊伍，不與 BAL/BET 共用，確保輪詢能夠即時回應
     const winPollWorkerRef = useRef(null);
     useEffect(() => {
         let isMounted = true;
-        (async () => {
-            try {
-                console.log("[OCR] 啟動 PaddleOCR (KeyframeExtractor) 引擎中...");
-                const baseUrl = import.meta.env.BASE_URL;
-                ort.env.wasm.wasmPaths = baseUrl;
-                ort.env.wasm.numThreads = 1;
-
-                const ocr = await Ocr.create({
-                    models: {
-                        detectionPath: `${baseUrl}ocr-models/ch_PP-OCRv4_det_infer.onnx`,
-                        recognitionPath: `${baseUrl}ocr-models/ch_PP-OCRv4_rec_infer.onnx`,
-                        dictionaryPath: `${baseUrl}ocr-models/ppocr_keys_v1.txt`
-                    }
-                });
-
-                // 第二個 Worker 給 WIN 輪詢用（目前 PaddleOCR 也可以共用同一個實例，但為了與舊邏輯相容保留 ref）
-                if (isMounted) {
-                    ocrWorkerRef.current = ocr;
-                    winPollWorkerRef.current = ocr;
-                    console.log("[OCR] PaddleOCR (Keyframe) 載入完成！");
-                }
-            } catch (err) {
-                console.error("[OCR] 初始化 PaddleOCR (Keyframe) 失敗:", err);
+        const bridge = new OcrWorkerBridge();
+        bridge.init().then(() => {
+            if (isMounted) {
+                ocrWorkerRef.current = bridge;
+                winPollWorkerRef.current = bridge;
+                console.log('[OCR] Web Worker 橋接層已就緒（推論在獨立線程）');
+            } else {
+                bridge.destroy();
             }
-        })();
-        return () => { isMounted = false; };
+        }).catch(err => {
+            console.error('[OCR] Web Worker 初始化失敗:', err);
+        });
+        return () => {
+            isMounted = false;
+            bridge.destroy();
+        };
     }, []);
 
     // 即時模式用的 refs

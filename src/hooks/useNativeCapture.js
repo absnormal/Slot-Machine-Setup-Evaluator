@@ -57,11 +57,11 @@ export function useNativeCapture(videoRef) {
 
     /**
      * 開始串流
-     * @param {number} monitorIndex - 螢幕編號 (0=全部, 1=螢幕1, ...)
+     * @param {object} source - 來源物件 (type, index, hwnd)
      * @param {number} fps - 目標幀率 (預設 15)
      * @param {number} quality - JPEG 品質 (預設 60)
      */
-    const startCapture = useCallback((monitorIndex = 1, fps = 15, quality = 60) => {
+    const startCapture = useCallback((source, fps = 15, quality = 60) => {
         setError(null);
         setFrameCount(0);
 
@@ -71,51 +71,59 @@ export function useNativeCapture(videoRef) {
         ws.onopen = () => {
             ws.send(JSON.stringify({
                 action: 'start',
-                monitor: monitorIndex,
+                source: source,
                 fps,
                 quality
             }));
             setIsConnected(true);
         };
 
+        ws.binaryType = 'blob';
         ws.onmessage = (event) => {
-            const msg = JSON.parse(event.data);
-
-            if (msg.type === 'frame') {
+            if (event.data instanceof Blob) {
                 setFrameCount(prev => prev + 1);
-                const { data, width, height } = msg;
 
-                dimensionsRef.current = { width, height };
-
-                // 建立 Image 物件並繪製到 canvas
+                // 建立 Image 物件並繪製到 canvas (直接使用 Blob URL 避免 Base64 轉換)
                 const img = new window.Image();
+                const url = URL.createObjectURL(event.data);
                 img.onload = () => {
                     latestImageRef.current = img;
 
                     // 確保 canvas 存在
                     if (!nativeCanvasRef.current) {
                         nativeCanvasRef.current = document.createElement('canvas');
+                        
+                        // 建立 canvas 串流並交給 video 元素顯示 (60 FPS)
+                        if (videoRef?.current) {
+                            const stream = nativeCanvasRef.current.captureStream(60);
+                            videoRef.current.srcObject = stream;
+                            videoRef.current.play().catch(() => {});
+                        }
                     }
                     const canvas = nativeCanvasRef.current;
-                    if (canvas.width !== width || canvas.height !== height) {
-                        canvas.width = width;
-                        canvas.height = height;
+                    if (canvas.width !== img.width || canvas.height !== img.height) {
+                        canvas.width = img.width;
+                        canvas.height = img.height;
                     }
                     const ctx = canvas.getContext('2d');
                     ctx.drawImage(img, 0, 0);
 
                     // 同步更新 videoRef 的尺寸屬性（讓 processFrame 能讀取）
                     if (videoRef?.current) {
-                        // 直接在 video 元素上設定自訂屬性，供 processFrame 判斷
                         videoRef.current.__nativeCanvas = canvas;
-                        videoRef.current.__nativeWidth = width;
-                        videoRef.current.__nativeHeight = height;
+                        videoRef.current.__nativeWidth = img.width;
+                        videoRef.current.__nativeHeight = img.height;
                     }
+                    
+                    URL.revokeObjectURL(url); // 釋放記憶體
                 };
-                img.src = `data:image/jpeg;base64,${data}`;
+                img.src = url;
 
-            } else if (msg.type === 'error') {
-                setError(msg.message);
+            } else {
+                const msg = JSON.parse(event.data);
+                if (msg.type === 'error') {
+                    setError(msg.message);
+                }
             }
         };
 
@@ -140,6 +148,7 @@ export function useNativeCapture(videoRef) {
             wsRef.current.close();
         }
         wsRef.current = null;
+        nativeCanvasRef.current = null;
         setIsConnected(false);
         setFrameCount(0);
 

@@ -14,11 +14,14 @@ export default function CloudModal({
 
     // 自動從模板提取所有不重複的平台名
     const platforms = useMemo(() => {
-        const pSet = new Set();
+        const countMap = {};
         cloudTemplates.forEach(t => {
-            if (t.platformName) pSet.add(t.platformName.toUpperCase());
+            if (t.platformName) {
+                const key = t.platformName.toUpperCase();
+                countMap[key] = (countMap[key] || 0) + 1;
+            }
         });
-        return Array.from(pSet).sort();
+        return Object.keys(countMap).sort((a, b) => countMap[b] - countMap[a]);
     }, [cloudTemplates]);
 
     const [confirmDeleteId, setConfirmDeleteId] = useState(null);
