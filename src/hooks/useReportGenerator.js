@@ -609,7 +609,7 @@ document.getElementById('fgCount').textContent = fc > 0 ? fc : '';
      */
     const importSession = useCallback(async () => {
         try {
-            const dirHandle = await window.showDirectoryPicker({ mode: 'read' });
+            const dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
 
             // 1. 找 JSON 檔
             let jsonData = null;
@@ -734,7 +734,7 @@ document.getElementById('fgCount').textContent = fc > 0 ? fc : '';
                 };
             }));
 
-            return candidates;
+            return { candidates, dirHandle };
         } catch (e) {
             if (e.name !== 'AbortError') {
                 console.error('匯入歷史資料失敗', e);

@@ -347,7 +347,13 @@ const Phase4Video = ({
                                             className={`w-full py-3 rounded-xl font-bold flex items-center justify-center gap-1.5 text-sm transition-all shadow-sm ${!candidates.some(c => c.ocrData || c.recognitionResult) ? 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200' : 'bg-violet-50 text-violet-700 hover:bg-violet-100 border border-violet-200 active:scale-95'}`}>
                                             <ImageIcon size={16} /> 匯出報告 + JSON
                                         </button>
-                                        <button onClick={onImportSession}
+                                        <button onClick={async () => {
+                                                const dirHandle = await onImportSession();
+                                                if (dirHandle) {
+                                                    setSaveDirHandle(dirHandle);
+                                                    setRootSaveDirHandle(dirHandle);
+                                                }
+                                            }}
                                             className="w-full py-3 rounded-xl font-bold flex items-center justify-center gap-1.5 text-sm transition-all bg-sky-50 text-sky-600 hover:bg-sky-100 border border-sky-200 active:scale-95 shadow-sm">
                                             <FolderOpen size={16} /> 匯入歷史資料（選取資料夾）
                                         </button>

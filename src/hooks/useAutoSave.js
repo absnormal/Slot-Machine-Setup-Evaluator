@@ -41,7 +41,7 @@ const useAutoSave = (candidates, confirmDedup) => {
                     const writable = await fileHandle.createWritable();
                     await writable.write(blob);
                     await writable.close();
-                    kf.canvas = null; // 釋放記憶體
+                    // kf.canvas = null; // 移除釋放記憶體，避免後續 P3 傳送與大圖檢視報錯 (TypeError: Cannot read properties of null (reading 'toDataURL'))
                     setSaveCount(prev => prev + 1);
                 } catch (e) {
                     console.error('自動存檔失敗:', e);

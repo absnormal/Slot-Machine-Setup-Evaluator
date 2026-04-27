@@ -18,6 +18,81 @@ export default function PtCropModal({
 }) {
     const { lightboxState, handleLbDragStart, handleLbResizeStart } = useLightbox(ptEnlargedImg);
 
+    React.useEffect(() => {
+        const handleModalPaste = async (e) => {
+            if (!ptCropState.active) return;
+            
+            const files = e.clipboardData?.files;
+            const items = e.clipboardData?.items;
+            let targetFile = null;
+
+            if (files && files.length > 0) {
+                for (let i = 0; i < files.length; i++) {
+                    if (files[i].type.startsWith('image/')) {
+                        targetFile = files[i];
+                        break;
+                    }
+                }
+            }
+
+            if (!targetFile && items && items.length > 0) {
+                for (let i = 0; i < items.length; i++) {
+                    if (items[i].type.indexOf('image') !== -1) {
+                        targetFile = items[i].getAsFile();
+                        break;
+                    }
+                }
+            }
+
+            if (targetFile) {
+                e.preventDefault();
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    const dataUrl = event.target.result;
+                    const img = new Image();
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        const MAX_THUMB_SIZE = 128;
+                        let targetW = img.width;
+                        let targetH = img.height;
+                        if (targetW > MAX_THUMB_SIZE || targetH > MAX_THUMB_SIZE) {
+                            if (targetW > targetH) {
+                                targetW = MAX_THUMB_SIZE;
+                                targetH = (img.height / img.width) * MAX_THUMB_SIZE;
+                            } else {
+                                targetH = MAX_THUMB_SIZE;
+                                targetW = (img.width / img.height) * MAX_THUMB_SIZE;
+                            }
+                        }
+                        canvas.width = targetW;
+                        canvas.height = targetH;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, targetW, targetH);
+                        // 品質設高一點，因為是手動擷取的獨立小圖
+                        const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.9);
+
+                        setPtResultItems(prev => {
+                            const arr = [...prev];
+                            const targetField = ptCropState.isDouble ? 'doubleThumbUrls' : 'thumbUrls';
+                            if (!arr[ptCropState.itemIndex][targetField]) {
+                                arr[ptCropState.itemIndex][targetField] = [];
+                            }
+                            arr[ptCropState.itemIndex][targetField].push(compressedDataUrl);
+                            return arr;
+                        });
+                        // 貼上成功後自動關閉 Modal
+                        setPtCropState(p => ({ ...p, active: false }));
+                    };
+                    img.src = dataUrl;
+                };
+                reader.readAsDataURL(targetFile);
+            }
+        };
+
+        window.addEventListener('paste', handleModalPaste);
+        return () => window.removeEventListener('paste', handleModalPaste);
+    }, [ptCropState, setPtResultItems, setPtCropState]);
+
     if (!ptCropState.active) return null;
 
     const handleCropConfirm = () => {
@@ -81,6 +156,7 @@ export default function PtCropModal({
                         <div className="flex items-center justify-between p-4">
                             <h3 className="text-white font-bold flex items-center gap-2">
                                 手動擷取: <span className="text-indigo-400">{ptCropState.isDouble ? '雙重 ' : ''}{ptResultItems[ptCropState.itemIndex]?.name}</span>
+                                <span className="text-[10px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full border border-slate-700 ml-2 font-normal hidden sm:inline-block">💡 支援直接按下 Ctrl+V 貼上剪貼簿圖片</span>
                             </h3>
                             <div className="flex gap-2">
                                 <button onClick={handleCropConfirm} className="bg-indigo-600 hover:bg-indigo-500 transition-colors text-white px-4 py-1.5 rounded font-bold shadow-md flex items-center gap-1">

@@ -416,11 +416,13 @@ function App() {
 
     // --- 匯入歷史 Session ---
     const handleImportSession = useCallback(async () => {
-        const imported = await reportGenerator.importSession();
-        if (imported && imported.length > 0) {
-            keyframeExtractor.setCandidates(prev => [...prev, ...imported]);
-            setTemplateMessage(`✅ 已匯入 ${imported.length} 張歷史關鍵幀`);
+        const result = await reportGenerator.importSession();
+        if (result && result.candidates && result.candidates.length > 0) {
+            keyframeExtractor.setCandidates(prev => [...prev, ...result.candidates]);
+            setTemplateMessage(`✅ 已匯入 ${result.candidates.length} 張歷史關鍵幀`);
+            return result.dirHandle; // 回傳 dirHandle 供 Phase4Video 綁定存檔目錄
         }
+        return null;
     }, [reportGenerator, keyframeExtractor, setTemplateMessage]);
 
     // --- Vision 結算 ---
