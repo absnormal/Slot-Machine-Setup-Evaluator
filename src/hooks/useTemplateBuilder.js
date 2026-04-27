@@ -187,7 +187,10 @@ export function useTemplateBuilder({
                 const isSpecial = sym.toUpperCase().includes('SCATTER') || sym.toUpperCase().includes('COLLECT') ||
                                   Object.keys(jp).includes(sym.toUpperCase()) ||
                                   sym.toUpperCase().startsWith('CASH_');
-                if (sym !== 'xN' && !sym.endsWith('_xN') && !isSpecial) {
+                // 防呆：如果符號本身已經是特定乘倍數值（如 _x2, _x3.5），就不為它再產生 _xN
+                const isFixedMultiplier = /_x\d+(?:\.\d+)?$/.test(sym);
+
+                if (sym !== 'xN' && !sym.endsWith('_xN') && !isSpecial && !isFixedMultiplier) {
                     const xnName = `${sym}_xN`;
                     if (!paytable[xnName]) {
                         paytable[xnName] = [...paytable[sym]];

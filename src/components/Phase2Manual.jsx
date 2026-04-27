@@ -53,11 +53,11 @@ const Phase2Manual = ({
         if (panelInputMode !== 'paint') return;
         const isCash = isCashSymbol(activeBrush, template?.jpConfig);
         const isJP = isJpSymbol(activeBrush, template?.jpConfig);
-        const isDynamic = template?.hasDynamicMultiplier && isDynamicMultiplierSymbol(activeBrush);
+        const isXnBrush = activeBrush.endsWith('_xN') || activeBrush === 'xN';
 
-        if ((isCash && !isJP) || isDynamic) {
+        if ((isCash && !isJP) || isXnBrush) {
             setModalCell({ row: r, col: c });
-            if (isDynamic) {
+            if (isXnBrush) {
                 const currentVal = getSymbolMultiplier(panelGrid[r][c]);
                 setCashValueInput(currentVal > 1 ? String(currentVal) : '');
             } else {

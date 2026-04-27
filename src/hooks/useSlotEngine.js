@@ -34,29 +34,68 @@ export function useSlotEngine({ template, enableBidirectional = false }) {
             }
         };
         
-        // Add base symbols from paytable, grouped with their variants
         if (template.paytable) {
-            Object.keys(template.paytable).forEach(sym => {
-                // Skip _xN variants in the first pass to group them with their base
-                if (sym.endsWith('_xN')) return;
+            const allSyms = Object.keys(template.paytable);
+            const baseMap = new Map();
 
-                addSymbol(sym);
-
-                // Add Double variant right after base
-                if (template.hasDoubleSymbol && template.symbolImages?.[`${sym}_double`]) {
-                    addSymbol(`${sym}_double`);
+            allSyms.forEach(sym => {
+                let baseName = sym;
+                let isVariant = false;
+                
+                if (sym.endsWith('_xN')) {
+                    baseName = sym.replace(/_xN$/, '');
+                    isVariant = true;
+                } else if (sym.endsWith('_double')) {
+                    baseName = sym.replace(/_double$/, '');
+                    isVariant = true;
+                } else if (/_x\d+(?:\.\d+)?$/.test(sym)) {
+                    baseName = sym.replace(/_x\d+(?:\.\d+)?$/, '');
+                    isVariant = true;
                 }
-
-                // Add _xN variant right after base
-                if (template.paytable[`${sym}_xN`]) {
-                    addSymbol(`${sym}_xN`);
+                
+                if (!baseMap.has(baseName)) {
+                    baseMap.set(baseName, { base: null, double: null, fixedMults: [], xN: null, others: [] });
+                }
+                
+                const group = baseMap.get(baseName);
+                if (sym.endsWith('_xN')) {
+                    group.xN = sym;
+                } else if (sym.endsWith('_double')) {
+                    group.double = sym;
+                } else if (/_x\d+(?:\.\d+)?$/.test(sym)) {
+                    group.fixedMults.push(sym);
+                } else if (!isVariant) {
+                    group.base = sym;
+                } else {
+                    group.others.push(sym);
                 }
             });
 
-            // Second pass: catch any remaining symbols (e.g. standalone xN or custom _xN without base)
-            Object.keys(template.paytable).forEach(sym => {
-                addSymbol(sym);
+            baseMap.forEach((group, baseName) => {
+                if (group.base) {
+                    addSymbol(group.base);
+                } else if (allSyms.includes(baseName)) {
+                    addSymbol(baseName);
+                }
+                
+                if (group.double) addSymbol(group.double);
+                
+                if (group.fixedMults.length > 0) {
+                    group.fixedMults.sort((a, b) => {
+                        const numA = parseFloat(a.match(/_x(\d+(?:\.\d+)?)$/)[1]);
+                        const numB = parseFloat(b.match(/_x(\d+(?:\.\d+)?)$/)[1]);
+                        return numA - numB;
+                    });
+                    group.fixedMults.forEach(fm => addSymbol(fm));
+                }
+                
+                if (group.xN) addSymbol(group.xN);
+                
+                group.others.forEach(o => addSymbol(o));
             });
+
+            // Fallback for any remaining symbols
+            allSyms.forEach(sym => addSymbol(sym));
         }
 
         if (template.jpConfig) {
