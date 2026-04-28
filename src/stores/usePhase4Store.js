@@ -52,6 +52,9 @@ const usePhase4Store = create((set, get) => ({
     ocrDecimalPlaces: 2,
     setOcrDecimalPlaces: (v) => set({ ocrDecimalPlaces: typeof v === 'function' ? v(get().ocrDecimalPlaces) : v }),
 
+    balDecimalPlaces: 2,
+    setBalDecimalPlaces: (v) => set({ balDecimalPlaces: typeof v === 'function' ? v(get().balDecimalPlaces) : v }),
+
     enableBidirectional: false,
     setEnableBidirectional: (v) => set({ enableBidirectional: typeof v === 'function' ? v(get().enableBidirectional) : v }),
 

@@ -42,6 +42,7 @@ const Phase4Video = ({
     const orderIdROI = usePhase4Store(s => s.orderIdROI);
     const multiplierROI = usePhase4Store(s => s.multiplierROI);
     const ocrDecimalPlaces = usePhase4Store(s => s.ocrDecimalPlaces);
+    const balDecimalPlaces = usePhase4Store(s => s.balDecimalPlaces);
     const enableBidirectional = usePhase4Store(s => s.enableBidirectional);
     const setEnableBidirectional = usePhase4Store(s => s.setEnableBidirectional);
     // ── 本地狀態 ──
@@ -98,7 +99,7 @@ const Phase4Video = ({
     }, [stopLiveDetection]);
 
     // ── 操作處理 ──
-    const scanOpts = { winROI, balanceROI, betROI, orderIdROI: enableOrderId ? orderIdROI : null, multiplierROI: template?.hasMultiplierReel ? multiplierROI : null, ocrDecimalPlaces, requireStableWin: false, sliceCols: template?.cols || propGridCols || 5, hasRollingWin };
+    const scanOpts = { winROI, balanceROI, betROI, orderIdROI: enableOrderId ? orderIdROI : null, multiplierROI: template?.hasMultiplierReel ? multiplierROI : null, ocrDecimalPlaces, balDecimalPlaces, requireStableWin: false, sliceCols: template?.cols || propGridCols || 5, hasRollingWin };
 
     const handleStartLive = async () => {
         if (!videoRef.current || !reelROI) return;
@@ -301,6 +302,16 @@ const Phase4Video = ({
                                                 <option value="A">A 贏分延續</option>
                                                 <option value="B">B 贏分歸零</option>
                                                 <option value="none">無 FG</option>
+                                            </select>
+                                        </div>
+                                        <div className="flex flex-col gap-0.5">
+                                            <span className="text-[10px] font-bold text-slate-400">總分小數</span>
+                                            <select value={balDecimalPlaces} onChange={e => usePhase4Store.getState().setBalDecimalPlaces(parseInt(e.target.value, 10))}
+                                                className="h-7 px-2 rounded-lg bg-sky-50 border border-sky-200 text-sky-700 text-xs font-bold shadow-sm cursor-pointer outline-none">
+                                                <option value={0}>整數</option>
+                                                <option value={1}>1 位</option>
+                                                <option value={2}>2 位</option>
+                                                <option value={3}>3 位</option>
                                             </select>
                                         </div>
                                     </div>

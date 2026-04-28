@@ -100,7 +100,8 @@ export function useCloud() {
         paytableInput, ptResultItems, jpConfig, hasJackpot, hasMultiplierReel,
         requiresCollectToWin, hasCashCollectFeature, hasDoubleSymbol, hasRollingWin, hasDynamicMultiplier, multiplierCalcType,
         hasBidirectionalPaylines, hasAdjustableLines,
-        motionCoverageMin, vLineThreshold, ocrDecimalPlaces,
+        motionCoverageMin, vLineThreshold, ocrDecimalPlaces, balDecimalPlaces,
+        phase4ROIs,
         localUserId, actualForceId
     }) => {
         setCloudMessage('');
@@ -188,6 +189,8 @@ export function useCloud() {
                 motionCoverageMin,
                 vLineThreshold,
                 ocrDecimalPlaces,
+                balDecimalPlaces,
+                phase4ROIs,
                 creatorId: localUserId,
                 createdAt: new Date().toISOString()
             };

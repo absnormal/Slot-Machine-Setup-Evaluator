@@ -98,13 +98,29 @@ export async function cropAndOCR(canvas, roi, ocrWorker, decimalPlaces, label = 
                     // 移除逗號，並清掉頭尾不小心沾到的孤立小數點
                     let cleanedText = validText.replace(/,/g, '').replace(/^\.+|\.+$/g, '') || "0";
                     
-                    // 如果 OCR 神經大條把千分位全部當成了小數點 (例如 1.036.022.26)，強制只認最後一個點為小數點
-                    const parts = cleanedText.split('.');
-                    if (parts.length > 2) {
-                        const decimals = parts.pop();
-                        resultStr = parts.join('') + '.' + decimals;
+                    // 【整數模式提前處理】：decimalPlaces=0 時，所有小數點都是千分位誤判，全部移除
+                    if (decimalPlaces === 0) {
+                        resultStr = cleanedText.replace(/\./g, '') || "0";
                     } else {
-                        resultStr = cleanedText;
+                        // 如果 OCR 神經大條把千分位全部當成了小數點 (例如 1.036.022.26)，強制只認最後一個點為小數點
+                        const parts = cleanedText.split('.');
+                        if (parts.length > 2) {
+                            const decimals = parts.pop();
+                            resultStr = parts.join('') + '.' + decimals;
+                        } else {
+                            resultStr = cleanedText;
+                        }
+                    }
+
+                    // 【小數位數修正】：根據 decimalPlaces 截斷小數部分
+                    // decimalPlaces=0 → 無小數（整數）, =2 → 兩位小數
+                    if (typeof decimalPlaces === 'number' && decimalPlaces >= 0 && resultStr.includes('.')) {
+                        const [intPart, decPart] = resultStr.split('.');
+                        if (decimalPlaces === 0) {
+                            resultStr = intPart;
+                        } else {
+                            resultStr = intPart + '.' + (decPart || '').substring(0, decimalPlaces).padEnd(decimalPlaces, '0');
+                        }
                     }
                 }
 

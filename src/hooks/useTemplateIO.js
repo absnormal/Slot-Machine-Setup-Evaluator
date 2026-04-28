@@ -33,8 +33,9 @@ export function useTemplateIO({
     hasBidirectionalPaylines,
     hasAdjustableLines,
     // Phase 4 偵測參數（模板持久化）
-    motionCoverageMin, vLineThreshold, ocrDecimalPlaces,
-    setMotionCoverageMin, setVLineThreshold, setOcrDecimalPlaces,
+    motionCoverageMin, vLineThreshold, ocrDecimalPlaces, balDecimalPlaces,
+    setMotionCoverageMin, setVLineThreshold, setOcrDecimalPlaces, setBalDecimalPlaces,
+    setReelROI, setWinROI, setBalanceROI, setBetROI, setOrderIdROI, setMultiplierROI,
 }) {
     const setTemplateMessage = useAppStore(s => s.setTemplateMessage);
     const setShowCloudModal = useAppStore(s => s.setShowCloudModal);
@@ -120,11 +121,24 @@ export function useTemplateIO({
         if (d.motionCoverageMin !== undefined) setMotionCoverageMin(d.motionCoverageMin);
         if (d.vLineThreshold !== undefined) setVLineThreshold(parseFloat(d.vLineThreshold));
         if (d.ocrDecimalPlaces !== undefined) setOcrDecimalPlaces(parseInt(d.ocrDecimalPlaces, 10));
+        if (d.balDecimalPlaces !== undefined) setBalDecimalPlaces(parseInt(d.balDecimalPlaces, 10));
+
+        // Phase 4 ROI 還原
+        if (d.phase4ROIs) {
+            const roiSetters = {
+                reelROI: setReelROI, winROI: setWinROI, balanceROI: setBalanceROI,
+                betROI: setBetROI, orderIdROI: setOrderIdROI, multiplierROI: setMultiplierROI
+            };
+            for (const [key, setter] of Object.entries(roiSetters)) {
+                if (d.phase4ROIs[key] && setter) setter(d.phase4ROIs[key]);
+            }
+        }
     }, [setGridRows, setGridCols, setLineMode, setExtractResults, setPaytableInput, setPtResultItems,
         setPaytableMode, setJpConfig, setHasJackpot, setHasMultiplierReel, setRequiresCollectToWin,
         setHasCashCollectFeature, setHasDoubleSymbol, setHasRollingWin, setHasDynamicMultiplier, setMultiplierCalcType,
         setHasBidirectionalPaylines, setHasAdjustableLines, setLineImages,
-        setActiveLineImageId, setLinesTextInput, setMotionCoverageMin, setVLineThreshold, setOcrDecimalPlaces]);
+        setActiveLineImageId, setLinesTextInput, setMotionCoverageMin, setVLineThreshold, setOcrDecimalPlaces, setBalDecimalPlaces,
+        setReelROI, setWinROI, setBalanceROI, setBetROI, setOrderIdROI, setMultiplierROI]);
 
     /**
      * 從雲端載入模板
@@ -174,7 +188,8 @@ export function useTemplateIO({
             hasDoubleSymbol, hasRollingWin, hasDynamicMultiplier, multiplierCalcType,
             hasBidirectionalPaylines, hasAdjustableLines,
             localUserId, actualForceId,
-            motionCoverageMin, vLineThreshold, ocrDecimalPlaces
+            motionCoverageMin, vLineThreshold, ocrDecimalPlaces, balDecimalPlaces,
+            phase4ROIs: usePhase4Store.getState().getRois()
         });
 
         if (result && result.conflict) {
@@ -189,7 +204,7 @@ export function useTemplateIO({
     }, [platformNameState, gameNameState, templateName, gridRows, gridCols, lineMode, extractResults,
         paytableInput, ptResultItems, jpConfig, hasJackpot, hasMultiplierReel, requiresCollectToWin, hasCashCollectFeature,
         hasDoubleSymbol, hasRollingWin, hasDynamicMultiplier, multiplierCalcType, hasBidirectionalPaylines, hasAdjustableLines, localUserId,
-        motionCoverageMin, vLineThreshold, ocrDecimalPlaces,
+        motionCoverageMin, vLineThreshold, ocrDecimalPlaces, balDecimalPlaces,
         useCloudInstance, setTemplateError, showOverwriteConfirm]);
 
     const defaultSaveName = [platformNameState, gameNameState].filter(Boolean).join('-') || `模板 ${gridRows}x${gridCols}`;
