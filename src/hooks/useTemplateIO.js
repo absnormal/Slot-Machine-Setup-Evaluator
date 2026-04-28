@@ -15,7 +15,7 @@ export function useTemplateIO({
     setGridRows, setGridCols, setLineMode, setExtractResults,
     setPaytableInput, setPtResultItems, setPaytableMode,
     setJpConfig, setHasJackpot, setHasMultiplierReel,
-    setRequiresCollectToWin, setHasCashCollectFeature, setHasDoubleSymbol,
+    setRequiresCollectToWin, setHasCashCollectFeature, setHasDoubleSymbol, setHasRollingWin,
     setHasDynamicMultiplier, setMultiplierCalcType,
     setHasBidirectionalPaylines,
     setHasAdjustableLines,
@@ -29,7 +29,7 @@ export function useTemplateIO({
     gridRows, gridCols, lineMode, extractResults,
     paytableInput, ptResultItems, jpConfig,
     hasJackpot, hasMultiplierReel, requiresCollectToWin, hasCashCollectFeature,
-    hasDoubleSymbol, hasDynamicMultiplier, multiplierCalcType,
+    hasDoubleSymbol, hasRollingWin, hasDynamicMultiplier, multiplierCalcType,
     hasBidirectionalPaylines,
     hasAdjustableLines,
     // Phase 4 偵測參數（模板持久化）
@@ -122,7 +122,7 @@ export function useTemplateIO({
         if (d.ocrDecimalPlaces !== undefined) setOcrDecimalPlaces(parseInt(d.ocrDecimalPlaces, 10));
     }, [setGridRows, setGridCols, setLineMode, setExtractResults, setPaytableInput, setPtResultItems,
         setPaytableMode, setJpConfig, setHasJackpot, setHasMultiplierReel, setRequiresCollectToWin,
-        setHasCashCollectFeature, setHasDoubleSymbol, setHasDynamicMultiplier, setMultiplierCalcType,
+        setHasCashCollectFeature, setHasDoubleSymbol, setHasRollingWin, setHasDynamicMultiplier, setMultiplierCalcType,
         setHasBidirectionalPaylines, setHasAdjustableLines, setLineImages,
         setActiveLineImageId, setLinesTextInput, setMotionCoverageMin, setVLineThreshold, setOcrDecimalPlaces]);
 
@@ -171,7 +171,7 @@ export function useTemplateIO({
             gridRows, gridCols, lineMode, extractResults,
             paytableInput, ptResultItems, jpConfig,
             hasJackpot, hasMultiplierReel, requiresCollectToWin, hasCashCollectFeature,
-            hasDoubleSymbol, hasDynamicMultiplier, multiplierCalcType,
+            hasDoubleSymbol, hasRollingWin, hasDynamicMultiplier, multiplierCalcType,
             hasBidirectionalPaylines, hasAdjustableLines,
             localUserId, actualForceId,
             motionCoverageMin, vLineThreshold, ocrDecimalPlaces
@@ -188,7 +188,7 @@ export function useTemplateIO({
         setActiveSaveAction(null);
     }, [platformNameState, gameNameState, templateName, gridRows, gridCols, lineMode, extractResults,
         paytableInput, ptResultItems, jpConfig, hasJackpot, hasMultiplierReel, requiresCollectToWin, hasCashCollectFeature,
-        hasDoubleSymbol, hasDynamicMultiplier, multiplierCalcType, hasBidirectionalPaylines, hasAdjustableLines, localUserId,
+        hasDoubleSymbol, hasRollingWin, hasDynamicMultiplier, multiplierCalcType, hasBidirectionalPaylines, hasAdjustableLines, localUserId,
         motionCoverageMin, vLineThreshold, ocrDecimalPlaces,
         useCloudInstance, setTemplateError, showOverwriteConfirm]);
 

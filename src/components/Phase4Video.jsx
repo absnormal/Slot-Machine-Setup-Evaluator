@@ -32,6 +32,7 @@ const Phase4Video = ({
     template,
     gameName,
     gridRows: propGridRows, gridCols: propGridCols, hasMultiplierReel: propHasMultiplierReel,
+    hasRollingWin, setHasRollingWin,
 }) => {
     // ── 從 Zustand Store 取得 ROI 與偵測參數 ──
     const reelROI = usePhase4Store(s => s.reelROI);
@@ -97,7 +98,7 @@ const Phase4Video = ({
     }, [stopLiveDetection]);
 
     // ── 操作處理 ──
-    const scanOpts = { winROI, balanceROI, betROI, orderIdROI: enableOrderId ? orderIdROI : null, multiplierROI: template?.hasMultiplierReel ? multiplierROI : null, ocrDecimalPlaces, requireStableWin: false, sliceCols: template?.cols || propGridCols || 5 };
+    const scanOpts = { winROI, balanceROI, betROI, orderIdROI: enableOrderId ? orderIdROI : null, multiplierROI: template?.hasMultiplierReel ? multiplierROI : null, ocrDecimalPlaces, requireStableWin: false, sliceCols: template?.cols || propGridCols || 5, hasRollingWin };
 
     const handleStartLive = async () => {
         if (!videoRef.current || !reelROI) return;
@@ -280,6 +281,17 @@ const Phase4Video = ({
                                                         : 'bg-slate-100 border border-slate-300 text-slate-600 hover:bg-slate-200'
                                                 }`}>
                                                 {useWinFrame ? '🏆 WIN截圖' : '🎰 停輪截圖'}
+                                            </button>
+                                        </div>
+                                        <div className="flex flex-col gap-0.5">
+                                            <span className="text-[10px] font-bold text-slate-400">WIN 模式</span>
+                                            <button onClick={() => setHasRollingWin(v => !v)}
+                                                className={`h-7 flex items-center gap-1.5 px-3 rounded-lg text-xs font-bold shadow-sm cursor-pointer transition-all active:scale-95 ${
+                                                    hasRollingWin
+                                                        ? 'bg-emerald-50 border border-emerald-300 text-emerald-700 hover:bg-emerald-100'
+                                                        : 'bg-slate-100 border border-slate-300 text-slate-600 hover:bg-slate-200'
+                                                }`}>
+                                                {hasRollingWin ? '📈 滾動上升' : '⏸️ 穩定跳轉'}
                                             </button>
                                         </div>
                                         <div className="flex flex-col gap-0.5">

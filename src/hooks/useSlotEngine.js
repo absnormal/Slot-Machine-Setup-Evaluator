@@ -109,6 +109,14 @@ export function useSlotEngine({ template, enableBidirectional = false }) {
                 }
             });
         }
+
+        // CASH / COLLECT 符號加入可用符號清單（效仿 JP 邏輯）
+        if (template.hasCashCollectFeature) {
+            addSymbol('CASH');
+            if (template.requiresCollectToWin !== false) {
+                addSymbol('COLLECT');
+            }
+        }
         
         return result;
     }, [template]);

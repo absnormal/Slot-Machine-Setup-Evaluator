@@ -1,5 +1,131 @@
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Settings, Trophy, Plus, X } from 'lucide-react';
+
+/**
+ * JP 卡片子元件：名稱使用本地 state，僅 onBlur 時提交，
+ * 避免每次打字都重建 jpConfig 導致卡片重新排列。
+ */
+function JpCard({ jpName, jpMult, onNameChange, onMultChange, onDelete, canDelete }) {
+    const [localName, setLocalName] = useState(jpName);
+
+    // 外部 jpConfig 變動時同步（例如重設模板）
+    useEffect(() => { setLocalName(jpName); }, [jpName]);
+
+    const commitName = () => {
+        const trimmed = localName.trim();
+        if (trimmed !== jpName) {
+            onNameChange(trimmed);
+        }
+    };
+
+    return (
+        <div className="flex flex-col bg-slate-50 border border-slate-200 rounded-lg p-3 hover:border-indigo-300 transition-colors shadow-sm relative group">
+            <input
+                type="text" value={localName}
+                onChange={(e) => setLocalName(e.target.value.toUpperCase())}
+                onBlur={commitName}
+                onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                className="w-full text-sm font-bold text-slate-700 outline-none uppercase border-b border-transparent hover:border-slate-300 focus:border-indigo-400 bg-transparent mb-2 placeholder:font-normal placeholder:lowercase placeholder:text-slate-300 pb-1"
+                placeholder="JP分類"
+            />
+            <input
+                type="number" step="any" value={jpMult}
+                onChange={(e) => onMultChange(e.target.value)}
+                className="w-full text-lg font-black text-amber-600 outline-none bg-white border border-slate-200 hover:border-amber-300 px-2 py-1.5 rounded focus:ring-1 focus:ring-amber-400 transition-colors"
+                placeholder="倍率"
+            />
+            <button
+                onClick={onDelete}
+                className="absolute -top-2 -right-2 bg-rose-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity shadow-md hover:bg-rose-600 focus:outline-none"
+                disabled={!canDelete}
+            ><X size={12} /></button>
+        </div>
+    );
+}
+
+/**
+ * JP 設定面板：使用 cardOrder ref 自行追蹤卡片順序，
+ * 完全不依賴 Object.entries() 的排列，徹底解決 JS 物件 key 重排問題。
+ */
+function JpConfigPanel({ jpConfig, setJpConfig }) {
+    const nextId = useRef(0);
+    // 自行管理的順序陣列：[{ id: number, key: string }, ...]
+    const cardOrder = useRef(null);
+
+    // 首次掛載時，從 jpConfig 建立初始順序
+    if (cardOrder.current === null) {
+        cardOrder.current = Object.keys(jpConfig).map(k => ({
+            id: nextId.current++,
+            key: k
+        }));
+    }
+
+    // 同步：處理外部變動（如雲端載入導致 jpConfig 整體替換）
+    const currentKeys = new Set(Object.keys(jpConfig));
+    const trackedKeys = new Set(cardOrder.current.map(c => c.key));
+    // 移除已不存在的 key
+    cardOrder.current = cardOrder.current.filter(c => currentKeys.has(c.key));
+    // 追加新增的 key（保持新 key 在尾端）
+    for (const k of currentKeys) {
+        if (!trackedKeys.has(k)) {
+            cardOrder.current.push({ id: nextId.current++, key: k });
+        }
+    }
+
+    return (
+        <div className="bg-white p-4 rounded-lg border border-indigo-100 shadow-inner mt-4 animate-in fade-in slide-in-from-top-2">
+            <h4 className="text-sm font-bold text-slate-800 flex items-center gap-2 mb-3">
+                <Trophy size={16} className="text-amber-500" /> Jackpot 倍率設定
+            </h4>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                {cardOrder.current.map((card) => (
+                    <JpCard
+                        key={card.id}
+                        jpName={card.key}
+                        jpMult={jpConfig[card.key] ?? ''}
+                        onNameChange={(newName) => {
+                            const oldKey = card.key;
+                            // 1. 先更新 ref 中的 key（保持位置不動）
+                            card.key = newName;
+                            // 2. 再更新 jpConfig（使用 cardOrder 的順序重建）
+                            setJpConfig(prev => {
+                                const newConfig = {};
+                                cardOrder.current.forEach(c => {
+                                    if (c.key === newName) {
+                                        newConfig[newName] = prev[oldKey] ?? '';
+                                    } else {
+                                        newConfig[c.key] = prev[c.key] ?? '';
+                                    }
+                                });
+                                return newConfig;
+                            });
+                        }}
+                        onMultChange={(val) => setJpConfig(prev => ({ ...prev, [card.key]: val }))}
+                        onDelete={() => {
+                            const delKey = card.key;
+                            // 1. 先從 ref 移除
+                            cardOrder.current = cardOrder.current.filter(c => c.key !== delKey);
+                            // 2. 再更新 jpConfig
+                            setJpConfig(prev => { const c = { ...prev }; delete c[delKey]; return c; });
+                        }}
+                        canDelete={cardOrder.current.length > 1}
+                    />
+                ))}
+                <button
+                    onClick={() => {
+                        const newKey = `CUSTOM_${(cardOrder.current.length || 0) + 1}`;
+                        cardOrder.current.push({ id: nextId.current++, key: newKey });
+                        setJpConfig(prev => ({ ...prev, [newKey]: "" }));
+                    }}
+                    className="flex flex-col items-center justify-center bg-transparent border-2 border-dashed border-slate-300 rounded-lg p-3 hover:bg-slate-100 hover:border-slate-400 hover:text-indigo-600 transition-colors text-slate-400 min-h-[95px] w-full"
+                >
+                    <Plus size={24} className="mb-1" />
+                    <span className="text-xs font-bold">新增 JP</span>
+                </button>
+            </div>
+        </div>
+    );
+}
 
 /**
  * 特殊遊戲設定 Q&A 面板：Double Symbol / Multiplier / Collect / JP
@@ -113,51 +239,7 @@ export default function SpecialSymbolQA({
 
                             {/* JP Configuration */}
                             {hasJackpot && (
-                                <div className="bg-white p-4 rounded-lg border border-indigo-100 shadow-inner mt-4 animate-in fade-in slide-in-from-top-2">
-                                    <h4 className="text-sm font-bold text-slate-800 flex items-center gap-2 mb-3">
-                                        <Trophy size={16} className="text-amber-500" /> Jackpot 倍率設定
-                                    </h4>
-                                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-                                        {Object.entries(jpConfig).map(([jpName, jpMult], idx) => (
-                                            <div key={idx} className="flex flex-col bg-slate-50 border border-slate-200 rounded-lg p-3 hover:border-indigo-300 transition-colors shadow-sm relative group">
-                                                <input
-                                                    type="text" value={jpName}
-                                                    onChange={(e) => {
-                                                        const newName = e.target.value.toUpperCase();
-                                                        setJpConfig(prev => {
-                                                            const newConfig = {};
-                                                            Object.keys(prev).forEach(k => {
-                                                                if (k === jpName) newConfig[newName] = prev[k];
-                                                                else newConfig[k] = prev[k];
-                                                            });
-                                                            return newConfig;
-                                                        });
-                                                    }}
-                                                    className="w-full text-sm font-bold text-slate-700 outline-none uppercase border-b border-transparent hover:border-slate-300 focus:border-indigo-400 bg-transparent mb-2 placeholder:font-normal placeholder:lowercase placeholder:text-slate-300 pb-1"
-                                                    placeholder="JP分類"
-                                                />
-                                                <input
-                                                    type="number" step="any" value={jpMult}
-                                                    onChange={(e) => setJpConfig(prev => ({ ...prev, [jpName]: e.target.value }))}
-                                                    className="w-full text-lg font-black text-amber-600 outline-none bg-white border border-slate-200 hover:border-amber-300 px-2 py-1.5 rounded focus:ring-1 focus:ring-amber-400 transition-colors"
-                                                    placeholder="倍率"
-                                                />
-                                                <button
-                                                    onClick={() => setJpConfig(prev => { const c = { ...prev }; delete c[jpName]; return c; })}
-                                                    className="absolute -top-2 -right-2 bg-rose-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity shadow-md hover:bg-rose-600 focus:outline-none"
-                                                    disabled={Object.keys(jpConfig).length <= 1}
-                                                ><X size={12} /></button>
-                                            </div>
-                                        ))}
-                                        <button
-                                            onClick={() => setJpConfig(prev => ({ ...prev, [`CUSTOM_${Object.keys(prev).length + 1}`]: "" }))}
-                                            className="flex flex-col items-center justify-center bg-transparent border-2 border-dashed border-slate-300 rounded-lg p-3 hover:bg-slate-100 hover:border-slate-400 hover:text-indigo-600 transition-colors text-slate-400 min-h-[95px] w-full"
-                                        >
-                                            <Plus size={24} className="mb-1" />
-                                            <span className="text-xs font-bold">新增 JP</span>
-                                        </button>
-                                    </div>
-                                </div>
+                                <JpConfigPanel jpConfig={jpConfig} setJpConfig={setJpConfig} />
                             )}
                         </div>
                     </div>

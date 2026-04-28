@@ -236,7 +236,7 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                                     ));
 
                                     // 【快速短路機制】：Reel Stop 原圖已有清晰 WIN → 通知特工直接下班，不要再去抓更糊的圖
-                                    if (win && parseFloat(win) > 0) {
+                                    if (win && parseFloat(win) > 0 && !ocrOptions.hasRollingWin) {
                                         state.reelStopHasWin = true;
                                     }
                                 });
@@ -390,17 +390,36 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                                                             missCount = 0;
                                                             console.log(`🕵️‍♂️ [WIN 追蹤特工 #${shortId}] 👀 抓到數字: "${pollWin}" (佇列剩餘: ${frameQueue.length})`);
 
-                                                            if (pollWin === lastWin) {
-                                                                confirmCount++;
+                                                            const numPollWin = parseFloat(pollWin);
+                                                            const numLastWin = parseFloat(lastWin) || 0;
+
+                                                            if (ocrOptions.hasRollingWin) {
+                                                                // ═══ 滾動模式 ═══
+                                                                // 數字還在變大 → 持續更新 bestWin，重置確認計數
+                                                                if (numPollWin > numLastWin) {
+                                                                    lastWin = pollWin;
+                                                                    confirmCount = 0;
+                                                                    bestWinCanvas = pollCanvas;
+                                                                    bestWinTime = exactPollTime;
+                                                                    bestWinValue = pollWin;
+                                                                } else if (numPollWin === numLastWin) {
+                                                                    confirmCount++; // 數字停止滾動 → 開始確認
+                                                                }
+                                                                // 數字變小 → 忽略 (可能是 OCR 誤讀或畫面殘影)
                                                             } else {
-                                                                lastWin = pollWin;
-                                                                confirmCount = 1;
-                                                                bestWinCanvas = pollCanvas;
-                                                                bestWinTime = exactPollTime;
-                                                                bestWinValue = pollWin;
+                                                                // ═══ 原本的嚴格穩定模式 ═══
+                                                                if (pollWin === lastWin) {
+                                                                    confirmCount++;
+                                                                } else {
+                                                                    lastWin = pollWin;
+                                                                    confirmCount = 1;
+                                                                    bestWinCanvas = pollCanvas;
+                                                                    bestWinTime = exactPollTime;
+                                                                    bestWinValue = pollWin;
+                                                                }
                                                             }
 
-                                                            // 維持 2 次確認可靠性，但截圖鎖定在第一次讀到的畫面
+                                                            // 維持 2 次確認可靠性（兩種模式共用）
                                                             const targetCount = 2;
                                                             if (confirmCount >= targetCount) {
                                                                 winFound = true;

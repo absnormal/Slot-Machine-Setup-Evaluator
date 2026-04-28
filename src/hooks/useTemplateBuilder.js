@@ -41,6 +41,7 @@ export function useTemplateBuilder({
     const [requiresCollectToWin, setRequiresCollectToWin] = useState(D.requiresCollectToWin);
     const [hasCashCollectFeature, setHasCashCollectFeature] = useState(D.hasCashCollectFeature);
     const [hasDoubleSymbol, setHasDoubleSymbol] = useState(D.hasDoubleSymbol);
+    const [hasRollingWin, setHasRollingWin] = useState(D.hasRollingWin);
     const [hasDynamicMultiplier, setHasDynamicMultiplier] = useState(D.hasDynamicMultiplier);
     const [multiplierCalcType, setMultiplierCalcType] = useState(D.multiplierCalcType);
     const [hasBidirectionalPaylines, setHasBidirectionalPaylines] = useState(D.hasBidirectionalPaylines);
@@ -112,6 +113,31 @@ export function useTemplateBuilder({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [jpConfig, hasJackpot]);
 
+    // Auto-sync CASH/COLLECT to paytable text when hasCashCollectFeature is toggled
+    // （效仿 JP 的 useEffect 同步機制）
+    useEffect(() => {
+        if (!hasCashCollectFeature) return;
+        let newText = paytableInput;
+        let changed = false;
+
+        // 注入 CASH（賠率全 0，僅供 P2 符號面板使用）
+        if (!/^CASH\b/im.test(newText)) {
+            newText += (newText.endsWith('\n') || newText === '' ? '' : '\n') + 'CASH 0 0 0 0 0';
+            changed = true;
+        }
+
+        // 注入 COLLECT（賠率全 0），僅在需要 COLLECT 符號時
+        if (requiresCollectToWin && !/^COLLECT\b/im.test(newText)) {
+            newText += (newText.endsWith('\n') || newText === '' ? '' : '\n') + 'COLLECT 0 0 0 0 0';
+            changed = true;
+        }
+
+        if (changed) {
+            paytableProcessor.handlePaytableTextChange(newText, setPaytableInput);
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [hasCashCollectFeature, requiresCollectToWin]);
+
     // ═══════════════════════════════════════════════════════════
     // 共用建構核心（消除 performAutoBuild / handleBuildTemplate 重複）
     // ═══════════════════════════════════════════════════════════
@@ -129,7 +155,7 @@ export function useTemplateBuilder({
             jpConfig: jp, hasJackpot: hasJP,
             hasMultiplierReel: hasMR, requiresCollectToWin: reqCollect,
             hasCashCollectFeature: hasCC,
-            hasDoubleSymbol: hasDS, hasDynamicMultiplier: hasDM,
+            hasDoubleSymbol: hasDS, hasRollingWin: hasRW, hasDynamicMultiplier: hasDM,
             multiplierCalcType: mCalcType,
             hasBidirectionalPaylines: hasBDP, hasAdjustableLines: hasAL,
             validateStrict = false
@@ -206,6 +232,16 @@ export function useTemplateBuilder({
             });
         }
 
+        // CASH / COLLECT 注入（效仿 JP 注入邏輯）
+        if (hasCC) {
+            if (!paytable['CASH']) {
+                paytable['CASH'] = [...zeroPays];
+            }
+            if (reqCollect && !paytable['COLLECT']) {
+                paytable['COLLECT'] = [...zeroPays];
+            }
+        }
+
 
         // ── 4. symbolImages 收集 ──
         const symbolImages = {};
@@ -243,6 +279,7 @@ export function useTemplateBuilder({
             requiresCollectToWin: reqCollect,
             hasCashCollectFeature: hasCC,
             hasDoubleSymbol: hasDS,
+            hasRollingWin: hasRW,
             hasDynamicMultiplier: hasDM,
             multiplierCalcType: mCalcType,
             hasBidirectionalPaylines: hasBDP,
@@ -260,6 +297,7 @@ export function useTemplateBuilder({
                 requiresCollectToWin: d.requiresCollectToWin,
                 hasCashCollectFeature: d.hasCashCollectFeature,
                 hasDoubleSymbol: d.hasDoubleSymbol,
+                hasRollingWin: d.hasRollingWin,
                 hasDynamicMultiplier: d.hasDynamicMultiplier,
                 multiplierCalcType: d.multiplierCalcType,
                 hasBidirectionalPaylines: d.hasBidirectionalPaylines,
@@ -282,6 +320,7 @@ export function useTemplateBuilder({
             setRequiresCollectToWin(parseBool(d.requiresCollectToWin));
             setHasCashCollectFeature(parseBool(d.hasCashCollectFeature));
             setHasDoubleSymbol(parseBool(d.hasDoubleSymbol));
+            setHasRollingWin(parseBool(d.hasRollingWin));
             setHasDynamicMultiplier(parseBool(d.hasDynamicMultiplier));
             setMultiplierCalcType(d.multiplierCalcType);
             setHasBidirectionalPaylines(parseBool(d.hasBidirectionalPaylines));
@@ -320,6 +359,7 @@ export function useTemplateBuilder({
                 requiresCollectToWin,
                 hasCashCollectFeature,
                 hasDoubleSymbol,
+                hasRollingWin,
                 hasDynamicMultiplier,
                 multiplierCalcType,
                 hasBidirectionalPaylines,
@@ -356,6 +396,7 @@ export function useTemplateBuilder({
         setRequiresCollectToWin(D.requiresCollectToWin);
         setHasCashCollectFeature(D.hasCashCollectFeature);
         setHasDoubleSymbol(D.hasDoubleSymbol);
+        setHasRollingWin(D.hasRollingWin);
         setHasDynamicMultiplier(D.hasDynamicMultiplier);
         setMultiplierCalcType(D.multiplierCalcType);
         setHasBidirectionalPaylines(D.hasBidirectionalPaylines);
@@ -409,6 +450,7 @@ export function useTemplateBuilder({
         requiresCollectToWin, setRequiresCollectToWin,
         hasCashCollectFeature, setHasCashCollectFeature,
         hasDoubleSymbol, setHasDoubleSymbol,
+        hasRollingWin, setHasRollingWin,
         hasDynamicMultiplier, setHasDynamicMultiplier,
         hasBidirectionalPaylines, setHasBidirectionalPaylines,
         hasAdjustableLines, setHasAdjustableLines,

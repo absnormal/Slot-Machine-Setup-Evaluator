@@ -98,7 +98,7 @@ export function useCloud() {
         templateName, generatedName,
         platformName, gameName, gridRows, gridCols, lineMode, extractResults,
         paytableInput, ptResultItems, jpConfig, hasJackpot, hasMultiplierReel,
-        requiresCollectToWin, hasCashCollectFeature, hasDoubleSymbol, hasDynamicMultiplier, multiplierCalcType,
+        requiresCollectToWin, hasCashCollectFeature, hasDoubleSymbol, hasRollingWin, hasDynamicMultiplier, multiplierCalcType,
         hasBidirectionalPaylines, hasAdjustableLines,
         motionCoverageMin, vLineThreshold, ocrDecimalPlaces,
         localUserId, actualForceId
@@ -180,6 +180,7 @@ export function useCloud() {
                 requiresCollectToWin,
                 hasCashCollectFeature,
                 hasDoubleSymbol,
+                hasRollingWin,
                 hasDynamicMultiplier,
                 multiplierCalcType,
                 hasBidirectionalPaylines,

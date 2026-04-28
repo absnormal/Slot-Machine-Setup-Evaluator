@@ -99,6 +99,7 @@ function App() {
         requiresCollectToWin, setRequiresCollectToWin,
         hasCashCollectFeature, setHasCashCollectFeature,
         hasDoubleSymbol, setHasDoubleSymbol,
+        hasRollingWin, setHasRollingWin,
         hasDynamicMultiplier, setHasDynamicMultiplier,
         multiplierCalcType, setMultiplierCalcType,
         hasBidirectionalPaylines, setHasBidirectionalPaylines,
@@ -151,7 +152,7 @@ function App() {
         gridRows, gridCols, lineMode, extractResults,
         paytableInput, ptResultItems, jpConfig,
         hasJackpot, hasMultiplierReel, requiresCollectToWin, hasCashCollectFeature,
-        hasDoubleSymbol, hasDynamicMultiplier, multiplierCalcType,
+        hasDoubleSymbol, hasRollingWin, hasDynamicMultiplier, multiplierCalcType,
         hasBidirectionalPaylines, hasAdjustableLines,
         motionCoverageMin, vLineThreshold, ocrDecimalPlaces,
         setMotionCoverageMin, setVLineThreshold, setOcrDecimalPlaces,
@@ -628,6 +629,7 @@ function App() {
                         requiresCollectToWin={requiresCollectToWin} setRequiresCollectToWin={setRequiresCollectToWin}
                         hasCashCollectFeature={hasCashCollectFeature} setHasCashCollectFeature={setHasCashCollectFeature}
                         hasDoubleSymbol={hasDoubleSymbol} setHasDoubleSymbol={setHasDoubleSymbol}
+                        hasRollingWin={hasRollingWin} setHasRollingWin={setHasRollingWin}
                         hasDynamicMultiplier={hasDynamicMultiplier} setHasDynamicMultiplier={setHasDynamicMultiplier}
                         multiplierCalcType={multiplierCalcType} setMultiplierCalcType={setMultiplierCalcType}
                         hasBidirectionalPaylines={hasBidirectionalPaylines} setHasBidirectionalPaylines={setHasBidirectionalPaylines}
@@ -739,6 +741,7 @@ function App() {
                         template={template}
                         gameName={gameName}
                         gridRows={gridRows} gridCols={gridCols} hasMultiplierReel={hasMultiplierReel}
+                        hasRollingWin={hasRollingWin} setHasRollingWin={setHasRollingWin}
                     />
                 </ErrorBoundary>
 
