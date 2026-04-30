@@ -11,6 +11,8 @@ import {
     buildVisionSystemPrompt, buildVisionGenerationConfig,
     buildMultiplierImagePrompt, buildBetImagePrompt
 } from '../config/promptTemplates';
+import { measureSegmentBrightness } from '../utils/videoUtils';
+import usePhase4Store from '../stores/usePhase4Store';
 
 const CACHE_KEYS = {
     MAIN: 'SLOT_P3_CACHE_MAIN',
@@ -375,9 +377,17 @@ export function useVisionBatchProcessor({
                 }
 
                 let multiplierVal = null;
-                if (template?.hasMultiplierReel && ocrWorkerRef.current) {
-                    const multText = await recognizeROIText(targetCanvas, visionP1Mult, ocrWorkerRef.current, 0, false);
-                    multiplierVal = multText ? (multText.startsWith('x') ? multText : `x${multText}`) : null;
+                if (template?.hasMultiplierReel) {
+                    const detectMode = usePhase4Store.getState().multiplierDetectMode;
+                    if (detectMode === 'brightness' && visionP1Mult) {
+                        const values = usePhase4Store.getState().multiplierBrightnessValues || ['x1', 'x2', 'x3', 'x5'];
+                        const brightness = measureSegmentBrightness(targetCanvas, visionP1Mult, values.length);
+                        const maxIdx = brightness.indexOf(Math.max(...brightness));
+                        multiplierVal = values[maxIdx];
+                    } else if (ocrWorkerRef.current && visionP1Mult) {
+                        const multText = await recognizeROIText(targetCanvas, visionP1Mult, ocrWorkerRef.current, 0, false);
+                        multiplierVal = multText ? (multText.startsWith('x') ? multText : `x${multText}`) : null;
+                    }
                 }
 
                 const finalBet = (hasBetBox && validatedBet !== null) ? validatedBet : currentVisionImages[imgIndex].bet;

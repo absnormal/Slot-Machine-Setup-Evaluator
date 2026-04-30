@@ -124,6 +124,8 @@ export function useTemplateIO({
         if (d.balDecimalPlaces !== undefined) setBalDecimalPlaces(parseInt(d.balDecimalPlaces, 10));
         if (d.enableWinTracker !== undefined) setEnableWinTracker(parseBool(d.enableWinTracker));
         if (d.enableEmptyBoardFilter !== undefined) setEnableEmptyBoardFilter(parseBool(d.enableEmptyBoardFilter));
+        if (d.multiplierDetectMode !== undefined) usePhase4Store.getState().setMultiplierDetectMode(d.multiplierDetectMode);
+        if (d.multiplierBrightnessValues !== undefined) usePhase4Store.getState().setMultiplierBrightnessValues(d.multiplierBrightnessValues);
         // 相容舊模板：isCascadeMode = true → 開啟空盤過濾與 WIN 追蹤
         if (d.isCascadeMode !== undefined && d.enableEmptyBoardFilter === undefined) {
             setEnableEmptyBoardFilter(parseBool(d.isCascadeMode));
@@ -196,6 +198,8 @@ export function useTemplateIO({
             hasBidirectionalPaylines, hasAdjustableLines,
             localUserId, actualForceId,
             motionCoverageMin, vLineThreshold, ocrDecimalPlaces, balDecimalPlaces, enableWinTracker, enableEmptyBoardFilter,
+            multiplierDetectMode: usePhase4Store.getState().multiplierDetectMode,
+            multiplierBrightnessValues: usePhase4Store.getState().multiplierBrightnessValues,
             phase4ROIs: usePhase4Store.getState().getRois()
         });
 

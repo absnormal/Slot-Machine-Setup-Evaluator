@@ -12,6 +12,8 @@ import {
     buildMultiplierImagePrompt, buildBetImagePrompt
 } from '../config/promptTemplates';
 import { recognizeROIText, createOcrWorker } from '../utils/ocrUtils';
+import { measureSegmentBrightness } from '../utils/videoUtils';
+import usePhase4Store from '../stores/usePhase4Store';
 
 /**
  * useAutoRecognition — 自動辨識 Pipeline
@@ -296,12 +298,23 @@ export function useAutoRecognition({
                     jpConfig: template.jpConfig
                 });
 
-                // 讀 OCR 數值（與 Gemini 流程一致）
-                const [winText, balanceText, betText, multiplierText] = await Promise.all([
+                let multiplierText = '';
+                if (template.hasMultiplierReel && rois.multiplierROI) {
+                    const detectMode = usePhase4Store.getState().multiplierDetectMode;
+                    if (detectMode === 'brightness') {
+                        const values = usePhase4Store.getState().multiplierBrightnessValues || ['x1', 'x2', 'x3', 'x5'];
+                        const brightness = measureSegmentBrightness(targetCanvas, rois.multiplierROI, values.length);
+                        const maxIdx = brightness.indexOf(Math.max(...brightness));
+                        multiplierText = values[maxIdx];
+                    } else {
+                        multiplierText = await recognizeROIText(targetCanvas, rois.multiplierROI, ocrWorkerRef.current, 0, false);
+                    }
+                }
+                
+                const [winText, balanceText, betText] = await Promise.all([
                     recognizeROIText(targetCanvas, rois.winROI, ocrWorkerRef.current, ocrDecimalPlaces, true),
                     recognizeROIText(targetCanvas, rois.balanceROI, ocrWorkerRef.current, ocrDecimalPlaces, true),
-                    recognizeROIText(targetCanvas, rois.betROI, ocrWorkerRef.current, ocrDecimalPlaces, false),
-                    template.hasMultiplierReel && rois.multiplierROI ? recognizeROIText(targetCanvas, rois.multiplierROI, ocrWorkerRef.current, 0, false) : Promise.resolve('')
+                    recognizeROIText(targetCanvas, rois.betROI, ocrWorkerRef.current, ocrDecimalPlaces, false)
                 ]);
 
                 const betValue = parseFloat(betText) || 100;

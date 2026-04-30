@@ -42,6 +42,8 @@ const Phase4Video = ({
     const betROI = usePhase4Store(s => s.betROI);
     const orderIdROI = usePhase4Store(s => s.orderIdROI);
     const multiplierROI = usePhase4Store(s => s.multiplierROI);
+    const multiplierDetectMode = usePhase4Store(s => s.multiplierDetectMode);
+    const multiplierBrightnessValues = usePhase4Store(s => s.multiplierBrightnessValues);
     const ocrDecimalPlaces = usePhase4Store(s => s.ocrDecimalPlaces);
     const balDecimalPlaces = usePhase4Store(s => s.balDecimalPlaces);
     const enableBidirectional = usePhase4Store(s => s.enableBidirectional);
@@ -103,7 +105,7 @@ const Phase4Video = ({
     }, [stopLiveDetection]);
 
     // ── 操作處理 ──
-    const scanOpts = { winROI, balanceROI, betROI, orderIdROI: enableOrderId ? orderIdROI : null, multiplierROI: template?.hasMultiplierReel ? multiplierROI : null, ocrDecimalPlaces, balDecimalPlaces, requireStableWin: false, sliceCols: template?.cols || propGridCols || 5, hasRollingWin, enableWinTracker, enableEmptyBoardFilter };
+    const scanOpts = { winROI, balanceROI, betROI, orderIdROI: enableOrderId ? orderIdROI : null, multiplierROI: template?.hasMultiplierReel ? multiplierROI : null, ocrDecimalPlaces, balDecimalPlaces, multiplierDetectMode, multiplierBrightnessValues, requireStableWin: false, sliceCols: template?.cols || propGridCols || 5, hasRollingWin, enableWinTracker, enableEmptyBoardFilter };
 
     const handleStartLive = async () => {
         if (!videoRef.current || !reelROI) return;
@@ -244,6 +246,8 @@ const Phase4Video = ({
                             isLiveActive={isLiveActive}
                             enableOrderId={enableOrderId}
                             setEnableOrderId={setEnableOrderId}
+                            balDecimalPlaces={balDecimalPlaces}
+                            setBalDecimalPlaces={v => usePhase4Store.getState().setBalDecimalPlaces(v)}
                             template={template}
                             propGridRows={propGridRows}
                             propGridCols={propGridCols}
@@ -348,16 +352,6 @@ const Phase4Video = ({
                                             </button>
                                         </div>
                                         </SettingTooltip>
-                                        <div className="flex flex-col gap-0.5">
-                                            <span className="text-[10px] font-bold text-slate-400">總分小數</span>
-                                            <select value={balDecimalPlaces} onChange={e => usePhase4Store.getState().setBalDecimalPlaces(parseInt(e.target.value, 10))}
-                                                className="h-7 px-2 rounded-lg bg-sky-50 border border-sky-200 text-sky-700 text-xs font-bold shadow-sm cursor-pointer outline-none">
-                                                <option value={0}>整數</option>
-                                                <option value={1}>1 位</option>
-                                                <option value={2}>2 位</option>
-                                                <option value={3}>3 位</option>
-                                            </select>
-                                        </div>
                                     </div>
                                 </div>
 

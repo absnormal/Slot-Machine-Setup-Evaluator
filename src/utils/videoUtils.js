@@ -84,3 +84,57 @@ export function computeMAE(a, b) {
     }
     return total / a.length;
 }
+
+/**
+ * 將 ROI 水平等分成 N 段，回傳每段平均亮度
+ * @param {HTMLCanvasElement|HTMLVideoElement} source
+ * @param {{ x: number, y: number, w: number, h: number }} roi - 百分比座標
+ * @param {number} segments - 分段數
+ * @returns {number[]} 每段平均亮度 (0-255)
+ */
+export function measureSegmentBrightness(source, roi, segments) {
+    if (!source || segments <= 0) return Array(segments).fill(0);
+    
+    const canvas = document.createElement('canvas');
+    const sourceW = source.videoWidth || source.width;
+    const sourceH = source.videoHeight || source.height;
+    
+    if (!sourceW || !sourceH) return Array(segments).fill(0);
+
+    const sx = Math.floor((roi.x / 100) * sourceW);
+    const sy = Math.floor((roi.y / 100) * sourceH);
+    const sw = Math.floor((roi.w / 100) * sourceW);
+    const sh = Math.floor((roi.h / 100) * sourceH);
+    
+    if (sw <= 0 || sh <= 0) return Array(segments).fill(0);
+
+    canvas.width = sw;
+    canvas.height = sh;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(source, sx, sy, sw, sh, 0, 0, sw, sh);
+    
+    const segW = Math.floor(sw / segments);
+    if (segW <= 0) return Array(segments).fill(0);
+
+    const results = [];
+    
+    for (let i = 0; i < segments; i++) {
+        const currentSegW = (i === segments - 1) ? sw - (i * segW) : segW;
+        if (currentSegW <= 0) {
+            results.push(0);
+            continue;
+        }
+        
+        const segX = i * segW;
+        const data = ctx.getImageData(segX, 0, currentSegW, sh).data;
+        let total = 0;
+        const pixelCount = data.length / 4;
+        
+        for (let p = 0; p < data.length; p += 4) {
+            total += (data[p] * 77 + data[p + 1] * 150 + data[p + 2] * 29) >> 8;
+        }
+        
+        results.push(total / pixelCount);
+    }
+    return results;
+}

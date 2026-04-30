@@ -2,9 +2,21 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { OcrWorkerBridge } from '../engine/ocrWorkerBridge';
 
 // -- Modularized imports --
-import { extractROIGray, computeMAE } from '../utils/videoUtils';
+import { extractROIGray, computeMAE, measureSegmentBrightness } from '../utils/videoUtils';
 import { extractSliceGrays, computeSliceMAEs, analyzeSlicePattern, windowStats, computeBoardVariance } from '../engine/vlineScanner';
 import { captureFullFrame, generateThumbUrl, cropAndOCR } from '../engine/ocrPipeline';
+
+async function detectMultiplier(canvas, roi, worker, ocrOptions) {
+    if (ocrOptions.multiplierDetectMode === 'brightness') {
+        const values = ocrOptions.multiplierBrightnessValues || ['x1', 'x2', 'x3', 'x5'];
+        const brightness = measureSegmentBrightness(canvas, roi, values.length);
+        const maxIdx = brightness.indexOf(Math.max(...brightness));
+        const result = values[maxIdx];
+        console.log(`[OCR RAW - MULTIPLIER] 亮度偵測: [${brightness.map(b=>b.toFixed(0)).join(', ')}] → ${result}`);
+        return result;
+    }
+    return cropAndOCR(canvas, roi, worker, 0, 'MULTIPLIER');
+}
 
 /**
  * useKeyframeExtractor -- Adaptive Keyframe Extractor (Modularized)
@@ -283,7 +295,7 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                                     cropAndOCR(frameCanvas, balanceROI, worker, balDecimalPlaces ?? ocrDecimalPlaces ?? 2, 'BALANCE'),
                                     cropAndOCR(frameCanvas, betROI, worker, 0, 'BET'),
                                     orderIdROI ? cropAndOCR(frameCanvas, orderIdROI, worker, 0, 'ORDER_ID') : Promise.resolve(''),
-                                    multiplierROI ? cropAndOCR(frameCanvas, multiplierROI, worker, 0, 'MULTIPLIER') : Promise.resolve('')
+                                    multiplierROI ? detectMultiplier(frameCanvas, multiplierROI, worker, ocrOptions) : Promise.resolve('')
                                 ]).then(([winR, balR, betR, orderIdR, multR]) => {
                                     const win = winR.status === 'fulfilled' ? winR.value : '';
                                     const balance = balR.status === 'fulfilled' ? balR.value : '';
@@ -348,7 +360,7 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                                         const finalBal = balanceROI ? await cropAndOCR(bestWinCanvas, balanceROI, w, ocrOptions.balDecimalPlaces ?? ocrDecimalPlaces ?? 2, 'BAL-FINAL') : '';
                                         const finalBet = betROI ? await cropAndOCR(bestWinCanvas, betROI, w, 0, 'BET-FINAL') : '';
                                         const finalOrderId = orderIdROI ? await cropAndOCR(bestWinCanvas, orderIdROI, w, 0, 'ORDER_ID') : '';
-                                        const finalMult = multiplierROI ? await cropAndOCR(bestWinCanvas, multiplierROI, w, 0, 'MULT-FINAL') : '';
+                                        const finalMult = multiplierROI ? await detectMultiplier(bestWinCanvas, multiplierROI, w, ocrOptions) : '';
 
                                         // 核心：寫回原卡片的 OCR 數據，canvas/thumbUrl 保持乾淨盤面不動！
                                         // 同時保存 WIN 特工截圖（winPollCanvas），讓匯出時兩張圖都有
@@ -685,7 +697,7 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                 cropAndOCR(canvas, balanceROI, worker, balDecimalPlaces ?? ocrDecimalPlaces ?? 2, 'BALANCE'),
                 cropAndOCR(canvas, betROI, worker, 0, 'BET'),
                 orderIdROI ? cropAndOCR(canvas, orderIdROI, worker, 0, 'ORDER_ID') : Promise.resolve(''),
-                multiplierROI ? cropAndOCR(canvas, multiplierROI, worker, 0, 'MULTIPLIER') : Promise.resolve('')
+                multiplierROI ? detectMultiplier(canvas, multiplierROI, worker, ocrOptions) : Promise.resolve('')
             ]).then(([win, balance, bet, orderId, multiplier]) => {
                 setCandidates(prev => prev.map(c =>
                     c.id === candidate.id ? { ...c, ocrData: { win, balance, bet, orderId, multiplier } } : c

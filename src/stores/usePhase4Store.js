@@ -61,6 +61,12 @@ const usePhase4Store = create((set, get) => ({
     enableWinTracker: true, // WIN 變化追蹤器
     setEnableWinTracker: (v) => set({ enableWinTracker: typeof v === 'function' ? v(get().enableWinTracker) : v }),
 
+    multiplierDetectMode: 'ocr', // 'ocr' | 'brightness'
+    setMultiplierDetectMode: (v) => set({ multiplierDetectMode: typeof v === 'function' ? v(get().multiplierDetectMode) : v }),
+    
+    multiplierBrightnessValues: ['x1', 'x2', 'x3', 'x5'],
+    setMultiplierBrightnessValues: (v) => set({ multiplierBrightnessValues: typeof v === 'function' ? v(get().multiplierBrightnessValues) : v }),
+
     enableEmptyBoardFilter: false,  // 空盤過濾：σ < 35 跳過空白盤面
     setEnableEmptyBoardFilter: (v) => set({ enableEmptyBoardFilter: typeof v === 'function' ? v(get().enableEmptyBoardFilter) : v }),
 
