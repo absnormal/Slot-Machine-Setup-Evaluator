@@ -221,7 +221,7 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                                 }
                             }
                         }
-                        if (state.hadSpinSinceLastStop || cascadeBypass) {
+                        if (state.lastCandidateTime <= 0 || state.hadSpinSinceLastStop || cascadeBypass) {
 
                             let boardStd = -1;
                             if (currentSlices) {
