@@ -100,7 +100,7 @@ export function useCloud() {
         paytableInput, ptResultItems, jpConfig, hasJackpot, hasMultiplierReel,
         requiresCollectToWin, hasCashCollectFeature, hasDoubleSymbol, hasRollingWin, hasDynamicMultiplier, multiplierCalcType,
         hasBidirectionalPaylines, hasAdjustableLines,
-        motionCoverageMin, vLineThreshold, ocrDecimalPlaces, balDecimalPlaces,
+        motionCoverageMin, vLineThreshold, ocrDecimalPlaces, balDecimalPlaces, enableWinTracker, enableEmptyBoardFilter,
         phase4ROIs,
         localUserId, actualForceId
     }) => {
@@ -190,6 +190,8 @@ export function useCloud() {
                 vLineThreshold,
                 ocrDecimalPlaces,
                 balDecimalPlaces,
+                enableWinTracker,
+                enableEmptyBoardFilter,
                 phase4ROIs,
                 creatorId: localUserId,
                 createdAt: new Date().toISOString()

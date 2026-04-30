@@ -6,6 +6,7 @@ import ActionPanel from './phase4/ActionPanel';
 import DiagnosticDashboard from './phase4/DiagnosticDashboard';
 import VideoPlayer from './phase4/VideoPlayer';
 import PreviewLightbox from './phase4/PreviewLightbox';
+import SettingTooltip from './phase4/SettingTooltip';
 import usePhase4Store from '../stores/usePhase4Store';
 import useAutoSave from '../hooks/useAutoSave';
 import useSpinGroupAnalysis from '../hooks/useSpinGroupAnalysis';
@@ -45,6 +46,10 @@ const Phase4Video = ({
     const balDecimalPlaces = usePhase4Store(s => s.balDecimalPlaces);
     const enableBidirectional = usePhase4Store(s => s.enableBidirectional);
     const setEnableBidirectional = usePhase4Store(s => s.setEnableBidirectional);
+    const enableWinTracker = usePhase4Store(s => s.enableWinTracker);
+    const setEnableWinTracker = usePhase4Store(s => s.setEnableWinTracker);
+    const enableEmptyBoardFilter = usePhase4Store(s => s.enableEmptyBoardFilter);
+    const setEnableEmptyBoardFilter = usePhase4Store(s => s.setEnableEmptyBoardFilter);
     // ── 本地狀態 ──
     const [isLiveActive, setIsLiveActive] = useState(false);
     const listEndRef = useRef(null);
@@ -52,7 +57,6 @@ const Phase4Video = ({
     const [previewImage, setPreviewImage] = useState(null); // { url, url2?, time, time2? }
     const [enableOrderId, setEnableOrderId] = useState(true); // 是否啟用注單號 OCR
     const [editingOcr, setEditingOcr] = useState(null); // { id: string, field: 'win'|'bet'|'balance', value: string }
-    const [fgType, setFgType] = useState('A'); // 'A' = 贏分延續型, 'B' = 贏分歸零型, 'none' = 無FG
     const [useWinFrame, setUseWinFrame] = useState(true); // true = 用 WIN 截圖辨識, false = 用停輪截圖辨識
 
     // ── 卡片點擊：影片模式=跳轉時間點，串流模式/無影片=開圖片預覽 ──
@@ -99,7 +103,7 @@ const Phase4Video = ({
     }, [stopLiveDetection]);
 
     // ── 操作處理 ──
-    const scanOpts = { winROI, balanceROI, betROI, orderIdROI: enableOrderId ? orderIdROI : null, multiplierROI: template?.hasMultiplierReel ? multiplierROI : null, ocrDecimalPlaces, balDecimalPlaces, requireStableWin: false, sliceCols: template?.cols || propGridCols || 5, hasRollingWin };
+    const scanOpts = { winROI, balanceROI, betROI, orderIdROI: enableOrderId ? orderIdROI : null, multiplierROI: template?.hasMultiplierReel ? multiplierROI : null, ocrDecimalPlaces, balDecimalPlaces, requireStableWin: false, sliceCols: template?.cols || propGridCols || 5, hasRollingWin, enableWinTracker, enableEmptyBoardFilter };
 
     const handleStartLive = async () => {
         if (!videoRef.current || !reelROI) return;
@@ -269,6 +273,10 @@ const Phase4Video = ({
                                     </button>
 
                                     <div className="flex flex-wrap items-center gap-3 ml-auto border-l border-slate-200 pl-4">
+                                        <SettingTooltip
+                                            title="🏆 辨識來源"
+                                            desc="選擇用哪張截圖進行盤面辨識"
+                                            tech="WIN截圖＝抓到 WIN 時的畫面；停輪截圖＝轉輪停止的瞬間">
                                         <div className="flex flex-col gap-0.5">
                                             <span className="text-[10px] font-bold text-slate-400">辨識來源</span>
                                             <button onClick={() => {
@@ -284,6 +292,31 @@ const Phase4Video = ({
                                                 {useWinFrame ? '🏆 WIN截圖' : '🎰 停輪截圖'}
                                             </button>
                                         </div>
+                                        </SettingTooltip>
+                                        <SettingTooltip
+                                            title="🎯 WIN 追蹤器"
+                                            desc={enableWinTracker
+                                                ? '由 WIN 特工接手辨識。停輪後會每秒偵測 20 次，追蹤贏分變化直到結束結算'
+                                                : '由 V-Line 主力偵測。全盤完全靜止才會截圖，不會持續追蹤'}
+                                            usage={enableWinTracker ? '連鎖消除、大獎跳轉、贏分有動態變化的機台' : '一般單局結算機台'}
+                                            tech={enableWinTracker ? '啟動 WebWorker 特工，高頻輪詢 WIN ROI 的數字變化' : '依賴全盤 MAE 變更計算，穩定後進行單次 OCR'}>
+                                        <div className="flex flex-col gap-0.5">
+                                            <span className="text-[10px] font-bold text-slate-400">WIN 追蹤</span>
+                                            <button onClick={() => setEnableWinTracker(!enableWinTracker)}
+                                                className={`h-7 px-3 rounded-lg text-xs font-bold shadow-sm cursor-pointer transition-all active:scale-95 flex items-center justify-center ${
+                                                    enableWinTracker
+                                                        ? 'bg-amber-50 border border-amber-300 text-amber-700 hover:bg-amber-100'
+                                                        : 'bg-slate-100 border border-slate-300 text-slate-600 hover:bg-slate-200'
+                                                }`}>
+                                                {enableWinTracker ? '🎯 追蹤開' : '⏸️ 追蹤關'}
+                                            </button>
+                                        </div>
+                                        </SettingTooltip>
+                                        <SettingTooltip
+                                            title="📈 WIN 模式"
+                                            desc="設定 WIN 數字的顯示方式"
+                                            usage="滾動上升＝WIN 從 0 往上跑、穩定跳轉＝直接顯示最終值"
+                                            tech="滾動模式容許 2 秒閃爍，穩定模式僅 0.5 秒">
                                         <div className="flex flex-col gap-0.5">
                                             <span className="text-[10px] font-bold text-slate-400">WIN 模式</span>
                                             <button onClick={() => setHasRollingWin(v => !v)}
@@ -295,15 +328,26 @@ const Phase4Video = ({
                                                 {hasRollingWin ? '📈 滾動上升' : '⏸️ 穩定跳轉'}
                                             </button>
                                         </div>
+                                        </SettingTooltip>
+                                        <SettingTooltip
+                                            title="🔗 連鎖模式 (Cascade)"
+                                            desc={enableEmptyBoardFilter
+                                                ? '消除/連鎖型遊戲專用偵測模式，包含三層防護：\n① 空盤過濾：清空動畫時不截圖\n② 碎片辨識：局部掉落不誤判靜止\n③ WIN 變化截圖：只在贏分數字改變時截圖'
+                                                : '一般模式，適用於盤面不會消除重排的遊戲'}
+                                            usage={enableEmptyBoardFilter ? '盤面會消除→掉落→再消除的遊戲' : '一般單局結算遊戲'}
+                                            tech={"① σ<35 空盤跳過\n② Dead Zone Guard 解除\n③ WIN ROI 像素差異 ≥ 8 觸發截圖"}>
                                         <div className="flex flex-col gap-0.5">
-                                            <span className="text-[10px] font-bold text-slate-400">FG 模式</span>
-                                            <select value={fgType} onChange={e => setFgType(e.target.value)}
-                                                className="h-7 px-2 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold shadow-sm cursor-pointer outline-none">
-                                                <option value="A">A 贏分延續</option>
-                                                <option value="B">B 贏分歸零</option>
-                                                <option value="none">無 FG</option>
-                                            </select>
+                                            <span className="text-[10px] font-bold text-slate-400">連鎖模式</span>
+                                            <button onClick={() => setEnableEmptyBoardFilter(!enableEmptyBoardFilter)}
+                                                className={`h-7 px-3 rounded-lg text-xs font-bold shadow-sm cursor-pointer transition-all active:scale-95 ${
+                                                    enableEmptyBoardFilter
+                                                        ? 'bg-violet-50 border border-violet-300 text-violet-700 hover:bg-violet-100'
+                                                        : 'bg-slate-100 border border-slate-300 text-slate-600 hover:bg-slate-200'
+                                                }`}>
+                                                {enableEmptyBoardFilter ? '🔗 連鎖開' : '⭕ 連鎖關'}
+                                            </button>
                                         </div>
+                                        </SettingTooltip>
                                         <div className="flex flex-col gap-0.5">
                                             <span className="text-[10px] font-bold text-slate-400">總分小數</span>
                                             <select value={balDecimalPlaces} onChange={e => usePhase4Store.getState().setBalDecimalPlaces(parseInt(e.target.value, 10))}
@@ -450,7 +494,7 @@ const Phase4Video = ({
                                             ));
                                         }
 
-                                        return groupsWithMath.map(({ gid, group, mathValid, mathDiff, expectedBase, nextBase, isFGSequence }, listIndex) => {
+                                        return groupsWithMath.map(({ gid, group, mathValid, mathDiff, expectedBase, nextBase, isCascadeSequence }, listIndex) => {
                                             const isMulti = group.length > 1;
                                             const parsedGid = parseInt(gid);
                                             const palette = isNaN(parsedGid) 
@@ -462,8 +506,8 @@ const Phase4Video = ({
                                                     style={{ borderLeft: `4px solid ${palette.border}`, backgroundColor: palette.bg }}
                                                 >
                                                     <div className="text-[13px] font-bold px-1 flex flex-wrap items-center gap-2 mb-1 pb-1 border-b border-slate-200/50">
-                                                        {isFGSequence ? (
-                                                            <span className="bg-rose-100 text-rose-600 px-2 py-0.5 rounded shadow-sm flex items-center gap-1">🔥 免遊序列</span>
+                                                        {isCascadeSequence ? (
+                                                            <span className="bg-rose-100 text-rose-600 px-2 py-0.5 rounded shadow-sm flex items-center gap-1">🔗 連鎖序列</span>
                                                         ) : (
                                                             <span className="text-slate-500 opacity-60 bg-slate-100 px-2 py-0.5 rounded shadow-sm">{isMulti ? '同局' : '單局'}</span>
                                                         )}
@@ -505,7 +549,7 @@ const Phase4Video = ({
                                                     {group.map(({ kf, idx }) => {
                                                         const isBest = kf.isSpinBest;
                                                         const hasBeenGrouped = kf.isSpinBest !== undefined; // smartDedup 有跑過
-                                                        const isDimmed = isMulti && !isBest;
+                                                        const isDimmed = isMulti && !isBest && !kf.isCascadeMember;
                                                         return (
                                                             <CardErrorBoundary key={`eb-${kf.id}`}>
                                                             <CandidateCard
@@ -534,7 +578,6 @@ const Phase4Video = ({
                                 <ActionPanel
                                     candidates={candidates}
                                     smartDedup={smartDedup}
-                                    fgType={fgType}
                                     handleConfirmDedup={handleConfirmDedup}
                                     template={template}
                                     enableBidirectional={enableBidirectional}

@@ -58,6 +58,12 @@ const usePhase4Store = create((set, get) => ({
     enableBidirectional: false,
     setEnableBidirectional: (v) => set({ enableBidirectional: typeof v === 'function' ? v(get().enableBidirectional) : v }),
 
+    enableWinTracker: true, // WIN 變化追蹤器
+    setEnableWinTracker: (v) => set({ enableWinTracker: typeof v === 'function' ? v(get().enableWinTracker) : v }),
+
+    enableEmptyBoardFilter: false,  // 空盤過濾：σ < 35 跳過空白盤面
+    setEnableEmptyBoardFilter: (v) => set({ enableEmptyBoardFilter: typeof v === 'function' ? v(get().enableEmptyBoardFilter) : v }),
+
     motionCoverageMin: 60,
     setMotionCoverageMin: (v) => set({ motionCoverageMin: typeof v === 'function' ? v(get().motionCoverageMin) : v }),
 

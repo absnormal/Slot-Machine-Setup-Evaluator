@@ -11,7 +11,6 @@ const ActionPanel = ({
     candidates,
     // 智慧標記
     smartDedup,
-    fgType,
     handleConfirmDedup,
     // 雙向連線
     template,
@@ -36,7 +35,7 @@ const ActionPanel = ({
             {candidates.length >= 2 && (
                 candidates.some(c => c.isSpinBest !== undefined) ? (
                     <div className="flex gap-2">
-                        <button onClick={() => smartDedup(fgType)}
+                        <button onClick={() => smartDedup()}
                             className="flex-1 py-2 rounded-lg font-bold flex items-center justify-center gap-1.5 text-xs transition-all bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 active:scale-95">
                             <RefreshCw size={14} /> 重新標記
                         </button>
@@ -46,7 +45,7 @@ const ActionPanel = ({
                         </button>
                     </div>
                 ) : (
-                    <button onClick={() => smartDedup(fgType)}
+                    <button onClick={() => smartDedup()}
                         className="w-full py-2 rounded-lg font-bold flex items-center justify-center gap-1.5 text-xs transition-all bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 active:scale-95">
                         🧹 智慧標記（辨識同局 → 凸顯最佳）
                     </button>

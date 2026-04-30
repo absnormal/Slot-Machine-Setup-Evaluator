@@ -46,18 +46,18 @@ const useSpinGroupAnalysis = (candidates) => {
 
             const hasData = bestFrame.ocrData && typeof bestFrame.ocrData.balance !== 'undefined' && typeof bestFrame.ocrData.bet !== 'undefined';
 
-            // 由底層 smartDedup 引擎的 isFGSequence 標記驅動，不再用 UI 層啟發式猜測
-            const isFGSequence = group.some(c => c.kf?.isFGSequence);
+            // 由底層 smartDedup 引擎的 isCascadeMember 標記驅動
+            const isCascadeSequence = group.some(c => c.kf?.isCascadeMember);
 
             if (hasData && bet > 0) { 
                 if (currentBase === null) {
                     mathState = win > 0 ? 2 : 1;
                     currentBase = bal + win; 
-                } else if (isFGSequence) {
-                    // FG 模式：不檢查 BAL+BET=上局結餘（因為不扣 BET），直接視為連續
-                    mathState = 4; // FG 模式
+                } else if (isCascadeSequence) {
+                    mathState = 5; // Cascade 模式
                     mathValid = true;
-                    currentBase = bal + win; // 追蹤 FG 結束後的結餘
+                    // Cascade 內部不檢查 BAL+BET，因為只有首盤扣 BET
+                    currentBase = bal + win; // 最終 WIN 會加回 BAL
                 } else {
                     const eps = 0.5;
                     if (Math.abs(bal + bet - currentBase) < eps) {
@@ -74,7 +74,7 @@ const useSpinGroupAnalysis = (candidates) => {
                 }
             }
 
-            return { gid, group, mathValid, mathState, mathDiff, expectedBase, nextBase: currentBase, isFGSequence };
+            return { gid, group, mathValid, mathState, mathDiff, expectedBase, nextBase: currentBase, isCascadeSequence };
         });
     }, [candidates]);
 

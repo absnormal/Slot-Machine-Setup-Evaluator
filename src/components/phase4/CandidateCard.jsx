@@ -188,6 +188,11 @@ const CandidateCard = ({
                                             >
                                                 {isManual && <span className="mr-0.5 text-[10px] opacity-70">✎</span>}
                                                 {currentValue || (field === 'bet' || field === 'balance' ? '-' : '0')}
+                                                {field === 'win' && kf.isCascadeMember && kf.cascadeDeltaWin !== undefined && (
+                                                    <span className="ml-1 text-[10px] text-rose-500 bg-rose-50 px-1 rounded border border-rose-100 inline-block align-middle" title="本盤面實際贏分">
+                                                        △{kf.cascadeDeltaWin}
+                                                    </span>
+                                                )}
                                             </span>
                                         )}
                                     </div>

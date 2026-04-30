@@ -99,9 +99,10 @@ export function computeSliceMAEs(prevSlices, currSlices) {
  * 分析切片 MAE 分佈模式，精確判定盤面狀態 (加入 4區塊 動態過濾)
  * @param {{ full: number, blocks: number[] }[]} bandMAEs — 每軸的分塊 MAE 資料
  * @param {number} currentTime — 目前影片時間點 (可選用，用於 Log 顯示)
+ * @param {boolean} enableEmptyBoardFilter — 是否啟用空盤過濾（Cascade模式），開啟時將豁免「死寂區段防呆」
  * @returns {{ isAllStopped, isFullyStill, isAnimationOnly, spinningCount, avgMAE, maxMAE, sliceMAEs }}
  */
-export function analyzeSlicePattern(bandMAEs, currentTime = 0) {
+export function analyzeSlicePattern(bandMAEs, currentTime = 0, enableEmptyBoardFilter = false) {
     if (!bandMAEs || bandMAEs.length === 0) {
         return { isAllStopped: false, isFullyStill: false, isAnimationOnly: false, spinningCount: 0, avgMAE: 0, maxMAE: 0, sliceMAEs: [] };
     }
@@ -133,7 +134,12 @@ export function analyzeSlicePattern(bandMAEs, currentTime = 0) {
             gapRatio = maxBlock / (weakHalfAvg + 1.0);
 
             // [死寂區段防呆]：如果某個區段完全沒變動 (<1.5)，代表這不可能是整條在刷的轉輪！
-            if (activeBlocks >= 3 && gapRatio <= 5.0 && minBlock >= 1.5) {
+            // 🔗 [Cascade] 如果開啟了空盤過濾，代表這是連鎖消除遊戲。碎片掉落時，很多時候只有局部軸在動（其他區段靜止）。
+            // 在此模式下，碎片掉落就是轉動，必須完全無視「最少活躍區塊」與「落差比」的防呆限制！
+            if (enableEmptyBoardFilter) {
+                isSpinning = true;
+                spinningCount++;
+            } else if (activeBlocks >= 3 && gapRatio <= 5.0 && minBlock >= 1.5) {
                 isSpinning = true;
                 spinningCount++;
             } else {
@@ -186,4 +192,27 @@ export function windowStats(arr) {
     const mean = arr.reduce((s, v) => s + v, 0) / n;
     const variance = arr.reduce((s, v) => s + (v - mean) ** 2, 0) / n;
     return { mean, std: Math.sqrt(variance) };
+}
+
+/**
+ * 計算所有切片合併後的灰階像素標準差
+ * σ 極低 → 畫面近乎純色（空盤面特徵）
+ */
+export function computeBoardVariance(slices) {
+    if (!slices || slices.length === 0) return { mean: 0, std: 0 };
+    let sum = 0, count = 0;
+    for (const s of slices) {
+        for (let i = 0; i < s.length; i++) {
+            sum += s[i];
+            count++;
+        }
+    }
+    const mean = sum / count;
+    let sqSum = 0;
+    for (const s of slices) {
+        for (let i = 0; i < s.length; i++) {
+            sqSum += (s[i] - mean) ** 2;
+        }
+    }
+    return { mean, std: Math.sqrt(sqSum / count) };
 }

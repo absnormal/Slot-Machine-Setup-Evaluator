@@ -176,8 +176,8 @@ export function useReportGenerator() {
                 }
             }
 
-            if (c.isFGSequence) {
-                continuity += `<br/><span style="color:#e11d48; font-size:10px; font-weight:bold;">🔥 FG</span>`;
+            if (c.isCascadeMember) {
+                continuity += `<br/><span style="color:#e11d48; font-size:10px; font-weight:bold;">🔗 連鎖${c.cascadeDeltaWin !== undefined ? ' △' + c.cascadeDeltaWin : ''}</span>`;
             }
 
             const fullSrc = c.canvas ? c.canvas.toDataURL('image/jpeg', 0.92) : (c.thumbUrl || '');
@@ -256,7 +256,7 @@ export function useReportGenerator() {
 
             const errorStr = c.error ? `<div class="error-text">${c.error}</div>` : '';
 
-            const dataAttrs = [contClass === 'break' ? 'data-break="1"' : '', ocrWin > 0 ? 'data-win="1"' : '', c.isFGSequence ? 'data-fg="1"' : ''].filter(Boolean).join(' ');
+            const dataAttrs = [contClass === 'break' ? 'data-break="1"' : '', ocrWin > 0 ? 'data-win="1"' : '', c.isCascadeMember ? 'data-cascade="1"' : ''].filter(Boolean).join(' ');
 
             const manualBal = c.manualOverrides?.balance ? `<span style="background:#fef3c7;color:#d97706;border:1px solid #fcd34d;font-size:9px;padding:1px 3px;border-radius:3px;margin-left:4px;white-space:nowrap;" title="人工校正">✏️人工</span>` : '';
             const manualBet = c.manualOverrides?.bet ? `<span style="background:#fef3c7;color:#d97706;border:1px solid #fcd34d;font-size:9px;padding:1px 3px;border-radius:3px;margin-left:4px;white-space:nowrap;" title="人工校正">✏️人工</span>` : '';
@@ -361,7 +361,6 @@ export function useReportGenerator() {
                             ${statsRowsHtml}
                         </tbody>
                     </table>
-                </div>
             </div>
         ` : '';
 
@@ -427,7 +426,7 @@ tr:hover { background:#f8fafc; }
 .nav-btn:hover { transform:translateY(-1px); box-shadow:0 2px 8px rgba(0,0,0,.2); }
 .nav-btn.break { background:#fef2f2; color:#dc2626; }
 .nav-btn.win { background:#ecfdf5; color:#059669; }
-.nav-btn.fg { background:#fff1f2; color:#e11d48; }
+.nav-btn.cascade { background:#fff1f2; color:#e11d48; }
 .nav-btn.top { background:#f1f5f9; color:#64748b; }
 .nav-counter { font-size:10px; color:#94a3b8; align-self:center; padding:0 4px; }
 tr.highlight { animation: rowFlash .6s ease; }
@@ -448,6 +447,8 @@ tr.highlight { animation: rowFlash .6s ease; }
         <div class="stat"><div class="label">RTP</div><div class="value rtp">${rtp}%</div></div>
         <div class="stat"><div class="label">命中率</div><div class="value">${(aiHitCount / spins.length * 100).toFixed(1)}%</div></div>
         <div class="stat"><div class="label">最大贏分</div><div class="value">${maxWin.toLocaleString()}</div></div>
+        <div class="stat"><div class="label" style="color:#dc2626;">斷層次數</div><div class="value" id="breakCount" style="color:#dc2626;">-</div></div>
+        <div class="stat"><div class="label" style="color:#e11d48;">連鎖次數</div><div class="value" id="cascadeCount" style="color:#e11d48;">-</div></div>
     </div>
     <table>
         <thead>
@@ -467,11 +468,11 @@ tr.highlight { animation: rowFlash .6s ease; }
 <div class="nav-bar">
     <button class="nav-btn top" onclick="window.scrollTo({top:0,behavior:'smooth'})">⬆ 頂部</button>
     <button class="nav-btn break" onclick="navTo('break')">⚠ 斷層</button>
-    <span class="nav-counter" id="breakCount"></span>
+    <span class="nav-counter" id="navBreakCount"></span>
     <button class="nav-btn win" onclick="navTo('win')">💰 贏分</button>
-    <span class="nav-counter" id="winCount"></span>
-    <button class="nav-btn fg" onclick="navTo('fg')">🔥 FG</button>
-    <span class="nav-counter" id="fgCount"></span>
+    <span class="nav-counter" id="navWinCount"></span>
+    <button class="nav-btn cascade" onclick="navTo('cascade')">🔗 連鎖</button>
+    <span class="nav-counter" id="navCascadeCount"></span>
 </div>
 <script>
 function openLb(src) { const lb=document.getElementById('lb'); document.getElementById('lbImg').src=src; lb.classList.add('show'); }
@@ -518,10 +519,13 @@ function navTo(type) {
 }
 const bc = document.querySelectorAll('tr[data-break]').length;
 const wc = document.querySelectorAll('tr[data-win]').length;
-const fc = document.querySelectorAll('tr[data-fg]').length;
+const cc = document.querySelectorAll('tr[data-cascade]').length;
 document.getElementById('breakCount').textContent = bc > 0 ? bc : '';
-document.getElementById('winCount').textContent = wc > 0 ? wc : '';
-document.getElementById('fgCount').textContent = fc > 0 ? fc : '';
+document.getElementById('cascadeCount').textContent = cc > 0 ? cc : '';
+
+document.getElementById('navBreakCount').textContent = bc > 0 ? bc : '';
+document.getElementById('navWinCount').textContent = wc > 0 ? wc : '';
+document.getElementById('navCascadeCount').textContent = cc > 0 ? cc : '';
 </script>
 </body>
 </html>`;
@@ -542,7 +546,8 @@ document.getElementById('fgCount').textContent = fc > 0 ? fc : '';
             recognitionResult: c.recognitionResult || null,
             spinGroupId: c.spinGroupId,
             isSpinBest: c.isSpinBest,
-            isFGSequence: c.isFGSequence || false,
+            isCascadeMember: c.isCascadeMember || false,
+            cascadeDeltaWin: c.cascadeDeltaWin || 0,
             captureDelay: c.captureDelay || 0,
             reelStopTime: c.reelStopTime || c.time,
             winPollTime: c.winPollTime || null,

@@ -3,7 +3,7 @@ import { OcrWorkerBridge } from '../engine/ocrWorkerBridge';
 
 // -- Modularized imports --
 import { extractROIGray, computeMAE } from '../utils/videoUtils';
-import { extractSliceGrays, computeSliceMAEs, analyzeSlicePattern, windowStats } from '../engine/vlineScanner';
+import { extractSliceGrays, computeSliceMAEs, analyzeSlicePattern, windowStats, computeBoardVariance } from '../engine/vlineScanner';
 import { captureFullFrame, generateThumbUrl, cropAndOCR } from '../engine/ocrPipeline';
 
 /**
@@ -32,13 +32,18 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
     useEffect(() => {
         let isMounted = true;
         const bridge = new OcrWorkerBridge();
-        bridge.init().then(() => {
+        const pollBridge = new OcrWorkerBridge(); // 第二個 Worker，專給 WIN 輪詢用
+        Promise.all([
+            bridge.init(),
+            pollBridge.init()
+        ]).then(() => {
             if (isMounted) {
                 ocrWorkerRef.current = bridge;
-                winPollWorkerRef.current = bridge;
-                console.log('[OCR] Web Worker 橋接層已就緒（推論在獨立線程）');
+                winPollWorkerRef.current = pollBridge;
+                console.log('[OCR] 雙 Worker 已就緒（Worker A: 初始 OCR，Worker B: WIN 輪詢）');
             } else {
                 bridge.destroy();
+                pollBridge.destroy();
             }
         }).catch(err => {
             console.error('[OCR] Web Worker 初始化失敗:', err);
@@ -46,6 +51,7 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
         return () => {
             isMounted = false;
             bridge.destroy();
+            pollBridge.destroy();
         };
     }, []);
 
@@ -72,11 +78,16 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
             stableCount: 0,
             decayCount: 0,
             peakDiff: 0,
+            hadSpinSinceLastStop: false, // 自上次停輪後是否偵測到新旋轉
             isWinPollActive: false,
             cancelWinPoll: false,
             windowSize: 20,
             lastVideoTime: -1,
             sliceCols,
+            lastCascadeConfirmedWin: 0, // 🔗 上一個連鎖盤面確認的累計 WIN（作為輪詢器的門檻）
+            lastCaptureWinGray: null,     // 🔗 上一次截圖的 WIN 區域灰階（供 cascade 差異比較）
+            cascadeBoardDiffOk: false,    // 🔗 WIN 區域差異是否 ≥ 8（一次性計算結果）
+            cascadeBoardDiffChecked: false, // 🔗 是否已計算過 WIN 區域差異（防重算）
         };
 
         const processLiveFrame = () => {
@@ -116,7 +127,7 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                     mergedSliceMAEs.push(bestComp);
                 }
 
-                const analysis = analyzeSlicePattern(mergedSliceMAEs, now);
+                const analysis = analyzeSlicePattern(mergedSliceMAEs, now, ocrOptions.enableEmptyBoardFilter);
                 const diff = analysis.avgMAE; // 向下相容：用均值餵入 diffWindow
 
                 state.diffWindow.push(diff);
@@ -175,11 +186,55 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
 
                         // 【V-Line 旋轉門檻】：如果自上次停輪以來沒有偵測到任何旋轉，
                         // 代表這只是同一局的動畫衰退，不是新的停輪。跳過！
+                        // 🔗 [Cascade 盤面差異旁路] 消除遊戲中，即使沒有偵測到旋轉，盤面也可能因為
+                        //    消除動畫而變化（WIN 出現、符號重排）。用像素差異比較來繞過旋轉門檻。
+                        let cascadeBypass = false;
                         if (state.lastCandidateTime > 0 && !state.hadSpinSinceLastStop) {
-                            if (isReelStopped && state.stableCount === 3) {
-                                console.log(`🚫 [V-Line] 偵測到穩定但自上次停輪後沒有新旋轉，判定為動畫衰退，跳過 @ ${now.toFixed(3)}s`);
+                            if (ocrOptions.enableEmptyBoardFilter && state.lastCaptureWinGray && ocrOptions.winROI) {
+                                // 🔗 [Cascade] 只在首次穩定 (stableCount===3) 時計算一次，結果快取
+                                if (!state.cascadeBoardDiffChecked && state.stableCount === 3) {
+                                    const currentWinGray = extractROIGray(video, ocrOptions.winROI);
+                                    if (currentWinGray) {
+                                        const winDiff = computeMAE(state.lastCaptureWinGray, currentWinGray);
+                                        state.cascadeBoardDiffOk = winDiff >= 8;
+                                        state.cascadeBoardDiffChecked = true;
+                                        console.log(`🔗 [Cascade WIN差異] MAE=${winDiff.toFixed(1)} ${state.cascadeBoardDiffOk ? '≥ 8 → 放行 ✅' : '< 8 → WIN未變 🚫'} @ ${now.toFixed(3)}s`);
+                                    }
+                                }
+                                if (state.cascadeBoardDiffOk) {
+                                    cascadeBypass = true; // 盤面確實變了，繞過旋轉門檻
+                                } else if (isReelStopped && state.stableCount === 3 && state.cascadeBoardDiffChecked) {
+                                    console.log(`🚫 [Cascade] WIN未變化 (MAE<8)，跳過 @ ${now.toFixed(3)}s`);
+                                } else if (isReelStopped && state.stableCount === 3) {
+                                    console.log(`🚫 [V-Line] 偵測到穩定但自上次停輪後沒有新旋轉，判定為動畫衰退，跳過 @ ${now.toFixed(3)}s`);
+                                }
+                            } else {
+                                // 非 Cascade 模式 or 第一張截圖（沒有 lastCaptureWinGray）→ 原邏輯
+                                if (isReelStopped && state.stableCount === 3) {
+                                    console.log(`🚫 [V-Line] 偵測到穩定但自上次停輪後沒有新旋轉，判定為動畫衰退，跳過 @ ${now.toFixed(3)}s`);
+                                }
                             }
-                        } else {
+                        }
+                        if (state.lastCandidateTime <= 0 || state.hadSpinSinceLastStop || cascadeBypass) {
+
+                            let boardStd = -1;
+                            if (currentSlices) {
+                                const { std } = computeBoardVariance(currentSlices);
+                                boardStd = std;
+                                if (ocrOptions.enableEmptyBoardFilter) {
+                                    const blankStdThresh = 35; // 寬鬆的門檻以容納背景紋理
+                                    if (std < blankStdThresh) {
+                                        console.log(`🚫 [空盤過濾] σ=${std.toFixed(1)} < ${blankStdThresh}，跳過截圖 @ ${now.toFixed(3)}s`);
+                                        state.stableCount = 0;
+                                        state.decayCount = 0;
+                                        state.boardRecoverCount = 0; // 重置恢復計數
+                                        // 不重置 peakDiff 和 hadSpinSinceLastStop，讓後續真正的盤面能觸發
+                                        liveRafRef.current = requestAnimationFrame(processLiveFrame);
+                                        return;
+                                    }
+
+                                }
+                            }
 
                             // 如果上一局的 WIN 特工還在上班，因為已經偵測到了「新一局的明確停輪」
                             // 這裡必須直接強制殺死舊特工，不再讓特工蒙蔽主偵測器！
@@ -192,11 +247,15 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                             console.log(`\n========================================`);
                             console.log(`🎯 [V-Line] 觸發『停輪』截圖！`);
                             console.log(`⏰ 影片時間點: ${now.toFixed(3)}s`);
-                            console.log(`📊 觸發原因: ${triggerReason}`);
+                            console.log(`📊 觸發原因: ${triggerReason} ${boardStd >= 0 ? '(盤面σ=' + boardStd.toFixed(1) + ')' : ''}`);
                             console.log(`📊 切片全域誤差: [${mergedSliceMAEs.map(d => d.full.toFixed(1)).join(', ')}] avg=${diff.toFixed(2)}, peak=${state.peakDiff.toFixed(2)}`);
                             console.log(`========================================\n`);
 
                             const frameCanvas = captureFullFrame(video);
+                            // 🔗 存入 WIN 區域灰階，供下次 cascade 差異比較
+                            if (ocrOptions.winROI) {
+                                state.lastCaptureWinGray = extractROIGray(video, ocrOptions.winROI);
+                            }
                             const thumbUrl = generateThumbUrl(frameCanvas, roi);
                             const candidate = {
                                 id: `kf_live_${Date.now()}`,
@@ -218,7 +277,7 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                             const worker = ocrWorkerRef.current;
                             const { winROI, balanceROI, betROI, orderIdROI, multiplierROI, ocrDecimalPlaces, balDecimalPlaces } = ocrOptions;
                             if (worker && (winROI || balanceROI || betROI || orderIdROI || multiplierROI)) {
-                                // ── 初始 OCR：讀取截圖時的 BAL / BET / WIN / ID / MULT ──
+                                // ── 初始 OCR：讀取截圖時的 WIN / BAL / BET / ID / MULT ──
                                 Promise.allSettled([
                                     cropAndOCR(frameCanvas, winROI, worker, ocrDecimalPlaces ?? 2, 'WIN'),
                                     cropAndOCR(frameCanvas, balanceROI, worker, balDecimalPlaces ?? ocrDecimalPlaces ?? 2, 'BALANCE'),
@@ -242,8 +301,8 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                                     }
                                 });
 
-                                // ── WIN 輪詢：立刻啟動！不等初始 OCR 完成 ──
-                                if (winROI) {
+                                // ── WIN 輪詢：如果啟用，立刻啟動！不等初始 OCR 完成 ──
+                                if (ocrOptions.enableWinTracker && winROI) {
                                     if (state.isWinPollActive) {
                                         const oldId = state.winPollAgentId.toString().slice(-4);
                                         console.log(`🕵️‍♂️ [WIN 追蹤特工 #${oldId} (前任)] 被新一局截斷！已強制退場 🪦`);
@@ -272,12 +331,12 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                                     let bestWinTime = 0;
                                     let bestWinValue = '';
 
-                                    const targetFps = 20; // 固定 20 FPS 輪詢
-                                    const pollIntervalMs = 50;
+                                    const pollIntervalMs = 50; // 20fps
                                     const MAX_POLLS = 600; // 最多嘗試約 30 秒 (20fps * 30s)
                                     const isRolling = !!ocrOptions.hasRollingWin;
                                     const blinkTolerance = isRolling ? 40 : 10; // 滾動：2秒容忍 vs 穩定：0.5秒
                                     const reelStopId = candidate.id; // 原始 Reel Stop 卡片 ID
+                                    let cascadeThreshold = 0;
 
                                     // 【合併輸出】：把 WIN/BAL/BET 數據寫回原始 Reel Stop 卡片（不建立新卡片）
                                     const mergeWinData = async (triggerLabel) => {
@@ -315,6 +374,7 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                                         console.log(`========================================\n`);
 
                                         state.isWinPollActive = false; // 解除鎖定
+
                                     };
 
                                     console.log(`🕵️‍♂️ [WIN 追蹤特工 #${shortId}] 啟動！以 20 FPS 持續跟蹤長達 10 秒，數據將合併回 Reel Stop 卡片 (影片時間：${video.currentTime.toFixed(3)}s)`);
@@ -322,7 +382,7 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                                     const frameQueue = [];
                                     const MAX_QUEUE_SIZE = 30;
 
-                                    // ── 生產者：以 20 FPS 截取畫面供 OCR 輪詢 ──
+                                    // ── 生產者：截取畫面供 OCR 輪詢（cascade 降至 5fps 避免佇列堆積）──
                                     const captureTimer = setInterval(() => {
                                         if (state.winPollAgentId !== currentAgentId || state.cancelWinPoll || isDone || liveCancelRef.current || video.paused || video.ended) {
                                             clearInterval(captureTimer);
@@ -385,19 +445,27 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                                         if (state.reelStopHasWin) {
                                             state.reelStopHasWin = false; // 消費掉旗標，只處理一次
                                             const reelStopVal = state.reelStopWinValue || '';
-                                            if (!isRolling) {
-                                                // ═══ 非滾動模式：原本行為，直接下班 ═══
+                                            const reelStopNum = parseFloat(reelStopVal) || 0;
+
+
+
+                                            if (!isRolling && reelStopNum > cascadeThreshold) {
+                                                // ═══ 非滾動模式且 WIN 已超過門檻：直接下班 ═══
                                                 clearInterval(captureTimer);
-                                                console.log(`🕵️‍♂️ [WIN 追蹤特工 #${shortId}] Reel Stop 原圖已有 WIN=${reelStopVal}，直接下班 🍻`);
+                                                console.log(`🕵️‍♂️ [WIN 追蹤特工 #${shortId}] Reel Stop 原圖已有 WIN=${reelStopVal}${cascadeThreshold > 0 ? ` (門檻=${cascadeThreshold})` : ''}，直接下班 🍻`);
                                                 state.isWinPollActive = false;
+
                                                 return;
-                                            } else {
+                                            } else if (isRolling) {
                                                 // ═══ 滾動模式：情報注入，繼續追蹤 ═══
                                                 console.log(`🕵️‍♂️ [WIN 追蹤特工 #${shortId}] 📡 收到停輪情報 WIN=${reelStopVal}，以此為基準線繼續偵測...`);
                                                 lastWin = reelStopVal;
                                                 bestWinValue = reelStopVal;
                                                 hasSeenRollingWin = true;
                                                 // 注意：不設 bestWinCanvas，等確認階段才截清晰圖
+                                            } else {
+                                                // ═══ Cascade 模式：初始 WIN ≤ 門檻，不短路，繼續追蹤 ═══
+                                                console.log(`🕵️ [WIN 特工 #${shortId}] 🔗 Cascade 門檻=${cascadeThreshold}，初始 WIN=${reelStopVal} 未超過，繼續追蹤...`);
                                             }
                                         }
 
@@ -421,7 +489,7 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                                                         }
                                                         const parsedWin = parseFloat(pollWin);
 
-                                                        if (pollWin && parsedWin > 0) {
+                                                        if (pollWin && parsedWin > cascadeThreshold) {
                                                             missCount = 0;
                                                             zeroCount = 0; // 重置歸零計數
 
@@ -526,6 +594,10 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
 
                                     consumeNext();
                                 }
+
+
+                                // 重置旋轉追蹤：截圖後必須偵測到新旋轉才允許下次截圖
+                                state.hadSpinSinceLastStop = false;
                             }
                             // ...啟動 OCR 與輪詢等後續操作，因為太長維持不變
                             state.lastCandidateTime = now;
@@ -533,7 +605,8 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                             state.decayCount = 0;
                             state.peakDiff = 0;
                             state.diffWindow.length = 0;
-                            state.hadSpinSinceLastStop = false; // 重置旋轉追蹤
+                            state.cascadeBoardDiffOk = false;     // 重置差異判定
+                            state.cascadeBoardDiffChecked = false; // 重置計算旗標
                         } // 關閉 hadSpinSinceLastStop 檢查的 else
                     } else if (isReelStopped && state.stableCount === 3) {
                         // 【診斷 log】：看起來停了但沒觸發，到底哪個條件擋住？
@@ -639,10 +712,13 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
      *
      * 選取優先級：State 2 的第一張 > State 2 任一張 > WIN 最大的任一張
      */
-    const smartDedup = useCallback((fgType = 'A') => {
+    const smartDedup = useCallback(() => {
         setCandidates(prev => {
             if (prev.length <= 1) return prev.map(c => ({ ...c, spinGroupId: 0, isSpinBest: true }));
 
+            // 自動判定：候選列表中有 isCascadeCapture 標記的幀 → 使用 cascade 合併策略
+            const hasCascadeFrames = prev.some(c => c.isCascadeCapture);
+            const isCascadeMode = hasCascadeFrames;
             const eps = 0.5; // OCR 容差
             const parse = (v) => parseFloat(v) || 0;
 
@@ -800,104 +876,74 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
             });
 
             // ==========================================
-            // 🔥 [FG 智能合併 Pass] 
-            // 根據使用者指定的 fgType (A/B/none) 決定合併策略
+            // 🔥 [Cascade 智能合併 Pass] 
+            // 根據使用者指定的 isCascadeMode 決定合併策略
             // ==========================================
             let finalGroups = Object.values(groups);
             finalGroups.sort((a, b) => a[0].kf.time - b[0].kf.time);
 
             let foldedGroups = [];
 
-            if (fgType === 'none') {
-                // 完全不做 FG 合併
+            if (!isCascadeMode) {
+                // 完全不做 Cascade 合併
                 foldedGroups = finalGroups.map(g => [...g]);
             } else {
-                let currentFG = null;
+                let currentCascade = null;
 
                 for (let i = 0; i < finalGroups.length; i++) {
                     const g = finalGroups[i];
                     let maxWin = -1, rep = g[0];
                     g.forEach(f => { if (f.win > maxWin) { maxWin = f.win; rep = f; } });
 
-                    if (currentFG) {
-                        const prevTime = currentFG.group[currentFG.group.length - 1].kf.time;
-                        const fgBal = currentFG.rep.bal;
-                        const fgBet = currentFG.rep.bet;
-                        const fgWin = currentFG.rep.win;
-                        const fgId = currentFG.rep.kf.ocrData?.orderId;
-                        const repId = rep.kf.ocrData?.orderId;
+                    if (currentCascade) {
+                        const prevTime = currentCascade.group[currentCascade.group.length - 1].kf.time;
+                        const cascadeBal = currentCascade.rep.bal;
+                        const cascadeBet = currentCascade.rep.bet;
+                        const cascadeWin = currentCascade.rep.win;
+                        
                         const timeDiff = g[0].kf.time - prevTime;
 
-                        const isValidId = id => (id && id.length >= 5);
-                        const isIdMatch = isValidId(fgId) && isValidId(repId) && fgId === repId;
-                        const isFGFrozenBal = Math.abs(rep.bal - fgBal) < eps;
-                        const isTieSpin = Math.abs(fgWin - rep.bet) < eps;
+                        const isBelowFrozen = Math.abs(rep.bal - cascadeBal) < eps;
+                        const isWinIncreasing = rep.win >= cascadeWin;
+                        const isSameBet = rep.bet === cascadeBet && rep.bet > 0;
+                        const isTieSpin = Math.abs(cascadeWin - rep.bet) < eps;
 
                         let shouldMerge = false;
 
-                        if (isIdMatch) {
-                            // OrderID 匹配 → 無條件合併（A/B 共通）
-                            shouldMerge = true;
-                        } else if (timeDiff <= 180 && rep.bet === fgBet && rep.bet > 0) {
-                            // 無 OrderID → 依 fgType 分別驗證算術
-                            if (fgType === 'A') {
-                                // A 類：BAL 凍結 + WIN 遞增或持平
-                                const isFGDynamicBal = Math.abs(rep.bal - (fgBal + fgWin)) < eps;
-                                const isWinCleared = g.some(f => f.win < 0.5);
-                                if ((isFGFrozenBal || isFGDynamicBal) && rep.win >= fgWin) {
-                                    if (isWinCleared) {
-                                        shouldMerge = false; // A 類中 WIN 歸零 = 結算完畢，斷鏈
-                                    } else if (isFGFrozenBal && isTieSpin) {
-                                        shouldMerge = false; // 平局防呆
-                                    } else {
-                                        shouldMerge = true;
-                                    }
-                                }
-                            } else if (fgType === 'B') {
-                                // B 類：MG→FG 邊界允許 BAL 跳變 (BAL_new ≈ BAL_old + WIN_old)
-                                const isBTypeBoundary = Math.abs(rep.bal - (fgBal + fgWin)) < eps;
-                                if (isFGFrozenBal) {
-                                    // FG 內部連續局：BAL 凍結
-                                    if (isTieSpin) {
-                                        shouldMerge = false; // 平局防呆
-                                    } else {
-                                        shouldMerge = true;
-                                    }
-                                } else if (isBTypeBoundary) {
-                                    // MG→FG 邊界：贏分結算到餘額，WIN 可能歸零
+                        if (timeDiff <= 180 && isSameBet) {
+                            if (isBelowFrozen && isWinIncreasing) {
+                                if (isBelowFrozen && isTieSpin) {
+                                    shouldMerge = false; // 平局防呆
+                                } else {
                                     shouldMerge = true;
                                 }
                             }
                         }
 
                         if (shouldMerge) {
-                            g.forEach(f => f.isFGFolded = true);
-                            currentFG.group.forEach(f => f.isFGFolded = true);
-                            currentFG.group.push(...g);
-                            // 更新代表幀
-                            if (fgType === 'B') {
-                                // B 類：始終追蹤最新的幀作為基準（因為 BAL 可能在邊界跳變）
-                                currentFG.rep = rep;
-                            } else {
-                                // A 類：追蹤 BAL 動態更新或 WIN 更大的幀
-                                const isFGDynamicBal = Math.abs(rep.bal - (fgBal + fgWin)) < eps;
-                                if (isFGDynamicBal || rep.win > fgWin) {
-                                    currentFG.rep = rep;
-                                }
+                            g.forEach(f => f.isCascadeMember = true);
+                            g.forEach(f => f.cascadeDeltaWin = rep.win - cascadeWin);
+                            currentCascade.group.forEach(f => f.isCascadeMember = true);
+                            if(currentCascade.group.length === 1) { 
+                                currentCascade.group.forEach(f => f.cascadeDeltaWin = cascadeWin); 
                             }
+
+                            currentCascade.group.push(...g);
+                            currentCascade.rep = rep; 
                             continue;
                         } else {
-                            foldedGroups.push(currentFG.group);
-                            currentFG = null;
+                            foldedGroups.push(currentCascade.group);
+                            currentCascade = null;
                         }
                     }
 
-                    if (!currentFG) {
-                        currentFG = { group: [...g], rep: rep };
+                    if (!currentCascade) {
+                        currentCascade = { group: [...g], rep: rep };
+                        g.forEach(f => f.cascadeDeltaWin = f.win);
                     }
                 }
-                if (currentFG) {
-                    foldedGroups.push(currentFG.group);
+                if (currentCascade) {
+                    foldedGroups.push(currentCascade.group);
                 }
             }
 
@@ -911,10 +957,17 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
 
             for (const group of mergedGroupsList) {
                 const gid = spinGroupCounter++;
-                group.forEach(f => { spinGroupMap[f.kf.id] = { id: gid, isFGSequence: !!f.isFGFolded }; });
+                group.forEach(f => { spinGroupMap[f.kf.id] = { id: gid, isCascadeMember: !!f.isCascadeMember, cascadeDeltaWin: f.cascadeDeltaWin }; });
 
                 if (group.length === 1) {
                     bestIds.add(group[0].kf.id);
+                    continue;
+                }
+
+                // 🔗 [Cascade 全盤面保留] 連鎖序列中每張盤面都是獨立的消除結果，全部都需要辨識
+                const isCascadeGroup = group.some(f => f.isCascadeMember);
+                if (isCascadeGroup) {
+                    group.forEach(f => { if (f.isCascadeMember) bestIds.add(f.kf.id); });
                     continue;
                 }
 
@@ -958,7 +1011,8 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                 return {
                     ...safeKf,
                     spinGroupId: mapping ? mapping.id : 0,
-                    isFGSequence: mapping ? mapping.isFGSequence : false,
+                    isCascadeMember: mapping ? mapping.isCascadeMember : false,
+                    cascadeDeltaWin: mapping ? mapping.cascadeDeltaWin : 0,
                     isSpinBest: bestIds.has(kf.id),
                 };
             });

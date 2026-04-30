@@ -132,6 +132,10 @@ function App() {
     const setOcrDecimalPlaces = usePhase4Store(s => s.setOcrDecimalPlaces);
     const balDecimalPlaces = usePhase4Store(s => s.balDecimalPlaces);
     const setBalDecimalPlaces = usePhase4Store(s => s.setBalDecimalPlaces);
+    const enableWinTracker = usePhase4Store(s => s.enableWinTracker);
+    const setEnableWinTracker = usePhase4Store(s => s.setEnableWinTracker);
+    const enableEmptyBoardFilter = usePhase4Store(s => s.enableEmptyBoardFilter);
+    const setEnableEmptyBoardFilter = usePhase4Store(s => s.setEnableEmptyBoardFilter);
 
     // --- Bi-directional Paylines Runtime Toggle (from Zustand Store) ---
     const enableBidirectional = usePhase4Store(s => s.enableBidirectional);
@@ -156,8 +160,8 @@ function App() {
         hasJackpot, hasMultiplierReel, requiresCollectToWin, hasCashCollectFeature,
         hasDoubleSymbol, hasRollingWin, hasDynamicMultiplier, multiplierCalcType,
         hasBidirectionalPaylines, hasAdjustableLines,
-        motionCoverageMin, vLineThreshold, ocrDecimalPlaces, balDecimalPlaces,
-        setMotionCoverageMin, setVLineThreshold, setOcrDecimalPlaces, setBalDecimalPlaces,
+        motionCoverageMin, vLineThreshold, ocrDecimalPlaces, balDecimalPlaces, enableWinTracker, enableEmptyBoardFilter,
+        setMotionCoverageMin, setVLineThreshold, setOcrDecimalPlaces, setBalDecimalPlaces, setEnableWinTracker, setEnableEmptyBoardFilter,
         setReelROI: usePhase4Store(s => s.setReelROI),
         setWinROI: usePhase4Store(s => s.setWinROI),
         setBalanceROI: usePhase4Store(s => s.setBalanceROI),

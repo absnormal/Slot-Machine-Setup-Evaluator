@@ -33,8 +33,8 @@ export function useTemplateIO({
     hasBidirectionalPaylines,
     hasAdjustableLines,
     // Phase 4 偵測參數（模板持久化）
-    motionCoverageMin, vLineThreshold, ocrDecimalPlaces, balDecimalPlaces,
-    setMotionCoverageMin, setVLineThreshold, setOcrDecimalPlaces, setBalDecimalPlaces,
+    motionCoverageMin, vLineThreshold, ocrDecimalPlaces, balDecimalPlaces, enableWinTracker, enableEmptyBoardFilter,
+    setMotionCoverageMin, setVLineThreshold, setOcrDecimalPlaces, setBalDecimalPlaces, setEnableWinTracker, setEnableEmptyBoardFilter,
     setReelROI, setWinROI, setBalanceROI, setBetROI, setOrderIdROI, setMultiplierROI,
 }) {
     const setTemplateMessage = useAppStore(s => s.setTemplateMessage);
@@ -122,6 +122,13 @@ export function useTemplateIO({
         if (d.vLineThreshold !== undefined) setVLineThreshold(parseFloat(d.vLineThreshold));
         if (d.ocrDecimalPlaces !== undefined) setOcrDecimalPlaces(parseInt(d.ocrDecimalPlaces, 10));
         if (d.balDecimalPlaces !== undefined) setBalDecimalPlaces(parseInt(d.balDecimalPlaces, 10));
+        if (d.enableWinTracker !== undefined) setEnableWinTracker(parseBool(d.enableWinTracker));
+        if (d.enableEmptyBoardFilter !== undefined) setEnableEmptyBoardFilter(parseBool(d.enableEmptyBoardFilter));
+        // 相容舊模板：isCascadeMode = true → 開啟空盤過濾與 WIN 追蹤
+        if (d.isCascadeMode !== undefined && d.enableEmptyBoardFilter === undefined) {
+            setEnableEmptyBoardFilter(parseBool(d.isCascadeMode));
+            setEnableWinTracker(parseBool(d.isCascadeMode));
+        }
 
         // Phase 4 ROI 還原
         if (d.phase4ROIs) {
@@ -137,7 +144,7 @@ export function useTemplateIO({
         setPaytableMode, setJpConfig, setHasJackpot, setHasMultiplierReel, setRequiresCollectToWin,
         setHasCashCollectFeature, setHasDoubleSymbol, setHasRollingWin, setHasDynamicMultiplier, setMultiplierCalcType,
         setHasBidirectionalPaylines, setHasAdjustableLines, setLineImages,
-        setActiveLineImageId, setLinesTextInput, setMotionCoverageMin, setVLineThreshold, setOcrDecimalPlaces, setBalDecimalPlaces,
+        setActiveLineImageId, setLinesTextInput, setMotionCoverageMin, setVLineThreshold, setOcrDecimalPlaces, setBalDecimalPlaces, setEnableWinTracker, setEnableEmptyBoardFilter,
         setReelROI, setWinROI, setBalanceROI, setBetROI, setOrderIdROI, setMultiplierROI]);
 
     /**
@@ -188,7 +195,7 @@ export function useTemplateIO({
             hasDoubleSymbol, hasRollingWin, hasDynamicMultiplier, multiplierCalcType,
             hasBidirectionalPaylines, hasAdjustableLines,
             localUserId, actualForceId,
-            motionCoverageMin, vLineThreshold, ocrDecimalPlaces, balDecimalPlaces,
+            motionCoverageMin, vLineThreshold, ocrDecimalPlaces, balDecimalPlaces, enableWinTracker, enableEmptyBoardFilter,
             phase4ROIs: usePhase4Store.getState().getRois()
         });
 
@@ -204,7 +211,7 @@ export function useTemplateIO({
     }, [platformNameState, gameNameState, templateName, gridRows, gridCols, lineMode, extractResults,
         paytableInput, ptResultItems, jpConfig, hasJackpot, hasMultiplierReel, requiresCollectToWin, hasCashCollectFeature,
         hasDoubleSymbol, hasRollingWin, hasDynamicMultiplier, multiplierCalcType, hasBidirectionalPaylines, hasAdjustableLines, localUserId,
-        motionCoverageMin, vLineThreshold, ocrDecimalPlaces, balDecimalPlaces,
+        motionCoverageMin, vLineThreshold, ocrDecimalPlaces, balDecimalPlaces, enableWinTracker, enableEmptyBoardFilter,
         useCloudInstance, setTemplateError, showOverwriteConfirm]);
 
     const defaultSaveName = [platformNameState, gameNameState].filter(Boolean).join('-') || `模板 ${gridRows}x${gridCols}`;

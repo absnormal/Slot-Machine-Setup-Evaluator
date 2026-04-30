@@ -138,7 +138,8 @@
  *
  * @property {number} [spinGroupId]         - smartDedup 分配的旋轉群組 ID
  * @property {boolean} [isSpinBest]         - 是否為該群組的最佳代表幀
- * @property {boolean} [isFGSequence]       - 是否屬於 Free Game 連續序列
+ * @property {boolean} [isCascadeMember]    - 是否為連鎖盤面 (Cascade/Respin) 序列的一員
+ * @property {number} [cascadeDeltaWin]     - 連鎖盤面中的單張贏分 (本幀WIN - 前幀WIN)
  * @property {boolean} [isManual]           - 是否為手動擷取的幀
  *
  * @property {Object} [manualOverride]      - 使用者手動覆寫的 OCR 值
@@ -222,10 +223,10 @@
  * @property {number} win              - 最佳幀的 WIN
  * @property {number} bet              - 最佳幀的 BET
  * @property {boolean} mathValid       - BAL+BET 是否等於上局結餘（連續性驗證）
- * @property {number} mathState        - 驗算狀態 (0=無數據, 1=首局無贏, 2=首局有贏, 3=贏分差異, 4=FG)
+ * @property {number} mathState        - 驗算狀態 (0=無數據, 1=正常無贏, 2=正常有贏, 3=贏分差異, 5=Cascade)
  * @property {number} mathDiff         - 實際差異值
  * @property {number|null} expectedBase - 預期的上局結餘
- * @property {boolean} isFGSequence    - 是否為 Free Game 序列
+ * @property {boolean} isCascadeSequence - 是否為 Cascade 連鎖序列
  */
 
 export {};
