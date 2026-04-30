@@ -1,5 +1,6 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useRef, useCallback, useEffect } from 'react';
 import { useSmartDedup } from './useSmartDedup';
+import { useCandidateManager } from './useCandidateManager';
 import { OcrWorkerBridge } from '../engine/ocrWorkerBridge';
 
 // -- Modularized imports --
@@ -37,7 +38,8 @@ const ANIMATION_TIMEOUT_FRAMES = 3;
 const DECAY_RATIO = 0.3;
 
 export function useKeyframeExtractor({ setTemplateMessage }) {
-    const [candidates, setCandidates] = useState([]);
+    // ── 候選幀 CRUD（已抽離至 useCandidateManager）──
+    const { candidates, setCandidates, removeCandidate, clearCandidates, updateCandidate, updateCandidateOcr } = useCandidateManager();
 
     // OCR Worker (Web Worker 版，不阻塞主線程)
     const ocrWorkerRef = useRef(null);
@@ -649,17 +651,7 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
         }
     }, []);
 
-    // ────────────────────────────────────────
-    // 候選幀管理
-    // ────────────────────────────────────────
 
-    const removeCandidate = useCallback((id) => {
-        setCandidates(prev => prev.filter(c => c.id !== id));
-    }, []);
-
-    const clearCandidates = useCallback(() => {
-        setCandidates([]);
-    }, []);
 
     // 手動新增候選幀（從影片當前畫面擷取）
     const addManualCandidate = useCallback((video, roi, ocrOptions = {}) => {
@@ -708,39 +700,8 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
         return candidate.id;
     }, [setTemplateMessage, ocrWorkerRef]);
 
-    // 更新候選幀狀態（辨識完成時呼叫）
-    const updateCandidate = useCallback((id, updates) => {
-        setCandidates(prev => prev.map(c =>
-            c.id === id ? { ...c, ...updates } : c
-        ));
-    }, []);
-
     // ── 智慧標記 / 去重 / 手動指定最佳幀（已抽離至 useSmartDedup）──
     const { smartDedup, confirmDedup, setManualBestCandidate } = useSmartDedup({ setCandidates, setTemplateMessage });
-
-    // 手動更新單張卡片的 OCR 數值（WIN/BET/BAL）並加上人工修改標記
-    const updateCandidateOcr = useCallback((candidateId, field, value) => {
-        setCandidates(prev => prev.map(c => {
-            if (c.id === candidateId) {
-                // 如果已經有 ocrData，就覆寫；沒有就建一個預設空的
-                const oldOcr = c.ocrData || { win: '0', balance: '0', bet: '0', orderId: '' };
-                const prevOverrides = c.manualOverrides || {};
-                return {
-                    ...c,
-                    ocrData: {
-                        ...oldOcr,
-                        [field]: value
-                    },
-                    manualOverrides: {
-                        ...prevOverrides,
-                        [field]: true
-                    },
-                    status: 'pending' // 重置狀態讓它重新算分
-                };
-            }
-            return c;
-        }));
-    }, []);
 
     return {
         candidates, setCandidates,
