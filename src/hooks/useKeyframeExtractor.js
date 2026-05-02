@@ -136,6 +136,14 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                 const analysis = analyzeSlicePattern(mergedSliceMAEs, now, ocrOptions.enableEmptyBoardFilter);
                 const diff = analysis.avgMAE; // 向下相容：用均值餵入 diffWindow
 
+                // 【幽靈幀過濾】：144Hz 螢幕下 video.currentTime 會微抖動 (~7ms)，
+                // 導致同一個解碼幀被 drawImage 重複讀取，像素完全一致 (maxMAE < 0.5)。
+                // 跳過幽靈幀，避免破壞所有計數器（spinBreakCount、stableCount 等）。
+                if (analysis.maxMAE < 0.5) {
+                    liveRafRef.current = requestAnimationFrame(processLiveFrame);
+                    return;
+                }
+
                 state.diffWindow.push(diff);
                 if (state.diffWindow.length > state.windowSize) state.diffWindow.shift();
 
@@ -341,8 +349,8 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
 
             if (currentSlices) {
                 state.recentSlices.push(currentSlices);
-                if (state.recentSlices.length > 2) {
-                    state.recentSlices.shift(); // 永遠只保留近 2 幀歷史（N-1, N-2）
+                if (state.recentSlices.length > 3) {
+                    state.recentSlices.shift(); // 保留近 3 幀歷史（搭配幽靈幀過濾，讓 stableCount 能達到 3）
                 }
             }
             liveRafRef.current = requestAnimationFrame(processLiveFrame);
