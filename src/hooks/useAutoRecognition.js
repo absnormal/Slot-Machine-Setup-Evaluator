@@ -12,8 +12,7 @@ import {
     buildMultiplierImagePrompt, buildBetImagePrompt
 } from '../config/promptTemplates';
 import { recognizeROIText, createOcrWorker } from '../utils/ocrUtils';
-import { measureSegmentBrightness } from '../utils/videoUtils';
-import usePhase4Store from '../stores/usePhase4Store';
+import { detectLitMultiplier } from '../utils/videoUtils';
 
 /**
  * useAutoRecognition — 自動辨識 Pipeline
@@ -300,15 +299,7 @@ export function useAutoRecognition({
 
                 let multiplierText = '';
                 if (template.hasMultiplierReel && rois.multiplierROI) {
-                    const detectMode = usePhase4Store.getState().multiplierDetectMode;
-                    if (detectMode === 'brightness') {
-                        const values = usePhase4Store.getState().multiplierBrightnessValues || ['x1', 'x2', 'x3', 'x5'];
-                        const brightness = measureSegmentBrightness(targetCanvas, rois.multiplierROI, values.length);
-                        const maxIdx = brightness.indexOf(Math.max(...brightness));
-                        multiplierText = values[maxIdx];
-                    } else {
-                        multiplierText = await recognizeROIText(targetCanvas, rois.multiplierROI, ocrWorkerRef.current, 0, false);
-                    }
+                    multiplierText = await detectLitMultiplier(targetCanvas, rois.multiplierROI, ocrWorkerRef.current) || '';
                 }
                 
                 const [winText, balanceText, betText] = await Promise.all([

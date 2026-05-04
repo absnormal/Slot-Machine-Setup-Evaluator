@@ -13,15 +13,8 @@ import { captureFullFrame, generateThumbUrl, cropAndOCR } from './ocrPipeline';
  * 從 useKeyframeExtractor 頂層搬入，供 mergeWinData 使用
  */
 export async function detectMultiplier(canvas, roi, worker, ocrOptions) {
-    if (ocrOptions.multiplierDetectMode === 'brightness') {
-        // 動態引入避免循環依賴
-        const { measureSegmentBrightness } = await import('../utils/videoUtils');
-        const values = ocrOptions.multiplierBrightnessValues || ['x1', 'x2', 'x3', 'x5'];
-        const brightness = measureSegmentBrightness(canvas, roi, values.length);
-        const maxIdx = brightness.indexOf(Math.max(...brightness));
-        return values[maxIdx];
-    }
-    return cropAndOCR(canvas, roi, worker, 0, 'MULTIPLIER');
+    const { detectLitMultiplier } = await import('../utils/videoUtils');
+    return await detectLitMultiplier(canvas, roi, worker);
 }
 
 /**
@@ -89,31 +82,50 @@ export function startWinPollAgent({
         if (hasOutput) return;
         hasOutput = true;
 
-        const w = pollWorker || mainWorker;
-        const finalBal = balanceROI ? await cropAndOCR(bestWinCanvas, balanceROI, w, balDecimalPlaces ?? ocrDecimalPlaces ?? 2, 'BAL-FINAL') : '';
-        const finalBet = betROI ? await cropAndOCR(bestWinCanvas, betROI, w, 0, 'BET-FINAL') : '';
-        const finalOrderId = orderIdROI ? await cropAndOCR(bestWinCanvas, orderIdROI, w, 0, 'ORDER_ID') : '';
-        const finalMult = multiplierROI ? await detectMultiplier(bestWinCanvas, multiplierROI, w, ocrOptions) : '';
+        const isForced = triggerLabel.includes('FORCED');
+        const isUsefulResult = parseFloat(bestWinValue) > 0;
+        const winPollStatus = isForced
+            ? (isUsefulResult ? 'forced_with_data' : 'forced_empty')
+            : 'completed';
+
+        let finalBal = '', finalBet = '', finalOrderId = '', finalMult = '';
+
+        if (isForced) {
+            // 【省 OCR】強制合併：複用初始 OCR 已讀取的 BAL/BET/ORDER_ID，不重新跑
+            // 只更新 WIN（bestWinValue）和截圖（bestWinCanvas）
+            finalMult = state.lastMultiplierValue || '';
+            // BAL/BET/ORDER_ID 保留 candidate 原有值（由初始 OCR 寫入）
+        } else {
+            // 正常完成：從 bestWinCanvas 讀取最新數值
+            const w = pollWorker || mainWorker;
+            finalBal = balanceROI ? await cropAndOCR(bestWinCanvas, balanceROI, w, balDecimalPlaces ?? ocrDecimalPlaces ?? 2, 'BAL-FINAL') : '';
+            finalBet = betROI ? await cropAndOCR(bestWinCanvas, betROI, w, 0, 'BET-FINAL') : '';
+            finalOrderId = orderIdROI ? await cropAndOCR(bestWinCanvas, orderIdROI, w, 0, 'ORDER_ID') : '';
+            finalMult = state.lastMultiplierValue || (multiplierROI ? await detectMultiplier(bestWinCanvas, multiplierROI, w, ocrOptions) : '');
+        }
 
         const winPollThumbUrl = generateThumbUrl(bestWinCanvas, roi);
-        setCandidates(prev => prev.map(c =>
-            c.id === reelStopId
-                ? {
-                    ...c,
-                    ocrData: { win: bestWinValue, balance: finalBal, bet: finalBet, orderId: finalOrderId, multiplier: finalMult },
-                    captureDelay: bestWinTime - c.time,
-                    reelStopTime: c.time,
-                    winPollCanvas: bestWinCanvas,
-                    winPollThumbUrl,
-                    winPollTime: bestWinTime
-                }
-                : c
-        ));
+        setCandidates(prev => prev.map(c => {
+            if (c.id !== reelStopId) return c;
+            // 強制合併時保留初始 OCR 的值，只覆寫 WIN
+            const mergedOcrData = isForced
+                ? { ...c.ocrData, win: bestWinValue, multiplier: finalMult || c.ocrData?.multiplier || '' }
+                : { win: bestWinValue, balance: finalBal, bet: finalBet, orderId: finalOrderId, multiplier: finalMult };
+            return {
+                ...c,
+                ocrData: mergedOcrData,
+                captureDelay: bestWinTime - c.time,
+                reelStopTime: c.time,
+                winPollCanvas: bestWinCanvas,
+                winPollThumbUrl,
+                winPollTime: bestWinTime,
+                winPollStatus
+            };
+        }));
 
         console.log(`\n========================================`);
         console.log(`📝 [贏分合併] WIN=${bestWinValue} 已寫回 Reel Stop 卡片 (${triggerLabel})`);
         console.log(`⏰ Reel Stop 時間 → WIN 確認時間: +${(bestWinTime - candidate.time).toFixed(3)}s`);
-        console.log(`💰 合併數值: WIN=${bestWinValue}, BAL=${finalBal || '(未設定ROI)'}`);
         console.log(`========================================\n`);
 
         state.isWinPollActive = false;
@@ -147,10 +159,11 @@ export function startWinPollAgent({
                 if (bestWinCanvas && !hasOutput) {
                     console.log(`🕵️‍♂️ [WIN 追蹤特工 #${shortId}${isObsoleteAgent ? ' (前任)' : ''}] 任務強行中斷，手上有圖 WIN=${bestWinValue}！直接合併...`);
                     await mergeWinData('WIN_POLL_FORCED');
-                } else if (!hasOutput && frameQueue.length > 0) {
+                } else if (!hasOutput && !isObsoleteAgent && frameQueue.length > 0) {
+                    // 【只有最新特工才回掃】：殭屍前任直接放棄，不浪費 OCR 資源
                     const w = pollWorker || mainWorker;
                     const scanFrames = frameQueue.slice(-3).reverse();
-                    console.log(`🕵️‍♂️ [WIN 追蹤特工 #${shortId}${isObsoleteAgent ? ' (前任)' : ''}] 任務中斷，回掃最新 ${scanFrames.length} 幀兄底...`);
+                    console.log(`🕵️‍♂️ [WIN 追蹤特工 #${shortId}] 任務中斷，回掃最新 ${scanFrames.length} 幀兄底...`);
                     for (const { canvas: sc, time: st } of scanFrames) {
                         try {
                             const sv = await cropAndOCR(sc, winROI, w, ocrDecimalPlaces ?? 2, 'WIN-SCAN');
@@ -165,15 +178,19 @@ export function startWinPollAgent({
                         } catch (e) { /* skip */ }
                     }
                     if (bestWinCanvas) {
-                        console.log(`🕵️‍♂️ [WIN 追蹤特工 #${shortId}${isObsoleteAgent ? ' (前任)' : ''}] 回掃得到 WIN=${bestWinValue}！合併...`);
+                        console.log(`🕵️‍♂️ [WIN 追蹤特工 #${shortId}] 回掃得到 WIN=${bestWinValue}！合併...`);
                         await mergeWinData('WIN_POLL_FORCED');
                     } else {
-                        console.log(`🕵️‍♂️ [WIN 追蹤特工 #${shortId}${isObsoleteAgent ? ' (前任)' : ''}] 任務中斷，回掃也無效，放棄合併。`);
-                        if (!isObsoleteAgent) state.isWinPollActive = false;
+                        console.log(`🕵️‍♂️ [WIN 追蹤特工 #${shortId}] 任務中斷，回掃也無效，放棄合併。`);
+                        state.isWinPollActive = false;
                     }
                 } else if (!hasOutput) {
-                    console.log(`🕵️‍♂️ [WIN 追蹤特工 #${shortId}${isObsoleteAgent ? ' (前任)' : ''}] 任務中斷，佇列空，放棄合併。 (影片時間：${video.currentTime.toFixed(3)}s)`);
-                    if (!isObsoleteAgent) state.isWinPollActive = false;
+                    if (isObsoleteAgent) {
+                        console.log(`🕵️‍♂️ [WIN 追蹤特工 #${shortId} (前任)] 已被取代，直接退場 🪦`);
+                    } else {
+                        console.log(`🕵️‍♂️ [WIN 追蹤特工 #${shortId}] 任務中斷，佇列空，放棄合併。 (影片時間：${video.currentTime.toFixed(3)}s)`);
+                        state.isWinPollActive = false;
+                    }
                 }
             }
             return;

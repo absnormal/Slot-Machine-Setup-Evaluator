@@ -86,55 +86,128 @@ export function computeMAE(a, b) {
 }
 
 /**
- * 將 ROI 水平等分成 N 段，回傳每段平均亮度
+ * 亮度定位 + 局部 OCR：自動偵測乘倍區域中亮起的段落並讀取其文字
+ *
+ * 演算法：
+ *   1. 裁切 ROI 區域
+ *   2. 計算水平亮度剖面（逐列平均亮度）
+ *   3. 以 mean + 0.8×σ 為動態閾值，找出亮區的左右邊界
+ *   4. 裁切亮區（含 padding）→ 放大 3x → 高對比預處理
+ *   5. PaddleOCR 辨識 → 正則提取 xN 格式
+ *
  * @param {HTMLCanvasElement|HTMLVideoElement} source
  * @param {{ x: number, y: number, w: number, h: number }} roi - 百分比座標
- * @param {number} segments - 分段數
- * @returns {number[]} 每段平均亮度 (0-255)
+ * @param {Object} ocrWorker - PaddleOCR worker instance
+ * @returns {Promise<string|null>} 'x2', 'x5' 等，或 null
  */
-export function measureSegmentBrightness(source, roi, segments) {
-    if (!source || segments <= 0) return Array(segments).fill(0);
-    
-    const canvas = document.createElement('canvas');
+// ── 乘倍位置快取：{positionBucket: ocrText}，同位置不重複 OCR ──
+const _multiplierCache = new Map();
+
+export async function detectLitMultiplier(source, roi, ocrWorker) {
+    if (!source || !roi || !ocrWorker) return null;
+
     const sourceW = source.videoWidth || source.width;
     const sourceH = source.videoHeight || source.height;
-    
-    if (!sourceW || !sourceH) return Array(segments).fill(0);
+    if (!sourceW || !sourceH) return null;
 
+    // ── Step 1: 裁切 ROI 區域 ──
     const sx = Math.floor((roi.x / 100) * sourceW);
     const sy = Math.floor((roi.y / 100) * sourceH);
     const sw = Math.floor((roi.w / 100) * sourceW);
     const sh = Math.floor((roi.h / 100) * sourceH);
-    
-    if (sw <= 0 || sh <= 0) return Array(segments).fill(0);
+    if (sw <= 0 || sh <= 0) return null;
 
-    canvas.width = sw;
-    canvas.height = sh;
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    ctx.drawImage(source, sx, sy, sw, sh, 0, 0, sw, sh);
-    
-    const segW = Math.floor(sw / segments);
-    if (segW <= 0) return Array(segments).fill(0);
+    const roiCanvas = document.createElement('canvas');
+    roiCanvas.width = sw;
+    roiCanvas.height = sh;
+    const roiCtx = roiCanvas.getContext('2d', { willReadFrequently: true });
+    roiCtx.drawImage(source, sx, sy, sw, sh, 0, 0, sw, sh);
 
-    const results = [];
-    
-    for (let i = 0; i < segments; i++) {
-        const currentSegW = (i === segments - 1) ? sw - (i * segW) : segW;
-        if (currentSegW <= 0) {
-            results.push(0);
-            continue;
+    const imgData = roiCtx.getImageData(0, 0, sw, sh);
+    const data = imgData.data;
+
+    // ── Step 2: 水平亮度剖面（逐列平均灰階） ──
+    const profile = new Float32Array(sw);
+    for (let col = 0; col < sw; col++) {
+        let sum = 0;
+        for (let row = 0; row < sh; row++) {
+            const idx = (row * sw + col) * 4;
+            sum += (data[idx] * 77 + data[idx + 1] * 150 + data[idx + 2] * 29) >> 8;
         }
-        
-        const segX = i * segW;
-        const data = ctx.getImageData(segX, 0, currentSegW, sh).data;
-        let total = 0;
-        const pixelCount = data.length / 4;
-        
-        for (let p = 0; p < data.length; p += 4) {
-            total += (data[p] * 77 + data[p + 1] * 150 + data[p + 2] * 29) >> 8;
-        }
-        
-        results.push(total / pixelCount);
+        profile[col] = sum / sh;
     }
-    return results;
+
+    // ── Step 3: 動態閾值 (mean + 0.8σ) 找亮區 ──
+    let mean = 0;
+    for (let i = 0; i < sw; i++) mean += profile[i];
+    mean /= sw;
+
+    let variance = 0;
+    for (let i = 0; i < sw; i++) variance += (profile[i] - mean) ** 2;
+    const std = Math.sqrt(variance / sw);
+
+    // 若整體亮度變化極小（σ < 5），表示沒有明顯亮區 → 回傳 null
+    if (std < 5) return null;
+
+    const threshold = mean + 0.8 * std;
+
+    let left = -1, right = -1;
+    for (let i = 0; i < sw; i++) {
+        if (profile[i] > threshold) {
+            if (left === -1) left = i;
+            right = i;
+        }
+    }
+    if (left === -1) return null;
+
+    // ── Step 3.5: 位置快取查詢 ──
+    // 將亮區中心位置量化為百分比 bucket（精度 5%），作為快取 key
+    const centerRatio = Math.round(((left + right) / 2 / sw) * 20); // 0-20 的整數
+    const cacheKey = `${roi.x}_${roi.y}_${roi.w}_${centerRatio}`;
+    if (_multiplierCache.has(cacheKey)) {
+        return _multiplierCache.get(cacheKey);
+    }
+
+    // ── Step 4: 裁切亮區 + 放大 + 高對比預處理 ──
+    const pad = Math.max(4, Math.floor((right - left) * 0.15));
+    const cropX = Math.max(0, left - pad);
+    const cropW = Math.min(sw, right + pad + 1) - cropX;
+    if (cropW <= 0) return null;
+
+    const SCALE = 3;
+    const PADDING = 20;
+    const outW = Math.floor(cropW * SCALE) + PADDING * 2;
+    const outH = Math.floor(sh * SCALE) + PADDING * 2;
+
+    const outCanvas = document.createElement('canvas');
+    outCanvas.width = outW;
+    outCanvas.height = outH;
+    const outCtx = outCanvas.getContext('2d');
+
+    // 黑色背景 + 高對比濾鏡
+    outCtx.fillStyle = '#000000';
+    outCtx.fillRect(0, 0, outW, outH);
+    outCtx.filter = 'contrast(1.8) brightness(1.2)';
+    outCtx.drawImage(roiCanvas, cropX, 0, cropW, sh, PADDING, PADDING, cropW * SCALE, sh * SCALE);
+    outCtx.filter = 'none';
+
+    // ── Step 5: PaddleOCR 辨識 → 正則提取 ──
+    try {
+        const detectedLines = await ocrWorker.detect(outCanvas.toDataURL('image/png'));
+        const rawText = (detectedLines || []).map(t => t.text).join(' ').trim();
+        if (!rawText) return null;
+
+        // 匹配 x5, X3, ×10, 2, 15 等各種格式
+        const match = rawText.match(/[x×]?\s*(\d+(?:\.\d+)?)/i);
+        if (match) {
+            const result = `x${match[1]}`;
+            // 存入位置快取，後續同位置直接回傳
+            _multiplierCache.set(cacheKey, result);
+            return result;
+        }
+        return null;
+    } catch (err) {
+        console.warn('[detectLitMultiplier] OCR failed:', err);
+        return null;
+    }
 }

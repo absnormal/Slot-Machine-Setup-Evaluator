@@ -56,8 +56,13 @@ const useSpinGroupAnalysis = (candidates) => {
                 } else if (isCascadeSequence) {
                     mathState = 5; // Cascade 模式
                     mathValid = true;
-                    // Cascade 內部不檢查 BAL+BET，因為只有首盤扣 BET
-                    currentBase = bal + win; // 最終 WIN 會加回 BAL
+                    // Cascade 序列：用該群組中所有 best frame 的最高累計 WIN 來計算 currentBase
+                    // 因為 BAL 在 cascade 結束後才會一次加上「總 WIN」
+                    const allBestWins = group
+                        .filter(c => c.kf.isSpinBest)
+                        .map(c => parseFloat(c.kf.ocrData?.win) || 0);
+                    const cascadeTotalWin = allBestWins.length > 0 ? Math.max(...allBestWins) : win;
+                    currentBase = bal + cascadeTotalWin;
                 } else {
                     const eps = 0.5;
                     if (Math.abs(bal + bet - currentBase) < eps) {

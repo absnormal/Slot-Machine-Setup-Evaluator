@@ -6,6 +6,7 @@ import { OcrWorkerBridge } from '../engine/ocrWorkerBridge';
 // -- Modularized imports --
 import { extractROIGray, computeMAE } from '../utils/videoUtils';
 import { extractSliceGrays, computeSliceMAEs, analyzeSlicePattern, windowStats, computeBoardVariance } from '../engine/vlineScanner';
+import { getCachedFrameRate, getGhostThreshold } from '../utils/displayUtils';
 import { captureFullFrame, generateThumbUrl, cropAndOCR } from '../engine/ocrPipeline';
 import { startWinPollAgent, detectMultiplier } from '../engine/winPollAgent';
 
@@ -79,7 +80,7 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
         const sliceCols = ocrOptions.sliceCols || 5;
         liveStateRef.current = {
             diffWindow: [],
-            recentSlices: [], // 改為儲存近 2 幀的歷史切片
+            recentSlices: [], // 儲存近 3 幀的歷史切片
             lastCandidateTime: -999,
             stableCount: 0,
             decayCount: 0,
@@ -89,6 +90,13 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
             cancelWinPoll: false,
             windowSize: 20,
             lastVideoTime: -1,
+            // ── 幀率校準 ──
+            ghostThresholdSec: getGhostThreshold(),  // 從快取讀取（秒），無快取用 60Hz 預設
+            isCalibrated: !!getCachedFrameRate(),     // 是否已有 localStorage 快取
+            calibrationDone: false,                    // 本次即時偵測是否已完成校準
+            rafDeltas: [],                             // 收集 RAF 間距用
+            lastRafTime: -1,                           // 上一次 RAF timestamp
+            backfillQueue: [],                          // WIN=0 幀的延遲補掃佇列
             sliceCols,
             lastCascadeConfirmedWin: 0, // 🔗 上一個連鎖盤面確認的累計 WIN（作為輪詢器的門檻）
             lastCaptureWinGray: null,     // 🔗 上一次截圖的 WIN 區域灰階（供 cascade 差異比較）
@@ -96,26 +104,49 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
             cascadeBoardDiffChecked: false, // 🔗 是否已計算過 WIN 區域差異（防重算）
         };
 
-        const processLiveFrame = () => {
+        const processLiveFrame = (rafTimestamp) => {
             if (liveCancelRef.current) return;
             if (video.paused || video.ended) {
                 liveRafRef.current = requestAnimationFrame(processLiveFrame);
                 return;
             }
 
+            // ── 自動幀率校準（僅在無 localStorage 快取時，前 30 幀執行）──
+            const state = liveStateRef.current;
+            if (!state.isCalibrated && !state.calibrationDone && rafTimestamp && state.lastRafTime > 0) {
+                state.rafDeltas.push(rafTimestamp - state.lastRafTime);
+                if (state.rafDeltas.length >= 30) {
+                    const sorted = [...state.rafDeltas].sort((a, b) => a - b);
+                    const fd = sorted[15]; // 中位數
+                    state.ghostThresholdSec = (fd * 0.65) / 1000;
+                    state.calibrationDone = true;
+                    try {
+                        const hz = Math.round(1000 / fd);
+                        localStorage.setItem('SLOT_DISPLAY_FRAME_RATE', JSON.stringify({
+                            frameDuration: Math.round(fd * 10) / 10,
+                            ghostThreshold: Math.round(fd * 0.65 * 10) / 10,
+                            hz,
+                            calibratedAt: new Date().toISOString()
+                        }));
+                        console.log(`🖥️ [幀率校準] 螢幕=${hz}Hz (幀間距=${fd.toFixed(1)}ms) → 幽靈幀閾值=${(fd * 0.65).toFixed(1)}ms`);
+                    } catch { /* ignore */ }
+                }
+            }
+            if (rafTimestamp) state.lastRafTime = rafTimestamp;
+
             // 【防偽停輪機制】：影片時間未前進就跳過
             const now = video.currentTime;
-            if (now === liveStateRef.current.lastVideoTime) {
+            const timeDelta = now - state.lastVideoTime;
+            if (timeDelta === 0) {
                 liveRafRef.current = requestAnimationFrame(processLiveFrame);
                 return;
             }
-            liveStateRef.current.lastVideoTime = now;
+            state.lastVideoTime = now;
 
-            const state = liveStateRef.current;
             const currentSlices = extractSliceGrays(video, roi, state.sliceCols);
 
             if (currentSlices && state.recentSlices.length > 0) {
-                // 【多幀抗壓比對】：與過去 2 幀分別計算差異，並取該軸在任何歷史比對中的「最大誤差」
+                // 【多幀抗壓比對】：與過去幀分別計算差異，並取該軸在任何歷史比對中的「最大誤差」
                 // 這樣即使影片解碼卡頓，給了我們一張跟上一秒完全一樣的複製幀 (diff=0)，
                 // 只要它跟「上上幀」不同，就不會被當成真停輪！
                 const allComparisons = state.recentSlices.map(prev => computeSliceMAEs(prev, currentSlices));
@@ -136,10 +167,14 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                 const analysis = analyzeSlicePattern(mergedSliceMAEs, now, ocrOptions.enableEmptyBoardFilter);
                 const diff = analysis.avgMAE; // 向下相容：用均值餵入 diffWindow
 
-                // 【幽靈幀過濾】：144Hz 螢幕下 video.currentTime 會微抖動 (~7ms)，
-                // 導致同一個解碼幀被 drawImage 重複讀取，像素完全一致 (maxMAE < 0.5)。
-                // 跳過幽靈幀，避免破壞所有計數器（spinBreakCount、stableCount 等）。
-                if (analysis.maxMAE < 0.5) {
+                // 【幽靈幀過濾】：高刷新率螢幕下 video.currentTime 微抖，同一解碼幀被重複讀取。
+                // 判定條件：像素完全一致 (maxMAE < 0.5) 且 時間差 < 動態閾值（自動校準）
+                if (analysis.maxMAE < 0.5 && timeDelta < state.ghostThresholdSec) {
+                    // 幽靈幀：跳過計數器，但仍更新 recentSlices 保持歷史新鮮
+                    if (currentSlices) {
+                        state.recentSlices.push(currentSlices);
+                        if (state.recentSlices.length > 3) state.recentSlices.shift();
+                    }
                     liveRafRef.current = requestAnimationFrame(processLiveFrame);
                     return;
                 }
@@ -289,31 +324,67 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
 
                             // 非同步跑 OCR（不阻塞即時偵測迴圈）
                             const worker = ocrWorkerRef.current;
+                            const workerB = winPollWorkerRef.current;
                             const { winROI, balanceROI, betROI, orderIdROI, multiplierROI, ocrDecimalPlaces, balDecimalPlaces } = ocrOptions;
                             if (worker && (winROI || balanceROI || betROI || orderIdROI || multiplierROI)) {
-                                // ── 初始 OCR：讀取截圖時的 WIN / BAL / BET / ID / MULT ──
-                                Promise.allSettled([
-                                    cropAndOCR(frameCanvas, winROI, worker, ocrDecimalPlaces ?? 2, 'WIN'),
-                                    cropAndOCR(frameCanvas, balanceROI, worker, balDecimalPlaces ?? ocrDecimalPlaces ?? 2, 'BALANCE'),
-                                    cropAndOCR(frameCanvas, betROI, worker, 0, 'BET'),
-                                    orderIdROI ? cropAndOCR(frameCanvas, orderIdROI, worker, 0, 'ORDER_ID') : Promise.resolve(''),
-                                    multiplierROI ? detectMultiplier(frameCanvas, multiplierROI, worker, ocrOptions) : Promise.resolve('')
-                                ]).then(([winR, balR, betR, orderIdR, multR]) => {
-                                    const win = winR.status === 'fulfilled' ? winR.value : '';
-                                    const balance = balR.status === 'fulfilled' ? balR.value : '';
-                                    const bet = betR.status === 'fulfilled' ? betR.value : '';
-                                    const orderId = orderIdR.status === 'fulfilled' ? orderIdR.value : '';
-                                    const multiplier = multR.status === 'fulfilled' ? multR.value : '';
-                                    setCandidates(prev => prev.map(c =>
-                                        c.id === candidate.id ? { ...c, ocrData: { win, balance, bet, orderId, multiplier } } : c
-                                    ));
+                                // ── WIN-First 策略：先跑 WIN，看結果再決定是否跑其他 ──
+                                const secondWorker = workerB || worker;
+                                cropAndOCR(frameCanvas, winROI, worker, ocrDecimalPlaces ?? 2, 'WIN').then(async (win) => {
+                                    const parsedWin = parseFloat(win) || 0;
 
-                                    // 【快速短路機制】：Reel Stop 原圖已有清晰 WIN → 給特工基準線情報
-                                    if (win && parseFloat(win) > 0) {
+                                    if (parsedWin > 0) {
+                                        // WIN > 0 → 立刻跑完整 OCR（這局重要）
+                                        const [balR, betR, orderIdR, multR] = await Promise.allSettled([
+                                            cropAndOCR(frameCanvas, balanceROI, worker, balDecimalPlaces ?? ocrDecimalPlaces ?? 2, 'BALANCE'),
+                                            cropAndOCR(frameCanvas, betROI, secondWorker, 0, 'BET'),
+                                            orderIdROI ? cropAndOCR(frameCanvas, orderIdROI, secondWorker, 0, 'ORDER_ID') : Promise.resolve(''),
+                                            multiplierROI ? detectMultiplier(frameCanvas, multiplierROI, secondWorker, ocrOptions) : Promise.resolve('')
+                                        ]);
+                                        const balance = balR.status === 'fulfilled' ? balR.value : '';
+                                        const bet = betR.status === 'fulfilled' ? betR.value : '';
+                                        const orderId = orderIdR.status === 'fulfilled' ? orderIdR.value : '';
+                                        const multiplier = multR.status === 'fulfilled' ? multR.value : '';
+                                        setCandidates(prev => prev.map(c =>
+                                            c.id === candidate.id ? { ...c, ocrData: { win, balance, bet, orderId, multiplier } } : c
+                                        ));
+                                        if (multiplier) state.lastMultiplierValue = multiplier;
                                         state.reelStopHasWin = true;
                                         state.reelStopWinValue = win;
+                                    } else {
+                                        // WIN = 0 → 只寫 WIN，其餘加入補掃佇列
+                                        setCandidates(prev => prev.map(c =>
+                                            c.id === candidate.id ? { ...c, ocrData: { win, balance: '', bet: '', orderId: '', multiplier: '' } } : c
+                                        ));
+                                        state.backfillQueue.push({
+                                            candidateId: candidate.id,
+                                            canvas: frameCanvas,
+                                            ocrOptions
+                                        });
+
+                                        // ── 即時穿插補掃：趁 Worker 空閒，從佇列取一張來補 ──
+                                        if (state.backfillQueue.length > 0) {
+                                            const item = state.backfillQueue.shift();
+                                            const bfOpts = item.ocrOptions;
+                                            const { balanceROI: bfBal, betROI: bfBet, orderIdROI: bfOid, multiplierROI: bfMult, ocrDecimalPlaces: bfDec, balDecimalPlaces: bfBalDec } = bfOpts;
+                                            Promise.allSettled([
+                                                bfBal ? cropAndOCR(item.canvas, bfBal, worker, bfBalDec ?? bfDec ?? 2, 'BAL-BACKFILL') : Promise.resolve(''),
+                                                bfBet ? cropAndOCR(item.canvas, bfBet, secondWorker, 0, 'BET-BACKFILL') : Promise.resolve(''),
+                                                bfOid ? cropAndOCR(item.canvas, bfOid, secondWorker, 0, 'ORDERID-BACKFILL') : Promise.resolve(''),
+                                                bfMult ? detectMultiplier(item.canvas, bfMult, secondWorker, bfOpts) : Promise.resolve('')
+                                            ]).then(([balR, betR, orderIdR, multR]) => {
+                                                const balance = balR.status === 'fulfilled' ? balR.value : '';
+                                                const bet = betR.status === 'fulfilled' ? betR.value : '';
+                                                const orderId = orderIdR.status === 'fulfilled' ? orderIdR.value : '';
+                                                const multiplier = multR.status === 'fulfilled' ? multR.value : '';
+                                                setCandidates(prev => prev.map(c =>
+                                                    c.id === item.candidateId
+                                                        ? { ...c, ocrData: { ...c.ocrData, balance, bet, orderId, multiplier } }
+                                                        : c
+                                                ));
+                                            }).catch(() => {});
+                                        }
                                     }
-                                });
+                                }).catch(() => {});
 
                                 // ── WIN 輪詢：如果啟用，立刻啟動 WIN 追蹤特工 ──
                                 if (ocrOptions.enableWinTracker && winROI) {
@@ -350,7 +421,7 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
             if (currentSlices) {
                 state.recentSlices.push(currentSlices);
                 if (state.recentSlices.length > 3) {
-                    state.recentSlices.shift(); // 保留近 3 幀歷史（搭配幽靈幀過濾，讓 stableCount 能達到 3）
+                    state.recentSlices.shift();
                 }
             }
             liveRafRef.current = requestAnimationFrame(processLiveFrame);
@@ -364,6 +435,41 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
         if (liveRafRef.current) {
             cancelAnimationFrame(liveRafRef.current);
             liveRafRef.current = null;
+        }
+
+        // ── 補掃佇列：偵測結束後批次補齊 WIN=0 幀的 BAL/BET/ORDER_ID ──
+        const state = liveStateRef.current;
+        if (state && state.backfillQueue && state.backfillQueue.length > 0) {
+            const queue = [...state.backfillQueue];
+            state.backfillQueue = [];
+            const workerA = ocrWorkerRef.current;
+            const workerB = winPollWorkerRef.current || workerA;
+            console.log(`🔄 [補掃] 開始補掃 ${queue.length} 張 WIN=0 候選幀的 BAL/BET/ORDER_ID...`);
+
+            (async () => {
+                for (let i = 0; i < queue.length; i++) {
+                    const { candidateId, canvas, ocrOptions: opts } = queue[i];
+                    const { balanceROI, betROI, orderIdROI, multiplierROI, ocrDecimalPlaces, balDecimalPlaces } = opts;
+                    try {
+                        const [balR, betR, orderIdR, multR] = await Promise.allSettled([
+                            balanceROI ? cropAndOCR(canvas, balanceROI, workerA, balDecimalPlaces ?? ocrDecimalPlaces ?? 2, 'BAL-BACKFILL') : Promise.resolve(''),
+                            betROI ? cropAndOCR(canvas, betROI, workerB, 0, 'BET-BACKFILL') : Promise.resolve(''),
+                            orderIdROI ? cropAndOCR(canvas, orderIdROI, workerB, 0, 'ORDERID-BACKFILL') : Promise.resolve(''),
+                            multiplierROI ? detectMultiplier(canvas, multiplierROI, workerB, opts) : Promise.resolve('')
+                        ]);
+                        const balance = balR.status === 'fulfilled' ? balR.value : '';
+                        const bet = betR.status === 'fulfilled' ? betR.value : '';
+                        const orderId = orderIdR.status === 'fulfilled' ? orderIdR.value : '';
+                        const multiplier = multR.status === 'fulfilled' ? multR.value : '';
+                        setCandidates(prev => prev.map(c =>
+                            c.id === candidateId
+                                ? { ...c, ocrData: { ...c.ocrData, balance, bet, orderId, multiplier } }
+                                : c
+                        ));
+                    } catch (e) { /* skip */ }
+                }
+                console.log(`✅ [補掃] ${queue.length} 張補掃完成`);
+            })();
         }
     }, []);
 

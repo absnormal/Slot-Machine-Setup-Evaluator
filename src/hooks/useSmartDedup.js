@@ -57,7 +57,8 @@ export function useSmartDedup({ setCandidates, setTemplateMessage }) {
                             // 【局號防呆】：如果兩幀有不同的局號，代表是不同局的真實贏分，不是殘影
                             const currId = curr.kf.ocrData?.orderId;
                             const prevId = prevF.kf.ocrData?.orderId;
-                            if (currId && prevId && currId !== prevId) continue;
+                            const stripId = (s) => (s || '').replace(/\D/g, '');
+                            if (currId && prevId && stripId(currId) !== stripId(prevId)) continue;
 
                             const expectedNewBal = prevF.bal + prevF.win - curr.bet;
                             if (curr.bet > 0 && Math.abs(curr.bal - expectedNewBal) < eps) {
@@ -78,8 +79,9 @@ export function useSmartDedup({ setCandidates, setTemplateMessage }) {
             // 把順序掛回最初的 idx 順序以配合後續 Union-Find 定義
             frames.sort((a, b) => a.idx - b.idx);
 
-            // 100% 嚴格比對 (因為只有數字和連字符，不會有相似混淆)
-            const isSimilarStr = (s1, s2) => s1 === s2;
+            // 正規化比對：去掉所有非數字字元（解決 OCR 讀出不同格式的 dash，如 22330-845300 vs 2233084530）
+            const normalizeId = (s) => s.replace(/\D/g, '');
+            const isSimilarStr = (s1, s2) => normalizeId(s1) === normalizeId(s2);
 
             // 判斷兩幀是否為同一局
             function areSameSpin(frameA, frameB) {
@@ -207,39 +209,42 @@ export function useSmartDedup({ setCandidates, setTemplateMessage }) {
 
                     if (currentCascade) {
                         const prevTime = currentCascade.group[currentCascade.group.length - 1].kf.time;
-                        const cascadeBal = currentCascade.rep.bal;
-                        const cascadeBet = currentCascade.rep.bet;
-                        const cascadeWin = currentCascade.rep.win;
+                        // 用初始 BAL 和最高累計 WIN 來判斷斷層
+                        const initBal = currentCascade.initBal;   // cascade 開始時的凍結餘額
+                        const totalWin = currentCascade.totalWin;  // 整條鏈的最高累計 WIN
+                        const cascadeBet = currentCascade.initBet;
                         
                         const timeDiff = g[0].kf.time - prevTime;
 
-                        const isBelowFrozen = Math.abs(rep.bal - cascadeBal) < eps;
-                        const isWinIncreasing = rep.win >= cascadeWin;
+                        // BAL 還凍結在初始值 → cascade 繼續中
+                        const isBelowFrozen = Math.abs(rep.bal - initBal) < eps;
+                        // BAL 已更新 = initBal + totalWin → 確認是新局（斷層）
+                        const isBalSettled = Math.abs(rep.bal - (initBal + totalWin)) < eps;
+                        const isWinIncreasing = rep.win >= totalWin;
                         const isSameBet = rep.bet === cascadeBet && rep.bet > 0;
-                        const isTieSpin = Math.abs(cascadeWin - rep.bet) < eps;
+                        const isTieSpin = Math.abs(totalWin - rep.bet) < eps;
 
                         let shouldMerge = false;
 
                         if (timeDiff <= 180 && isSameBet) {
                             if (isBelowFrozen && isWinIncreasing) {
-                                if (isBelowFrozen && isTieSpin) {
+                                if (isTieSpin) {
                                     shouldMerge = false; // 平局防呆
                                 } else {
                                     shouldMerge = true;
                                 }
                             }
+                            // BAL 已結算 → 明確斷層，不合併
+                            if (isBalSettled && totalWin > eps) {
+                                shouldMerge = false;
+                            }
                         }
 
                         if (shouldMerge) {
                             g.forEach(f => f.isCascadeMember = true);
-                            g.forEach(f => f.cascadeDeltaWin = rep.win - cascadeWin);
                             currentCascade.group.forEach(f => f.isCascadeMember = true);
-                            if(currentCascade.group.length === 1) { 
-                                currentCascade.group.forEach(f => f.cascadeDeltaWin = cascadeWin); 
-                            }
-
                             currentCascade.group.push(...g);
-                            currentCascade.rep = rep; 
+                            currentCascade.totalWin = Math.max(totalWin, rep.win); // 更新最高累計 WIN
                             continue;
                         } else {
                             foldedGroups.push(currentCascade.group);
@@ -248,8 +253,12 @@ export function useSmartDedup({ setCandidates, setTemplateMessage }) {
                     }
 
                     if (!currentCascade) {
-                        currentCascade = { group: [...g], rep: rep };
-                        g.forEach(f => f.cascadeDeltaWin = f.win);
+                        currentCascade = {
+                            group: [...g],
+                            initBal: rep.bal,      // 凍結初始餘額
+                            initBet: rep.bet,
+                            totalWin: rep.win       // 初始 WIN（可能是 0 或已有值）
+                        };
                     }
                 }
                 if (currentCascade) {
@@ -274,35 +283,67 @@ export function useSmartDedup({ setCandidates, setTemplateMessage }) {
                     continue;
                 }
 
-                // 🔗 [Cascade 全盤面保留] 連鎖序列中每張盤面都是獨立的消除結果，全部都需要辨識
+                // 🔗 [Cascade Delta WIN] 連鎖序列：按 WIN 去重 → 計算 delta → 只保留 delta > 0 的盤面
                 const isCascadeGroup = group.some(f => f.isCascadeMember);
                 if (isCascadeGroup) {
-                    group.forEach(f => { if (f.isCascadeMember) bestIds.add(f.kf.id); });
+                    // Step 1: 按時間排序
+                    const sorted = [...group].sort((a, b) => a.kf.time - b.kf.time);
+
+                    // Step 2: 按 WIN 值去重（同一 WIN 值只保留第一張）
+                    const seen = new Map(); // winKey → frame
+                    for (const f of sorted) {
+                        const winKey = Math.round(f.win * 100); // 避免浮點誤差
+                        if (!seen.has(winKey)) seen.set(winKey, f);
+                    }
+                    const unique = [...seen.values()];
+
+                    // Step 3 & 4: 計算 delta WIN，只保留 delta > 0 的盤面
+                    let prevWin = 0;
+                    let markedCount = 0;
+                    for (const f of unique) {
+                        const delta = f.win - prevWin;
+                        if (delta > eps) {
+                            bestIds.add(f.kf.id);
+                            spinGroupMap[f.kf.id].cascadeDeltaWin = delta;
+                            markedCount++;
+                        }
+                        prevWin = f.win;
+                    }
+
+                    // 保底：如果沒有任何 delta > 0（例如全部 WIN=0），保留最早的一張
+                    if (markedCount === 0) {
+                        bestIds.add(sorted[0].kf.id);
+                    }
                     continue;
                 }
 
-                // 找 State 2 幀：WIN>0 且 BAL 是組內最小的（未更新）
-                const withWin = group.filter(f => f.win > eps);
-                let best = null;
+                // ── 最佳幀選取：支援消除遊戲的一局多最佳幀 ──
+                // 有效 Poll = completed（正常完成）或 forced_with_data（被中斷但已有 WIN）
+                const useful = group.filter(f =>
+                    f.kf.winPollStatus === 'completed' || f.kf.winPollStatus === 'forced_with_data'
+                );
 
-                if (withWin.length > 0) {
-                    // 找 BAL 最小的（State 2 = 餘額尚未加上 WIN）
-                    const minBal = Math.min(...withWin.map(f => f.bal));
-                    const state2 = withWin.filter(f => Math.abs(f.bal - minBal) < eps);
-
-                    if (state2.length > 0) {
-                        // State 2 的第一張（最早截到的）
-                        best = state2.reduce((a, b) => a.kf.time < b.kf.time ? a : b);
-                    } else {
-                        // 沒有明確 State 2, 取 WIN 最大的
-                        best = withWin.reduce((a, b) => a.win > b.win ? a : b);
-                    }
+                if (useful.length > 0) {
+                    // 每個有效 Poll 結果代表一個獨立的 cascade step → 全部標記最佳
+                    useful.forEach(f => bestIds.add(f.kf.id));
                 } else {
-                    // 全部 WIN=0, 取第一張
-                    best = group.reduce((a, b) => a.kf.time < b.kf.time ? a : b);
-                }
+                    // 無 winPollStatus → 傳統 State 2 邏輯（向下相容）
+                    const withWin = group.filter(f => f.win > eps);
+                    let best = null;
 
-                bestIds.add(best.kf.id);
+                    if (withWin.length > 0) {
+                        const minBal = Math.min(...withWin.map(f => f.bal));
+                        const state2 = withWin.filter(f => Math.abs(f.bal - minBal) < eps);
+                        if (state2.length > 0) {
+                            best = state2.reduce((a, b) => a.kf.time < b.kf.time ? a : b);
+                        } else {
+                            best = withWin.reduce((a, b) => a.win > b.win ? a : b);
+                        }
+                    } else {
+                        best = group.reduce((a, b) => a.kf.time < b.kf.time ? a : b);
+                    }
+                    bestIds.add(best.kf.id);
+                }
             }
 
             const totalGroups = Object.keys(groups).length;

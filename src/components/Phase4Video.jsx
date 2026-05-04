@@ -43,8 +43,6 @@ const Phase4Video = ({
     const betROI = usePhase4Store(s => s.betROI);
     const orderIdROI = usePhase4Store(s => s.orderIdROI);
     const multiplierROI = usePhase4Store(s => s.multiplierROI);
-    const multiplierDetectMode = usePhase4Store(s => s.multiplierDetectMode);
-    const multiplierBrightnessValues = usePhase4Store(s => s.multiplierBrightnessValues);
     const ocrDecimalPlaces = usePhase4Store(s => s.ocrDecimalPlaces);
     const balDecimalPlaces = usePhase4Store(s => s.balDecimalPlaces);
     const enableBidirectional = usePhase4Store(s => s.enableBidirectional);
@@ -100,7 +98,7 @@ const Phase4Video = ({
     }, [stopLiveDetection]);
 
     // ── 操作處理 ──
-    const scanOpts = { winROI, balanceROI, betROI, orderIdROI: enableOrderId ? orderIdROI : null, multiplierROI: template?.hasMultiplierReel ? multiplierROI : null, ocrDecimalPlaces, balDecimalPlaces, multiplierDetectMode, multiplierBrightnessValues, requireStableWin: false, sliceCols: template?.cols || propGridCols || 5, hasRollingWin, enableWinTracker, enableEmptyBoardFilter };
+    const scanOpts = { winROI, balanceROI, betROI, orderIdROI: enableOrderId ? orderIdROI : null, multiplierROI: template?.hasMultiplierReel ? multiplierROI : null, ocrDecimalPlaces, balDecimalPlaces, requireStableWin: false, sliceCols: template?.cols || propGridCols || 5, hasRollingWin, enableWinTracker, enableEmptyBoardFilter };
 
     const handleStartLive = async () => {
         if (!videoRef.current || !reelROI) return;

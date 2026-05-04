@@ -37,10 +37,6 @@ const VideoPlayer = ({
     const betROI = usePhase4Store(s => s.betROI);
     const orderIdROI = usePhase4Store(s => s.orderIdROI);
     const multiplierROI = usePhase4Store(s => s.multiplierROI);
-    const multiplierDetectMode = usePhase4Store(s => s.multiplierDetectMode);
-    const setMultiplierDetectMode = usePhase4Store(s => s.setMultiplierDetectMode);
-    const multiplierBrightnessValues = usePhase4Store(s => s.multiplierBrightnessValues);
-    const setMultiplierBrightnessValues = usePhase4Store(s => s.setMultiplierBrightnessValues);
 
     // ── 本地狀態 ──
     const [isPlaying, setIsPlaying] = useState(false);
@@ -197,41 +193,6 @@ const VideoPlayer = ({
                                         <option value={2} className="bg-white text-slate-800">.2</option>
                                         <option value={3} className="bg-white text-slate-800">.3</option>
                                     </select>
-                                </SettingTooltip>
-                            )}
-                            {r.key === 'multiplier' && (
-                                <SettingTooltip
-                                    title="🎰 乘倍偵測模式"
-                                    desc="OCR：讀取文字（適用單一數字）\n亮度：比較分段亮度（適用固定選項亮起型）"
-                                    usage="x1 x2 x3 x5 排列亮起的遊戲選亮度模式"
-                                    tech="將 MULT ROI 等分 N 段，取平均亮度最高的段"
-                                    position="bottom">
-                                    <div className="flex items-center gap-1">
-                                        <select
-                                            value={multiplierDetectMode}
-                                            onChange={(e) => { e.stopPropagation(); setMultiplierDetectMode(e.target.value); }}
-                                            className="cursor-pointer h-4 text-[9px] bg-transparent border border-white/30 rounded px-0.5 outline-none"
-                                            title="偵測模式"
-                                            onClick={(e) => e.stopPropagation()}
-                                        >
-                                            <option value="ocr" className="bg-white text-slate-800">OCR</option>
-                                            <option value="brightness" className="bg-white text-slate-800">亮度</option>
-                                        </select>
-                                        {multiplierDetectMode === 'brightness' && (
-                                            <input
-                                                type="text"
-                                                value={multiplierBrightnessValues.join(',')}
-                                                onChange={(e) => {
-                                                    e.stopPropagation();
-                                                    setMultiplierBrightnessValues(e.target.value.split(',').map(s => s.trim()));
-                                                }}
-                                                className="h-4 w-16 text-[9px] bg-black/20 border border-white/30 rounded px-1 outline-none text-white placeholder:text-white/50"
-                                                placeholder="x1,x2,x3,x5"
-                                                title="分段對應倍數 (逗號分隔)"
-                                                onClick={(e) => e.stopPropagation()}
-                                            />
-                                        )}
-                                    </div>
                                 </SettingTooltip>
                             )}
                             <div className="w-2 h-2 rounded-full" style={{ backgroundColor: roiMode === r.key ? 'white' : r.hex }} />
