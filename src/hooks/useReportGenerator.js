@@ -730,6 +730,8 @@ document.getElementById('navCascadeCount').textContent = cc > 0 ? cc : '';
                     error: '',
                     spinGroupId: item.spinGroupId,
                     isSpinBest: item.isSpinBest,
+                    isCascadeMember: item.isCascadeMember || false,
+                    cascadeDeltaWin: item.cascadeDeltaWin || 0,
                     isFGSequence: item.isFGSequence || false,
                     captureDelay: item.captureDelay || 0,
                     reelStopTime: item.reelStopTime || item.time,

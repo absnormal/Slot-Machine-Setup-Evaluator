@@ -108,19 +108,21 @@ const SpinGroupList = ({
                                         <span className="ml-auto text-slate-400 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded-full shadow-sm">{group.length} 張</span>
                                         <button onClick={(e) => { 
                                             e.stopPropagation(); 
-                                            const bestKf = group.find(g => g.kf.isSpinBest)?.kf || group[group.length - 1].kf;
-                                            recognizeLocalBatch(ocrDecimalPlaces, [bestKf]); 
+                                            const bestKfs = group.filter(g => g.kf.isSpinBest).map(g => g.kf);
+                                            if (bestKfs.length === 0) bestKfs.push(group[group.length - 1].kf);
+                                            recognizeLocalBatch(ocrDecimalPlaces, bestKfs); 
                                         }}
-                                            title="本地辨識這局最佳結果"
+                                            title="本地辨識這局所有最佳盤面"
                                             className="flex items-center gap-1 px-2 py-0.5 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-full text-[10px] font-bold border border-indigo-200 transition-all active:scale-95 shadow-sm">
                                             <Monitor size={10} /> 本地
                                         </button>
                                         <button onClick={(e) => { 
                                             e.stopPropagation(); 
-                                            const bestKf = group.find(g => g.kf.isSpinBest)?.kf || group[group.length - 1].kf;
-                                            onTransferToPhase3([bestKf]); 
+                                            const bestKfs = group.filter(g => g.kf.isSpinBest).map(g => g.kf);
+                                            if (bestKfs.length === 0) bestKfs.push(group[group.length - 1].kf);
+                                            onTransferToPhase3(bestKfs); 
                                         }}
-                                            title="送這局最佳結果到 Phase 3"
+                                            title="送這局所有最佳盤面到 Phase 3"
                                             className="flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-full text-[10px] font-bold border border-emerald-200 transition-all active:scale-95 shadow-sm">
                                             <Send size={10} /> P3
                                         </button>

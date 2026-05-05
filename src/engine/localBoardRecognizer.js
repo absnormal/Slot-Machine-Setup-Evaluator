@@ -317,7 +317,7 @@ export async function buildReferenceIndex(symbolImagesAll) {
                 const gray = toGray(imageData);
                 const eqGray = histogramEqualize(gray);
                 const hog = computeHOG(eqGray);
-                refList.push({ hog, gray, rgb: imageData });
+                refList.push({ hog, gray, eqGray, rgb: imageData });
             } catch (e) {
                 console.warn(`[LocalRecognizer] 載入符號 ${symbol} 參考圖失敗`, e);
             }
@@ -509,13 +509,15 @@ function cleanEffectPixels(imageData) {
 
 const HOG_WEIGHT = 0.85;   // 形狀權重
 const COLOR_WEIGHT = 0.15; // 色彩權重（降低以減少背景色干擾）
+const TIEBREAK_THRESHOLD = 0.03; // 融合分差 < 3% 視為平手，啟動 SSIM 仲裁
 
 /**
- * 辨識單一格子（清洗特效 → 融合評分）
+ * 辨識單一格子（清洗特效 → 融合評分 → SSIM 仲裁）
  *
  * 1. 先清洗 RGB 原圖（移除閃電/發光等異常亮像素）
  * 2. 在清洗後的圖上跑 HOG（形狀）+ Hue（色彩，僅中央 60%）
  * 3. 融合評分 = HOG × 0.85 + Color × 0.15
+ * 4. 若前幾名分數接近（差 < 3%），啟動 SSIM 逐像素結構比對仲裁
  */
 export function matchCell(cellImageData, referenceIndex) {
     // 清洗特效像素
@@ -525,19 +527,46 @@ export function matchCell(cellImageData, referenceIndex) {
     const cellEqGray = histogramEqualize(cellGray);
     const cellHOG = computeHOG(cellEqGray);
 
-    let bestSymbol = '?';
-    let bestScore = -1;
+    // Round 1: HOG + Hue 融合 — 收集每個符號的最佳分數
+    const candidates = [];
     for (const [symbol, refList] of referenceIndex) {
+        let bestFused = -1;
+        let bestRef = null;
         for (const ref of refList) {
             const hogScore = cosineSimilarity(cellHOG, ref.hog);
             const hueDist = computeHueHistDistance(cleanedImg, ref.rgb);
             const colorSim = 1 - hueDist;
             const fused = hogScore * HOG_WEIGHT + colorSim * COLOR_WEIGHT;
-
-            if (fused > bestScore) {
-                bestScore = fused;
-                bestSymbol = symbol;
+            if (fused > bestFused) {
+                bestFused = fused;
+                bestRef = ref;
             }
+        }
+        if (bestRef) candidates.push({ symbol, fused: bestFused, ref: bestRef });
+    }
+
+    candidates.sort((a, b) => b.fused - a.fused);
+
+    if (candidates.length === 0) {
+        return { symbol: '?', confidence: 0, rawScore: 0 };
+    }
+
+    let bestSymbol = candidates[0].symbol;
+    let bestScore = candidates[0].fused;
+
+    // Round 2: SSIM Tiebreaker — 分數接近時用結構比對仲裁
+    if (candidates.length >= 2) {
+        const tieGroup = candidates.filter(c => candidates[0].fused - c.fused < TIEBREAK_THRESHOLD);
+        if (tieGroup.length > 1 && tieGroup[0].symbol !== tieGroup[1].symbol) {
+            let bestSSIM = -1;
+            for (const c of tieGroup) {
+                const ssim = computeSSIM(cellEqGray, c.ref.eqGray || c.ref.gray);
+                if (ssim > bestSSIM) {
+                    bestSSIM = ssim;
+                    bestSymbol = c.symbol;
+                }
+            }
+            console.log(`🔬 [SSIM Tiebreaker] ${tieGroup.map(c => `${c.symbol}(${c.fused.toFixed(3)})`).join(' vs ')} → ${bestSymbol} (SSIM=${bestSSIM.toFixed(3)})`);
         }
     }
 
