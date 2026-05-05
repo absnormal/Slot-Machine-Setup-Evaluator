@@ -26,9 +26,6 @@ export function useSmartDedup({ setCandidates, setTemplateMessage }) {
         setCandidates(prev => {
             if (prev.length <= 1) return prev.map(c => ({ ...c, spinGroupId: 0, isSpinBest: true }));
 
-            // 自動判定：候選列表中有 isCascadeCapture 標記的幀 → 使用 cascade 合併策略
-            const hasCascadeFrames = prev.some(c => c.isCascadeCapture);
-            const isCascadeMode = hasCascadeFrames;
             const eps = 0.5; // OCR 容差
             const parse = (v) => parseFloat(v) || 0;
 
@@ -196,10 +193,7 @@ export function useSmartDedup({ setCandidates, setTemplateMessage }) {
 
             let foldedGroups = [];
 
-            if (!isCascadeMode) {
-                // 完全不做 Cascade 合併
-                foldedGroups = finalGroups.map(g => [...g]);
-            } else {
+            {
                 let currentCascade = null;
 
                 for (let i = 0; i < finalGroups.length; i++) {
@@ -283,9 +277,26 @@ export function useSmartDedup({ setCandidates, setTemplateMessage }) {
                     continue;
                 }
 
-                // 🔗 [Cascade Delta WIN] 連鎖序列：按 WIN 去重 → 計算 delta → 只保留 delta > 0 的盤面
-                const isCascadeGroup = group.some(f => f.isCascadeMember);
+                // 🔗 [Cascade Delta WIN] 自動偵測 cascade 模式：
+                //   1. 由 cascade merge 明確標記的 isCascadeMember
+                //   2. 或同 BAL + 多個不同 WIN + WIN 遞增（orderId 合併導致 merge 無法標記的情況）
+                const isCascadeGroup = group.some(f => f.isCascadeMember) || (() => {
+                    if (group.length < 2) return false;
+                    const sorted = [...group].sort((a, b) => a.kf.time - b.kf.time);
+                    const baseBal = sorted[0].bal;
+                    // 所有幀 BAL 凍結 + 存在不同的 WIN 值 → cascade 模式
+                    const allSameBal = sorted.every(f => Math.abs(f.bal - baseBal) < eps);
+                    const winValues = new Set(sorted.map(f => Math.round(f.win * 100)));
+                    return allSameBal && winValues.size >= 2;
+                })();
+
                 if (isCascadeGroup) {
+                    // 補標 isCascadeMember（讓 useSpinGroupAnalysis 能辨識）
+                    group.forEach(f => {
+                        f.isCascadeMember = true;
+                        spinGroupMap[f.kf.id].isCascadeMember = true;
+                    });
+
                     // Step 1: 按時間排序
                     const sorted = [...group].sort((a, b) => a.kf.time - b.kf.time);
 
