@@ -169,7 +169,7 @@ export function useAutoRecognition({
                 const gMultText = String((mo.multiplier ? ocrD.multiplier : null) || gridResult.multiplier || '');
                 const gBetText = (mo.bet ? ocrD.bet : null) || betText;
                 const betValue = gridResult.bet || parseFloat(gBetText) || 100;
-                
+
                 let multVal = 1;
                 let finalMultText = '';
                 if (template?.hasMultiplierReel && gMultText) {
@@ -252,10 +252,10 @@ export function useAutoRecognition({
             isManualSelection
                 ? (c.isSpinBest !== false && c.ocrData?.win && parseFloat(c.ocrData.win) > 0)
                 : ((c.status === 'pending' || c.status === 'error') &&
-                   c.isSpinBest !== false &&
-                   c.ocrData?.win && parseFloat(c.ocrData.win) > 0)
+                    c.isSpinBest !== false &&
+                    c.ocrData?.win && parseFloat(c.ocrData.win) > 0)
         );
-        
+
         if (toProcess.length === 0) {
             setTemplateMessage?.('沒有需要辨識的贏分盤面（僅辨識 WIN > 0 的幀）');
             return;
@@ -303,7 +303,7 @@ export function useAutoRecognition({
 
             try {
                 const targetCanvas = (kf.useWinFrame !== false) ? (kf.winPollCanvas || kf.canvas) : kf.canvas;
-                
+
                 if (!targetCanvas) {
                     throw new Error('找不到對應的截圖畫面 (可能為已匯入之歷史紀錄且未包含圖片)');
                 }
@@ -319,7 +319,7 @@ export function useAutoRecognition({
                 if (template.hasMultiplierReel && rois.multiplierROI) {
                     multiplierText = await detectLitMultiplier(targetCanvas, rois.multiplierROI, ocrWorkerRef.current) || '';
                 }
-                
+
                 const [winText, balanceText, betText] = await Promise.all([
                     recognizeROIText(targetCanvas, rois.winROI, ocrWorkerRef.current, ocrDecimalPlaces, true),
                     recognizeROIText(targetCanvas, rois.balanceROI, ocrWorkerRef.current, ocrDecimalPlaces, true),
@@ -332,7 +332,7 @@ export function useAutoRecognition({
                 const finalMultText = String((mo.multiplier ? ocrD.multiplier : null) || multiplierText || '');
                 const finalBetText = (mo.bet ? ocrD.bet : null) || betText;
                 const betValue = parseFloat(finalBetText) || 100;
-                
+
                 let multVal = 1;
                 if (template?.hasMultiplierReel && finalMultText) {
                     multVal = parseFloat(finalMultText.replace(/[^0-9.]/g, '')) || 1;
