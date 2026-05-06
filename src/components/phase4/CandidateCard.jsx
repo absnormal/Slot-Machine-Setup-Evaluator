@@ -109,9 +109,10 @@ const CandidateCard = ({
                             )}
                         </div>
                         {(() => {
-                            const ocrWin = kf.ocrData ? Math.floor(parseFloat(kf.ocrData.win) || 0) : 0;
-                            const aiWin = kf.recognitionResult ? Math.floor(parseFloat(kf.recognitionResult.totalWin) || 0) : 0;
-                            const isWinMatch = ocrWin === aiWin;
+                            const rr = kf.recognitionResult;
+                            const compareWin = rr?.expectedWin !== undefined ? rr.expectedWin : (kf.ocrData ? parseFloat(kf.ocrData.win) || 0 : 0);
+                            const aiWin = rr ? Math.floor(parseFloat(rr.totalWin) || 0) : 0;
+                            const isWinMatch = Math.floor(compareWin) === aiWin;
                             const hasResult = kf.status === 'recognized' && kf.recognitionResult;
 
                             let badgeClass = 'bg-slate-100 text-slate-500';
@@ -212,14 +213,18 @@ const CandidateCard = ({
                     {kf.status === 'recognized' && kf.recognitionResult && (
                         <div className="mt-1 pt-1 border-t border-slate-100">
                             {(() => {
-                                const ocrWin = kf.ocrData ? Math.floor(parseFloat(kf.ocrData.win) || 0) : 0;
-                                const aiWin = Math.floor(parseFloat(kf.recognitionResult.totalWin) || 0);
-                                const isWinMatch = ocrWin === aiWin;
+                                const rr = kf.recognitionResult;
+                                const compareWin = rr?.expectedWin !== undefined ? rr.expectedWin : (kf.ocrData ? parseFloat(kf.ocrData.win) || 0 : 0);
+                                const aiWin = Math.floor(parseFloat(rr?.totalWin) || 0);
+                                const displayCompare = Math.floor(compareWin);
+                                const isWinMatch = displayCompare === aiWin;
 
                                 if (isWinMatch) {
                                     return (
                                         <div className="flex items-center justify-between leading-none mt-0.5">
-                                            <span className="text-[11px] text-slate-400">結算贏分</span>
+                                            <span className="text-[11px] text-slate-400">
+                                                {rr.isCascadeStep ? '結算贏分 (△)' : '結算贏分'}
+                                            </span>
                                             <span className={`text-[14px] font-bold ${aiWin > 0 ? 'text-emerald-600' : 'text-slate-400'}`}>
                                                 {aiWin.toLocaleString()}
                                             </span>
@@ -232,7 +237,9 @@ const CandidateCard = ({
                                                 <span className="text-[11px] text-rose-500 font-bold">⚠️ 算分異常</span>
                                             </div>
                                             <div className="flex items-center justify-between text-[11px] leading-tight">
-                                                <span className="text-slate-500">OCR: <span className="font-bold text-slate-700">{ocrWin}</span></span>
+                                                <span className="text-slate-500">
+                                                    {rr.isCascadeStep ? '△WIN' : 'OCR'}: <span className="font-bold text-slate-700">{displayCompare}</span>
+                                                </span>
                                                 <span className="text-rose-600">AI: <span className="font-bold">{aiWin}</span></span>
                                             </div>
                                         </div>

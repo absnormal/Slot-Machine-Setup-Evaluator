@@ -145,6 +145,7 @@ const Phase4Video = ({
     const errorCount = candidates.filter(c => c.status === 'error').length;
     const winPendingCount = candidates.filter(c =>
         (c.status === 'pending' || c.status === 'error') &&
+        c.isSpinBest !== false &&
         c.ocrData?.win && parseFloat(c.ocrData.win) > 0
     ).length;
 

@@ -109,9 +109,14 @@ export function useReportGenerator() {
                 if (!groups.has(gid)) groups.set(gid, []);
                 groups.get(gid).push(c);
             });
-            spins = Array.from(groups.values()).map(group => {
-                // 如果有設定最佳幀就用最佳幀，否則取最後一個（或是取第一張）
-                return group.find(c => c.isSpinBest) || group[0];
+            spins = Array.from(groups.values()).flatMap(group => {
+                // cascade 群組：每個 isSpinBest 都獨立輸出
+                const isCascade = group.some(c => c.isCascadeMember);
+                if (isCascade) {
+                    return group.filter(c => c.isSpinBest).sort((a, b) => a.time - b.time);
+                }
+                // 普通局：只取最佳幀
+                return [group.find(c => c.isSpinBest) || group[0]];
             }).sort((a, b) => a.time - b.time);
         } else {
             spins = sorted;
@@ -145,7 +150,11 @@ export function useReportGenerator() {
 
             let continuity = '', contClass = '';
             if (bet > 0) {
-                if (currentBase === null) {
+                if (c.isCascadeMember) {
+                    // Cascade 步驟：BAL 凍結中，跳過斷層判斷，更新 currentBase 用最高累計 WIN
+                    continuity = '🔗 連鎖'; contClass = 'ok';
+                    currentBase = bal + ocrWin;
+                } else if (currentBase === null) {
                     continuity = '首局'; contClass = 'first';
                     currentBase = bal + ocrWin;
                 } else {
@@ -168,10 +177,12 @@ export function useReportGenerator() {
             }
 
             if (aiWin !== null) {
-                if (aiWin === ocrWin) {
+                // cascade 用 expectedWin，非 cascade 用 ocrWin
+                const compareBase = (aiData?.expectedWin !== undefined) ? aiData.expectedWin : ocrWin;
+                if (Math.floor(aiWin) === Math.floor(compareBase)) {
                     continuity += `<br/><span style="color:#059669; font-size:10px;">✓ AI吻合</span>`;
                 } else {
-                    continuity += `<br/><span style="color:#dc2626; font-size:10px; font-weight:bold;">⚠ AI異常</span>`;
+                    continuity += `<br/><span style="color:#dc2626; font-size:10px; font-weight:bold;">⚠ AI異常 (${aiData?.isCascadeStep ? '△' : 'OCR'}${Math.floor(compareBase)} vs AI${Math.floor(aiWin)})</span>`;
                     contClass = 'break';
                 }
             }
@@ -226,7 +237,8 @@ export function useReportGenerator() {
                     
                     const betValue = parseFloat(aiData.betValue) || parseFloat(c.ocrData?.bet) || 0;
                     if (betValue > 0) {
-                        const isMatch = (aiWin !== null && aiWin === ocrWin);
+                        const compareWin = aiData?.expectedWin !== undefined ? aiData.expectedWin : ocrWin;
+                        const isMatch = (aiWin !== null && Math.floor(aiWin) === Math.floor(compareWin));
                         if (!stat.counts[d.count].hitBets.has(betValue)) {
                             stat.counts[d.count].hitBets.set(betValue, { matched: false, mismatched: false });
                         }
@@ -273,10 +285,10 @@ export function useReportGenerator() {
                 <td>${ocr.orderId ? `<span title="來源：${c.winPollCanvas ? 'WIN 特工幀' : 'Reel Stop 幀'}">${ocr.orderId} <span style="color:${c.winPollCanvas ? '#f59e0b' : '#10b981'};font-size:8px;">●</span></span>` : '-'}</td>
                 <td class="num"><span title="來源：Reel Stop 幀（pre-WIN）">${ocr.balance || '-'} ${ocr.balance ? '<span style="color:#10b981;font-size:8px;">●</span>' : ''}</span>${manualBal}</td>
                 <td class="num">${ocr.bet || '-'}${manualBet}</td>
-                <td class="num" style="color:#f43f5e;">${ocr.multiplier !== undefined && ocr.multiplier !== '' ? '×' + ocr.multiplier : '-'}${manualMult}</td>
+                <td class="num" style="color:#f43f5e;">${ocr.multiplier !== undefined && ocr.multiplier !== '' ? '×' + String(ocr.multiplier).replace(/^x/i, '') : '-'}${manualMult}</td>
                 <td class="num ${winClass}"><span title="來源：${c.winPollCanvas ? 'WIN 特工幀' : 'Reel Stop 幀'}">${ocr.win || '0'} ${(ocr.win && parseFloat(ocr.win) > 0 && c.winPollCanvas) ? '<span style="color:#f59e0b;font-size:8px;">●</span>' : ''}</span>${manualWin}</td>
                 <td class="cont ${contClass}">${continuity}</td>
-                <td class="num ${aiWinClass}">${aiWin !== null ? `<span style="${aiWin !== ocrWin ? 'color:#dc2626;border-bottom:2px solid #dc2626;' : ''}">${aiWin}</span>` : '-'}</td>
+                <td class="num ${aiWinClass}">${aiWin !== null ? `<span style="${Math.floor(aiWin) !== Math.floor(aiData?.expectedWin !== undefined ? aiData.expectedWin : ocrWin) ? 'color:#dc2626;border-bottom:2px solid #dc2626;' : ''}">${aiWin}</span>` : '-'}</td>
                 <td class="lines-cell-container">${linesHtml}</td>
                 <td class="grid-cell-container">${gridHtml}</td>
                 <td class="memo">${errorStr}</td>

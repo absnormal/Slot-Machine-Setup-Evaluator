@@ -164,28 +164,42 @@ export function useAutoRecognition({
                 ]);
 
                 // ── C. 結算 ──
-                const betValue = gridResult.bet || parseFloat(betText) || 100;
+                const mo = kf.manualOverrides || {};
+                const ocrD = kf.ocrData || {};
+                const gMultText = String((mo.multiplier ? ocrD.multiplier : null) || gridResult.multiplier || '');
+                const gBetText = (mo.bet ? ocrD.bet : null) || betText;
+                const betValue = gridResult.bet || parseFloat(gBetText) || 100;
                 
                 let multVal = 1;
                 let finalMultText = '';
-                if (template?.hasMultiplierReel && gridResult.multiplier) {
-                    multVal = parseFloat(gridResult.multiplier.replace(/[^0-9.]/g, '')) || 1;
-                    finalMultText = gridResult.multiplier.startsWith('x') ? gridResult.multiplier : `x${gridResult.multiplier}`;
+                if (template?.hasMultiplierReel && gMultText) {
+                    multVal = parseFloat(gMultText.replace(/[^0-9.]/g, '')) || 1;
+                    finalMultText = gMultText.startsWith('x') ? gMultText : `x${gMultText}`;
                 }
 
                 const { results: settlement } = computeGridResults(template, gridResult.grid, betValue, { enableBidirectional, globalMultiplier: multVal });
+
+                // 連鎖盤面：OCR WIN 是累計值，辨識引擎算的是該步驟獨立贏分
+                const isCascade = !!kf.isCascadeMember;
+                const finalWinText = (mo.win ? ocrD.win : null) || winText;
+                const finalBalText = (mo.balance ? ocrD.balance : null) || balanceText;
+                const expectedWin = isCascade && kf.cascadeDeltaWin !== undefined
+                    ? kf.cascadeDeltaWin
+                    : parseFloat(finalWinText) || 0;
 
                 updateCandidate(kf.id, {
                     status: 'recognized',
                     recognitionResult: {
                         grid: gridResult.grid,
-                        win: winText,
-                        balance: balanceText,
-                        bet: betText,
+                        win: finalWinText,
+                        balance: finalBalText,
+                        bet: gBetText,
                         multiplier: finalMultText,
                         betValue,
                         settlement,
-                        totalWin: settlement?.totalWin || 0
+                        totalWin: settlement?.totalWin || 0,
+                        expectedWin,
+                        isCascadeStep: isCascade,
                     },
                     error: ''
                 });
@@ -231,11 +245,15 @@ export function useAutoRecognition({
             return;
         }
 
-        // 如果是單張指定辨識（candidates.length === 1），則放寬條件強制辨識
+        // 如果是指定辨識（手動點按鈕送入），放寬條件允許重新辨識
+        // 僅全自動批次辨識時才嚴格過濾 status 和 WIN > 0
+        const isManualSelection = candidates.length <= 10; // 群組按鈕送入的幀數通常較少
         const toProcess = candidates.length === 1 ? candidates : candidates.filter(c =>
-            (c.status === 'pending' || c.status === 'error') &&
-            c.isSpinBest !== false &&
-            c.ocrData?.win && parseFloat(c.ocrData.win) > 0
+            isManualSelection
+                ? (c.isSpinBest !== false && c.ocrData?.win && parseFloat(c.ocrData.win) > 0)
+                : ((c.status === 'pending' || c.status === 'error') &&
+                   c.isSpinBest !== false &&
+                   c.ocrData?.win && parseFloat(c.ocrData.win) > 0)
         );
         
         if (toProcess.length === 0) {
@@ -308,11 +326,16 @@ export function useAutoRecognition({
                     recognizeROIText(targetCanvas, rois.betROI, ocrWorkerRef.current, ocrDecimalPlaces, false)
                 ]);
 
-                const betValue = parseFloat(betText) || 100;
+                // 手動修改的數值優先於 OCR（manualOverrides 存布林標記，實際值在 ocrData）
+                const mo = kf.manualOverrides || {};
+                const ocrD = kf.ocrData || {};
+                const finalMultText = String((mo.multiplier ? ocrD.multiplier : null) || multiplierText || '');
+                const finalBetText = (mo.bet ? ocrD.bet : null) || betText;
+                const betValue = parseFloat(finalBetText) || 100;
                 
                 let multVal = 1;
-                if (template?.hasMultiplierReel && multiplierText) {
-                    multVal = parseFloat(multiplierText.replace(/[^0-9.]/g, '')) || 1;
+                if (template?.hasMultiplierReel && finalMultText) {
+                    multVal = parseFloat(finalMultText.replace(/[^0-9.]/g, '')) || 1;
                 }
 
                 const { results: settlement } = computeGridResults(template, grid, betValue, { enableBidirectional, globalMultiplier: multVal });
@@ -321,17 +344,28 @@ export function useAutoRecognition({
                 const allConf = details.flat().map(d => d.confidence);
                 const avgConf = allConf.reduce((s, v) => s + v, 0) / allConf.length;
 
+                // 連鎖盤面：OCR WIN 是累計值，辨識引擎算的是該步驟獨立贏分
+                // 用 cascadeDeltaWin 作為正確的比對基準
+                const isCascade = !!kf.isCascadeMember;
+                const finalWinText = (mo.win ? ocrD.win : null) || winText;
+                const finalBalText = (mo.balance ? ocrD.balance : null) || balanceText;
+                const expectedWin = isCascade && kf.cascadeDeltaWin !== undefined
+                    ? kf.cascadeDeltaWin
+                    : parseFloat(finalWinText) || 0;
+
                 updateCandidate(kf.id, {
                     status: 'recognized',
                     recognitionResult: {
                         grid,
-                        win: winText,
-                        balance: balanceText,
-                        bet: betText,
-                        multiplier: multiplierText ? (multiplierText.startsWith('x') ? multiplierText : `x${multiplierText}`) : '',
+                        win: finalWinText,
+                        balance: finalBalText,
+                        bet: finalBetText,
+                        multiplier: finalMultText ? (finalMultText.startsWith('x') ? finalMultText : `x${finalMultText}`) : '',
                         betValue,
                         settlement,
                         totalWin: settlement?.totalWin || 0,
+                        expectedWin,
+                        isCascadeStep: isCascade,
                         localMatch: true,
                         avgConfidence: parseFloat(avgConf.toFixed(1)),
                         matchDetails: details

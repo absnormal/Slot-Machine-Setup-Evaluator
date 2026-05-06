@@ -36,6 +36,7 @@ export function useSmartDedup({ setCandidates, setTemplateMessage }) {
                 win: parse(kf.ocrData?.win),
                 bal: parse(kf.ocrData?.balance),
                 bet: parse(kf.ocrData?.bet),
+                isCascadeMember: !!kf.isCascadeMember, // 保留匯入時的 cascade 標記
             }));
 
             // 【防禦源頭：淨化贏分殘影 (Ghost Win Purify)】
@@ -280,14 +281,16 @@ export function useSmartDedup({ setCandidates, setTemplateMessage }) {
                 // 🔗 [Cascade Delta WIN] 自動偵測 cascade 模式：
                 //   1. 由 cascade merge 明確標記的 isCascadeMember
                 //   2. 或同 BAL + 多個不同 WIN + WIN 遞增（orderId 合併導致 merge 無法標記的情況）
-                const isCascadeGroup = group.some(f => f.isCascadeMember) || (() => {
+                const hasCascadeFlag = group.some(f => f.isCascadeMember);
+                const isCascadeGroup = hasCascadeFlag || (() => {
                     if (group.length < 2) return false;
                     const sorted = [...group].sort((a, b) => a.kf.time - b.kf.time);
                     const baseBal = sorted[0].bal;
-                    // 所有幀 BAL 凍結 + 存在不同的 WIN 值 → cascade 模式
-                    const allSameBal = sorted.every(f => Math.abs(f.bal - baseBal) < eps);
+                    // 允許最後 1 張幀有不同 BAL（結算幀：餘額已加上 WIN）
+                    const frozenCount = sorted.filter(f => Math.abs(f.bal - baseBal) < eps).length;
+                    const hasMostlyFrozenBal = frozenCount >= sorted.length - 1;
                     const winValues = new Set(sorted.map(f => Math.round(f.win * 100)));
-                    return allSameBal && winValues.size >= 2;
+                    return hasMostlyFrozenBal && winValues.size >= 2;
                 })();
 
                 if (isCascadeGroup) {

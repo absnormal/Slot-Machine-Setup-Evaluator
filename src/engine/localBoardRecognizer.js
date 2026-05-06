@@ -11,7 +11,7 @@
 
 import { parseShorthandValue } from '../utils/symbolUtils';
 
-const MATCH_SIZE = 64; // 統一縮放到 64x64 做比對
+const MATCH_SIZE = 128; // 統一縮放到 128x128 做比對（提高解析度以區分 A/K/Q/J 等相似符號）
 
 // ═══════════════════════════════════════════
 // ── 灰階轉換 ──
@@ -284,13 +284,49 @@ function computeHueHistDistance(imgDataA, imgDataB) {
 }
 
 // ═══════════════════════════════════════════
+// ── 中心裁切 HOG ──
+// ═══════════════════════════════════════════
+
+const CENTER_MARGIN = 0.20; // 每邊裁切 20%，保留中央 60%
+
+/**
+ * 對 ImageData 取中心 60% 區域，縮放到 MATCH_SIZE 後計算 HOG
+ * 用於去除外框裝飾，專注比對符號本體
+ */
+function computeCenterCropHOG(imageData) {
+    const W = imageData.width;
+    const H = imageData.height;
+    const x0 = Math.floor(W * CENTER_MARGIN);
+    const y0 = Math.floor(H * CENTER_MARGIN);
+    const cw = Math.floor(W * (1 - 2 * CENTER_MARGIN));
+    const ch = Math.floor(H * (1 - 2 * CENTER_MARGIN));
+
+    // 把中心區域畫到 MATCH_SIZE canvas 上
+    const srcCanvas = document.createElement('canvas');
+    srcCanvas.width = W;
+    srcCanvas.height = H;
+    srcCanvas.getContext('2d').putImageData(imageData, 0, 0);
+
+    const cropCanvas = document.createElement('canvas');
+    cropCanvas.width = MATCH_SIZE;
+    cropCanvas.height = MATCH_SIZE;
+    const cropCtx = cropCanvas.getContext('2d');
+    cropCtx.drawImage(srcCanvas, x0, y0, cw, ch, 0, 0, MATCH_SIZE, MATCH_SIZE);
+
+    const cropData = cropCtx.getImageData(0, 0, MATCH_SIZE, MATCH_SIZE);
+    const gray = toGray(cropData);
+    const eqGray = histogramEqualize(gray);
+    return computeHOG(eqGray);
+}
+
+// ═══════════════════════════════════════════
 // ── 參考索引建立 ──
 // ═══════════════════════════════════════════
 
 /**
- * 預處理符號參考圖：計算 HOG 特徵向量 + 灰階陣列
+ * 預處理符號參考圖：計算 HOG 特徵向量 + 中心裁切 HOG + 灰階陣列
  * @param {Object} symbolImagesAll - { symbolName: [dataUrl1, dataUrl2, ...], ... }
- * @returns {Promise<Map<string, { hog: Float32Array, gray: Uint8Array }[]>>}
+ * @returns {Promise<Map<string, { hog, centerHog, gray, eqGray, rgb }[]>>}
  */
 export async function buildReferenceIndex(symbolImagesAll) {
     const index = new Map();
@@ -317,7 +353,8 @@ export async function buildReferenceIndex(symbolImagesAll) {
                 const gray = toGray(imageData);
                 const eqGray = histogramEqualize(gray);
                 const hog = computeHOG(eqGray);
-                refList.push({ hog, gray, eqGray, rgb: imageData });
+                const centerHog = computeCenterCropHOG(imageData);
+                refList.push({ hog, centerHog, gray, eqGray, rgb: imageData });
             } catch (e) {
                 console.warn(`[LocalRecognizer] 載入符號 ${symbol} 參考圖失敗`, e);
             }
@@ -328,7 +365,7 @@ export async function buildReferenceIndex(symbolImagesAll) {
     }
 
     const totalRefs = [...index.values()].reduce((s, v) => s + v.length, 0);
-    console.log(`[LocalRecognizer] HOG 參考索引建立完成：${index.size} 個符號，共 ${totalRefs} 張參考圖`);
+    console.log(`[LocalRecognizer] HOG 參考索引建立完成：${index.size} 個符號，共 ${totalRefs} 張參考圖（含中心裁切 HOG）`);
     return index;
 }
 
@@ -507,17 +544,17 @@ function cleanEffectPixels(imageData) {
 // ── 融合比對 ──
 // ═══════════════════════════════════════════
 
-const HOG_WEIGHT = 0.85;   // 形狀權重
-const COLOR_WEIGHT = 0.15; // 色彩權重（降低以減少背景色干擾）
+const HOG_WEIGHT = 0.55;        // 全圖形狀權重
+const CENTER_HOG_WEIGHT = 0.30; // 中心裁切形狀權重（去除外框裝飾，專注符號本體）
+const COLOR_WEIGHT = 0.15;      // 色彩權重
 const TIEBREAK_THRESHOLD = 0.03; // 融合分差 < 3% 視為平手，啟動 SSIM 仲裁
 
 /**
- * 辨識單一格子（清洗特效 → 融合評分 → SSIM 仲裁）
+ * 辨識單一格子（清洗特效 → 三通道融合評分 → SSIM 仲裁）
  *
- * 1. 先清洗 RGB 原圖（移除閃電/發光等異常亮像素）
- * 2. 在清洗後的圖上跑 HOG（形狀）+ Hue（色彩，僅中央 60%）
- * 3. 融合評分 = HOG × 0.85 + Color × 0.15
- * 4. 若前幾名分數接近（差 < 3%），啟動 SSIM 逐像素結構比對仲裁
+ * 1. 清洗特效像素
+ * 2. 全圖 HOG（形狀 55%）+ 中心裁切 HOG（符號本體 30%）+ Hue（色彩 15%）
+ * 3. 若前幾名接近，啟動 SSIM 仲裁
  */
 export function matchCell(cellImageData, referenceIndex) {
     // 清洗特效像素
@@ -526,55 +563,93 @@ export function matchCell(cellImageData, referenceIndex) {
     const cellGray = toGray(cleanedImg);
     const cellEqGray = histogramEqualize(cellGray);
     const cellHOG = computeHOG(cellEqGray);
+    const cellCenterHOG = computeCenterCropHOG(cleanedImg);
 
-    // Round 1: HOG + Hue 融合 — 收集每個符號的最佳分數
+    // Round 1: 全圖 HOG + 中心 HOG + Hue 融合
     const candidates = [];
     for (const [symbol, refList] of referenceIndex) {
         let bestFused = -1;
+        let bestHog = -1;
+        let bestCenter = -1;
+        let bestHue = -1;
         let bestRef = null;
         for (const ref of refList) {
             const hogScore = cosineSimilarity(cellHOG, ref.hog);
+            const centerScore = ref.centerHog ? cosineSimilarity(cellCenterHOG, ref.centerHog) : hogScore;
             const hueDist = computeHueHistDistance(cleanedImg, ref.rgb);
             const colorSim = 1 - hueDist;
-            const fused = hogScore * HOG_WEIGHT + colorSim * COLOR_WEIGHT;
+            const fused = hogScore * HOG_WEIGHT + centerScore * CENTER_HOG_WEIGHT + colorSim * COLOR_WEIGHT;
             if (fused > bestFused) {
                 bestFused = fused;
+                bestHog = hogScore;
+                bestCenter = centerScore;
+                bestHue = colorSim;
                 bestRef = ref;
             }
         }
-        if (bestRef) candidates.push({ symbol, fused: bestFused, ref: bestRef });
+        if (bestRef) candidates.push({ symbol, fused: bestFused, hog: bestHog, center: bestCenter, hue: bestHue, ref: bestRef });
     }
 
     candidates.sort((a, b) => b.fused - a.fused);
 
     if (candidates.length === 0) {
-        return { symbol: '?', confidence: 0, rawScore: 0 };
+        return { symbol: '?', confidence: 0, rawScore: 0, diag: null };
     }
 
     let bestSymbol = candidates[0].symbol;
     let bestScore = candidates[0].fused;
+    let tiebreakLog = null;
 
     // Round 2: SSIM Tiebreaker — 分數接近時用結構比對仲裁
+    // 守門規則：SSIM 要改判 HOG 勝者時，需滿足以下任一條件：
+    //   a. 絕對分數 >= 0.4（高信心）
+    //   b. SSIM 差距 >= 0.15（相對明確差異）
+    const SSIM_OVERRIDE_MIN = 0.4;
+    const SSIM_GAP_MIN = 0.15;
     if (candidates.length >= 2) {
+        const hogWinner = candidates[0].symbol;
         const tieGroup = candidates.filter(c => candidates[0].fused - c.fused < TIEBREAK_THRESHOLD);
         if (tieGroup.length > 1 && tieGroup[0].symbol !== tieGroup[1].symbol) {
             let bestSSIM = -1;
+            let ssimWinner = null;
+            const ssimResults = [];
             for (const c of tieGroup) {
-                const ssim = computeSSIM(cellEqGray, c.ref.eqGray || c.ref.gray);
-                if (ssim > bestSSIM) {
-                    bestSSIM = ssim;
-                    bestSymbol = c.symbol;
+                const refList = referenceIndex.get(c.symbol) || [c.ref];
+                let maxSSIM = -1;
+                for (const ref of refList) {
+                    const ssim = computeSSIM(cellGray, ref.gray);
+                    if (ssim > maxSSIM) maxSSIM = ssim;
+                }
+                ssimResults.push({ symbol: c.symbol, ssim: maxSSIM, fused: c.fused });
+                if (maxSSIM > bestSSIM) {
+                    bestSSIM = maxSSIM;
+                    ssimWinner = c.symbol;
                 }
             }
-            console.log(`🔬 [SSIM Tiebreaker] ${tieGroup.map(c => `${c.symbol}(${c.fused.toFixed(3)})`).join(' vs ')} → ${bestSymbol} (SSIM=${bestSSIM.toFixed(3)})`);
+
+            // 計算 SSIM 勝者與 HOG 勝者的分差
+            const hogWinnerSSIM = ssimResults.find(r => r.symbol === hogWinner)?.ssim ?? -Infinity;
+            const ssimGap = bestSSIM - hogWinnerSSIM;
+
+            if (ssimWinner === hogWinner || bestSSIM >= SSIM_OVERRIDE_MIN || ssimGap >= SSIM_GAP_MIN) {
+                // 同方向確認 或 SSIM 信心足夠 或 差距明確 → 採用 SSIM 結果
+                bestSymbol = ssimWinner;
+            }
+            // else: SSIM 要改判但分數太低且差距不夠 → 維持 HOG 原判定
+
+            tiebreakLog = ssimResults;
         }
     }
+
+    // 組裝診斷資料（Top 3 + tiebreaker）
+    const top3 = candidates.slice(0, 3).map(c => ({ sym: c.symbol, F: c.fused, H: c.hog, Ctr: c.center, C: c.hue }));
 
     const confidence = Math.max(0, Math.min(100, bestScore * 100));
     return {
         symbol: bestSymbol,
         confidence: parseFloat(confidence.toFixed(1)),
-        rawScore: parseFloat(bestScore.toFixed(3))
+        rawScore: parseFloat(bestScore.toFixed(3)),
+        diag: { top3, tiebreak: tiebreakLog }
     };
 }
 
@@ -676,8 +751,36 @@ export async function recognizeBoard(boardCanvas, reelROI, gridRows, gridCols, r
         }
     }
 
+    // ── 結構化診斷輸出 ──
     console.log(`=== 本地辨識結果 ===`);
     console.table(grid);
+
+    // 診斷 grid：跟盤面同形狀，每格顯示 "winner(分數) vs runner-up(分數)"
+    const diagGrid = [];
+    const ssimLogs = [];
+    for (let r = 0; r < gridRows; r++) {
+        const row = [];
+        for (let c = 0; c < gridCols; c++) {
+            const d = details[r][c];
+            if (!d.diag) { row.push(d.symbol); continue; }
+            const { top3, tiebreak } = d.diag;
+            const t1 = top3[0], t2 = top3[1];
+            let cell = `${t1.sym}(.${(t1.F * 1000 | 0) % 1000})`;
+            if (t2) cell += ` | ${t2.sym}(.${(t2.F * 1000 | 0) % 1000})`;
+            if (tiebreak) cell = `🔬 ${cell}`;
+            row.push(cell);
+
+            if (tiebreak) {
+                ssimLogs.push(`  (${r},${c}) ${tiebreak.map(t => `${t.symbol}=${t.ssim.toFixed(4)}`).join(' vs ')} → ${d.symbol}`);
+            }
+        }
+        diagGrid.push(row);
+    }
+    console.log(`=== 診斷（分數×1000）===`);
+    console.table(diagGrid);
+    if (ssimLogs.length > 0) {
+        console.log(`🔬 SSIM Tiebreaker:\n${ssimLogs.join('\n')}`);
+    }
 
     return { grid, details };
 }

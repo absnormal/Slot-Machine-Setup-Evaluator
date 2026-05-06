@@ -56,12 +56,11 @@ const useSpinGroupAnalysis = (candidates) => {
                 } else if (isCascadeSequence) {
                     mathState = 5; // Cascade 模式
                     mathValid = true;
-                    // Cascade 序列：用該群組中所有 best frame 的最高累計 WIN 來計算 currentBase
+                    // Cascade 序列：取群組中所有幀的最高累計 WIN（含 cascadeMember）
                     // 因為 BAL 在 cascade 結束後才會一次加上「總 WIN」
-                    const allBestWins = group
-                        .filter(c => c.kf.isSpinBest)
+                    const allWins = group
                         .map(c => parseFloat(c.kf.ocrData?.win) || 0);
-                    const cascadeTotalWin = allBestWins.length > 0 ? Math.max(...allBestWins) : win;
+                    const cascadeTotalWin = allWins.length > 0 ? Math.max(...allWins) : win;
                     currentBase = bal + cascadeTotalWin;
                 } else {
                     const eps = 0.5;
@@ -103,9 +102,10 @@ const useSpinGroupAnalysis = (candidates) => {
                 const kf = c.kf;
                 const hasResult = kf.status === 'recognized' && kf.recognitionResult;
                 if (!hasResult) return false;
-                const ocrWin = kf.ocrData ? Math.floor(parseFloat(kf.ocrData.win) || 0) : 0;
-                const aiWin = Math.floor(parseFloat(kf.recognitionResult.totalWin) || 0);
-                return ocrWin !== aiWin;
+                const rr = kf.recognitionResult;
+                const compareWin = rr.expectedWin !== undefined ? rr.expectedWin : (kf.ocrData ? parseFloat(kf.ocrData.win) || 0 : 0);
+                const aiWin = Math.floor(parseFloat(rr.totalWin) || 0);
+                return Math.floor(compareWin) !== aiWin;
             });
         }).map(g => g.gid);
     }, [groupsWithMath]);
