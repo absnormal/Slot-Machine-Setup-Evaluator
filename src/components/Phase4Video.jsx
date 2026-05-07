@@ -23,7 +23,7 @@ const Phase4Video = ({
     isRecognizing, isStopping, recognitionProgress,
     recognizeBatch, recognizeLocalBatch, cancelRecognition,
     // Report
-    stats, exportHTMLReport,
+    stats, exportHTMLReport, isSessionBusy,
     // Video
     videoSrc, videoRef, handleVideoUpload,
     isStreamMode, handleStartScreenCapture, handleStopScreenCapture,
@@ -276,6 +276,7 @@ const Phase4Video = ({
                             candidates={candidates}
                             exportHTMLReport={exportHTMLReport}
                             onImportSession={onImportSession}
+                            isSessionBusy={isSessionBusy}
                             template={template}
                         />
                     </div>

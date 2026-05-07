@@ -109,8 +109,8 @@ export function startWinPollAgent({
             if (c.id !== reelStopId) return c;
             // 強制合併時保留初始 OCR 的值，只覆寫 WIN
             const mergedOcrData = isForced
-                ? { ...c.ocrData, win: bestWinValue, multiplier: finalMult || c.ocrData?.multiplier || '' }
-                : { win: bestWinValue, balance: finalBal, bet: finalBet, orderId: finalOrderId, multiplier: finalMult };
+                ? { ...c.ocrData, win: bestWinValue, ...(multiplierROI ? { multiplier: finalMult || c.ocrData?.multiplier || '' } : {}) }
+                : { win: bestWinValue, balance: finalBal, bet: finalBet, orderId: finalOrderId, ...(multiplierROI ? { multiplier: finalMult } : {}) };
             return {
                 ...c,
                 ocrData: mergedOcrData,

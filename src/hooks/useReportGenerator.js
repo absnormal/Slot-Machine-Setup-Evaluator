@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import { parallelMap, canvasToBlobUrl } from '../utils/asyncUtils';
 
 /**
  * useReportGenerator — 唯一匯出 HTML 報告 + 統計儀表板
@@ -76,8 +77,9 @@ export function useReportGenerator() {
 
     /**
      * 匯出完整 HTML 報告（包含 OCR 數據與 AI 辨識盤面/贏分）
+     * @param {string} saveFormat - 'jpeg' | 'png'，用來推算外部圖片檔名副檔名
      */
-    const exportHTMLReport = useCallback(async (candidates, gameName = 'slot_analysis', saveDirHandle = null, template = null, customRois = null) => {
+    const exportHTMLReport = useCallback(async (candidates, gameName = 'slot_analysis', saveDirHandle = null, template = null, customRois = null, saveFormat = 'jpeg', onProgress = null) => {
         // 過濾出含有 OCR 資料 或 已經被認定的重點影格
         const validCandidates = candidates.filter(c => c.ocrData || c.recognitionResult || c.isSpinBest);
         if (validCandidates.length === 0) return;
@@ -132,7 +134,61 @@ export function useReportGenerator() {
         let aiHitCount = 0;
         let maxWin = 0;
 
-        const tableRows = spins.map((c, i) => {
+        // ── 外部圖片模式：有存檔目錄時，HTML 用相對路徑引用已存好的截圖 ──
+        const useExternalImages = !!saveDirHandle;
+        const imageExt = (saveFormat === 'png') ? 'png' : 'jpg';
+        const getImageFileName = (c) => {
+            const prefix = c.id.startsWith('win-') ? 'win_' : 'spin_';
+            return `${prefix}${c.time.toFixed(2)}s_${c.id}.${imageExt}`;
+        };
+        const getWinPollFileName = (c) => `winpoll_${c.time.toFixed(2)}s_${c.id}.${imageExt}`;
+
+        // ── 符號圖片 CSS 去重（每個符號的 Base64 只出現一次，用遞增索引避免中文/特殊字元 class 衝突） ──
+        const symbolCssMap = new Map(); // symbol name → CSS class name
+        let symbolCssRules = '';
+        if (template?.symbolImagesAll) {
+            let symIdx = 0;
+            Object.entries(template.symbolImagesAll).forEach(([sym, entry]) => {
+                const imgSrc = Array.isArray(entry) ? entry[0] : entry;
+                if (!imgSrc) return;
+                const className = `sym-${symIdx++}`;
+                symbolCssMap.set(sym, className);
+                symbolCssRules += `.${className}{background-image:url("${imgSrc}");background-size:contain;background-repeat:no-repeat;background-position:center;}\n`;
+            });
+        }
+
+        // ── 外部圖片 CSS 裁切參數（用 ROI 座標 + canvas 寬高比做純 CSS 裁切，不產生新檔案） ──
+        const reelROI = customRois?.reel;
+        let cssThumbW = '100%';   // img width (% of container)
+        let cssThumbTx = '0%';    // translateX
+        let cssThumbTy = '0%';    // translateY
+        let cssThumbH = 'auto';   // container max-height
+        const useCssCrop = useExternalImages && !!reelROI;
+        if (useCssCrop) {
+            cssThumbW = `${Math.round(10000 / reelROI.w)}%`;
+            cssThumbTx = `-${reelROI.x}%`;
+            cssThumbTy = `-${reelROI.y}%`;
+            // 從第一張有 canvas 的截圖取得寬高比，算出 ROI 裁切後容器高度
+            const sampleCanvas = spins.find(c => c.canvas)?.canvas;
+            if (sampleCanvas) {
+                const imgScale = 130 * 100 / reelROI.w; // 放大後的圖片寬度(px)
+                const imgH = imgScale * sampleCanvas.height / sampleCanvas.width;
+                cssThumbH = `${Math.round(imgH * reelROI.h / 100)}px`;
+            }
+        }
+
+        onProgress?.({ phase: '產生報告資料', current: 0, total: spins.length, detail: '' });
+
+        const tableRowsArr = [];
+        let lastYield = performance.now();
+        for (let i = 0; i < spins.length; i++) {
+            const c = spins[i];
+            // 時間驅動 yield：超過 40ms 就讓出主線程，避免 Chrome [Violation] 警告
+            if (performance.now() - lastYield > 40) {
+                onProgress?.({ phase: '產生報告資料', current: i + 1, total: spins.length, detail: `Spin #${i + 1} @ ${c.time.toFixed(1)}s` });
+                await new Promise(r => setTimeout(r, 0));
+                lastYield = performance.now();
+            }
             const ocr = c.ocrData || {};
             const bal = parse(ocr.balance);
             const ocrWin = parse(ocr.win);
@@ -191,29 +247,45 @@ export function useReportGenerator() {
                 continuity += `<br/><span style="color:#e11d48; font-size:10px; font-weight:bold;">🔗 連鎖${c.cascadeDeltaWin !== undefined ? ' △' + c.cascadeDeltaWin : ''}</span>`;
             }
 
-            const fullSrc = c.canvas ? c.canvas.toDataURL('image/jpeg', 0.92) : (c.thumbUrl || '');
-            const displaySrc = c.thumbUrl || fullSrc;
+            // ── 截圖來源：外部檔案路徑 vs 內嵌 Base64 ──
+            let fullSrc, displaySrc, winPollFullSrc, winPollDisplaySrc;
+            if (useExternalImages) {
+                // 外部模式：引用 useAutoSave 已存好的本地檔案（displaySrc = fullSrc，由 CSS 裁切顯示 ROI）
+                fullSrc = (c.canvas || c.thumbUrl) ? getImageFileName(c) : '';
+                displaySrc = fullSrc;
+                winPollFullSrc = (c.winPollCanvas || c.winPollThumbUrl) ? getWinPollFileName(c) : '';
+                winPollDisplaySrc = winPollFullSrc;
+            } else {
+                // 降級模式：內嵌 Base64（無存檔目錄時）
+                fullSrc = c.canvas ? c.canvas.toDataURL('image/jpeg', 0.92) : (c.thumbUrl || '');
+                displaySrc = c.thumbUrl || fullSrc;
+                winPollFullSrc = c.winPollCanvas ? c.winPollCanvas.toDataURL('image/jpeg', 0.92) : '';
+                winPollDisplaySrc = c.winPollThumbUrl || winPollFullSrc;
+            }
             const winClass = ocrWin > 0 ? 'win-positive' : '';
             const aiWinClass = aiWin > 0 ? 'win-positive' : '';
 
-            const winPollFullSrc = c.winPollCanvas ? c.winPollCanvas.toDataURL('image/jpeg', 0.92) : '';
-            const winPollDisplaySrc = c.winPollThumbUrl || winPollFullSrc;
-
-            // 格式化 AI 盤面
+            // 格式化 AI 盤面（使用 CSS 去重的符號圖片）
             let gridHtml = '';
             if (aiData && aiData.grid) {
                 gridHtml = `<div class="grid-table" id="g-${i}">
                     <div id="gw-${i}" class="grid-win-popup"></div>` + 
                     aiData.grid.map((row, rIdx) => 
                         `<div class="grid-row">${row.map((cell, cIdx) => {
-                            // 使用模板傳遞進來的 symbolImagesAll 尋找圖片的 Base64 網址（取第一張）
-                            const symImgEntry = template?.symbolImagesAll?.[cell];
-                            const symImg = Array.isArray(symImgEntry) ? symImgEntry[0] : symImgEntry;
                             // 若此欄格含有換行符號（例如收集或帶有乘倍），確保能被換行顯示
                             const safeText = cell.replace ? cell.replace(/\n/g, '<br/>') : cell;
-                            const content = symImg 
-                                ? `<img src="${symImg}" alt="${safeText}" title="${safeText}" class="sym-img" />`
-                                : `<span>${safeText}</span>`;
+                            // 優先使用 CSS class 去重引用（Phase D），避免重複內嵌 Base64
+                            const symClass = symbolCssMap.get(cell);
+                            let content;
+                            if (symClass) {
+                                content = `<div class="sym-img-bg ${symClass}" title="${safeText}"></div>`;
+                            } else {
+                                const symImgEntry = template?.symbolImagesAll?.[cell];
+                                const symImg = Array.isArray(symImgEntry) ? symImgEntry[0] : symImgEntry;
+                                content = symImg 
+                                    ? `<img src="${symImg}" alt="${safeText}" title="${safeText}" class="sym-img" />`
+                                    : `<span>${safeText}</span>`;
+                            }
                             return `<span class="grid-cell" id="c-${i}-${rIdx}-${cIdx}">${content}</span>`;
                         }).join('')}</div>`
                     ).join('') + 
@@ -275,11 +347,20 @@ export function useReportGenerator() {
             const manualWin = c.manualOverrides?.win ? `<span style="background:#fef3c7;color:#d97706;border:1px solid #fcd34d;font-size:9px;padding:1px 3px;border-radius:3px;margin-left:4px;white-space:nowrap;" title="人工校正">✏️人工</span>` : '';
             const manualMult = c.manualOverrides?.multiplier ? `<span style="background:#fef3c7;color:#d97706;border:1px solid #fcd34d;font-size:9px;padding:1px 3px;border-radius:3px;margin-left:4px;white-space:nowrap;" title="人工校正">✏️人工</span>` : '';
 
-            return `<tr ${dataAttrs}>
+            // 外部圖片模式：用 CSS overflow + transform 做 ROI 裁切，不產生新檔案
+            const thumbImgStyle = useCssCrop
+                ? `display:block;width:${cssThumbW};transform:translate(${cssThumbTx},${cssThumbTy});cursor:pointer;`
+                : '';
+            const thumbWrapOpen = useCssCrop
+                ? `<div style="width:130px;max-height:${cssThumbH};overflow:hidden;border-radius:6px;border:1px solid #e2e8f0;">`
+                : '';
+            const thumbWrapClose = useCssCrop ? '</div>' : '';
+
+            const rowHtml = `<tr ${dataAttrs}>
                 <td class="idx">${i + 1}</td>
                 <td class="thumb">
-                    <img src="${displaySrc}" data-full="${fullSrc}" alt="board-${i + 1}" onclick="openLb(this.getAttribute('data-full'))" />
-                    ${winPollDisplaySrc ? `<img src="${winPollDisplaySrc}" data-full="${winPollFullSrc}" alt="win-${i + 1}" onclick="openLb(this.getAttribute('data-full'))" style="margin-top:2px;border:2px solid #f59e0b;border-radius:6px;" />` : ''}
+                    ${thumbWrapOpen}<img src="${displaySrc}" data-full="${fullSrc}" alt="board-${i + 1}" onclick="openLb(this.getAttribute('data-full'))" ${thumbImgStyle ? `style="${thumbImgStyle}"` : ''} />${thumbWrapClose}
+                    ${winPollDisplaySrc ? `${thumbWrapOpen}<img src="${winPollDisplaySrc}" data-full="${winPollFullSrc}" alt="win-${i + 1}" onclick="openLb(this.getAttribute('data-full'))" style="${thumbImgStyle}${useCssCrop ? '' : 'margin-top:2px;border:2px solid #f59e0b;border-radius:6px;'}" />${thumbWrapClose}` : ''}
                 </td>
                 <td class="time">${c.time.toFixed(2)}s</td>
                 <td>${ocr.orderId ? `<span title="來源：${c.winPollCanvas ? 'WIN 特工幀' : 'Reel Stop 幀'}">${ocr.orderId} <span style="color:${c.winPollCanvas ? '#f59e0b' : '#10b981'};font-size:8px;">●</span></span>` : '-'}</td>
@@ -293,7 +374,15 @@ export function useReportGenerator() {
                 <td class="grid-cell-container">${gridHtml}</td>
                 <td class="memo">${errorStr}</td>
             </tr>`;
-        }).join('\n');
+            tableRowsArr.push(rowHtml);
+        }
+        onProgress?.({ phase: '組裝報告字串', current: spins.length, total: spins.length, detail: `合併 ${tableRowsArr.length} 筆資料...` });
+        await new Promise(r => setTimeout(r, 50)); // 讓 UI 更新
+
+        const tableRows = tableRowsArr.join('\n');
+
+        onProgress?.({ phase: '組裝報告檔案', current: spins.length, total: spins.length, detail: '產生 HTML...' });
+        await new Promise(r => setTimeout(r, 50));
 
         const rtp = totalBet > 0 ? (totalWin / totalBet * 100).toFixed(2) : '0';
         const dateStr = new Date().toLocaleString('zh-TW');
@@ -422,7 +511,9 @@ tr:hover { background:#f8fafc; }
 .grid-table.dimmed .grid-cell { opacity:0.25; filter:grayscale(90%); box-shadow:none; }
 .grid-table.dimmed .grid-cell.highlight { opacity:1; filter:none; box-shadow:inset 0 0 12px rgba(253,224,71,0.5), 0 0 10px rgba(253,224,71,0.4); background:linear-gradient(180deg, #fef08a 0%, #eab308 100%); border-color:#ca8a04; color:#713f12; z-index:2; transform:scale(1.1); text-shadow:0 1px 0 rgba(255,255,255,0.4); }
 .sym-img { width:36px; height:36px; object-fit:contain; filter:drop-shadow(0 2px 3px rgba(0,0,0,0.4)); pointer-events:none; }
-.grid-table.dimmed .grid-cell.highlight .sym-img { filter:drop-shadow(0 4px 6px rgba(0,0,0,0.5)); transform:scale(1.05); }
+.sym-img-bg { width:36px; height:36px; pointer-events:none; filter:drop-shadow(0 2px 3px rgba(0,0,0,0.4)); }
+.grid-table.dimmed .grid-cell.highlight .sym-img, .grid-table.dimmed .grid-cell.highlight .sym-img-bg { filter:drop-shadow(0 4px 6px rgba(0,0,0,0.5)); transform:scale(1.05); }
+${symbolCssRules}
 .grid-win-popup { position:absolute; top:-12px; left:-8px; background:rgba(0,0,0,0.85); color:#fff; font-size:12px; padding:3px 6px; border-radius:4px; box-shadow:0 4px 12px rgba(0,0,0,0.3); z-index:10; display:none; flex-direction:row; align-items:center; opacity:0; pointer-events:none; transition:opacity 0.15s; font-family:sans-serif; letter-spacing:0.5px; }
 .grid-win-popup.show { display:flex; opacity:1; }
 .grid-win-popup span.arrow { margin-left:4px; font-size:9px; opacity:0.6; }
@@ -542,11 +633,17 @@ document.getElementById('navCascadeCount').textContent = cc > 0 ? cc : '';
 </body>
 </html>`;
 
+        onProgress?.({ phase: '建立檔案', current: spins.length, total: spins.length, detail: '壓縮 HTML Blob...' });
+        await new Promise(r => setTimeout(r, 50));
+
         const blob = new Blob([html], { type: 'text/html;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
         const fileName = `${gameName}_Report_${new Date().toISOString().slice(0, 10).replace(/-/g, '')}.html`;
 
-        // ====== 同步匯出 JSON 資料檔（Session Sidecar）======
+        // ====== 匯出 JSON 資料檔（Session Sidecar）======
+        // 先 yield 讓 UI 更新進度，再做同步序列化
+        onProgress?.({ phase: '產生 JSON', current: spins.length, total: spins.length, detail: '序列化辨識資料...' });
+        await new Promise(r => setTimeout(r, 0));
+
         const exportedCandidates = validCandidates.map(c => ({
             id: c.id,
             time: c.time,
@@ -573,66 +670,57 @@ document.getElementById('navCascadeCount').textContent = cc > 0 ? cc : '';
             rois: customRois || null,
             candidates: exportedCandidates
         };
-        const jsonBlob = new Blob([JSON.stringify(jsonData, null, 2)], { type: 'application/json;charset=utf-8;' });
+        const jsonBlob = new Blob([JSON.stringify(jsonData)], { type: 'application/json;charset=utf-8;' });
         const jsonFileName = `${gameName}_Session_${new Date().toISOString().slice(0, 10).replace(/-/g, '')}.json`;
 
-        if (saveDirHandle) {
-            try {
-                // HTML
-                const fileHandle = await saveDirHandle.getFileHandle(fileName, { create: true });
-                const writable = await fileHandle.createWritable();
-                await writable.write(blob);
-                await writable.close();
-                // JSON
-                const jsonFileHandle = await saveDirHandle.getFileHandle(jsonFileName, { create: true });
-                const jsonWritable = await jsonFileHandle.createWritable();
-                await jsonWritable.write(jsonBlob);
-                await jsonWritable.close();
-                alert(`✅ HTML 報告 + JSON 資料檔已儲存至您的資料夾：\n${fileName}\n${jsonFileName}`);
-            } catch (e) {
-                console.error('HTML 報告儲存至資料夾失敗', e);
-                alert('⚠️ 報告儲存至資料夾時發生異常，改為瀏覽器直接下載。\n您可以手動將其放進您的資料夾中。');
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = fileName;
-                a.click();
-                // JSON fallback
-                const jsonUrl = URL.createObjectURL(jsonBlob);
-                const a2 = document.createElement('a');
-                a2.href = jsonUrl;
-                a2.download = jsonFileName;
-                a2.click();
-            }
-        } else {
-            // 沒有選擇資料夾時，觸發瀏覽器下載
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = fileName;
-            a.click();
-            // JSON
-            const jsonUrl = URL.createObjectURL(jsonBlob);
-            const a2 = document.createElement('a');
-            a2.href = jsonUrl;
-            a2.download = jsonFileName;
-            a2.click();
+        // ====== 儲存結果 ======
+        // HTML 與 JSON 皆使用瀏覽器下載（避免企業防毒軟體攔截 File System API 導致 close() 掛住 100+ 秒）
+        let resultMsg = '';
+
+        onProgress?.({ phase: '下載報告', current: spins.length, total: spins.length, detail: fileName });
+
+        const htmlUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = htmlUrl;
+        a.download = fileName;
+        a.click();
+
+        const jsonUrl = URL.createObjectURL(jsonBlob);
+        const a2 = document.createElement('a');
+        a2.href = jsonUrl;
+        a2.download = jsonFileName;
+        a2.click();
+
+        resultMsg = saveDirHandle
+            ? `✅ 報告已下載：${fileName}\n📥 JSON 已下載：${jsonFileName}\n📂 請將兩個檔案移至存檔資料夾`
+            : `📥 已下載報告：${fileName}`;
+
+        // 非外部圖片模式：可直接開啟 HTML 預覽
+        if (!useExternalImages) {
+            onProgress?.({ phase: '開啟報告', current: spins.length, total: spins.length, detail: '瀏覽器載入中...' });
+            await new Promise(r => setTimeout(r, 100));
+            window.open(htmlUrl, '_blank');
         }
 
-        window.open(url, '_blank');
+        return resultMsg;
     }, []);
 
     /**
      * 從資料夾匯入歷史 Session（JSON + 圖片）→ 還原成 candidates 陣列
      * @returns {Promise<Array>} 還原的 candidates 陣列
      */
-    const importSession = useCallback(async () => {
+    const importSession = useCallback(async (onProgress = null) => {
         try {
             const dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+
+            onProgress?.({ phase: '解析 JSON 檔案', current: 0, total: 0, detail: '' });
 
             // 1. 找 JSON 檔
             let jsonData = null;
             for await (const entry of dirHandle.values()) {
                 if (entry.kind === 'file' && entry.name.endsWith('.json') && entry.name.includes('Session')) {
                     const file = await entry.getFile();
+                    onProgress?.({ phase: '解析 JSON 檔案', current: 0, total: 0, detail: entry.name });
                     const text = await file.text();
                     jsonData = JSON.parse(text);
                     break;
@@ -656,6 +744,8 @@ document.getElementById('navCascadeCount').textContent = cc > 0 ? cc : '';
                 return null;
             }
 
+            onProgress?.({ phase: '建立圖片索引', current: 0, total: loadedCandidates.length, detail: `共 ${loadedCandidates.length} 筆資料` });
+
             // 2. 建立圖片索引（不含副檔名的檔名 → FileHandle）
             const imageIndex = new Map();
             for await (const entry of dirHandle.values()) {
@@ -677,8 +767,9 @@ document.getElementById('navCascadeCount').textContent = cc > 0 ? cc : '';
                 } catch (e) {}
             }
 
-            const generateThumbUrl = (canvas, roi) => {
-                if (!roi) return canvas.toDataURL('image/jpeg', 0.6);
+            // 產生縮圖（使用 blob URL 取代 toDataURL，快 3x）
+            const generateThumbBlobUrl = async (canvas, roi) => {
+                if (!roi) return canvasToBlobUrl(canvas, 'image/jpeg', 0.6);
                 const thumbCanvas = document.createElement('canvas');
                 thumbCanvas.width = canvas.width * (roi.w / 100);
                 thumbCanvas.height = canvas.height * (roi.h / 100);
@@ -687,11 +778,11 @@ document.getElementById('navCascadeCount').textContent = cc > 0 ? cc : '';
                     canvas.width * (roi.x / 100), canvas.height * (roi.y / 100), thumbCanvas.width, thumbCanvas.height,
                     0, 0, thumbCanvas.width, thumbCanvas.height
                 );
-                return thumbCanvas.toDataURL('image/jpeg', 0.6);
+                return canvasToBlobUrl(thumbCanvas, 'image/jpeg', 0.6);
             };
 
-            // 3. 逐筆還原 candidate
-            const candidates = await Promise.all(loadedCandidates.map(async (item) => {
+            // 3. 逐筆還原 candidate（受控並行，concurrency=8）
+            const candidates = await parallelMap(loadedCandidates, async (item) => {
                 // 讀盤面圖片
                 let canvas = null;
                 let thumbUrl = '';
@@ -704,7 +795,7 @@ document.getElementById('navCascadeCount').textContent = cc > 0 ? cc : '';
                         canvas.height = imgBitmap.height;
                         const ctx = canvas.getContext('2d');
                         ctx.drawImage(imgBitmap, 0, 0);
-                        thumbUrl = generateThumbUrl(canvas, cachedReelROI);
+                        thumbUrl = await generateThumbBlobUrl(canvas, cachedReelROI);
                     } catch (e) {
                         console.warn(`圖片 ${item.imageFile} 讀取失敗`, e);
                     }
@@ -722,7 +813,7 @@ document.getElementById('navCascadeCount').textContent = cc > 0 ? cc : '';
                         winPollCanvas.height = wpBitmap.height;
                         const wpCtx = winPollCanvas.getContext('2d');
                         wpCtx.drawImage(wpBitmap, 0, 0);
-                        winPollThumbUrl = generateThumbUrl(winPollCanvas, cachedReelROI);
+                        winPollThumbUrl = await generateThumbBlobUrl(winPollCanvas, cachedReelROI);
                     } catch (e) {
                         console.warn(`WIN 特工圖片 ${item.winPollImageFile} 讀取失敗`, e);
                     }
@@ -751,8 +842,11 @@ document.getElementById('navCascadeCount').textContent = cc > 0 ? cc : '';
                     winPollThumbUrl,
                     winPollTime: item.winPollTime || null,
                 };
-            }));
+            }, 8, (prog) => {
+                onProgress?.({ phase: '讀取圖片並產生縮圖', current: prog.current, total: prog.total, detail: prog.item?.imageFile || '' });
+            });
 
+            onProgress?.({ phase: '完成', current: candidates.length, total: candidates.length, detail: '' });
             return { candidates, dirHandle };
         } catch (e) {
             if (e.name !== 'AbortError') {

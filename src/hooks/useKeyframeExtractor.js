@@ -345,7 +345,7 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                                         const orderId = orderIdR.status === 'fulfilled' ? orderIdR.value : '';
                                         const multiplier = multR.status === 'fulfilled' ? multR.value : '';
                                         setCandidates(prev => prev.map(c =>
-                                            c.id === candidate.id ? { ...c, ocrData: { win, balance, bet, orderId, multiplier } } : c
+                                            c.id === candidate.id ? { ...c, ocrData: { win, balance, bet, orderId, ...(multiplierROI ? { multiplier } : {}) } } : c
                                         ));
                                         if (multiplier) state.lastMultiplierValue = multiplier;
                                         state.reelStopHasWin = true;
@@ -353,7 +353,7 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                                     } else {
                                         // WIN = 0 → 只寫 WIN，其餘加入補掃佇列
                                         setCandidates(prev => prev.map(c =>
-                                            c.id === candidate.id ? { ...c, ocrData: { win, balance: '', bet: '', orderId: '', multiplier: '' } } : c
+                                            c.id === candidate.id ? { ...c, ocrData: { win, balance: '', bet: '', orderId: '', ...(multiplierROI ? { multiplier: '' } : {}) } } : c
                                         ));
                                         state.backfillQueue.push({
                                             candidateId: candidate.id,
@@ -378,7 +378,7 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                                                 const multiplier = multR.status === 'fulfilled' ? multR.value : '';
                                                 setCandidates(prev => prev.map(c =>
                                                     c.id === item.candidateId
-                                                        ? { ...c, ocrData: { ...c.ocrData, balance, bet, orderId, multiplier } }
+                                                        ? { ...c, ocrData: { ...c.ocrData, balance, bet, orderId, ...(multiplierROI ? { multiplier } : {}) } }
                                                         : c
                                                 ));
                                             }).catch(() => {});
@@ -463,7 +463,7 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                         const multiplier = multR.status === 'fulfilled' ? multR.value : '';
                         setCandidates(prev => prev.map(c =>
                             c.id === candidateId
-                                ? { ...c, ocrData: { ...c.ocrData, balance, bet, orderId, multiplier } }
+                                ? { ...c, ocrData: { ...c.ocrData, balance, bet, orderId, ...(multiplierROI ? { multiplier } : {}) } }
                                 : c
                         ));
                     } catch (e) { /* skip */ }
@@ -515,7 +515,7 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                 multiplierROI ? detectMultiplier(canvas, multiplierROI, worker, ocrOptions) : Promise.resolve('')
             ]).then(([win, balance, bet, orderId, multiplier]) => {
                 setCandidates(prev => prev.map(c =>
-                    c.id === candidate.id ? { ...c, ocrData: { win, balance, bet, orderId, multiplier } } : c
+                    c.id === candidate.id ? { ...c, ocrData: { win, balance, bet, orderId, ...(multiplierROI ? { multiplier } : {}) } } : c
                 ));
             }).catch(() => { });
         }

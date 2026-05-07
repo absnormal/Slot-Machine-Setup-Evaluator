@@ -16,6 +16,7 @@ const SavePanel = ({
     candidates,
     exportHTMLReport,
     onImportSession,
+    isSessionBusy,
     template,
 }) => {
     return (
@@ -66,19 +67,20 @@ const SavePanel = ({
 
             {/* 匯出 & 傳送區塊 */}
             <div className="flex flex-col gap-2 justify-center">
-                <button onClick={() => exportHTMLReport(candidates, template?.name || 'slot_analysis', saveDirHandle)}
-                    disabled={!candidates.some(c => c.ocrData || c.recognitionResult)}
-                    className={`w-full py-3 rounded-xl font-bold flex items-center justify-center gap-1.5 text-sm transition-all shadow-sm ${!candidates.some(c => c.ocrData || c.recognitionResult) ? 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200' : 'bg-violet-50 text-violet-700 hover:bg-violet-100 border border-violet-200 active:scale-95'}`}>
+                <button onClick={() => exportHTMLReport(candidates, template?.name || 'slot_analysis', saveDirHandle, saveFormat)}
+                    disabled={isSessionBusy || !candidates.some(c => c.ocrData || c.recognitionResult)}
+                    className={`w-full py-3 rounded-xl font-bold flex items-center justify-center gap-1.5 text-sm transition-all shadow-sm ${(isSessionBusy || !candidates.some(c => c.ocrData || c.recognitionResult)) ? 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200' : 'bg-violet-50 text-violet-700 hover:bg-violet-100 border border-violet-200 active:scale-95'}`}>
                     <ImageIcon size={16} /> 匯出報告 + JSON
                 </button>
                 <button onClick={async () => {
+                        if (isSessionBusy) return;
                         const dirHandle = await onImportSession();
                         if (dirHandle) {
                             setSaveDirHandle(dirHandle);
                             setRootSaveDirHandle(dirHandle);
                         }
                     }}
-                    className="w-full py-3 rounded-xl font-bold flex items-center justify-center gap-1.5 text-sm transition-all bg-sky-50 text-sky-600 hover:bg-sky-100 border border-sky-200 active:scale-95 shadow-sm">
+                    className={`w-full py-3 rounded-xl font-bold flex items-center justify-center gap-1.5 text-sm transition-all ${isSessionBusy ? 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200' : 'bg-sky-50 text-sky-600 hover:bg-sky-100 border border-sky-200 active:scale-95'} shadow-sm`}>
                     <FolderOpen size={16} /> 匯入歷史資料（選取資料夾）
                 </button>
             </div>

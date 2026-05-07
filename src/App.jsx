@@ -18,6 +18,7 @@ import PtConfirmModal from './components/modals/PtConfirmModal';
 import BuildErrorModal from './components/modals/BuildErrorModal';
 import PtCropModal from './components/modals/PtCropModal';
 import OverwriteConfirmModal from './components/modals/OverwriteConfirmModal';
+import SessionProgressModal from './components/phase4/SessionProgressModal';
 
 // Hooks
 import { useCloud } from './hooks/useCloud';
@@ -82,6 +83,7 @@ function App() {
     } = cloudInstance;
 
     const [linesMode, setLinesMode] = useState('image');
+    const [sessionProgress, setSessionProgress] = useState(null);
 
     // --- Template Builder ---
     const templateBuilder = useTemplateBuilder({
@@ -429,14 +431,28 @@ function App() {
 
     // --- 匯入歷史 Session ---
     const handleImportSession = useCallback(async () => {
-        const result = await reportGenerator.importSession();
+        const startTime = Date.now();
+        setSessionProgress({ type: 'import', phase: '選擇資料夾...', current: 0, total: 0, detail: '', startTime });
+        const result = await reportGenerator.importSession((prog) => {
+            setSessionProgress(prev => ({ ...prev, ...prog }));
+        });
+        setSessionProgress(null);
         if (result && result.candidates && result.candidates.length > 0) {
-            keyframeExtractor.setCandidates(prev => [...prev, ...result.candidates]);
-            setTemplateMessage(`✅ 已匯入 ${result.candidates.length} 張歷史關鍵幀`);
-            return result.dirHandle; // 回傳 dirHandle 供 Phase4Video 綁定存檔目錄
+            // 若遊戲無乘倍輪，清除匯入資料中殘留的 multiplier key
+            const showMult = template?.hasMultiplierReel || hasMultiplierReel;
+            const cleaned = showMult ? result.candidates : result.candidates.map(c => {
+                if (c.ocrData && 'multiplier' in c.ocrData) {
+                    const { multiplier, ...rest } = c.ocrData;
+                    return { ...c, ocrData: rest };
+                }
+                return c;
+            });
+            keyframeExtractor.setCandidates(prev => [...prev, ...cleaned]);
+            setTemplateMessage(`✅ 已匯入 ${cleaned.length} 張歷史關鍵幀`);
+            return result.dirHandle;
         }
         return null;
-    }, [reportGenerator, keyframeExtractor, setTemplateMessage]);
+    }, [reportGenerator, keyframeExtractor, setTemplateMessage, template, hasMultiplierReel]);
 
     // --- Vision 結算 ---
     const [visionCalcResults, setVisionCalcResults] = useState(null);
@@ -738,9 +754,18 @@ function App() {
                         cancelRecognition={autoRecognition.cancelRecognition}
                         // Report
                         stats={phase4Stats}
-                        exportHTMLReport={(c, game, dir) => reportGenerator.exportHTMLReport(c, gameName || 'slot', dir, template, {
-                            reel: reelROI, win: winROI, balance: balanceROI, bet: betROI, orderId: orderIdROI
-                        })}
+                        exportHTMLReport={(c, game, dir, format) => {
+                            const startTime = Date.now();
+                            setSessionProgress({ type: 'export', phase: '準備中...', current: 0, total: 0, detail: '', startTime });
+                            return reportGenerator.exportHTMLReport(c, gameName || 'slot', dir, template, {
+                                reel: reelROI, win: winROI, balance: balanceROI, bet: betROI, orderId: orderIdROI
+                            }, format || 'jpeg', (prog) => {
+                                setSessionProgress(prev => ({ ...prev, ...prog }));
+                            }).then(msg => {
+                                if (msg) setTemplateMessage(msg);
+                            }).finally(() => setSessionProgress(null));
+                        }}
+                        isSessionBusy={!!sessionProgress}
                         // Video
                         videoSrc={videoSrc} videoRef={videoRef} handleVideoUpload={handleVideoUpload}
                         isStreamMode={isStreamMode} handleStartScreenCapture={handleStartScreenCapture} handleStopScreenCapture={handleStopScreenCapture}
@@ -882,6 +907,8 @@ function App() {
                     </div>
                 </div>
             )}
+
+            <SessionProgressModal progress={sessionProgress} />
         </div>
     );
 }
