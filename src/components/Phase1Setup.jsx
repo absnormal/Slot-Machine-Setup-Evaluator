@@ -48,6 +48,7 @@ export default function Phase1Setup(props) {
         multiplierCalcType, setMultiplierCalcType,
         hasBidirectionalPaylines, setHasBidirectionalPaylines,
         hasAdjustableLines, setHasAdjustableLines,
+        hasExBet, setHasExBet, exBetOptions, setExBetOptions,
         hasApiKey
     } = props;
 
@@ -145,6 +146,8 @@ export default function Phase1Setup(props) {
                             jpConfig={jpConfig} setJpConfig={setJpConfig}
                             hasBidirectionalPaylines={hasBidirectionalPaylines} setHasBidirectionalPaylines={setHasBidirectionalPaylines}
                             hasAdjustableLines={hasAdjustableLines} setHasAdjustableLines={setHasAdjustableLines}
+                            hasExBet={hasExBet} setHasExBet={setHasExBet}
+                            exBetOptions={exBetOptions} setExBetOptions={setExBetOptions}
                         />
 
                         {/* 5. Paytable */}

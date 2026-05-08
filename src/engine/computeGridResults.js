@@ -36,7 +36,15 @@ export function computeGridResults(template, targetGrid, betAmount, options = {}
         if (isNaN(parsedBet) || parsedBet <= 0) throw new Error('押注金額必須為大於 0 的有效數字。');
 
         const activeLineCount = options.activeLineCount || evalTemplate.linesCount || 1;
-        const lineBet = (evalTemplate.hasAdjustableLines && activeLineCount > 0) ? (parsedBet / activeLineCount) : parsedBet;
+        const activeExBetMult = options.activeExBetMultiplier || null;
+        let lineBet;
+        if (activeExBetMult && activeExBetMult > 1) {
+            lineBet = parsedBet / activeExBetMult;  // 畫面BET → 原BET
+        } else if (evalTemplate.hasAdjustableLines && activeLineCount > 0) {
+            lineBet = parsedBet / activeLineCount;
+        } else {
+            lineBet = parsedBet;
+        }
 
         const calculatedResults = [];
         let totalWin = 0;

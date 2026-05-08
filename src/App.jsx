@@ -106,6 +106,7 @@ function App() {
         multiplierCalcType, setMultiplierCalcType,
         hasBidirectionalPaylines, setHasBidirectionalPaylines,
         hasAdjustableLines, setHasAdjustableLines,
+        hasExBet, setHasExBet, exBetOptions, setExBetOptions,
         lineImages, setLineImages, activeLineImageId, setActiveLineImageId,
         activeLineImage, imageSrc, imageObj,
         patternRows, setPatternRows, patternCols, setPatternCols,
@@ -152,6 +153,7 @@ function App() {
         setHasDynamicMultiplier, setMultiplierCalcType,
         setHasBidirectionalPaylines,
         setHasAdjustableLines,
+        setHasExBet, setExBetOptions,
         setLineImages, setActiveLineImageId, setLinesTextInput,
         setTemplateError,
         performAutoBuild, resetTemplateBuilder,
@@ -162,6 +164,7 @@ function App() {
         hasJackpot, hasMultiplierReel, requiresCollectToWin, hasCashCollectFeature,
         hasDoubleSymbol, hasRollingWin, hasDynamicMultiplier, multiplierCalcType,
         hasBidirectionalPaylines, hasAdjustableLines,
+        hasExBet, exBetOptions,
         motionCoverageMin, vLineThreshold, ocrDecimalPlaces, balDecimalPlaces, enableWinTracker, enableEmptyBoardFilter,
         setMotionCoverageMin, setVLineThreshold, setOcrDecimalPlaces, setBalDecimalPlaces, setEnableWinTracker, setEnableEmptyBoardFilter,
         setReelROI: usePhase4Store(s => s.setReelROI),
@@ -191,7 +194,8 @@ function App() {
         generateRandomPanelGrid, handleRandomizePanel, handleClearPanel,
         getSafeGrid, handleGridPaste, handleCellChange, computeGridResultsCb,
         activeLineCount, setActiveLineCount,
-        globalMultiplier, setGlobalMultiplier
+        globalMultiplier, setGlobalMultiplier,
+        activeExBetMultiplier, setActiveExBetMultiplier
     } = useSlotEngine({ template, enableBidirectional });
 
     // --- Phase 3 (AI 視覺批次辨識) ---
@@ -662,6 +666,8 @@ function App() {
                         multiplierCalcType={multiplierCalcType} setMultiplierCalcType={setMultiplierCalcType}
                         hasBidirectionalPaylines={hasBidirectionalPaylines} setHasBidirectionalPaylines={setHasBidirectionalPaylines}
                         hasAdjustableLines={hasAdjustableLines} setHasAdjustableLines={setHasAdjustableLines}
+                        hasExBet={hasExBet} setHasExBet={setHasExBet}
+                        exBetOptions={exBetOptions} setExBetOptions={setExBetOptions}
                         lineImages={lineImages} removeLineImage={removeLineImage} activeLineImageId={activeLineImageId} setActiveLineImageId={setActiveLineImageId} handleLineImageUpload={handleLineImageUpload}
                         isPtProcessing={isPtProcessing} handlePtExtract={handlePtExtract} ptImages={ptImages} removePtImage={removePtImage} clearPtAll={clearPtAll} handlePtFileChange={handlePtFileChange} handlePtDrop={handlePtDrop}
                         dragState={dragState} setDragState={setDragState} containerRef={containerRef} layoutStyle={layoutStyle} handleMouseDown={handleMouseDown} handleMouseMove={handleMouseMove} handleMouseUp={handleMouseUp}
@@ -700,6 +706,7 @@ function App() {
                         enableBidirectional={enableBidirectional} setEnableBidirectional={setEnableBidirectional}
                         activeLineCount={activeLineCount} setActiveLineCount={setActiveLineCount}
                         globalMultiplier={globalMultiplier} setGlobalMultiplier={setGlobalMultiplier}
+                        activeExBetMultiplier={activeExBetMultiplier} setActiveExBetMultiplier={setActiveExBetMultiplier}
                     />
                 </ErrorBoundary>
 
@@ -726,6 +733,7 @@ function App() {
                         totalBalance={totalBalance} setTotalBalance={setTotalBalance}
                         setTemplateMessage={setTemplateMessage}
                         isBalanceExpanded={isBalanceExpanded} setIsBalanceExpanded={setIsBalanceExpanded}
+                        activeExBetMultiplier={activeExBetMultiplier} setActiveExBetMultiplier={setActiveExBetMultiplier}
                     />
                 </ErrorBoundary>
 

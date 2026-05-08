@@ -2,7 +2,7 @@ import React from 'react';
 import { Trophy, AlertCircle, Zap, Coins, ArrowLeft, ChevronDown, ChevronUp } from 'lucide-react';
 import { getBaseSymbol, isJpSymbol } from '../utils/symbolUtils';
 
-export default function ResultView({ template, calcData, calcErr, hoveredId, setHoveredId, showAll, setShowAll, betInput, setBetInput, totalBalance, setTotalBalance, setTemplateMessage, isBalanceExpanded, setIsBalanceExpanded, activeLineCount, setActiveLineCount }) {
+export default function ResultView({ template, calcData, calcErr, hoveredId, setHoveredId, showAll, setShowAll, betInput, setBetInput, totalBalance, setTotalBalance, setTemplateMessage, isBalanceExpanded, setIsBalanceExpanded, activeLineCount, setActiveLineCount, activeExBetMultiplier, setActiveExBetMultiplier }) {
     const [isEditingBalance, setIsEditingBalance] = React.useState(false);
     const [balanceText, setBalanceText] = React.useState('');
     const [isEditingBet, setIsEditingBet] = React.useState(false);
@@ -25,7 +25,10 @@ export default function ResultView({ template, calcData, calcErr, hoveredId, set
         if (betAmount > 0) {
             setTotalBalance(prev => parseFloat((prev - betAmount).toFixed(4)));
             if (setTemplateMessage) {
-                setTemplateMessage(`🪙 已扣除押注 -${betAmount.toLocaleString()}`);
+                const origBet = activeExBetMultiplier ? betAmount / activeExBetMultiplier : betAmount;
+                setTemplateMessage(activeExBetMultiplier
+                    ? `🪙 已扣除 EXBET ×${activeExBetMultiplier} -${betAmount.toLocaleString()} (原BET ${origBet.toLocaleString()})`
+                    : `🪙 已扣除押注 -${betAmount.toLocaleString()}`);
                 setTimeout(() => setTemplateMessage(''), 3000);
             }
         }
@@ -121,6 +124,37 @@ export default function ResultView({ template, calcData, calcErr, hoveredId, set
                                                 </span>
                                             )}
                                         </div>
+                                    </div>
+                                )}
+
+                                {/* EXBET 下拉選單 */}
+                                {template?.hasExBet && template?.exBetOptions?.length > 0 && (
+                                    <div className="flex-1 w-full">
+                                        <div className="mb-1.5 flex items-center gap-2 whitespace-nowrap">
+                                            <label className="text-sm font-bold text-slate-700">EXBET 倍率</label>
+                                            {activeExBetMultiplier && (
+                                                <span className="text-[10px] bg-amber-100 text-amber-700 font-bold px-2 py-0.5 rounded-full shadow-sm">
+                                                    原BET: {((parseFloat(betInput) || 0) / activeExBetMultiplier).toLocaleString()}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <select
+                                            value={activeExBetMultiplier || ''}
+                                            onChange={(e) => {
+                                                const currentBet = parseFloat(betInput) || 0;
+                                                const oldMult = activeExBetMultiplier || 1;
+                                                const newMult = e.target.value ? parseFloat(e.target.value) : null;
+                                                const origBet = currentBet / oldMult;
+                                                setBetInput(String(origBet * (newMult || 1)));
+                                                setActiveExBetMultiplier(newMult);
+                                            }}
+                                            className="w-full px-3 py-2 border border-amber-300 bg-amber-50 rounded-lg focus:ring-2 focus:ring-amber-400 outline-none font-black text-lg text-amber-700 shadow-sm cursor-pointer h-[46px]"
+                                        >
+                                            <option value="">關閉</option>
+                                            {template.exBetOptions.map((opt) => (
+                                                <option key={opt} value={opt}>×{opt}</option>
+                                            ))}
+                                        </select>
                                     </div>
                                 )}
                             </div>

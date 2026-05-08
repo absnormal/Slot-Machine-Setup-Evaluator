@@ -17,6 +17,8 @@ export const TEMPLATE_FIELD_DEFAULTS = {
     hasJackpot:               false,
     hasBidirectionalPaylines: false,
     hasAdjustableLines:       false,
+    hasExBet:                 false,
+    exBetOptions:             [2],      // EXBET 可用倍率清單，預設一個 ×2
     // ── Phase 4 偵測參數 ──
     motionCoverageMin:        60,
     vLineThreshold:           0.25,

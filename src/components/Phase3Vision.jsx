@@ -22,7 +22,8 @@ export default function Phase3Vision({
     totalBalance, setTotalBalance,
     setTemplateMessage,
     isBalanceExpanded, setIsBalanceExpanded,
-    pasteFromClipboard
+    pasteFromClipboard,
+    activeExBetMultiplier, setActiveExBetMultiplier
 }) {
     // 獨立管理 Phase 3 專屬的 ResultView 懸停與線條顯示狀態
     const [visionHoveredLineId, setVisionHoveredLineId] = useState(null);
@@ -352,6 +353,8 @@ export default function Phase3Vision({
                         setTemplateMessage={setTemplateMessage} 
                         isBalanceExpanded={isBalanceExpanded} 
                         setIsBalanceExpanded={setIsBalanceExpanded} 
+                        activeExBetMultiplier={activeExBetMultiplier}
+                        setActiveExBetMultiplier={setActiveExBetMultiplier}
                     />
 
                 </div>

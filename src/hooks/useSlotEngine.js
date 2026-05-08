@@ -15,6 +15,9 @@ export function useSlotEngine({ template, enableBidirectional = false }) {
     // Adjustable line count (null = all lines)
     const [activeLineCount, setActiveLineCount] = useState(null);
 
+    // EXBET: active multiplier (null = off)
+    const [activeExBetMultiplier, setActiveExBetMultiplier] = useState(null);
+
     const [panelInputMode, setPanelInputMode] = useState('paint');
     const [activeBrush, setActiveBrush] = useState('');
 
@@ -235,8 +238,8 @@ export function useSlotEngine({ template, enableBidirectional = false }) {
 
     const computeGridResultsCb = useCallback((targetGrid, betAmount, overrideMultiplier = null) => {
         const finalMult = overrideMultiplier !== null ? overrideMultiplier : globalMultiplier;
-        return computeGridResults(template, targetGrid, betAmount, { enableBidirectional, activeLineCount, globalMultiplier: finalMult });
-    }, [template, enableBidirectional, activeLineCount, globalMultiplier]);
+        return computeGridResults(template, targetGrid, betAmount, { enableBidirectional, activeLineCount, globalMultiplier: finalMult, activeExBetMultiplier });
+    }, [template, enableBidirectional, activeLineCount, globalMultiplier, activeExBetMultiplier]);
 
     useEffect(() => {
         const { results, error } = computeGridResultsCb(panelGrid, betInput);
@@ -263,6 +266,7 @@ export function useSlotEngine({ template, enableBidirectional = false }) {
         handleGridPaste,
         handleCellChange,
         computeGridResultsCb,
-        activeLineCount, setActiveLineCount
+        activeLineCount, setActiveLineCount,
+        activeExBetMultiplier, setActiveExBetMultiplier
     };
 }

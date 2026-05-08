@@ -207,6 +207,8 @@
  * @property {string} multiplierCalcType        - 乘數計算方式 ('sum'|'product')
  * @property {boolean} hasBidirectionalPaylines - 是否啟用雙向連線
  * @property {boolean} hasAdjustableLines       - 是否支援可調整線數
+ * @property {boolean} hasExBet                 - 是否支援 EXBET（額外押注）
+ * @property {number[]} exBetOptions             - 可用的 EXBET 倍率清單（如 [2, 3, 5]）
  */
 
 // ═══════════════════════════════════════════════

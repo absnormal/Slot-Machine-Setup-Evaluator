@@ -26,7 +26,8 @@ const Phase2Manual = ({
     isBalanceExpanded, setIsBalanceExpanded,
     enableBidirectional, setEnableBidirectional,
     activeLineCount, setActiveLineCount,
-    globalMultiplier, setGlobalMultiplier
+    globalMultiplier, setGlobalMultiplier,
+    activeExBetMultiplier, setActiveExBetMultiplier
 }) => {
     const [showCashModal, setShowCashModal] = React.useState(false);
     const [modalCell, setModalCell] = React.useState({ row: 0, col: 0 });
@@ -301,7 +302,7 @@ const Phase2Manual = ({
                         </div>
 
                         {/* ResultView */}
-                        <ResultView template={template} calcData={calcResults} calcErr={calculateError} hoveredId={hoveredLineId} setHoveredId={setHoveredLineId} showAll={showAllLines} setShowAll={setShowAllLines} betInput={betInput} setBetInput={setBetInput} totalBalance={totalBalance} setTotalBalance={setTotalBalance} setTemplateMessage={setTemplateMessage} isBalanceExpanded={isBalanceExpanded} setIsBalanceExpanded={setIsBalanceExpanded} activeLineCount={activeLineCount} setActiveLineCount={setActiveLineCount} />
+                        <ResultView template={template} calcData={calcResults} calcErr={calculateError} hoveredId={hoveredLineId} setHoveredId={setHoveredLineId} showAll={showAllLines} setShowAll={setShowAllLines} betInput={betInput} setBetInput={setBetInput} totalBalance={totalBalance} setTotalBalance={setTotalBalance} setTemplateMessage={setTemplateMessage} isBalanceExpanded={isBalanceExpanded} setIsBalanceExpanded={setIsBalanceExpanded} activeLineCount={activeLineCount} setActiveLineCount={setActiveLineCount} activeExBetMultiplier={activeExBetMultiplier} setActiveExBetMultiplier={setActiveExBetMultiplier} />
                     </div>
                 </div>
             )}

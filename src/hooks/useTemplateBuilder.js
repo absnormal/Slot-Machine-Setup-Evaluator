@@ -46,6 +46,8 @@ export function useTemplateBuilder({
     const [multiplierCalcType, setMultiplierCalcType] = useState(D.multiplierCalcType);
     const [hasBidirectionalPaylines, setHasBidirectionalPaylines] = useState(D.hasBidirectionalPaylines);
     const [hasAdjustableLines, setHasAdjustableLines] = useState(D.hasAdjustableLines);
+    const [hasExBet, setHasExBet] = useState(D.hasExBet);
+    const [exBetOptions, setExBetOptions] = useState(D.exBetOptions);
     const prevHasDoubleSymbol = useRef(hasDoubleSymbol);
 
     // Grid dimensions
@@ -158,6 +160,7 @@ export function useTemplateBuilder({
             hasDoubleSymbol: hasDS, hasRollingWin: hasRW, hasDynamicMultiplier: hasDM,
             multiplierCalcType: mCalcType,
             hasBidirectionalPaylines: hasBDP, hasAdjustableLines: hasAL,
+            hasExBet: hasEB, exBetOptions: ebOpts,
             validateStrict = false
         } = p;
 
@@ -283,7 +286,9 @@ export function useTemplateBuilder({
             hasDynamicMultiplier: hasDM,
             multiplierCalcType: mCalcType,
             hasBidirectionalPaylines: hasBDP,
-            hasAdjustableLines: hasAL
+            hasAdjustableLines: hasAL,
+            hasExBet: hasEB,
+            exBetOptions: ebOpts || D.exBetOptions,
         };
     };
 
@@ -302,6 +307,8 @@ export function useTemplateBuilder({
                 multiplierCalcType: d.multiplierCalcType,
                 hasBidirectionalPaylines: d.hasBidirectionalPaylines,
                 hasAdjustableLines: d.hasAdjustableLines,
+                hasExBet: d.hasExBet,
+                exBetOptions: d.exBetOptions,
                 lineMode: data.lineMode || 'paylines',
                 paytableInput: data.paytableInput || '',
                 extractResults: data.extractResults || [],
@@ -325,6 +332,8 @@ export function useTemplateBuilder({
             setMultiplierCalcType(d.multiplierCalcType);
             setHasBidirectionalPaylines(parseBool(d.hasBidirectionalPaylines));
             setHasAdjustableLines(parseBool(d.hasAdjustableLines));
+            setHasExBet(parseBool(d.hasExBet));
+            if (Array.isArray(d.exBetOptions)) setExBetOptions(d.exBetOptions);
 
             if (setIsPhase2Minimized) setIsPhase2Minimized(false);
             if (setIsPhase3Minimized) setIsPhase3Minimized(true);
@@ -364,6 +373,8 @@ export function useTemplateBuilder({
                 multiplierCalcType,
                 hasBidirectionalPaylines,
                 hasAdjustableLines,
+                hasExBet,
+                exBetOptions,
                 validateStrict: true
             });
 
@@ -401,6 +412,8 @@ export function useTemplateBuilder({
         setMultiplierCalcType(D.multiplierCalcType);
         setHasBidirectionalPaylines(D.hasBidirectionalPaylines);
         setHasAdjustableLines(D.hasAdjustableLines);
+        setHasExBet(D.hasExBet);
+        setExBetOptions(D.exBetOptions);
         setPatternRows(6);
         setPatternCols(5);
         setGridRows(3);
@@ -454,6 +467,8 @@ export function useTemplateBuilder({
         hasDynamicMultiplier, setHasDynamicMultiplier,
         hasBidirectionalPaylines, setHasBidirectionalPaylines,
         hasAdjustableLines, setHasAdjustableLines,
+        hasExBet, setHasExBet,
+        exBetOptions, setExBetOptions,
 
         // Grid dimensions
         patternRows, setPatternRows,
