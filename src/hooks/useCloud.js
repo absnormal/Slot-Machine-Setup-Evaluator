@@ -100,6 +100,7 @@ export function useCloud() {
         paytableInput, ptResultItems, jpConfig, hasJackpot, hasMultiplierReel,
         requiresCollectToWin, hasCashCollectFeature, hasDoubleSymbol, hasRollingWin, hasDynamicMultiplier, multiplierCalcType,
         hasBidirectionalPaylines, hasAdjustableLines,
+        hasExBet, exBetOptions,
         motionCoverageMin, vLineThreshold, ocrDecimalPlaces, balDecimalPlaces, enableWinTracker, enableEmptyBoardFilter,
         phase4ROIs,
         localUserId, actualForceId
@@ -186,6 +187,8 @@ export function useCloud() {
                 multiplierCalcType,
                 hasBidirectionalPaylines,
                 hasAdjustableLines,
+                hasExBet,
+                exBetOptions,
                 motionCoverageMin,
                 vLineThreshold,
                 ocrDecimalPlaces,
