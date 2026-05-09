@@ -17,7 +17,7 @@ const Phase4Video = ({
     // Keyframe Extractor
     candidates,
     startLiveDetection, stopLiveDetection,
-    removeCandidate, clearCandidates, addManualCandidate, smartDedup, confirmDedup, healBreaks, setManualBestCandidate,
+    removeCandidate, resetCandidateRecognition, clearCandidates, addManualCandidate, smartDedup, confirmDedup, healBreaks, setManualBestCandidate,
     updateCandidateOcr, updateCandidate,
     // Auto Recognition
     isRecognizing, isStopping, recognitionProgress,
@@ -286,7 +286,6 @@ const Phase4Video = ({
                         <div className="bg-slate-50 rounded-xl border border-slate-200 flex flex-col h-full overflow-hidden shadow-sm">
 
                             <DiagnosticDashboard
-                                stats={stats}
                                 diagnosticStats={diagnosticStats}
                                 wrongWinGroupIds={wrongWinGroupIds}
                                 nonZeroWinGroupIds={nonZeroWinGroupIds}
@@ -311,6 +310,7 @@ const Phase4Video = ({
                                 handleCardClick={handleCardClick}
                                 onTransferToPhase3={onTransferToPhase3}
                                 removeCandidate={removeCandidate}
+                                resetCandidateRecognition={resetCandidateRecognition}
                                 setManualBestCandidate={setManualBestCandidate}
                                 recognizeLocalBatch={recognizeLocalBatch}
                                 ocrDecimalPlaces={ocrDecimalPlaces}

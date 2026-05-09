@@ -847,7 +847,7 @@ document.getElementById('navCascadeCount').textContent = cc > 0 ? cc : '';
             });
 
             onProgress?.({ phase: '完成', current: candidates.length, total: candidates.length, detail: '' });
-            return { candidates, dirHandle };
+            return { candidates, dirHandle, rois: loadedRois };
         } catch (e) {
             if (e.name !== 'AbortError') {
                 console.error('匯入歷史資料失敗', e);

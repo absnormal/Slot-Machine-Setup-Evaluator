@@ -442,6 +442,16 @@ function App() {
         });
         setSessionProgress(null);
         if (result && result.candidates && result.candidates.length > 0) {
+            // 匯入 ROI 座標（若 JSON 中有記錄）
+            if (result.rois) {
+                const store = usePhase4Store.getState();
+                if (result.rois.reel) store.setReelROI(result.rois.reel);
+                if (result.rois.win) store.setWinROI(result.rois.win);
+                if (result.rois.balance) store.setBalanceROI(result.rois.balance);
+                if (result.rois.bet) store.setBetROI(result.rois.bet);
+                if (result.rois.orderId) store.setOrderIdROI(result.rois.orderId);
+                if (result.rois.multiplier) store.setMultiplierROI(result.rois.multiplier);
+            }
             // 若遊戲無乘倍輪，清除匯入資料中殘留的 multiplier key
             const showMult = template?.hasMultiplierReel || hasMultiplierReel;
             const cleaned = showMult ? result.candidates : result.candidates.map(c => {
@@ -452,7 +462,7 @@ function App() {
                 return c;
             });
             keyframeExtractor.setCandidates(prev => [...prev, ...cleaned]);
-            setTemplateMessage(`✅ 已匯入 ${cleaned.length} 張歷史關鍵幀`);
+            setTemplateMessage(`✅ 已匯入 ${cleaned.length} 張歷史關鍵幀${result.rois ? ' (含 ROI 座標)' : ''}`);
             return result.dirHandle;
         }
         return null;
@@ -746,6 +756,7 @@ function App() {
                         startLiveDetection={keyframeExtractor.startLiveDetection}
                         stopLiveDetection={keyframeExtractor.stopLiveDetection}
                         removeCandidate={keyframeExtractor.removeCandidate}
+                        resetCandidateRecognition={keyframeExtractor.resetCandidateRecognition}
                         clearCandidates={keyframeExtractor.clearCandidates}
                         addManualCandidate={keyframeExtractor.addManualCandidate}
                         smartDedup={keyframeExtractor.smartDedup}

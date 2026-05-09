@@ -31,7 +31,7 @@ const DECAY_RATIO = 0.3;
 
 export function useKeyframeExtractor({ setTemplateMessage }) {
     // ── 候選幀 CRUD（已抽離至 useCandidateManager）──
-    const { candidates, setCandidates, removeCandidate, clearCandidates, updateCandidate, updateCandidateOcr } = useCandidateManager();
+    const { candidates, setCandidates, removeCandidate, clearCandidates, updateCandidate, updateCandidateOcr, resetCandidateRecognition } = useCandidateManager();
 
     // OCR Worker (Web Worker 版，不阻塞主線程)
     const ocrWorkerRef = useRef(null);
@@ -530,6 +530,7 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
         startLiveDetection, stopLiveDetection,
         removeCandidate, updateCandidate,
         clearCandidates,
+        resetCandidateRecognition,
         smartDedup,
         confirmDedup,
         setManualBestCandidate,

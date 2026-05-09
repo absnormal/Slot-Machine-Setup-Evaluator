@@ -1,5 +1,5 @@
 import React from 'react';
-import { Send, X, Clock } from 'lucide-react';
+import { Send, X, Clock, RotateCcw } from 'lucide-react';
 
 /**
  * CandidateCard — 單張候選幀卡片
@@ -23,6 +23,7 @@ const CandidateCard = ({
     handleCardClick,
     onTransferToPhase3,
     removeCandidate,
+    resetCandidateRecognition,
     // 分組模式額外 props
     isBest,
     hasBeenGrouped,
@@ -260,10 +261,19 @@ const CandidateCard = ({
             <button
                 onClick={(e) => { e.stopPropagation(); onTransferToPhase3([kf]); }}
                 title="送到 Phase 3 手動調校"
-                className="absolute top-1.5 right-8 text-slate-300 hover:text-indigo-500 opacity-0 group-hover:opacity-100 transition-all"
+                className="absolute top-1.5 right-14 text-slate-300 hover:text-indigo-500 opacity-0 group-hover:opacity-100 transition-all"
             >
                 <Send size={12} />
             </button>
+            {kf.status === 'recognized' && kf.recognitionResult && resetCandidateRecognition && (
+                <button
+                    onClick={(e) => { e.stopPropagation(); resetCandidateRecognition(kf.id); }}
+                    title="移除辨識結果"
+                    className="absolute top-1.5 right-8 text-slate-300 hover:text-amber-500 opacity-0 group-hover:opacity-100 transition-all"
+                >
+                    <RotateCcw size={12} />
+                </button>
+            )}
             <button
                 onClick={(e) => { e.stopPropagation(); removeCandidate(kf.id); }}
                 className="absolute top-1.5 right-1.5 text-slate-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all"

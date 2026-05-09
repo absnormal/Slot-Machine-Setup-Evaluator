@@ -10,7 +10,6 @@ import { AlertCircle, Star } from 'lucide-react';
  *   - 導航按鈕（找下個斷點 / 算分異常 / 非零贏分）
  */
 const DiagnosticDashboard = ({
-    stats,
     diagnosticStats,
     wrongWinGroupIds,
     nonZeroWinGroupIds,
@@ -24,35 +23,6 @@ const DiagnosticDashboard = ({
 }) => {
     return (
         <>
-            {/* 統計儀表板 */}
-            {stats && (
-                <div className="p-3 bg-gradient-to-r from-indigo-50 to-cyan-50 border-b border-indigo-100">
-                    <div className="grid grid-cols-3 gap-2 text-center">
-                        <div>
-                            <div className="text-[10px] text-slate-500">Spins</div>
-                            <div className="text-sm font-bold text-indigo-700">{stats.totalSpins}</div>
-                        </div>
-                        <div>
-                            <div className="text-[10px] text-slate-500">RTP</div>
-                            <div className={`text-sm font-bold ${stats.rtp >= 100 ? 'text-emerald-600' : 'text-rose-600'}`}>{stats.rtp}%</div>
-                        </div>
-                        <div>
-                            <div className="text-[10px] text-slate-500">命中率</div>
-                            <div className="text-sm font-bold text-amber-600">{stats.hitRate}%</div>
-                        </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 mt-2 text-center">
-                        <div>
-                            <div className="text-[10px] text-slate-500">最大贏分</div>
-                            <div className="text-xs font-bold text-indigo-600">{stats.maxWin?.toLocaleString()}</div>
-                        </div>
-                        <div>
-                            <div className="text-[10px] text-slate-500">總贏分</div>
-                            <div className="text-xs font-bold text-emerald-600">{stats.totalWin?.toLocaleString()}</div>
-                        </div>
-                    </div>
-                </div>
-            )}
 
             {/* 診斷儀表板 */}
             {diagnosticStats && (

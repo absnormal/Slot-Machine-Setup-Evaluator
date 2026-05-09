@@ -57,9 +57,28 @@ export function useCandidateManager() {
         }));
     }, []);
 
+    // 移除候選幀的辨識結果（保留截圖與 OCR 數值），傳入 'ALL' 可一鍵清除全部
+    const resetCandidateRecognition = useCallback((id) => {
+        setCandidates(prev => prev.map(c => {
+            if (id === 'ALL' || c.id === id) {
+                if (c.recognitionResult || c.status === 'recognized' || c.status === 'error') {
+                    return {
+                        ...c,
+                        recognitionResult: null,
+                        manualOverrides: {},
+                        status: 'pending',
+                        error: ''
+                    };
+                }
+            }
+            return c;
+        }));
+    }, []);
+
     return {
         candidates, setCandidates,
         removeCandidate, clearCandidates,
         updateCandidate, updateCandidateOcr,
+        resetCandidateRecognition,
     };
 }

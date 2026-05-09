@@ -1,5 +1,5 @@
 import React from 'react';
-import { Scan, Send, Monitor, Link2, AlertCircle, Trash2 } from 'lucide-react';
+import { Scan, Send, Monitor, Link2, AlertCircle, Trash2, RotateCcw } from 'lucide-react';
 import CandidateCard from './CandidateCard';
 import CardErrorBoundary from './CardErrorBoundary';
 
@@ -26,6 +26,7 @@ const SpinGroupList = ({
     handleCardClick,
     onTransferToPhase3,
     removeCandidate,
+    resetCandidateRecognition,
     setManualBestCandidate,
     // Group actions
     recognizeLocalBatch, ocrDecimalPlaces,
@@ -43,9 +44,16 @@ const SpinGroupList = ({
                     {errorCount > 0 && <span className="bg-rose-100 text-rose-600 px-2 py-0.5 rounded-full text-[10px]">✗{errorCount}</span>}
                 </h3>
                 {candidates.length > 0 && (
-                    <button onClick={clearCandidates} className="text-slate-400 hover:text-rose-500 p-1 transition-colors" title="清除全部">
-                        <Trash2 size={14} />
-                    </button>
+                    <div className="flex items-center gap-1">
+                        {recognizedCount > 0 && (
+                            <button onClick={() => resetCandidateRecognition('ALL')} className="text-slate-400 hover:text-amber-500 p-1 transition-colors" title="一鍵清除全部辨識結果">
+                                <RotateCcw size={14} />
+                            </button>
+                        )}
+                        <button onClick={clearCandidates} className="text-slate-400 hover:text-rose-500 p-1 transition-colors" title="清除全部">
+                            <Trash2 size={14} />
+                        </button>
+                    </div>
                 )}
             </div>
 
@@ -69,6 +77,7 @@ const SpinGroupList = ({
                                     handleCardClick={handleCardClick}
                                     onTransferToPhase3={onTransferToPhase3}
                                     removeCandidate={removeCandidate}
+                                    resetCandidateRecognition={resetCandidateRecognition}
                                 />
                             ));
                         }
@@ -140,6 +149,7 @@ const SpinGroupList = ({
                                                 handleCardClick={handleCardClick}
                                                 onTransferToPhase3={onTransferToPhase3}
                                                 removeCandidate={removeCandidate}
+                                                resetCandidateRecognition={resetCandidateRecognition}
                                                 isBest={isBest}
                                                 hasBeenGrouped={hasBeenGrouped}
                                                 isDimmed={isDimmed}
