@@ -88,6 +88,7 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
             hadSpinSinceLastStop: false, // 自上次停輪後是否偵測到新旋轉
             isWinPollActive: false,
             cancelWinPoll: false,
+            winPollGraceUntil: 0, // WIN 特工取消後的寬限截止時間（防止 WIN 動畫被誤判為旋轉）
             windowSize: 20,
             lastVideoTime: -1,
             // ── 幀率校準 ──
@@ -191,12 +192,18 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                 if (analysis.spinningCount > 0 && analysis.maxMAE > 25) {
                     state.spinBreakCount = (state.spinBreakCount || 0) + 1;
                     if (state.spinBreakCount >= 3) {
-                        state.hadSpinSinceLastStop = true; // 確認有新一局旋轉
                         if (state.isWinPollActive) {
-                            console.log(`🌀 [V-Line] 確認新一局旋轉 (連續 ${state.spinBreakCount} 幀, ${analysis.spinningCount}軸在轉, max=${analysis.maxMAE.toFixed(1)})，強行終止上一局的 WIN 特工！ (影片時間：${now.toFixed(3)}s)`);
+                            // WIN 特工還在追蹤 → 動畫可能被誤判為旋轉
+                            // 只殺特工，不設 hadSpin；加寬限期讓動畫衰退
+                            console.log(`🌀 [V-Line] WIN 特工活躍中偵測到疑似旋轉 (連續 ${state.spinBreakCount} 幀, ${analysis.spinningCount}軸, max=${analysis.maxMAE.toFixed(1)})，終止特工並進入寬限期 (影片時間：${now.toFixed(3)}s)`);
                             state.cancelWinPoll = true;
                             state.isWinPollActive = false;
+                            state.winPollGraceUntil = now + 0.8; // 0.8 秒寬限
+                        } else if (now > state.winPollGraceUntil) {
+                            // 非特工期間 & 非寬限期 → 正常確認旋轉
+                            state.hadSpinSinceLastStop = true;
                         }
+                        // 寬限期內 → 不設 hadSpin（讓 WIN 動畫衰退）
                         state.spinBreakCount = 0;
                     }
                 } else {
