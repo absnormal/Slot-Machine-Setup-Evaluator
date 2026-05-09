@@ -111,8 +111,8 @@ const CandidateCard = ({
                         {(() => {
                             const rr = kf.recognitionResult;
                             const compareWin = rr?.expectedWin !== undefined ? rr.expectedWin : (kf.ocrData ? parseFloat(kf.ocrData.win) || 0 : 0);
-                            const aiWin = rr ? Math.floor(parseFloat(rr.totalWin) || 0) : 0;
-                            const isWinMatch = Math.floor(compareWin) === aiWin;
+                            const aiWin = rr ? (parseFloat(rr.totalWin) || 0) : 0;
+                            const isWinMatch = compareWin === aiWin;
                             const hasResult = kf.status === 'recognized' && kf.recognitionResult;
 
                             let badgeClass = 'bg-slate-100 text-slate-500';
@@ -215,9 +215,9 @@ const CandidateCard = ({
                             {(() => {
                                 const rr = kf.recognitionResult;
                                 const compareWin = rr?.expectedWin !== undefined ? rr.expectedWin : (kf.ocrData ? parseFloat(kf.ocrData.win) || 0 : 0);
-                                const aiWin = Math.floor(parseFloat(rr?.totalWin) || 0);
-                                const displayCompare = Math.floor(compareWin);
-                                const isWinMatch = displayCompare === aiWin;
+                                const aiWin = parseFloat(rr?.totalWin) || 0;
+                                const displayCompare = compareWin;
+                                const isWinMatch = compareWin === aiWin;
 
                                 if (isWinMatch) {
                                     return (
