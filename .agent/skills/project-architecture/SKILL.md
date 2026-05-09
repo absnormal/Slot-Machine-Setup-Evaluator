@@ -290,5 +290,45 @@ handleTransferPhase4ToPhase3:
 | 偵測參數 UI | `phase4/DetectionControlBar.jsx` |
 | 存檔功能 | `useAutoSave.js`, `phase4/SavePanel.jsx` |
 
+
+## 9. 驗證流程
+
+每次修改後建議執行：
+```bash
+# 1. Build 驗證 (無編譯錯誤)
+npm run build
+
+# 2. 單元測試
+npx vitest run
+
+# 3. Runtime 驗證
+npm run dev
+# → 確認 4 個 Phase 全部正常渲染、無 console error
+```
+
+## 10. 常見修改範例
+
+### 新增 Template 狀態欄位 (e.g. `hasStickyWild`)
+1. 對照 `SPEC.md` 第 14 節 Checklist，逐項修改
+2. 核心修改點：`useTemplateBuilder.js` (state + build + reset + return) → `useTemplateIO.js` (`applyTemplateData`) → `useCloud.js` → `Phase1Setup.jsx`
+3. 執行 build + test 驗證
+
+### 修改賠率表 AI OCR
+1. 修改 `usePaytableProcessor.js` 的 `handlePtExtract()`
+2. Prompt 模板：`config/promptTemplates.js`
+3. 注意：`usePaytableProcessor` 的表格操作函數需透過參數接收 `setPaytableInput`
+
+## 11. 常見問題 (Troubleshooting)
+
+| 問題 | 排查方向 |
+|------|---------|
+| 圖標辨識不到 | 檢查 `template.paytable` 是否包含該符號，確認 Gemini Label 與 `symbolUtils.js` 一致 |
+| 動態檢測失靈 | 調整 `useKeyframeExtractor` 的 `vLineThreshold`、`motionCoverageMin` |
+| `is not a function` 錯誤 | Custom Hook 擴充新狀態時忘記在 `return { ... }` 匯出 |
+| 雲端存檔遺失新欄位 | 需同時更新 `useCloud.js` 參數解構 + `useTemplateIO.js` 的 `applyTemplateData()` |
+| 匯入後新欄位被重置 | 修改 `useTemplateIO.js` 的 `applyTemplateData()`（雲端載入與本地匯入的唯一共用入口） |
+| 賠率表操作不同步 | `usePaytableProcessor` 的函數需透過參數接收 `setPaytableInput`，`useTemplateBuilder` 使用 wrapper 綁定 |
+
 ---
 *最後更新：2026-05-09*
+
