@@ -34,9 +34,9 @@ const CandidateCard = ({
     const statusBorder = isBest && hasBeenGrouped
         ? 'ring-2 ring-emerald-400 border-emerald-300'
         : kf.status === 'recognized' ? 'border-emerald-200'
-        : kf.status === 'error' ? 'border-rose-200'
-        : kf.status === 'recognizing' ? 'border-indigo-300 ring-2 ring-indigo-200'
-        : 'border-slate-200 hover:border-indigo-300';
+            : kf.status === 'error' ? 'border-rose-200'
+                : kf.status === 'recognizing' ? 'border-indigo-300 ring-2 ring-indigo-200'
+                    : 'border-slate-200 hover:border-indigo-300';
 
     return (
         <div
@@ -77,15 +77,14 @@ const CandidateCard = ({
                     {kf.winPollThumbUrl && (
                         <button
                             onClick={(e) => { e.stopPropagation(); updateCandidate(kf.id, { useWinFrame: kf.useWinFrame === false }); }}
-                            className={`absolute bottom-0 right-0 px-1 text-[8px] font-bold rounded-tl-md transition-colors ${
-                                kf.useWinFrame !== false ? 'bg-amber-500 text-black' : 'bg-slate-600 text-white'
-                            }`}
+                            className={`absolute bottom-0 right-0 px-1 text-[8px] font-bold rounded-tl-md transition-colors ${kf.useWinFrame !== false ? 'bg-amber-500 text-black' : 'bg-slate-600 text-white'
+                                }`}
                             title={kf.useWinFrame !== false ? '目前：用 WIN 截圖辨識，點擊切換到停輪截圖' : '目前：用停輪截圖辨識，點擊切換到 WIN 截圖'}
                         >
                             {kf.useWinFrame !== false ? 'WIN' : '停輪'}
                         </button>
                     )}
-                    
+
                     {kf.manualOverrides?.grid && (
                         <div className="absolute top-1 left-1 bg-amber-500/90 text-white font-bold text-[9px] px-1.5 py-0.5 rounded shadow-sm border border-amber-400 z-10" title="盤面已人工手動修改">
                             ✍️ 人工盤面

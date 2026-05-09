@@ -221,7 +221,7 @@ function App() {
     const [videoSrc, setVideoSrc] = useState(null);
     const [isStreamMode, setIsStreamMode] = useState(false);
     const [isNativeMode, setIsNativeMode] = useState(false);
-    
+
     // 視窗與螢幕選擇 Modal 狀態
     const [showNativeSourceModal, setShowNativeSourceModal] = useState(false);
     const [nativeSources, setNativeSources] = useState([]);
@@ -400,15 +400,14 @@ function App() {
 
         const transformed = await Promise.all(kfCandidates.map(kf => {
             return new Promise((resolve) => {
-                // 根據每張卡片的 useWinFrame 設定，決定送哪張截圖到 Phase 3
-                const showingWin = kf.useWinFrame !== false;
-                const targetCanvas = showingWin ? (kf.winPollCanvas || kf.canvas) : kf.canvas;
+                // 盤面辨識一律用停輪幀（WIN 截圖有特效干擾）
+                const targetCanvas = kf.canvas;
                 const dataUrl = targetCanvas.toDataURL('image/jpeg', 0.8);
                 const img = new Image();
                 img.onload = () => {
                     resolve({
-                        id: showingWin ? `${kf.id}_win` : `${kf.id}_stop`,
-                        file: { name: `Spin-${kf.time.toFixed(1)}s${showingWin ? '-WIN' : '-Stop'}` },
+                        id: `${kf.id}_stop`,
+                        file: { name: `Spin-${kf.time.toFixed(1)}s-Stop` },
                         previewUrl: dataUrl,
                         obj: img,
                         grid: kf.recognitionResult?.grid || null,
@@ -494,7 +493,7 @@ function App() {
             setVisionCalculateError('');
             return;
         }
-        
+
         let multVal = null;
         if (template?.hasMultiplierReel && activeVisionImg?.multiplier) {
             multVal = parseFloat(activeVisionImg.multiplier.replace(/[^0-9.]/g, '')) || 1;

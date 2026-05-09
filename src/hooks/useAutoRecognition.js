@@ -151,24 +151,29 @@ export function useAutoRecognition({
 
             try {
                 // ── A. Gemini Vision 辨識盤面符號 ──
-                const targetCanvas = (kf.useWinFrame !== false) ? (kf.winPollCanvas || kf.canvas) : kf.canvas;
+                // 盤面辨識一律用停輪幀（WIN 截圖有特效干擾）
+                const gridCanvas = kf.canvas;
                 const gridResult = await recognizeGrid(
-                    targetCanvas, rois, template, availableSymbols, fixedPrefixParts, modelName, effectiveApiKey
+                    gridCanvas, rois, template, availableSymbols, fixedPrefixParts, modelName, effectiveApiKey
                 );
 
-                // ── B. Tesseract OCR 辨識數值 (並行) ──
+                // ── B. OCR 數值決定 ──
+                const mo = kf.manualOverrides || {};
+                const ocrD = kf.ocrData || {};
+                // 優先級：手動修正 > WIN特工/既有 ocrData > 重新 OCR
+                // WIN 特工已在數值穩定瞬間 OCR 過，比從停輪幀重跑更可靠
+                const useExistingWin = ocrD.win && parseFloat(ocrD.win) > 0;
+                const useExistingBal = ocrD.balance && parseFloat(ocrD.balance) > 0;
+                const useExistingBet = ocrD.bet && parseFloat(ocrD.bet) > 0;
                 const [winText, balanceText, betText] = await Promise.all([
-                    recognizeROIText(targetCanvas, rois.winROI, ocrWorkerRef.current, ocrDecimalPlaces, true),
-                    recognizeROIText(targetCanvas, rois.balanceROI, ocrWorkerRef.current, ocrDecimalPlaces, true),
-                    recognizeROIText(targetCanvas, rois.betROI, ocrWorkerRef.current, ocrDecimalPlaces, false)
+                    useExistingWin ? Promise.resolve(ocrD.win) : recognizeROIText(gridCanvas, rois.winROI, ocrWorkerRef.current, ocrDecimalPlaces, true),
+                    useExistingBal ? Promise.resolve(ocrD.balance) : recognizeROIText(gridCanvas, rois.balanceROI, ocrWorkerRef.current, ocrDecimalPlaces, true),
+                    useExistingBet ? Promise.resolve(ocrD.bet) : recognizeROIText(gridCanvas, rois.betROI, ocrWorkerRef.current, ocrDecimalPlaces, false)
                 ]);
 
                 // ── C. 結算 ──
-                const mo = kf.manualOverrides || {};
-                const ocrD = kf.ocrData || {};
                 const gMultText = String((mo.multiplier ? ocrD.multiplier : null) || gridResult.multiplier || '');
-                const gBetText = (mo.bet ? ocrD.bet : null) || betText;
-                const betValue = gridResult.bet || parseFloat(gBetText) || 100;
+                const betValue = gridResult.bet || parseFloat(betText) || 100;
 
                 let multVal = 1;
                 let finalMultText = '';
@@ -180,20 +185,19 @@ export function useAutoRecognition({
                 const { results: settlement } = computeGridResults(template, gridResult.grid, betValue, { enableBidirectional, globalMultiplier: multVal });
 
                 // 連鎖盤面：OCR WIN 是累計值，辨識引擎算的是該步驟獨立贏分
+                // 但若用戶手動修正了 WIN，以用戶值為準
                 const isCascade = !!kf.isCascadeMember;
-                const finalWinText = (mo.win ? ocrD.win : null) || winText;
-                const finalBalText = (mo.balance ? ocrD.balance : null) || balanceText;
-                const expectedWin = isCascade && kf.cascadeDeltaWin !== undefined
+                const expectedWin = (isCascade && kf.cascadeDeltaWin !== undefined && !mo.win)
                     ? kf.cascadeDeltaWin
-                    : parseFloat(finalWinText) || 0;
+                    : parseFloat(winText) || 0;
 
                 updateCandidate(kf.id, {
                     status: 'recognized',
                     recognitionResult: {
                         grid: gridResult.grid,
-                        win: finalWinText,
-                        balance: finalBalText,
-                        bet: gBetText,
+                        win: winText,
+                        balance: balanceText,
+                        bet: betText,
                         multiplier: finalMultText,
                         betValue,
                         settlement,
@@ -302,14 +306,30 @@ export function useAutoRecognition({
             updateCandidate(kf.id, { status: 'recognizing' });
 
             try {
-                const targetCanvas = (kf.useWinFrame !== false) ? (kf.winPollCanvas || kf.canvas) : kf.canvas;
+                // 盤面辨識一律用停輪幀（WIN 截圖有特效干擾）
+                const rawCanvas = kf.canvas;
 
-                if (!targetCanvas) {
+                if (!rawCanvas) {
                     throw new Error('找不到對應的截圖畫面 (可能為已匯入之歷史紀錄且未包含圖片)');
                 }
 
-                const pixelROI = toPixelROI(targetCanvas, reelROI);
-                const { grid, details } = await recognizeBoard(targetCanvas, pixelROI, template.rows, displayCols, refIndex, {
+                // JPEG round-trip 去噪：與 P3 傳送相同的壓縮步驟
+                // 停輪幀可能殘留微弱特效（淡出閃光），JPEG 壓縮可平滑這些雜訊
+                const gridCanvas = await new Promise((resolve) => {
+                    const dataUrl = rawCanvas.toDataURL('image/jpeg', 0.8);
+                    const img = new Image();
+                    img.onload = () => {
+                        const c = document.createElement('canvas');
+                        c.width = img.width;
+                        c.height = img.height;
+                        c.getContext('2d').drawImage(img, 0, 0);
+                        resolve(c);
+                    };
+                    img.src = dataUrl;
+                });
+
+                const pixelROI = toPixelROI(gridCanvas, reelROI);
+                const { grid, details } = await recognizeBoard(gridCanvas, pixelROI, template.rows, displayCols, refIndex, {
                     ocrWorker: ocrWorkerRef.current,
                     hasCashCollect: !!template.hasCashCollectFeature,
                     jpConfig: template.jpConfig
@@ -317,21 +337,26 @@ export function useAutoRecognition({
 
                 let multiplierText = '';
                 if (template.hasMultiplierReel && rois.multiplierROI) {
-                    multiplierText = await detectLitMultiplier(targetCanvas, rois.multiplierROI, ocrWorkerRef.current) || '';
+                    multiplierText = await detectLitMultiplier(gridCanvas, rois.multiplierROI, ocrWorkerRef.current) || '';
                 }
-
-                const [winText, balanceText, betText] = await Promise.all([
-                    recognizeROIText(targetCanvas, rois.winROI, ocrWorkerRef.current, ocrDecimalPlaces, true),
-                    recognizeROIText(targetCanvas, rois.balanceROI, ocrWorkerRef.current, ocrDecimalPlaces, true),
-                    recognizeROIText(targetCanvas, rois.betROI, ocrWorkerRef.current, ocrDecimalPlaces, false)
-                ]);
 
                 // 手動修改的數值優先於 OCR（manualOverrides 存布林標記，實際值在 ocrData）
                 const mo = kf.manualOverrides || {};
                 const ocrD = kf.ocrData || {};
+
+                // 優先級：既有 ocrData（WIN特工/手動修正） > 重新 OCR
+                // WIN 特工已在數值穩定瞬間 OCR 過，比從停輪幀重跑更可靠
+                const useExistingWin = ocrD.win && parseFloat(ocrD.win) > 0;
+                const useExistingBal = ocrD.balance && parseFloat(ocrD.balance) > 0;
+                const useExistingBet = ocrD.bet && parseFloat(ocrD.bet) > 0;
+                const [winText, balanceText, betText] = await Promise.all([
+                    useExistingWin ? Promise.resolve(ocrD.win) : recognizeROIText(gridCanvas, rois.winROI, ocrWorkerRef.current, ocrDecimalPlaces, true),
+                    useExistingBal ? Promise.resolve(ocrD.balance) : recognizeROIText(gridCanvas, rois.balanceROI, ocrWorkerRef.current, ocrDecimalPlaces, true),
+                    useExistingBet ? Promise.resolve(ocrD.bet) : recognizeROIText(gridCanvas, rois.betROI, ocrWorkerRef.current, ocrDecimalPlaces, false)
+                ]);
+
                 const finalMultText = String((mo.multiplier ? ocrD.multiplier : null) || multiplierText || '');
-                const finalBetText = (mo.bet ? ocrD.bet : null) || betText;
-                const betValue = parseFloat(finalBetText) || 100;
+                const betValue = parseFloat(betText) || 100;
 
                 let multVal = 1;
                 if (template?.hasMultiplierReel && finalMultText) {
@@ -345,21 +370,19 @@ export function useAutoRecognition({
                 const avgConf = allConf.reduce((s, v) => s + v, 0) / allConf.length;
 
                 // 連鎖盤面：OCR WIN 是累計值，辨識引擎算的是該步驟獨立贏分
-                // 用 cascadeDeltaWin 作為正確的比對基準
+                // 但若用戶手動修正了 WIN，以用戶值為準
                 const isCascade = !!kf.isCascadeMember;
-                const finalWinText = (mo.win ? ocrD.win : null) || winText;
-                const finalBalText = (mo.balance ? ocrD.balance : null) || balanceText;
-                const expectedWin = isCascade && kf.cascadeDeltaWin !== undefined
+                const expectedWin = (isCascade && kf.cascadeDeltaWin !== undefined && !mo.win)
                     ? kf.cascadeDeltaWin
-                    : parseFloat(finalWinText) || 0;
+                    : parseFloat(winText) || 0;
 
                 updateCandidate(kf.id, {
                     status: 'recognized',
                     recognitionResult: {
                         grid,
-                        win: finalWinText,
-                        balance: finalBalText,
-                        bet: finalBetText,
+                        win: winText,
+                        balance: balanceText,
+                        bet: betText,
                         multiplier: finalMultText ? (finalMultText.startsWith('x') ? finalMultText : `x${finalMultText}`) : '',
                         betValue,
                         settlement,
