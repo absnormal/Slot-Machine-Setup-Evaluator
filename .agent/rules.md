@@ -5,4 +5,4 @@
 3. **自動 Git Commit (Automatic Git Commits)**: 只要有任何程式碼變動（新增、修改、刪除、還原），都必須執行 `git commit`。
 4. **Commit 訊息規範**: 必須使用 **使用者下達的原始指令文字**，或是**執行的PLAN名稱**(優先) 作為 `git commit -m` 的參數。
 5. **Commit後不要自己push**: 除非使用者有下指令，不然不要自己commit之後接著push
- 
+6. **架構文件同步**: 當新增/刪除檔案、重構 Hook、變更資料結構時，須同步更新 `.agent/skills/project-architecture/SKILL.md` 對應章節。
