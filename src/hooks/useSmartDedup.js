@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import usePhase4Store from '../stores/usePhase4Store';
 
 /**
  * useSmartDedup — 智慧標記 / 去重 / 手動指定最佳幀
@@ -11,6 +12,7 @@ import { useCallback } from 'react';
  *   3. setManualBestCandidate() — 手動指定某張卡片為該局最佳
  */
 export function useSmartDedup({ setCandidates, setTemplateMessage }) {
+    const enableCascade = usePhase4Store(s => s.enableEmptyBoardFilter);
 
     /**
      * 智慧標記：辨識同局幀 → 凸顯最佳、淡化其餘（不刪除）
@@ -186,15 +188,17 @@ export function useSmartDedup({ setCandidates, setTemplateMessage }) {
             });
 
             // ==========================================
-            // 🔥 [Cascade 智能合併 Pass] 
-            // 根據使用者指定的 isCascadeMode 決定合併策略
+            // 🔥 [Cascade 智能合併 Pass]
+            // 只在連鎖模式開啟時執行；關閉時群組直接通過
             // ==========================================
             let finalGroups = Object.values(groups);
             finalGroups.sort((a, b) => a[0].kf.time - b[0].kf.time);
 
-            let foldedGroups = [];
+            let mergedGroupsList;
 
-            {
+            if (enableCascade) {
+                // ── 連鎖模式開啟：嘗試合併連續群組 ──
+                let foldedGroups = [];
                 let currentCascade = null;
 
                 for (let i = 0; i < finalGroups.length; i++) {
@@ -204,32 +208,22 @@ export function useSmartDedup({ setCandidates, setTemplateMessage }) {
 
                     if (currentCascade) {
                         const prevTime = currentCascade.group[currentCascade.group.length - 1].kf.time;
-                        // 用初始 BAL 和最高累計 WIN 來判斷斷層
-                        const initBal = currentCascade.initBal;   // cascade 開始時的凍結餘額
-                        const totalWin = currentCascade.totalWin;  // 整條鏈的最高累計 WIN
+                        const initBal = currentCascade.initBal;
+                        const totalWin = currentCascade.totalWin;
                         const cascadeBet = currentCascade.initBet;
-                        
                         const timeDiff = g[0].kf.time - prevTime;
 
-                        // BAL 還凍結在初始值 → cascade 繼續中
                         const isBelowFrozen = Math.abs(rep.bal - initBal) < eps;
-                        // BAL 已更新 = initBal + totalWin → 確認是新局（斷層）
                         const isBalSettled = Math.abs(rep.bal - (initBal + totalWin)) < eps;
                         const isWinIncreasing = rep.win >= totalWin;
                         const isSameBet = rep.bet === cascadeBet && rep.bet > 0;
                         const isTieSpin = Math.abs(totalWin - rep.bet) < eps;
 
                         let shouldMerge = false;
-
                         if (timeDiff <= 180 && isSameBet) {
                             if (isBelowFrozen && isWinIncreasing) {
-                                if (isTieSpin) {
-                                    shouldMerge = false; // 平局防呆
-                                } else {
-                                    shouldMerge = true;
-                                }
+                                shouldMerge = !isTieSpin;
                             }
-                            // BAL 已結算 → 明確斷層，不合併
                             if (isBalSettled && totalWin > eps) {
                                 shouldMerge = false;
                             }
@@ -239,7 +233,7 @@ export function useSmartDedup({ setCandidates, setTemplateMessage }) {
                             g.forEach(f => f.isCascadeMember = true);
                             currentCascade.group.forEach(f => f.isCascadeMember = true);
                             currentCascade.group.push(...g);
-                            currentCascade.totalWin = Math.max(totalWin, rep.win); // 更新最高累計 WIN
+                            currentCascade.totalWin = Math.max(totalWin, rep.win);
                             continue;
                         } else {
                             foldedGroups.push(currentCascade.group);
@@ -250,19 +244,20 @@ export function useSmartDedup({ setCandidates, setTemplateMessage }) {
                     if (!currentCascade) {
                         currentCascade = {
                             group: [...g],
-                            initBal: rep.bal,      // 凍結初始餘額
+                            initBal: rep.bal,
                             initBet: rep.bet,
-                            totalWin: rep.win       // 初始 WIN（可能是 0 或已有值）
+                            totalWin: rep.win
                         };
                     }
                 }
                 if (currentCascade) {
                     foldedGroups.push(currentCascade.group);
                 }
+                mergedGroupsList = foldedGroups;
+            } else {
+                // ── 連鎖模式關閉：群組直接通過，不做 cascade 合併 ──
+                mergedGroupsList = finalGroups;
             }
-
-            // 把 foldedGroups 內容交接給後續的最佳幀挑選邏輯
-            const mergedGroupsList = foldedGroups;
 
             // 每組標記最佳幀
             const bestIds = new Set();
@@ -278,20 +273,18 @@ export function useSmartDedup({ setCandidates, setTemplateMessage }) {
                     continue;
                 }
 
-                // 🔗 [Cascade Delta WIN] 自動偵測 cascade 模式：
-                //   1. 由 cascade merge 明確標記的 isCascadeMember
-                //   2. 或同 BAL + 多個不同 WIN + WIN 遞增（orderId 合併導致 merge 無法標記的情況）
-                const hasCascadeFlag = group.some(f => f.isCascadeMember);
-                const isCascadeGroup = hasCascadeFlag || (() => {
+                // 🔗 [Cascade Delta WIN] 偵測 cascade 群組
+                // 只在連鎖模式開啟時才自動偵測；關閉時不標記 cascade
+                const hasCascadeFlag = enableCascade && group.some(f => f.isCascadeMember);
+                const isCascadeGroup = enableCascade && (hasCascadeFlag || (() => {
                     if (group.length < 2) return false;
                     const sorted = [...group].sort((a, b) => a.kf.time - b.kf.time);
                     const baseBal = sorted[0].bal;
-                    // 允許最後 1 張幀有不同 BAL（結算幀：餘額已加上 WIN）
                     const frozenCount = sorted.filter(f => Math.abs(f.bal - baseBal) < eps).length;
                     const hasMostlyFrozenBal = frozenCount >= sorted.length - 1;
                     const winValues = new Set(sorted.map(f => Math.round(f.win * 100)));
                     return hasMostlyFrozenBal && winValues.size >= 2;
-                })();
+                })());
 
                 if (isCascadeGroup) {
                     // 補標 isCascadeMember（讓 useSpinGroupAnalysis 能辨識）
