@@ -9,6 +9,7 @@ import { extractSliceGrays, computeSliceMAEs, analyzeSlicePattern, windowStats, 
 import { getCachedFrameRate, getGhostThreshold } from '../utils/displayUtils';
 import { captureFullFrame, generateThumbUrl, cropAndOCR } from '../engine/ocrPipeline';
 import { startWinPollAgent, detectMultiplier } from '../engine/winPollAgent';
+import { createCalibrationState, processCalibrationFrame } from '../engine/frameRateCalibrator';
 
 
 
@@ -91,12 +92,8 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
             winPollGraceUntil: 0, // WIN 特工取消後的寬限截止時間（防止 WIN 動畫被誤判為旋轉）
             windowSize: 20,
             lastVideoTime: -1,
-            // ── 幀率校準 ──
-            ghostThresholdSec: getGhostThreshold(),  // 從快取讀取（秒），無快取用 60Hz 預設
-            isCalibrated: !!getCachedFrameRate(),     // 是否已有 localStorage 快取
-            calibrationDone: false,                    // 本次即時偵測是否已完成校準
-            rafDeltas: [],                             // 收集 RAF 間距用
-            lastRafTime: -1,                           // 上一次 RAF timestamp
+            // ── 幀率校準（委派給 engine/frameRateCalibrator）──
+            ...createCalibrationState(),
             backfillQueue: [],                          // WIN=0 幀的延遲補掃佇列
             sliceCols,
             lastCascadeConfirmedWin: 0, // 🔗 上一個連鎖盤面確認的累計 WIN（作為輪詢器的門檻）
@@ -112,28 +109,9 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                 return;
             }
 
-            // ── 自動幀率校準（僅在無 localStorage 快取時，前 30 幀執行）──
+            // ── 自動幀率校準（委派給 engine/frameRateCalibrator）──
             const state = liveStateRef.current;
-            if (!state.isCalibrated && !state.calibrationDone && rafTimestamp && state.lastRafTime > 0) {
-                state.rafDeltas.push(rafTimestamp - state.lastRafTime);
-                if (state.rafDeltas.length >= 30) {
-                    const sorted = [...state.rafDeltas].sort((a, b) => a - b);
-                    const fd = sorted[15]; // 中位數
-                    state.ghostThresholdSec = (fd * 0.65) / 1000;
-                    state.calibrationDone = true;
-                    try {
-                        const hz = Math.round(1000 / fd);
-                        localStorage.setItem('SLOT_DISPLAY_FRAME_RATE', JSON.stringify({
-                            frameDuration: Math.round(fd * 10) / 10,
-                            ghostThreshold: Math.round(fd * 0.65 * 10) / 10,
-                            hz,
-                            calibratedAt: new Date().toISOString()
-                        }));
-                        console.log(`🖥️ [幀率校準] 螢幕=${hz}Hz (幀間距=${fd.toFixed(1)}ms) → 幽靈幀閾值=${(fd * 0.65).toFixed(1)}ms`);
-                    } catch { /* ignore */ }
-                }
-            }
-            if (rafTimestamp) state.lastRafTime = rafTimestamp;
+            processCalibrationFrame(state, rafTimestamp);
 
             // 【防偽停輪機制】：影片時間未前進就跳過
             const now = video.currentTime;

@@ -1,5 +1,7 @@
 import { useCallback } from 'react';
-import { parallelMap, canvasToBlobUrl } from '../utils/asyncUtils';
+import { computeStats as computeStatsCore } from '../engine/statsCalculator';
+import { serializeSession } from '../engine/sessionSerializer';
+import { importSession as importSessionCore } from '../engine/sessionSerializer';
 
 /**
  * useReportGenerator — 唯一匯出 HTML 報告 + 統計儀表板
@@ -7,73 +9,9 @@ import { parallelMap, canvasToBlobUrl } from '../utils/asyncUtils';
 export function useReportGenerator() {
 
     /**
-     * 從辨識完成的候選幀計算統計數據
+     * 統計計算 — 委派給 engine/statsCalculator（純函數）
      */
-    const computeStats = useCallback((candidates) => {
-        // 過濾出有基本辨識資料的幀（代表它是有效的截圖）
-        const validCandidates = candidates.filter(c => c.ocrData || c.recognitionResult);
-        if (validCandidates.length === 0) return null;
-
-        const sorted = [...validCandidates].sort((a, b) => a.time - b.time);
-        const hasSpinData = sorted.some(c => c.spinGroupId !== undefined);
-        let spins;
-
-        if (hasSpinData) {
-            const groups = new Map();
-            sorted.forEach(c => {
-                const gid = c.spinGroupId !== undefined ? c.spinGroupId : `u_${c.id}`;
-                if (!groups.has(gid)) groups.set(gid, []);
-                groups.get(gid).push(c);
-            });
-            spins = Array.from(groups.values()).map(group => {
-                // 如果有設定最佳幀就用最佳幀，否則代表這是空局或尚未跑到 WIN 的局，取群組第一張
-                return group.find(c => c.isSpinBest) || group[0];
-            });
-        } else {
-            spins = sorted;
-        }
-
-        if (spins.length === 0) return null;
-
-        const parse = v => parseFloat(v) || 0;
-
-        const wins = spins.map(c => {
-            if (c.recognitionResult && c.recognitionResult.totalWin !== undefined) return parse(c.recognitionResult.totalWin);
-            return parse(c.ocrData?.win);
-        });
-
-        const bets = spins.map(c => {
-            if (c.recognitionResult && c.recognitionResult.bet !== undefined) return parse(c.recognitionResult.bet);
-            return parse(c.ocrData?.bet); // 若未填寫 ROI 可能會是 0，防呆
-        });
-
-        const totalWin = wins.reduce((s, v) => s + v, 0);
-        const totalBet = bets.reduce((s, v) => s + v, 0);
-        const maxWin = Math.max(...wins);
-        const hitCount = wins.filter(w => w > 0).length;
-
-        // 最長連續無贏分
-        let maxZeroStreak = 0, currentStreak = 0;
-        for (const w of wins) {
-            if (w === 0) { currentStreak++; maxZeroStreak = Math.max(maxZeroStreak, currentStreak); }
-            else { currentStreak = 0; }
-        }
-
-        return {
-            totalSpins: spins.length,
-            totalWin: parseFloat(totalWin.toFixed(2)),
-            totalBet: parseFloat(totalBet.toFixed(2)),
-            rtp: totalBet > 0 ? parseFloat((totalWin / totalBet * 100).toFixed(2)) : 0,
-            maxWin: parseFloat(maxWin.toFixed(2)),
-            maxWinBetRatio: bets.length > 0 && maxWin > 0 && bets[wins.indexOf(maxWin)] > 0
-                ? parseFloat((maxWin / bets[wins.indexOf(maxWin)]).toFixed(1))
-                : 0,
-            hitRate: parseFloat((hitCount / spins.length * 100).toFixed(1)),
-            avgWinPerSpin: parseFloat((totalWin / spins.length).toFixed(2)),
-            zeroWinStreak: maxZeroStreak,
-            hitCount
-        };
-    }, []);
+    const computeStats = useCallback((candidates) => computeStatsCore(candidates), []);
 
     /**
      * 匯出完整 HTML 報告（包含 OCR 數據與 AI 辨識盤面/贏分）
@@ -639,42 +577,13 @@ document.getElementById('navCascadeCount').textContent = cc > 0 ? cc : '';
         const blob = new Blob([html], { type: 'text/html;charset=utf-8;' });
         const fileName = `${gameName}_Report_${new Date().toISOString().slice(0, 10).replace(/-/g, '')}.html`;
 
-        // ====== 匯出 JSON 資料檔（Session Sidecar）======
-        // 先 yield 讓 UI 更新進度，再做同步序列化
+        // ====== 匯出 JSON 資料檔 — 委派給 engine/sessionSerializer ======
         onProgress?.({ phase: '產生 JSON', current: spins.length, total: spins.length, detail: '序列化辨識資料...' });
         await new Promise(r => setTimeout(r, 0));
 
-        const exportedCandidates = validCandidates.map(c => ({
-            id: c.id,
-            time: c.time,
-            status: c.status,
-            diff: c.diff,
-            avgDiff: c.avgDiff,
-            ocrData: c.ocrData || null,
-            manualOverrides: c.manualOverrides || null,
-            recognitionResult: c.recognitionResult || null,
-            spinGroupId: c.spinGroupId,
-            isSpinBest: c.isSpinBest,
-            isCascadeMember: c.isCascadeMember || false,
-            cascadeDeltaWin: c.cascadeDeltaWin || 0,
-            captureDelay: c.captureDelay || 0,
-            reelStopTime: c.reelStopTime || c.time,
-            winPollTime: c.winPollTime || null,
-            // 圖片檔名對照（匯入時用來讀回圖片）
-            imageFile: c.canvas ? `spin_${c.time.toFixed(2)}s_${c.id}` : (c.thumbUrl ? `spin_${c.time.toFixed(2)}s_${c.id}` : null),
-            winPollImageFile: c.winPollCanvas ? `winpoll_${c.time.toFixed(2)}s_${c.id}` : null,
-        }));
-
-        const jsonData = {
-            version: 2,
-            rois: customRois || null,
-            candidates: exportedCandidates
-        };
-        const jsonBlob = new Blob([JSON.stringify(jsonData)], { type: 'application/json;charset=utf-8;' });
-        const jsonFileName = `${gameName}_Session_${new Date().toISOString().slice(0, 10).replace(/-/g, '')}.json`;
+        const { jsonBlob, jsonFileName } = serializeSession(validCandidates, customRois, gameName);
 
         // ====== 儲存結果 ======
-        // HTML 與 JSON 皆使用瀏覽器下載（避免企業防毒軟體攔截 File System API 導致 close() 掛住 100+ 秒）
         let resultMsg = '';
 
         onProgress?.({ phase: '下載報告', current: spins.length, total: spins.length, detail: fileName });
@@ -706,156 +615,9 @@ document.getElementById('navCascadeCount').textContent = cc > 0 ? cc : '';
     }, []);
 
     /**
-     * 從資料夾匯入歷史 Session（JSON + 圖片）→ 還原成 candidates 陣列
-     * @returns {Promise<Array>} 還原的 candidates 陣列
+     * Session 匯入 — 委派給 engine/sessionSerializer（純非同步函數）
      */
-    const importSession = useCallback(async (onProgress = null) => {
-        try {
-            const dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
-
-            onProgress?.({ phase: '解析 JSON 檔案', current: 0, total: 0, detail: '' });
-
-            // 1. 找 JSON 檔
-            let jsonData = null;
-            for await (const entry of dirHandle.values()) {
-                if (entry.kind === 'file' && entry.name.endsWith('.json') && entry.name.includes('Session')) {
-                    const file = await entry.getFile();
-                    onProgress?.({ phase: '解析 JSON 檔案', current: 0, total: 0, detail: entry.name });
-                    const text = await file.text();
-                    jsonData = JSON.parse(text);
-                    break;
-                }
-            }
-            if (!jsonData) {
-                alert('⚠️ 在所選資料夾中找不到有效的 Session JSON 檔');
-                return null;
-            }
-            
-            // 支援舊版 Array 格式與新版 Object 格式
-            let loadedCandidates = [];
-            let loadedRois = null;
-            if (Array.isArray(jsonData)) {
-                loadedCandidates = jsonData;
-            } else if (jsonData.candidates && Array.isArray(jsonData.candidates)) {
-                loadedCandidates = jsonData.candidates;
-                loadedRois = jsonData.rois;
-            } else {
-                alert('⚠️ Session JSON 檔格式不正確');
-                return null;
-            }
-
-            onProgress?.({ phase: '建立圖片索引', current: 0, total: loadedCandidates.length, detail: `共 ${loadedCandidates.length} 筆資料` });
-
-            // 2. 建立圖片索引（不含副檔名的檔名 → FileHandle）
-            const imageIndex = new Map();
-            for await (const entry of dirHandle.values()) {
-                if (entry.kind === 'file' && /\.(jpg|jpeg|png|webp)$/i.test(entry.name)) {
-                    // 去掉副檔名作為 key
-                    const baseName = entry.name.replace(/\.[^.]+$/, '');
-                    imageIndex.set(baseName, entry);
-                }
-            }
-
-            // 讀取截圖所需的 Reel ROI，優先用載入檔案中的，如果沒有再用本地快取的
-            let cachedReelROI = null;
-            if (loadedRois && loadedRois.reel) {
-                cachedReelROI = loadedRois.reel;
-            } else {
-                try {
-                    const saved = JSON.parse(localStorage.getItem('SLOT_P4_ROI_V2') || '{}');
-                    if (saved.reel) cachedReelROI = saved.reel;
-                } catch (e) {}
-            }
-
-            // 產生縮圖（使用 blob URL 取代 toDataURL，快 3x）
-            const generateThumbBlobUrl = async (canvas, roi) => {
-                if (!roi) return canvasToBlobUrl(canvas, 'image/jpeg', 0.6);
-                const thumbCanvas = document.createElement('canvas');
-                thumbCanvas.width = canvas.width * (roi.w / 100);
-                thumbCanvas.height = canvas.height * (roi.h / 100);
-                const ctx = thumbCanvas.getContext('2d');
-                ctx.drawImage(canvas, 
-                    canvas.width * (roi.x / 100), canvas.height * (roi.y / 100), thumbCanvas.width, thumbCanvas.height,
-                    0, 0, thumbCanvas.width, thumbCanvas.height
-                );
-                return canvasToBlobUrl(thumbCanvas, 'image/jpeg', 0.6);
-            };
-
-            // 3. 逐筆還原 candidate（受控並行，concurrency=8）
-            const candidates = await parallelMap(loadedCandidates, async (item) => {
-                // 讀盤面圖片
-                let canvas = null;
-                let thumbUrl = '';
-                if (item.imageFile && imageIndex.has(item.imageFile)) {
-                    try {
-                        const imgFile = await imageIndex.get(item.imageFile).getFile();
-                        const imgBitmap = await createImageBitmap(imgFile);
-                        canvas = document.createElement('canvas');
-                        canvas.width = imgBitmap.width;
-                        canvas.height = imgBitmap.height;
-                        const ctx = canvas.getContext('2d');
-                        ctx.drawImage(imgBitmap, 0, 0);
-                        thumbUrl = await generateThumbBlobUrl(canvas, cachedReelROI);
-                    } catch (e) {
-                        console.warn(`圖片 ${item.imageFile} 讀取失敗`, e);
-                    }
-                }
-
-                // 讀 WIN 特工圖片
-                let winPollCanvas = null;
-                let winPollThumbUrl = '';
-                if (item.winPollImageFile && imageIndex.has(item.winPollImageFile)) {
-                    try {
-                        const wpFile = await imageIndex.get(item.winPollImageFile).getFile();
-                        const wpBitmap = await createImageBitmap(wpFile);
-                        winPollCanvas = document.createElement('canvas');
-                        winPollCanvas.width = wpBitmap.width;
-                        winPollCanvas.height = wpBitmap.height;
-                        const wpCtx = winPollCanvas.getContext('2d');
-                        wpCtx.drawImage(wpBitmap, 0, 0);
-                        winPollThumbUrl = await generateThumbBlobUrl(winPollCanvas, cachedReelROI);
-                    } catch (e) {
-                        console.warn(`WIN 特工圖片 ${item.winPollImageFile} 讀取失敗`, e);
-                    }
-                }
-
-                return {
-                    id: item.id,
-                    time: item.time,
-                    canvas,
-                    thumbUrl,
-                    diff: item.diff,
-                    avgDiff: item.avgDiff,
-                    status: item.status || 'pending',
-                    ocrData: item.ocrData || null,
-                    manualOverrides: item.manualOverrides || null,
-                    recognitionResult: item.recognitionResult || null,
-                    error: '',
-                    spinGroupId: item.spinGroupId,
-                    isSpinBest: item.isSpinBest,
-                    isCascadeMember: item.isCascadeMember || false,
-                    cascadeDeltaWin: item.cascadeDeltaWin || 0,
-                    isFGSequence: item.isFGSequence || false,
-                    captureDelay: item.captureDelay || 0,
-                    reelStopTime: item.reelStopTime || item.time,
-                    winPollCanvas,
-                    winPollThumbUrl,
-                    winPollTime: item.winPollTime || null,
-                };
-            }, 8, (prog) => {
-                onProgress?.({ phase: '讀取圖片並產生縮圖', current: prog.current, total: prog.total, detail: prog.item?.imageFile || '' });
-            });
-
-            onProgress?.({ phase: '完成', current: candidates.length, total: candidates.length, detail: '' });
-            return { candidates, dirHandle, rois: loadedRois };
-        } catch (e) {
-            if (e.name !== 'AbortError') {
-                console.error('匯入歷史資料失敗', e);
-                alert('⚠️ 匯入失敗：' + e.message);
-            }
-            return null;
-        }
-    }, []);
+    const importSession = useCallback((onProgress = null) => importSessionCore(onProgress), []);
 
     // 回傳統一的 object
     return { computeStats, exportHTMLReport, importSession };
