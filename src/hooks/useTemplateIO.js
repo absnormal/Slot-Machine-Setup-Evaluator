@@ -101,7 +101,7 @@ export function useTemplateIO({
         setHasExBet(parseBool(d.hasExBet));
         if (Array.isArray(d.exBetOptions)) setExBetOptions(d.exBetOptions);
         setHasLineBetDivisor(parseBool(d.hasLineBetDivisor));
-        setLineBetDivisor(d.lineBetDivisor || 1);
+        setLineBetDivisor(d.lineBetDivisor || 100);
 
         // Paytable result items
         if (data.ptResultItems) {

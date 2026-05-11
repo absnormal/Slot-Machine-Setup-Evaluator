@@ -344,7 +344,7 @@ export default function SpecialSymbolQA({
                                     min="1" 
                                     step="any"
                                     value={lineBetDivisor || ''} 
-                                    onChange={(e) => setLineBetDivisor(parseFloat(e.target.value) || 1)}
+                                    onChange={(e) => setLineBetDivisor(parseFloat(e.target.value) || 100)}
                                     className="w-24 px-3 py-1.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-400 outline-none" 
                                 />
                                 <span className="text-xs text-slate-500">例：輸入 25 → 實際贏分為 (BET / 25) × 賠率</span>
