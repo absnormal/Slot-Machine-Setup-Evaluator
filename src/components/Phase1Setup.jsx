@@ -49,6 +49,7 @@ export default function Phase1Setup(props) {
         hasBidirectionalPaylines, setHasBidirectionalPaylines,
         hasAdjustableLines, setHasAdjustableLines,
         hasExBet, setHasExBet, exBetOptions, setExBetOptions,
+        hasLineBetDivisor, setHasLineBetDivisor, lineBetDivisor, setLineBetDivisor,
         hasApiKey
     } = props;
 
@@ -148,6 +149,8 @@ export default function Phase1Setup(props) {
                             hasAdjustableLines={hasAdjustableLines} setHasAdjustableLines={setHasAdjustableLines}
                             hasExBet={hasExBet} setHasExBet={setHasExBet}
                             exBetOptions={exBetOptions} setExBetOptions={setExBetOptions}
+                            hasLineBetDivisor={hasLineBetDivisor} setHasLineBetDivisor={setHasLineBetDivisor}
+                            lineBetDivisor={lineBetDivisor} setLineBetDivisor={setLineBetDivisor}
                         />
 
                         {/* 5. Paytable */}
