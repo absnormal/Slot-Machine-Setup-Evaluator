@@ -679,34 +679,43 @@ export function matchCell(cellImageData, referenceIndex) {
         const hogWinner = candidates[0].symbol;
         const tieGroup = candidates.filter(c => candidates[0].fused - c.fused < TIEBREAK_THRESHOLD);
         if (tieGroup.length > 1 && tieGroup[0].symbol !== tieGroup[1].symbol) {
-            let bestSSIM = -1;
-            let ssimWinner = null;
-            const ssimResults = [];
-            for (const c of tieGroup) {
-                const refList = referenceIndex.get(c.symbol) || [c.ref];
-                let maxSSIM = -1;
-                for (const ref of refList) {
-                    const ssim = computeSSIM(cellEqGray, ref.eqGray || ref.gray);
-                    if (ssim > maxSSIM) maxSSIM = ssim;
+            // ── 色彩優先決勝：形狀幾乎相同但顏色明顯不同 → 用色彩決定 ──
+            const COLOR_VETO_GAP = 0.05;
+            const HOG_NEAR_IDENTICAL = 0.03;
+            const hogGap = Math.abs(tieGroup[0].hog - tieGroup[1].hog);
+            const colorGap = Math.abs(tieGroup[0].hue - tieGroup[1].hue);
+            console.log(`[Tiebreak] hogGap=${hogGap.toFixed(4)} colorGap=${colorGap.toFixed(4)} → ${colorGap >= COLOR_VETO_GAP && hogGap < HOG_NEAR_IDENTICAL ? '色彩決勝' : 'SSIM仲裁'}`);
+            if (hogGap < HOG_NEAR_IDENTICAL && colorGap >= COLOR_VETO_GAP) {
+                const colorWinner = tieGroup.reduce((best, c) => c.hue > best.hue ? c : best, tieGroup[0]);
+                bestSymbol = colorWinner.symbol;
+                bestScore = colorWinner.fused;
+                tiebreakLog = tieGroup.map(c => ({ symbol: c.symbol, ssim: 0, fused: c.fused, colorDecision: true }));
+                console.log(`[HOG] 色彩優先決勝: ${tieGroup.map(c => `${c.symbol}(C=${c.hue.toFixed(3)})`).join(' vs ')} → ${colorWinner.symbol}`);
+            } else {
+                // ── 正常 SSIM 仲裁 ──
+                let bestSSIM = -1;
+                let ssimWinner = null;
+                const ssimResults = [];
+                for (const c of tieGroup) {
+                    const refList = referenceIndex.get(c.symbol) || [c.ref];
+                    let maxSSIM = -1;
+                    for (const ref of refList) {
+                        const ssim = computeSSIM(cellEqGray, ref.eqGray || ref.gray);
+                        if (ssim > maxSSIM) maxSSIM = ssim;
+                    }
+                    ssimResults.push({ symbol: c.symbol, ssim: maxSSIM, fused: c.fused });
+                    if (maxSSIM > bestSSIM) {
+                        bestSSIM = maxSSIM;
+                        ssimWinner = c.symbol;
+                    }
                 }
-                ssimResults.push({ symbol: c.symbol, ssim: maxSSIM, fused: c.fused });
-                if (maxSSIM > bestSSIM) {
-                    bestSSIM = maxSSIM;
-                    ssimWinner = c.symbol;
+                const hogWinnerSSIM = ssimResults.find(r => r.symbol === hogWinner)?.ssim ?? -Infinity;
+                const ssimGap = bestSSIM - hogWinnerSSIM;
+                if (ssimWinner === hogWinner || bestSSIM >= SSIM_OVERRIDE_MIN || ssimGap >= SSIM_GAP_MIN) {
+                    bestSymbol = ssimWinner;
                 }
+                tiebreakLog = ssimResults;
             }
-
-            // 計算 SSIM 勝者與 HOG 勝者的分差
-            const hogWinnerSSIM = ssimResults.find(r => r.symbol === hogWinner)?.ssim ?? -Infinity;
-            const ssimGap = bestSSIM - hogWinnerSSIM;
-
-            if (ssimWinner === hogWinner || bestSSIM >= SSIM_OVERRIDE_MIN || ssimGap >= SSIM_GAP_MIN) {
-                // 同方向確認 或 SSIM 信心足夠 或 差距明確 → 採用 SSIM 結果
-                bestSymbol = ssimWinner;
-            }
-            // else: SSIM 要改判但分數太低且差距不夠 → 維持 HOG 原判定
-
-            tiebreakLog = ssimResults;
         }
     }
 
