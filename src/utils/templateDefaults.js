@@ -19,6 +19,8 @@ export const TEMPLATE_FIELD_DEFAULTS = {
     hasAdjustableLines:       false,
     hasExBet:                 false,
     exBetOptions:             [1.5],    // EXBET 可用倍率清單，預設一個 ×1.5
+    hasLineBetDivisor:        false,
+    lineBetDivisor:           1,        // 固定除數 (BET / 此值 = lineBet)
     // ── Phase 4 偵測參數 ──
     motionCoverageMin:        60,
     vLineThreshold:           0.25,
