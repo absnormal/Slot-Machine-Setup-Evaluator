@@ -47,8 +47,8 @@ export default function Phase1Setup(props) {
         hasDynamicMultiplier, setHasDynamicMultiplier,
         multiplierCalcType, setMultiplierCalcType,
         hasBidirectionalPaylines, setHasBidirectionalPaylines,
-        hasAdjustableLines, setHasAdjustableLines,
         hasExBet, setHasExBet, exBetOptions, setExBetOptions,
+        hasLineBetDivisor, setHasLineBetDivisor, lineBetDivisor, setLineBetDivisor,
         hasApiKey
     } = props;
 
@@ -145,8 +145,9 @@ export default function Phase1Setup(props) {
                             hasJackpot={hasJackpot} setHasJackpot={setHasJackpot}
                             jpConfig={jpConfig} setJpConfig={setJpConfig}
                             hasBidirectionalPaylines={hasBidirectionalPaylines} setHasBidirectionalPaylines={setHasBidirectionalPaylines}
-                            hasAdjustableLines={hasAdjustableLines} setHasAdjustableLines={setHasAdjustableLines}
                             hasExBet={hasExBet} setHasExBet={setHasExBet}
+                            hasLineBetDivisor={hasLineBetDivisor} setHasLineBetDivisor={setHasLineBetDivisor}
+                            lineBetDivisor={lineBetDivisor} setLineBetDivisor={setLineBetDivisor}
                             exBetOptions={exBetOptions} setExBetOptions={setExBetOptions}
                         />
 

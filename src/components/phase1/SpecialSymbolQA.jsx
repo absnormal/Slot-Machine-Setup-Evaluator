@@ -141,7 +141,8 @@ export default function SpecialSymbolQA({
     hasJackpot, setHasJackpot, jpConfig, setJpConfig,
     hasBidirectionalPaylines, setHasBidirectionalPaylines,
     hasAdjustableLines, setHasAdjustableLines,
-    hasExBet, setHasExBet, exBetOptions, setExBetOptions
+    hasExBet, setHasExBet, exBetOptions, setExBetOptions,
+    hasLineBetDivisor, setHasLineBetDivisor, lineBetDivisor, setLineBetDivisor
 }) {
 
     return (
@@ -271,7 +272,7 @@ export default function SpecialSymbolQA({
                                 <p className="text-xs text-slate-500 mt-1">部分遊戲可只押注前 N 條連線（如 40 線只押 10 線），啟用後可在 P2 手動調整。<br />EX. 1000TotalBet、10線 = 每條線 100BET<br />輸入欄位會是1000BET和10線，但實際使用100BET乘以贏分</p>
                             </div>
                             <div className="flex bg-slate-100 p-1 rounded-lg shrink-0">
-                                <button onClick={() => { setHasAdjustableLines(true); setHasExBet(false); }} className={`px-4 py-1.5 text-sm font-bold rounded-md transition-all ${hasAdjustableLines ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>有</button>
+                                <button onClick={() => { setHasAdjustableLines(true); setHasExBet(false); setHasLineBetDivisor(false); }} className={`px-4 py-1.5 text-sm font-bold rounded-md transition-all ${hasAdjustableLines ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>有</button>
                                 <button onClick={() => setHasAdjustableLines(false)} className={`px-4 py-1.5 text-sm font-bold rounded-md transition-all ${!hasAdjustableLines ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>無</button>
                             </div>
                         </div>
@@ -286,7 +287,7 @@ export default function SpecialSymbolQA({
                             <p className="text-xs text-slate-500 mt-1">扣除 N 倍的原 BET 購買有利規則，畫面 BET 已是 N 倍，贏分仍以原 BET 計算。<br/>與「調整押注線數」互斥。</p>
                         </div>
                         <div className="flex bg-slate-100 p-1 rounded-lg shrink-0">
-                            <button onClick={() => { setHasExBet(true); setHasAdjustableLines(false); }} className={`px-4 py-1.5 text-sm font-bold rounded-md transition-all ${hasExBet ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>有</button>
+                            <button onClick={() => { setHasExBet(true); setHasAdjustableLines(false); setHasLineBetDivisor(false); }} className={`px-4 py-1.5 text-sm font-bold rounded-md transition-all ${hasExBet ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>有</button>
                             <button onClick={() => setHasExBet(false)} className={`px-4 py-1.5 text-sm font-bold rounded-md transition-all ${!hasExBet ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>無</button>
                         </div>
                     </div>
@@ -316,6 +317,38 @@ export default function SpecialSymbolQA({
                                 </form>
                             </div>
                             <p className="text-[10px] text-slate-400 mt-2">啟用後可在 P2/P3 從下拉選單選擇倍率或關閉</p>
+                        </div>
+                    )}
+                </div>
+
+                {/* Q8: LineBet 固定除數 */}
+                <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm transition-all hover:border-indigo-300">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div>
+                            <p className="text-sm font-bold text-slate-800">8. 此遊戲是否使用固定的 BET 除數來計算贏分 (LineBet)？</p>
+                            <p className="text-xs text-slate-500 mt-1">例如：贏分 = (BET / 25) × 賠率。不論是否為連線模式，固定除以該數值。<br/>與「調整押注線數」及「EXBET」互斥。</p>
+                        </div>
+                        <div className="flex bg-slate-100 p-1 rounded-lg shrink-0">
+                            <button onClick={() => { setHasLineBetDivisor(true); setHasAdjustableLines(false); setHasExBet(false); }} className={`px-4 py-1.5 text-sm font-bold rounded-md transition-all ${hasLineBetDivisor ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>有</button>
+                            <button onClick={() => setHasLineBetDivisor(false)} className={`px-4 py-1.5 text-sm font-bold rounded-md transition-all ${!hasLineBetDivisor ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>無</button>
+                        </div>
+                    </div>
+
+                    {/* 子問題：固定除數輸入框 */}
+                    {hasLineBetDivisor && (
+                        <div className="mt-4 pl-4 border-l-2 border-emerald-200 animate-in fade-in slide-in-from-left-4 duration-300">
+                            <div className="flex items-center gap-3">
+                                <label className="text-sm font-bold text-slate-700">固定除數值：</label>
+                                <input 
+                                    type="number" 
+                                    min="1" 
+                                    step="any"
+                                    value={lineBetDivisor || ''} 
+                                    onChange={(e) => setLineBetDivisor(parseFloat(e.target.value) || 1)}
+                                    className="w-24 px-3 py-1.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-400 outline-none" 
+                                />
+                                <span className="text-xs text-slate-500">例：輸入 25 → 實際贏分為 (BET / 25) × 賠率</span>
+                            </div>
                         </div>
                     )}
                 </div>

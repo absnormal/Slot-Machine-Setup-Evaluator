@@ -157,6 +157,23 @@ export default function ResultView({ template, calcData, calcErr, hoveredId, set
                                         </select>
                                     </div>
                                 )}
+
+                                {/* 固定除數模式 (LineBet Divisor) */}
+                                {template?.hasLineBetDivisor && template?.lineBetDivisor > 1 && (
+                                    <div className="flex-1 w-full">
+                                        <div className="mb-1.5 flex items-center justify-between">
+                                            <label className="text-sm font-bold text-slate-700">LineBet 基底</label>
+                                        </div>
+                                        <div className="relative bg-emerald-50 border border-emerald-200 rounded-lg h-[46px] flex flex-col justify-center px-3 shadow-sm">
+                                            <div className="text-[10px] font-bold text-emerald-600 mb-0.5">
+                                                BET ÷ {template.lineBetDivisor}
+                                            </div>
+                                            <div className="text-sm font-black text-emerald-800">
+                                                = {((parseFloat(betInput) || 0) / template.lineBetDivisor).toLocaleString(undefined, {maximumFractionDigits: 4})}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                             {isBalanceExpanded ? (
                                 <button 

@@ -105,8 +105,8 @@ function App() {
         hasDynamicMultiplier, setHasDynamicMultiplier,
         multiplierCalcType, setMultiplierCalcType,
         hasBidirectionalPaylines, setHasBidirectionalPaylines,
-        hasAdjustableLines, setHasAdjustableLines,
         hasExBet, setHasExBet, exBetOptions, setExBetOptions,
+        hasLineBetDivisor, setHasLineBetDivisor, lineBetDivisor, setLineBetDivisor,
         lineImages, setLineImages, activeLineImageId, setActiveLineImageId,
         activeLineImage, imageSrc, imageObj,
         patternRows, setPatternRows, patternCols, setPatternCols,
@@ -163,8 +163,8 @@ function App() {
         paytableInput, ptResultItems, jpConfig,
         hasJackpot, hasMultiplierReel, requiresCollectToWin, hasCashCollectFeature,
         hasDoubleSymbol, hasRollingWin, hasDynamicMultiplier, multiplierCalcType,
-        hasBidirectionalPaylines, hasAdjustableLines,
         hasExBet, exBetOptions,
+        hasLineBetDivisor, lineBetDivisor,
         motionCoverageMin, vLineThreshold, ocrDecimalPlaces, balDecimalPlaces, enableWinTracker, enableEmptyBoardFilter,
         setMotionCoverageMin, setVLineThreshold, setOcrDecimalPlaces, setBalDecimalPlaces, setEnableWinTracker, setEnableEmptyBoardFilter,
         setReelROI: usePhase4Store(s => s.setReelROI),
@@ -678,8 +678,9 @@ function App() {
                         hasDynamicMultiplier={hasDynamicMultiplier} setHasDynamicMultiplier={setHasDynamicMultiplier}
                         multiplierCalcType={multiplierCalcType} setMultiplierCalcType={setMultiplierCalcType}
                         hasBidirectionalPaylines={hasBidirectionalPaylines} setHasBidirectionalPaylines={setHasBidirectionalPaylines}
-                        hasAdjustableLines={hasAdjustableLines} setHasAdjustableLines={setHasAdjustableLines}
                         hasExBet={hasExBet} setHasExBet={setHasExBet}
+                        hasLineBetDivisor={hasLineBetDivisor} setHasLineBetDivisor={setHasLineBetDivisor}
+                        lineBetDivisor={lineBetDivisor} setLineBetDivisor={setLineBetDivisor}
                         exBetOptions={exBetOptions} setExBetOptions={setExBetOptions}
                         lineImages={lineImages} removeLineImage={removeLineImage} activeLineImageId={activeLineImageId} setActiveLineImageId={setActiveLineImageId} handleLineImageUpload={handleLineImageUpload}
                         isPtProcessing={isPtProcessing} handlePtExtract={handlePtExtract} ptImages={ptImages} removePtImage={removePtImage} clearPtAll={clearPtAll} handlePtFileChange={handlePtFileChange} handlePtDrop={handlePtDrop}
