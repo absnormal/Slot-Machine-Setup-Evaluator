@@ -105,6 +105,7 @@ function App() {
         hasDynamicMultiplier, setHasDynamicMultiplier,
         multiplierCalcType, setMultiplierCalcType,
         hasBidirectionalPaylines, setHasBidirectionalPaylines,
+        hasAdjustableLines, setHasAdjustableLines,
         hasExBet, setHasExBet, exBetOptions, setExBetOptions,
         hasLineBetDivisor, setHasLineBetDivisor, lineBetDivisor, setLineBetDivisor,
         lineImages, setLineImages, activeLineImageId, setActiveLineImageId,
@@ -163,6 +164,7 @@ function App() {
         paytableInput, ptResultItems, jpConfig,
         hasJackpot, hasMultiplierReel, requiresCollectToWin, hasCashCollectFeature,
         hasDoubleSymbol, hasRollingWin, hasDynamicMultiplier, multiplierCalcType,
+        hasBidirectionalPaylines, hasAdjustableLines,
         hasExBet, exBetOptions,
         hasLineBetDivisor, lineBetDivisor,
         motionCoverageMin, vLineThreshold, ocrDecimalPlaces, balDecimalPlaces, enableWinTracker, enableEmptyBoardFilter,
@@ -678,6 +680,7 @@ function App() {
                         hasDynamicMultiplier={hasDynamicMultiplier} setHasDynamicMultiplier={setHasDynamicMultiplier}
                         multiplierCalcType={multiplierCalcType} setMultiplierCalcType={setMultiplierCalcType}
                         hasBidirectionalPaylines={hasBidirectionalPaylines} setHasBidirectionalPaylines={setHasBidirectionalPaylines}
+                        hasAdjustableLines={hasAdjustableLines} setHasAdjustableLines={setHasAdjustableLines}
                         hasExBet={hasExBet} setHasExBet={setHasExBet}
                         hasLineBetDivisor={hasLineBetDivisor} setHasLineBetDivisor={setHasLineBetDivisor}
                         lineBetDivisor={lineBetDivisor} setLineBetDivisor={setLineBetDivisor}
