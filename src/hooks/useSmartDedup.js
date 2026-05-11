@@ -324,15 +324,21 @@ export function useSmartDedup({ setCandidates, setTemplateMessage }) {
                     continue;
                 }
 
-                // ── 最佳幀選取：支援消除遊戲的一局多最佳幀 ──
+                // ── 最佳幀選取 ──
                 // 有效 Poll = completed（正常完成）或 forced_with_data（被中斷但已有 WIN）
                 const useful = group.filter(f =>
                     f.kf.winPollStatus === 'completed' || f.kf.winPollStatus === 'forced_with_data'
                 );
 
                 if (useful.length > 0) {
-                    // 每個有效 Poll 結果代表一個獨立的 cascade step → 全部標記最佳
-                    useful.forEach(f => bestIds.add(f.kf.id));
+                    if (enableCascade) {
+                        // 連鎖模式：每個有效 Poll 結果代表一個獨立的 cascade step → 全部標記最佳
+                        useful.forEach(f => bestIds.add(f.kf.id));
+                    } else {
+                        // 非連鎖模式：同局只保留 WIN 最大的那張
+                        const best = useful.reduce((a, b) => a.win > b.win ? a : b);
+                        bestIds.add(best.kf.id);
+                    }
                 } else {
                     // 無 winPollStatus → 傳統 State 2 邏輯（向下相容）
                     const withWin = group.filter(f => f.win > eps);
