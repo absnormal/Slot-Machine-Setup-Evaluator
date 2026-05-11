@@ -160,13 +160,23 @@ function computeHOG(gray) {
                 }
             }
 
-            // L2 正規化 — 這一步是 HOG 能免疫亮度變化的核心
+            // L2-Hys 正規化（OpenCV HOGDescriptor 標準）
+            // Pass 1: L2 正規化
             const eps = 1e-6;
+            const L2HYS_CLIP = 0.2;
             let norm = 0;
             for (let i = 0; i < blockVec.length; i++) norm += blockVec[i] * blockVec[i];
             norm = Math.sqrt(norm) + eps;
+            for (let i = 0; i < blockVec.length; i++) blockVec[i] /= norm;
+            // Pass 2: 截斷到 0.2 → 防止任何單一梯度方向獨大（壓制特效殘留的強邊緣）
+            let norm2 = 0;
             for (let i = 0; i < blockVec.length; i++) {
-                features[fIdx++] = blockVec[i] / norm;
+                blockVec[i] = Math.min(blockVec[i], L2HYS_CLIP);
+                norm2 += blockVec[i] * blockVec[i];
+            }
+            norm2 = Math.sqrt(norm2) + eps;
+            for (let i = 0; i < blockVec.length; i++) {
+                features[fIdx++] = blockVec[i] / norm2;
             }
         }
     }
@@ -244,15 +254,18 @@ function computeSSIM(grayA, grayB) {
 }
 
 /**
- * 計算兩張 RGBA ImageData 之間的色相距離 (Hue Histogram Distance)
- * 專門用來區分「形狀相同但顏色不同」的符號（如檸檬 vs 橘子）
+ * 計算兩張 RGBA ImageData 之間的 HS 色彩距離 (Hue-Saturation 2D Histogram Distance)
+ * 相比 1D Hue：加入飽和度維度，能區分同色相但不同飽和度的像素
+ * （如低飽和度的閃電光暈 vs 高飽和度的符號本體）
  * 只比對中央 60% 區域，排除邊緣背景色污染
- * 回傳值：0 ~ 1，0 = 完全相同色相分佈
+ * 回傳值：0 ~ 1，0 = 完全相同色彩分佈
  */
 function computeHueHistDistance(imgDataA, imgDataB) {
-    const BINS = 36; // 360° / 10°
-    const histA = new Float32Array(BINS);
-    const histB = new Float32Array(BINS);
+    const H_BINS = 18; // Hue: 360° / 20°
+    const S_BINS = 4;  // Saturation: 0~1 分 4 段
+    const TOTAL_BINS = H_BINS * S_BINS; // 72
+    const histA = new Float32Array(TOTAL_BINS);
+    const histB = new Float32Array(TOTAL_BINS);
     const dA = imgDataA.data;
     const dB = imgDataB.data;
     const W = imgDataA.width;
@@ -266,38 +279,49 @@ function computeHueHistDistance(imgDataA, imgDataB) {
     const x1 = Math.floor(W * (1 - margin));
     const y1 = Math.floor(H * (1 - margin));
 
-    // RGB → Hue (簡化版)
+    // RGB → Hue + Saturation
     const processPixel = (r, g, b) => {
         const max = Math.max(r, g, b);
         const min = Math.min(r, g, b);
         const delta = max - min;
-        if (delta < 15 || max < 30) return -1; // 太暗或灰色跳過
+        if (delta < 15 || max < 30) return null; // 太暗或灰色跳過
         let hue;
         if (max === r) hue = ((g - b) / delta) % 6;
         else if (max === g) hue = (b - r) / delta + 2;
         else hue = (r - g) / delta + 4;
         hue *= 60;
         if (hue < 0) hue += 360;
-        return hue;
+        const sat = max > 0 ? delta / max : 0; // HSV 飽和度 0~1
+        return { hue, sat };
     };
 
     for (let y = y0; y < y1; y++) {
         for (let x = x0; x < x1; x++) {
             const i = (y * W + x) * 4;
-            const hueA = processPixel(dA[i], dA[i+1], dA[i+2]);
-            const hueB = processPixel(dB[i], dB[i+1], dB[i+2]);
-            if (hueA >= 0) { histA[Math.floor(hueA / 10) % BINS]++; countA++; }
-            if (hueB >= 0) { histB[Math.floor(hueB / 10) % BINS]++; countB++; }
+            const hsA = processPixel(dA[i], dA[i + 1], dA[i + 2]);
+            const hsB = processPixel(dB[i], dB[i + 1], dB[i + 2]);
+            if (hsA) {
+                const hBin = Math.floor(hsA.hue / 20) % H_BINS;
+                const sBin = Math.min(S_BINS - 1, Math.floor(hsA.sat * S_BINS));
+                histA[hBin * S_BINS + sBin]++;
+                countA++;
+            }
+            if (hsB) {
+                const hBin = Math.floor(hsB.hue / 20) % H_BINS;
+                const sBin = Math.min(S_BINS - 1, Math.floor(hsB.sat * S_BINS));
+                histB[hBin * S_BINS + sBin]++;
+                countB++;
+            }
         }
     }
 
     // 正規化
-    if (countA > 0) for (let i = 0; i < BINS; i++) histA[i] /= countA;
-    if (countB > 0) for (let i = 0; i < BINS; i++) histB[i] /= countB;
+    if (countA > 0) for (let i = 0; i < TOTAL_BINS; i++) histA[i] /= countA;
+    if (countB > 0) for (let i = 0; i < TOTAL_BINS; i++) histB[i] /= countB;
 
     // Bhattacharyya 距離
     let bc = 0;
-    for (let i = 0; i < BINS; i++) bc += Math.sqrt(histA[i] * histB[i]);
+    for (let i = 0; i < TOTAL_BINS; i++) bc += Math.sqrt(histA[i] * histB[i]);
     return 1 - bc; // 0 = 完全相同, 1 = 完全不同
 }
 
