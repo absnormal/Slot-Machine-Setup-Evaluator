@@ -158,19 +158,14 @@ export default function ResultView({ template, calcData, calcErr, hoveredId, set
                                     </div>
                                 )}
 
-                                {/* 固定除數模式 (LineBet Divisor) */}
+                                {/* LineBet 固定除數提示 */}
                                 {template?.hasLineBetDivisor && template?.lineBetDivisor > 1 && (
                                     <div className="flex-1 w-full">
-                                        <div className="mb-1.5 flex items-center justify-between">
-                                            <label className="text-sm font-bold text-slate-700">LineBet 基底</label>
+                                        <div className="mb-1.5">
+                                            <label className="block text-sm font-bold text-slate-700">LineBet <span className="text-xs font-normal text-slate-400">(÷{template.lineBetDivisor})</span></label>
                                         </div>
-                                        <div className="relative bg-emerald-50 border border-emerald-200 rounded-lg h-[46px] flex flex-col justify-center px-3 shadow-sm">
-                                            <div className="text-[10px] font-bold text-emerald-600 mb-0.5">
-                                                BET ÷ {template.lineBetDivisor}
-                                            </div>
-                                            <div className="text-sm font-black text-emerald-800">
-                                                = {((parseFloat(betInput) || 0) / template.lineBetDivisor).toLocaleString(undefined, {maximumFractionDigits: 4})}
-                                            </div>
+                                        <div className="h-[46px] px-4 bg-cyan-50 border border-cyan-200 rounded-lg flex items-center justify-center text-cyan-800 font-black text-xl shadow-sm">
+                                            {((parseFloat(betInput) || 0) / template.lineBetDivisor).toLocaleString()}
                                         </div>
                                     </div>
                                 )}

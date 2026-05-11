@@ -170,7 +170,7 @@ export function useTemplateBuilder({
             multiplierCalcType: mCalcType,
             hasBidirectionalPaylines: hasBDP, hasAdjustableLines: hasAL,
             hasExBet: hasEB, exBetOptions: ebOpts,
-            hasLineBetDivisor: hasLBD, lineBetDivisor: lbDiv,
+            hasLineBetDivisor: hasLBD, lineBetDivisor: lbdVal,
             validateStrict = false
         } = p;
 
@@ -300,7 +300,7 @@ export function useTemplateBuilder({
             hasExBet: hasEB,
             exBetOptions: ebOpts || D.exBetOptions,
             hasLineBetDivisor: hasLBD,
-            lineBetDivisor: lbDiv || D.lineBetDivisor,
+            lineBetDivisor: lbdVal || D.lineBetDivisor,
         };
     };
 

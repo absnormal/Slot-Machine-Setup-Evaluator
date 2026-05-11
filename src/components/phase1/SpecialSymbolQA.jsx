@@ -321,12 +321,12 @@ export default function SpecialSymbolQA({
                     )}
                 </div>
 
-                {/* Q8: LineBet 固定除數 */}
+                {/* Q8: LineBet Divisor (固定除數) */}
                 <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm transition-all hover:border-indigo-300">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                         <div>
-                            <p className="text-sm font-bold text-slate-800">8. 此遊戲是否使用固定的 BET 除數來計算贏分 (LineBet)？</p>
-                            <p className="text-xs text-slate-500 mt-1">例如：贏分 = (BET / 25) × 賠率。不論是否為連線模式，固定除以該數值。<br/>與「調整押注線數」及「EXBET」互斥。</p>
+                            <p className="text-sm font-bold text-slate-800">8. 此遊戲是否使用固定除數計算 LineBet？</p>
+                            <p className="text-xs text-slate-500 mt-1">部分遊戲的 BET 需除以固定數值才是每條線的實際押注（LineBet = BET / 固定除數）。<br/>與「調整押注線數」和「EXBET」互斥。</p>
                         </div>
                         <div className="flex bg-slate-100 p-1 rounded-lg shrink-0">
                             <button onClick={() => { setHasLineBetDivisor(true); setHasAdjustableLines(false); setHasExBet(false); }} className={`px-4 py-1.5 text-sm font-bold rounded-md transition-all ${hasLineBetDivisor ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>有</button>
@@ -334,21 +334,19 @@ export default function SpecialSymbolQA({
                         </div>
                     </div>
 
-                    {/* 子問題：固定除數輸入框 */}
                     {hasLineBetDivisor && (
-                        <div className="mt-4 pl-4 border-l-2 border-emerald-200 animate-in fade-in slide-in-from-left-4 duration-300">
+                        <div className="mt-4 pl-4 border-l-2 border-cyan-200 animate-in fade-in slide-in-from-left-4 duration-300">
+                            <p className="text-xs font-bold text-slate-700 mb-2">固定除數值</p>
                             <div className="flex items-center gap-3">
-                                <label className="text-sm font-bold text-slate-700">固定除數值：</label>
-                                <input 
-                                    type="number" 
-                                    min="1" 
-                                    step="any"
-                                    value={lineBetDivisor || ''} 
-                                    onChange={(e) => setLineBetDivisor(parseFloat(e.target.value) || 100)}
-                                    className="w-24 px-3 py-1.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-400 outline-none" 
+                                <span className="text-sm text-slate-500">LineBet = BET ÷</span>
+                                <input
+                                    type="number" min="1" step="1" value={lineBetDivisor}
+                                    onChange={e => setLineBetDivisor(Math.max(1, parseInt(e.target.value) || 1))}
+                                    className="w-20 px-3 py-1.5 text-lg font-black text-center border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-400 outline-none"
                                 />
-                                <span className="text-xs text-slate-500">例：輸入 25 → 實際贏分為 (BET / 25) × 賠率</span>
+                                <span className="text-sm text-slate-500">× 賠率</span>
                             </div>
+                            <p className="text-[10px] text-slate-400 mt-2">例如：遊戲 BET=500、除數=25 → 實際 LineBet=20，中 5連(賠率50) = 20×50 = 1000</p>
                         </div>
                     )}
                 </div>

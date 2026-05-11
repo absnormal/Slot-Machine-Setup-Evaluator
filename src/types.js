@@ -209,8 +209,8 @@
  * @property {boolean} hasAdjustableLines       - 是否支援可調整線數
  * @property {boolean} hasExBet                 - 是否支援 EXBET（額外押注）
  * @property {number[]} exBetOptions             - 可用的 EXBET 倍率清單（如 [2, 3, 5]）
- * @property {boolean} hasLineBetDivisor        - 是否啟用固定除數 (LineBet)
- * @property {number} lineBetDivisor            - 固定除數值 (BET / 此值 = lineBet)
+ * @property {boolean} hasLineBetDivisor         - 是否啟用固定除數模式 (LineBet = BET / 固定值)
+ * @property {number} lineBetDivisor             - 固定除數值 (預設 1)
  */
 
 // ═══════════════════════════════════════════════

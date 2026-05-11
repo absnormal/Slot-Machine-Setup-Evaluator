@@ -683,9 +683,9 @@ function App() {
                         hasBidirectionalPaylines={hasBidirectionalPaylines} setHasBidirectionalPaylines={setHasBidirectionalPaylines}
                         hasAdjustableLines={hasAdjustableLines} setHasAdjustableLines={setHasAdjustableLines}
                         hasExBet={hasExBet} setHasExBet={setHasExBet}
+                        exBetOptions={exBetOptions} setExBetOptions={setExBetOptions}
                         hasLineBetDivisor={hasLineBetDivisor} setHasLineBetDivisor={setHasLineBetDivisor}
                         lineBetDivisor={lineBetDivisor} setLineBetDivisor={setLineBetDivisor}
-                        exBetOptions={exBetOptions} setExBetOptions={setExBetOptions}
                         lineImages={lineImages} removeLineImage={removeLineImage} activeLineImageId={activeLineImageId} setActiveLineImageId={setActiveLineImageId} handleLineImageUpload={handleLineImageUpload}
                         isPtProcessing={isPtProcessing} handlePtExtract={handlePtExtract} ptImages={ptImages} removePtImage={removePtImage} clearPtAll={clearPtAll} handlePtFileChange={handlePtFileChange} handlePtDrop={handlePtDrop}
                         dragState={dragState} setDragState={setDragState} containerRef={containerRef} layoutStyle={layoutStyle} handleMouseDown={handleMouseDown} handleMouseMove={handleMouseMove} handleMouseUp={handleMouseUp}
