@@ -45,8 +45,8 @@ export default function Phase3Vision({
             </div>
 
             {/* Main Content Area - Hidden using CSS when minimized */}
-            <div className={`p-6 pt-0 border-t border-slate-100 mt-4 bg-slate-50 ${isPhase3Minimized ? 'hidden' : ''}`}>
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className={`p-4 pt-0 border-t border-slate-100 mt-4 bg-slate-50 ${isPhase3Minimized ? 'hidden' : ''}`}>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                     <div className="flex flex-col h-full">
                         <div className="bg-slate-900 rounded-xl overflow-hidden border border-slate-800 shadow-inner flex flex-col h-full">
 
