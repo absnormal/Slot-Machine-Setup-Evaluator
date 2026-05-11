@@ -681,7 +681,7 @@ export function matchCell(cellImageData, referenceIndex) {
         if (tieGroup.length > 1 && tieGroup[0].symbol !== tieGroup[1].symbol) {
             // ── 色彩優先決勝：形狀幾乎相同但顏色明顯不同 → 用色彩決定 ──
             const COLOR_VETO_GAP = 0.05;
-            const HOG_NEAR_IDENTICAL = 0.03;
+            const HOG_NEAR_IDENTICAL = 0.08;
             const hogGap = Math.abs(tieGroup[0].hog - tieGroup[1].hog);
             const colorGap = Math.abs(tieGroup[0].hue - tieGroup[1].hue);
             console.log(`[Tiebreak] hogGap=${hogGap.toFixed(4)} colorGap=${colorGap.toFixed(4)} → ${colorGap >= COLOR_VETO_GAP && hogGap < HOG_NEAR_IDENTICAL ? '色彩決勝' : 'SSIM仲裁'}`);
