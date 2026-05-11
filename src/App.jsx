@@ -540,21 +540,25 @@ function App() {
 
         keyframeExtractor.setCandidates(prev => prev.map(c => {
             if (c.id === originalId) {
+                const prevRR = c.recognitionResult || {};
                 const prevOverrides = c.manualOverrides || {};
+                const newTotalWin = visionCalcResults.totalWin;
                 return {
                     ...c,
                     recognitionResult: {
-                        ...(c.recognitionResult || {}),
+                        ...prevRR,
                         grid: activeVisionImg.grid,
-                        totalWin: visionCalcResults.totalWin,
+                        totalWin: newTotalWin,
+                        expectedWin: newTotalWin,           // 同步更新比對基準
+                        settlement: visionCalcResults,       // 同步更新結算明細
                         details: visionCalcResults.details,
-                        rawText: activeVisionImg.rawText || (c.recognitionResult?.rawText || '')
+                        rawText: activeVisionImg.rawText || (prevRR.rawText || '')
                     },
                     manualOverrides: {
                         ...prevOverrides,
                         grid: true
                     },
-                    status: 'success'
+                    status: 'recognized'
                 };
             }
             return c;

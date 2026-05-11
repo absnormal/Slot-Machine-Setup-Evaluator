@@ -1,12 +1,13 @@
 /**
- * localBoardRecognizer.js — HOG + Hue 融合辨識引擎（含亮度異常遮罩 + CASH OCR）
+ * localBoardRecognizer.js — HOG + Hue 三通道融合辨識引擎（含亮度異常遮罩 + CASH OCR）
  *
  * 架構：
  * 前處理: 亮度異常遮罩 — 偵測並移除閃電/發光等特效像素
- * Pass 1: HOG (方向梯度長條圖) — 形狀比對，搭配直方圖等化 + 梯度截尾 + 中心加權
- * Pass 2: Hue (色相直方圖距離) — 色彩比對，區分同形異色符號
- * Pass 3: CASH OCR — 對被辨識為 CASH 的格子讀取數字值
- * 融合: HOG × 0.7 + Color × 0.3
+ * Pass 1: 全圖 HOG (方向梯度長條圖) — 形狀比對，搭配直方圖等化 + 梯度截尾 + 中心加權
+ * Pass 2: 中心裁切 HOG — 去除外框裝飾，專注符號本體形狀比對
+ * Pass 3: Hue (色相直方圖距離) — 色彩比對，區分同形異色符號
+ * Pass 4: CASH OCR — 對被辨識為 CASH 的格子讀取數字值
+ * 融合: 全圖HOG × 0.55 + CenterHOG × 0.30 + Hue × 0.15
  */
 
 import { parseShorthandValue } from '../utils/symbolUtils';
@@ -353,7 +354,8 @@ export async function buildReferenceIndex(symbolImagesAll) {
                 const gray = toGray(imageData);
                 const eqGray = histogramEqualize(gray);
                 const hog = computeHOG(eqGray);
-                refList.push({ hog, gray, eqGray, rgb: imageData });
+                const centerHog = computeCenterCropHOG(imageData);
+                refList.push({ hog, centerHog, gray, eqGray, rgb: imageData });
             } catch (e) {
                 console.warn(`[LocalRecognizer] 載入符號 ${symbol} 參考圖失敗`, e);
             }
@@ -364,7 +366,7 @@ export async function buildReferenceIndex(symbolImagesAll) {
     }
 
     const totalRefs = [...index.values()].reduce((s, v) => s + v.length, 0);
-    console.log(`[LocalRecognizer] HOG 參考索引建立完成：${index.size} 個符號，共 ${totalRefs} 張參考圖（HOG 60% + Hue 40%）`);
+    console.log(`[LocalRecognizer] HOG 參考索引建立完成：${index.size} 個符號，共 ${totalRefs} 張參考圖（全圖HOG 55% + 中心裁切HOG 30% + Hue 15%）`);
     return index;
 }
 
@@ -543,15 +545,16 @@ function cleanEffectPixels(imageData) {
 // ── 融合比對 ──
 // ═══════════════════════════════════════════
 
-const HOG_WEIGHT = 0.60;        // 形狀權重（含中心加權 Gaussian）
-const COLOR_WEIGHT = 0.40;      // 色彩權重（Hue 直方圖距離）
+const HOG_WEIGHT = 0.55;        // 全圖形狀權重
+const CENTER_HOG_WEIGHT = 0.30; // 中心裁切形狀權重（去除外框裝飾，專注符號本體）
+const COLOR_WEIGHT = 0.15;      // 色彩權重
 const TIEBREAK_THRESHOLD = 0.03; // 融合分差 < 3% 視為平手，啟動 SSIM 仲裁
 
 /**
- * 辨識單一格子（清洗特效 → HOG+Hue 融合評分 → SSIM 仲裁）
+ * 辨識單一格子（清洗特效 → 三通道融合評分 → SSIM 仲裁）
  *
  * 1. 清洗特效像素
- * 2. 全圖 HOG（形狀 60%，含中心加權 Gaussian）+ Hue（色彩 40%）
+ * 2. 全圖 HOG（形狀 55%）+ 中心裁切 HOG（符號本體 30%）+ Hue（色彩 15%）
  * 3. 若前幾名接近，啟動 SSIM 仲裁
  */
 export function matchCell(cellImageData, referenceIndex) {
@@ -561,27 +564,31 @@ export function matchCell(cellImageData, referenceIndex) {
     const cellGray = toGray(cleanedImg);
     const cellEqGray = histogramEqualize(cellGray);
     const cellHOG = computeHOG(cellEqGray);
+    const cellCenterHOG = computeCenterCropHOG(cleanedImg);
 
-    // Round 1: HOG + Hue 融合
+    // Round 1: 全圖 HOG + 中心 HOG + Hue 融合
     const candidates = [];
     for (const [symbol, refList] of referenceIndex) {
         let bestFused = -1;
         let bestHog = -1;
+        let bestCenter = -1;
         let bestHue = -1;
         let bestRef = null;
         for (const ref of refList) {
             const hogScore = cosineSimilarity(cellHOG, ref.hog);
+            const centerScore = ref.centerHog ? cosineSimilarity(cellCenterHOG, ref.centerHog) : hogScore;
             const hueDist = computeHueHistDistance(cleanedImg, ref.rgb);
             const colorSim = 1 - hueDist;
-            const fused = hogScore * HOG_WEIGHT + colorSim * COLOR_WEIGHT;
+            const fused = hogScore * HOG_WEIGHT + centerScore * CENTER_HOG_WEIGHT + colorSim * COLOR_WEIGHT;
             if (fused > bestFused) {
                 bestFused = fused;
                 bestHog = hogScore;
+                bestCenter = centerScore;
                 bestHue = colorSim;
                 bestRef = ref;
             }
         }
-        if (bestRef) candidates.push({ symbol, fused: bestFused, hog: bestHog, hue: bestHue, ref: bestRef });
+        if (bestRef) candidates.push({ symbol, fused: bestFused, hog: bestHog, center: bestCenter, hue: bestHue, ref: bestRef });
     }
 
     candidates.sort((a, b) => b.fused - a.fused);
@@ -636,7 +643,7 @@ export function matchCell(cellImageData, referenceIndex) {
     }
 
     // 組裝診斷資料（Top 3 + tiebreaker）
-    const top3 = candidates.slice(0, 3).map(c => ({ sym: c.symbol, F: c.fused, H: c.hog, C: c.hue }));
+    const top3 = candidates.slice(0, 3).map(c => ({ sym: c.symbol, F: c.fused, H: c.hog, Ctr: c.center, C: c.hue }));
 
     const confidence = Math.max(0, Math.min(100, bestScore * 100));
     return {
@@ -668,7 +675,7 @@ export async function recognizeBoard(boardCanvas, reelROI, gridRows, gridCols, r
     const grid = [];
     const details = [];
 
-    // ── 第一輪：HOG + Hue 形狀辨識 ──
+    // ── 第一輪：全圖HOG + 中心裁切HOG + Hue 三通道融合辨識 ──
     for (let r = 0; r < gridRows; r++) {
         const gridRow = [];
         const detailRow = [];
