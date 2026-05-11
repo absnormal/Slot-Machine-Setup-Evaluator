@@ -155,6 +155,7 @@ function App() {
         setHasBidirectionalPaylines,
         setHasAdjustableLines,
         setHasExBet, setExBetOptions,
+        setHasLineBetDivisor, setLineBetDivisor,
         setLineImages, setActiveLineImageId, setLinesTextInput,
         setTemplateError,
         performAutoBuild, resetTemplateBuilder,
