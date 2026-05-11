@@ -194,26 +194,43 @@ function cosineSimilarity(a, b) {
 // ═══════════════════════════════════════════
 
 /**
- * 計算兩張灰階影像的 SSIM
+ * 計算兩張灰階影像的 SSIM（中心裁切版）
+ * 只比較中央 60% 區域，排除邊緣特效/外框干擾
  * 回傳值：-1 ~ 1，1 = 完全相同
  */
 function computeSSIM(grayA, grayB) {
-    const len = grayA.length;
+    const W = MATCH_SIZE;
+    const H = MATCH_SIZE;
+    const margin = 0.20; // 跳過外圍 20%
+    const x0 = Math.floor(W * margin);
+    const y0 = Math.floor(H * margin);
+    const x1 = Math.floor(W * (1 - margin));
+    const y1 = Math.floor(H * (1 - margin));
+    const cropW = x1 - x0;
+    const cropH = y1 - y0;
+    const len = cropW * cropH;
+
     let sumA = 0, sumB = 0;
-    for (let i = 0; i < len; i++) {
-        sumA += grayA[i];
-        sumB += grayB[i];
+    for (let y = y0; y < y1; y++) {
+        for (let x = x0; x < x1; x++) {
+            const idx = y * W + x;
+            sumA += grayA[idx];
+            sumB += grayB[idx];
+        }
     }
     const muA = sumA / len;
     const muB = sumB / len;
 
     let varA = 0, varB = 0, covAB = 0;
-    for (let i = 0; i < len; i++) {
-        const dA = grayA[i] - muA;
-        const dB = grayB[i] - muB;
-        varA += dA * dA;
-        varB += dB * dB;
-        covAB += dA * dB;
+    for (let y = y0; y < y1; y++) {
+        for (let x = x0; x < x1; x++) {
+            const idx = y * W + x;
+            const dA = grayA[idx] - muA;
+            const dB = grayB[idx] - muB;
+            varA += dA * dA;
+            varB += dB * dB;
+            covAB += dA * dB;
+        }
     }
     varA /= len;
     varB /= len;
@@ -471,11 +488,13 @@ function parseOcrNumericValue(rawText) {
 // ── 亮度異常遮罩 (Brightness Outlier Masking) ──
 // ═══════════════════════════════════════════
 
-const BRIGHT_OFFSET = 60; // 亮度超過中位數 + 此值的像素被視為特效
+const BRIGHT_OFFSET = 60; // 亮度超過中位數 + 此值的像素被視為候選特效
+const SAT_THRESHOLD = 0.25; // 飽和度 < 此值視為「近白色」（閃電/發光），高飽和度的彩色高光不清洗
 
 /**
- * 清洗特效像素：偵測異常明亮的像素（閃電/發光/連線動畫）並替換
- * 原理：特效像素不管什麼顏色，都會比正常符號像素明亮很多
+ * 清洗特效像素：偵測「亮 + 低飽和度」的像素（閃電/發光/連線動畫）並替換
+ * 原理：特效像素（閃電、光暈）是近白色（高亮度 + 低飽和度），
+ *       而符號本身的彩色高光（西瓜綠、櫻桃紅）是高飽和度，不應被清除
  * @param {ImageData} imageData - 原始 RGBA 影像
  * @returns {ImageData} 清洗後的 RGBA 影像（新物件，不修改原始資料）
  */
@@ -497,23 +516,48 @@ function cleanEffectPixels(imageData) {
     const median = sorted[len >> 1];
     const threshold = median + BRIGHT_OFFSET;
 
-    // Step 3: 如果沒有異常像素（正常/反灰盤面），直接返回原圖
+    // Step 3: 如果沒有異常亮像素（正常/反灰盤面），直接返回原圖
     let brightCount = 0;
     for (let i = 0; i < len; i++) {
         if (lum[i] > threshold) brightCount++;
     }
     if (brightCount < len * 0.05) return imageData; // < 5% 異常像素 → 不需清洗
 
-    // Step 4: 建立遮罩 (true = 特效像素)
+    // Step 4: 建立遮罩 — 只標記「亮 + 低飽和度」的像素（閃電/光暈）
+    // 高飽和度的彩色高光（西瓜綠、櫻桃紅）不被標記
     const mask = new Uint8Array(len);
     for (let i = 0; i < len; i++) {
-        mask[i] = lum[i] > threshold ? 1 : 0;
+        if (lum[i] <= threshold) continue;
+        const idx = i * 4;
+        const r = d[idx], g = d[idx + 1], b = d[idx + 2];
+        const cmax = Math.max(r, g, b);
+        const cmin = Math.min(r, g, b);
+        const sat = cmax > 0 ? (cmax - cmin) / cmax : 0;
+        mask[i] = sat < SAT_THRESHOLD ? 1 : 0;
+    }
+
+    // Step 4.5: 遮罩膨脹（Dilation, radius=2）— 擴展遮罩以捕捉亮點周圍的光暈殘留
+    const dilated = new Uint8Array(len);
+    const DILATE_R = 2;
+    for (let y = 0; y < H; y++) {
+        for (let x = 0; x < W; x++) {
+            if (mask[y * W + x]) {
+                for (let dy = -DILATE_R; dy <= DILATE_R; dy++) {
+                    for (let dx = -DILATE_R; dx <= DILATE_R; dx++) {
+                        const ny = y + dy, nx = x + dx;
+                        if (ny >= 0 && ny < H && nx >= 0 && nx < W) {
+                            dilated[ny * W + nx] = 1;
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // Step 5: 計算所有「非特效像素」的 RGB 中位數（代表符號主色調）
     const normalR = [], normalG = [], normalB = [];
     for (let i = 0; i < len; i++) {
-        if (!mask[i]) {
+        if (!dilated[i]) {
             const idx4 = i * 4;
             normalR.push(d[idx4]);
             normalG.push(d[idx4 + 1]);
@@ -528,10 +572,10 @@ function cleanEffectPixels(imageData) {
     const medG = normalG[mid] || 128;
     const medB = normalB[mid] || 128;
 
-    // Step 6: 用非特效 RGB 中位數替換特效像素（避免引入背景藍色偏差）
+    // Step 6: 用非特效 RGB 中位數替換特效像素（含膨脹區域）
     const cleaned = new Uint8ClampedArray(d);
     for (let i = 0; i < len; i++) {
-        if (!mask[i]) continue;
+        if (!dilated[i]) continue;
         const pIdx = i * 4;
         cleaned[pIdx] = medR;
         cleaned[pIdx + 1] = medG;
@@ -618,7 +662,7 @@ export function matchCell(cellImageData, referenceIndex) {
                 const refList = referenceIndex.get(c.symbol) || [c.ref];
                 let maxSSIM = -1;
                 for (const ref of refList) {
-                    const ssim = computeSSIM(cellGray, ref.gray);
+                    const ssim = computeSSIM(cellEqGray, ref.eqGray || ref.gray);
                     if (ssim > maxSSIM) maxSSIM = ssim;
                 }
                 ssimResults.push({ symbol: c.symbol, ssim: maxSSIM, fused: c.fused });
