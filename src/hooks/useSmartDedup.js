@@ -381,7 +381,7 @@ export function useSmartDedup({ setCandidates, setTemplateMessage }) {
                 };
             });
         });
-    }, [setCandidates, setTemplateMessage]);
+    }, [setCandidates, setTemplateMessage, enableCascade]);
 
     // 智慧刪除：移除未被標記為 isSpinBest 的幀
     const confirmDedup = useCallback(() => {

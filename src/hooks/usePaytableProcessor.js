@@ -12,6 +12,7 @@ export function usePaytableProcessor({
     customApiKey,
     apiKey,
     hasDoubleSymbol,
+    gridCols = 5,
     setTemplateMessage,
     setTemplateError,
 }) {
@@ -59,11 +60,20 @@ export function usePaytableProcessor({
     };
 
     const formatPtLine = (item) => {
-        const base = `${item.name} ${item.match1} ${item.match2} ${item.match3} ${item.match4} ${item.match5}`;
-        if (hasDoubleSymbol) {
-            return `${base} ${item.match6 || 0} ${item.match7 || 0} ${item.match8 || 0} ${item.match9 || 0} ${item.match10 || 0}`;
+        // 基礎欄位數 = gridCols - 1（match1 = 2連, match2 = 3連, ...）
+        const baseCols = Math.max(gridCols - 1, 4); // 至少 4 欄 (2~5連)
+        const parts = [item.name];
+        for (let i = 1; i <= baseCols; i++) {
+            parts.push(item[`match${i}`] || 0);
         }
-        return base;
+        // 雙倍符號額外欄位（gridCols + 1 ~ gridCols * 2 - 1）
+        if (hasDoubleSymbol) {
+            const doubleCols = gridCols - 1;
+            for (let i = baseCols + 1; i <= baseCols + doubleCols; i++) {
+                parts.push(item[`match${i}`] || 0);
+            }
+        }
+        return parts.join(' ');
     };
 
     const handlePtTableChange = (index, field, value, setPaytableInput) => {

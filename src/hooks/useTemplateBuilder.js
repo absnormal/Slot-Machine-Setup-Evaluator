@@ -69,7 +69,7 @@ export function useTemplateBuilder({
 
     // === Sub-Hook: Paytable Processor ===
     const paytableProcessor = usePaytableProcessor({
-        customApiKey, apiKey, hasDoubleSymbol,
+        customApiKey, apiKey, hasDoubleSymbol, gridCols,
         setTemplateMessage, setTemplateError,
     });
 
@@ -77,19 +77,26 @@ export function useTemplateBuilder({
     useEffect(() => {
         if (prevHasDoubleSymbol.current !== hasDoubleSymbol) {
             paytableProcessor.setPtResultItems(prev => {
+                const baseCols = Math.max(gridCols - 1, 4);
                 const formattedLines = prev.map(item => {
-                    const base = `${item.name} ${item.match1} ${item.match2} ${item.match3} ${item.match4} ${item.match5}`;
-                    if (hasDoubleSymbol) {
-                        return `${base} ${item.match6 || 0} ${item.match7 || 0} ${item.match8 || 0} ${item.match9 || 0} ${item.match10 || 0}`;
+                    const parts = [item.name];
+                    for (let i = 1; i <= baseCols; i++) {
+                        parts.push(item[`match${i}`] || 0);
                     }
-                    return base;
+                    if (hasDoubleSymbol) {
+                        const doubleCols = gridCols - 1;
+                        for (let i = baseCols + 1; i <= baseCols + doubleCols; i++) {
+                            parts.push(item[`match${i}`] || 0);
+                        }
+                    }
+                    return parts.join(' ');
                 });
                 setPaytableInput(formattedLines.join('\n'));
                 return prev;
             });
             prevHasDoubleSymbol.current = hasDoubleSymbol;
         }
-    }, [hasDoubleSymbol, paytableProcessor]);
+    }, [hasDoubleSymbol, gridCols, paytableProcessor]);
 
     // Auto-sync JP config to paytable items so they can bind images
     useEffect(() => {

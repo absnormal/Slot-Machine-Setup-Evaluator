@@ -135,6 +135,15 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
             }
             if (rafTimestamp) state.lastRafTime = rafTimestamp;
 
+            // 【統一取樣頻率】：無論螢幕更新率多少，偵測迴圈最多 ~60fps
+            // 這樣 stableCount / spinBreakCount 等計數器的遞增速度在任何環境下都一致
+            const PROCESS_INTERVAL_MS = 15; // ≈ 60fps (略低於 16.7ms，容許微小抖動)
+            if (state.lastProcessTime && rafTimestamp - state.lastProcessTime < PROCESS_INTERVAL_MS) {
+                liveRafRef.current = requestAnimationFrame(processLiveFrame);
+                return;
+            }
+            state.lastProcessTime = rafTimestamp;
+
             // 【防偽停輪機制】：影片時間未前進就跳過
             const now = video.currentTime;
             const timeDelta = now - state.lastVideoTime;
@@ -388,10 +397,10 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                                                         ? { ...c, ocrData: { ...c.ocrData, balance, bet, orderId, ...(multiplierROI ? { multiplier } : {}) } }
                                                         : c
                                                 ));
-                                            }).catch(() => {});
+                                            }).catch(() => { });
                                         }
                                     }
-                                }).catch(() => {});
+                                }).catch(() => { });
 
                                 // ── WIN 輪詢：如果啟用，立刻啟動 WIN 追蹤特工 ──
                                 if (ocrOptions.enableWinTracker && winROI) {
