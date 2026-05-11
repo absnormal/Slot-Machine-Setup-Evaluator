@@ -157,20 +157,6 @@ export default function ResultView({ template, calcData, calcErr, hoveredId, set
                                         </select>
                                     </div>
                                 )}
-
-                                {/* 固定 LineBet 除數顯示 */}
-                                {template?.hasLineBetDivisor && template?.lineBetDivisor > 1 && (
-                                    <div className="flex-1 w-full">
-                                        <div className="mb-1.5 flex items-center gap-2">
-                                            <label className="text-sm font-bold text-slate-700">LineBet 計算</label>
-                                        </div>
-                                        <div className="px-3 py-2 border border-indigo-200 bg-indigo-50 rounded-lg flex items-center h-[46px] shadow-sm">
-                                            <span className="font-black text-sm text-indigo-700 truncate">
-                                                ÷ {template.lineBetDivisor} = {((parseFloat(betInput) || 0) / template.lineBetDivisor).toFixed(2).replace(/\.00$/, '')}
-                                            </span>
-                                        </div>
-                                    </div>
-                                )}
                             </div>
                             {isBalanceExpanded ? (
                                 <button 

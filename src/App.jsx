@@ -107,7 +107,6 @@ function App() {
         hasBidirectionalPaylines, setHasBidirectionalPaylines,
         hasAdjustableLines, setHasAdjustableLines,
         hasExBet, setHasExBet, exBetOptions, setExBetOptions,
-        hasLineBetDivisor, setHasLineBetDivisor, lineBetDivisor, setLineBetDivisor,
         lineImages, setLineImages, activeLineImageId, setActiveLineImageId,
         activeLineImage, imageSrc, imageObj,
         patternRows, setPatternRows, patternCols, setPatternCols,
@@ -166,7 +165,6 @@ function App() {
         hasDoubleSymbol, hasRollingWin, hasDynamicMultiplier, multiplierCalcType,
         hasBidirectionalPaylines, hasAdjustableLines,
         hasExBet, exBetOptions,
-        hasLineBetDivisor, lineBetDivisor,
         motionCoverageMin, vLineThreshold, ocrDecimalPlaces, balDecimalPlaces, enableWinTracker, enableEmptyBoardFilter,
         setMotionCoverageMin, setVLineThreshold, setOcrDecimalPlaces, setBalDecimalPlaces, setEnableWinTracker, setEnableEmptyBoardFilter,
         setReelROI: usePhase4Store(s => s.setReelROI),
@@ -683,8 +681,6 @@ function App() {
                         hasAdjustableLines={hasAdjustableLines} setHasAdjustableLines={setHasAdjustableLines}
                         hasExBet={hasExBet} setHasExBet={setHasExBet}
                         exBetOptions={exBetOptions} setExBetOptions={setExBetOptions}
-                        hasLineBetDivisor={hasLineBetDivisor} setHasLineBetDivisor={setHasLineBetDivisor}
-                        lineBetDivisor={lineBetDivisor} setLineBetDivisor={setLineBetDivisor}
                         lineImages={lineImages} removeLineImage={removeLineImage} activeLineImageId={activeLineImageId} setActiveLineImageId={setActiveLineImageId} handleLineImageUpload={handleLineImageUpload}
                         isPtProcessing={isPtProcessing} handlePtExtract={handlePtExtract} ptImages={ptImages} removePtImage={removePtImage} clearPtAll={clearPtAll} handlePtFileChange={handlePtFileChange} handlePtDrop={handlePtDrop}
                         dragState={dragState} setDragState={setDragState} containerRef={containerRef} layoutStyle={layoutStyle} handleMouseDown={handleMouseDown} handleMouseMove={handleMouseMove} handleMouseUp={handleMouseUp}
