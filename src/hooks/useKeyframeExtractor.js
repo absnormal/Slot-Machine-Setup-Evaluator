@@ -247,7 +247,7 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                     const isReelStopped = state.stableCount >= 3;
                     const isAnimationFallback = state.decayCount >= 15 && state.peakDiff > 8;
 
-                    if ((isReelStopped || isAnimationFallback) && hadMotion && (now - state.lastCandidateTime) > 0.75) {
+                    if ((isReelStopped || isAnimationFallback) && hadMotion) {
 
                         // 【V-Line 旋轉門檻】：如果自上次停輪以來沒有偵測到任何旋轉，
                         // 代表這只是同一局的動畫衰退，不是新的停輪。跳過！
