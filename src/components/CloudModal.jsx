@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { Cloud, X, RefreshCw, Loader2, Settings, Trophy, Trash2, Download, Database, Search, Filter } from 'lucide-react';
 import { GAS_URL } from '../utils/constants';
 
@@ -11,6 +11,7 @@ export default function CloudModal({
 }) {
     const [searchTerm, setSearchTerm] = useState('');
     const [activeTab, setActiveTab] = useState('ALL');
+    const searchInputRef = useRef(null);
 
     // 自動從模板提取所有不重複的平台名
     const platforms = useMemo(() => {
@@ -31,6 +32,8 @@ export default function CloudModal({
         if (show) {
             setSearchTerm('');
             setConfirmDeleteId(null);
+            // 延遲 focus 讓 DOM 渲染完成
+            setTimeout(() => searchInputRef.current?.focus(), 100);
         }
     }, [show]);
 
@@ -90,6 +93,7 @@ export default function CloudModal({
                     <div className="relative">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                         <input
+                            ref={searchInputRef}
                             type="text"
                             placeholder="搜尋名稱、平台或遊戲..."
                             value={searchTerm}
