@@ -79,15 +79,15 @@ export function useTemplateBuilder({
     useEffect(() => {
         if (prevHasDoubleSymbol.current !== hasDoubleSymbol) {
             paytableProcessor.setPtResultItems(prev => {
-                const baseCols = Math.max(gridCols - 1, 4);
+                const totalBaseCols = Math.max(gridCols, 5);
                 const formattedLines = prev.map(item => {
                     const parts = [item.name];
-                    for (let i = 1; i <= baseCols; i++) {
+                    for (let i = 1; i <= totalBaseCols; i++) {
                         parts.push(item[`match${i}`] || 0);
                     }
                     if (hasDoubleSymbol) {
                         const doubleCols = gridCols - 1;
-                        for (let i = baseCols + 1; i <= baseCols + doubleCols; i++) {
+                        for (let i = totalBaseCols + 1; i <= totalBaseCols + doubleCols; i++) {
                             parts.push(item[`match${i}`] || 0);
                         }
                     }

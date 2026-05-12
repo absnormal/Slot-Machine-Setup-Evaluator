@@ -60,16 +60,18 @@ export function usePaytableProcessor({
     };
 
     const formatPtLine = (item) => {
-        // 基礎欄位數 = gridCols - 1（match1 = 2連, match2 = 3連, ...）
-        const baseCols = Math.max(gridCols - 1, 4); // 至少 4 欄 (2~5連)
+        // 文字格式需要 gridCols 個數值：match1(1連) 到 match{gridCols}(N連)
+        // match1 = 1連 (永遠為 0，不顯示在 UI 表格中)
+        // match2 = 2連, match3 = 3連, ... match{gridCols} = N連
+        const totalBaseCols = Math.max(gridCols, 5); // 至少 5 欄 (1~5連)
         const parts = [item.name];
-        for (let i = 1; i <= baseCols; i++) {
+        for (let i = 1; i <= totalBaseCols; i++) {
             parts.push(item[`match${i}`] || 0);
         }
-        // 雙倍符號額外欄位（gridCols + 1 ~ gridCols * 2 - 1）
+        // 雙倍符號額外欄位
         if (hasDoubleSymbol) {
             const doubleCols = gridCols - 1;
-            for (let i = baseCols + 1; i <= baseCols + doubleCols; i++) {
+            for (let i = totalBaseCols + 1; i <= totalBaseCols + doubleCols; i++) {
                 parts.push(item[`match${i}`] || 0);
             }
         }

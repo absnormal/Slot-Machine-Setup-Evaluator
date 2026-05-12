@@ -465,10 +465,76 @@ function App() {
             });
             keyframeExtractor.setCandidates(prev => [...prev, ...cleaned]);
             setTemplateMessage(`✅ 已匯入 ${cleaned.length} 張歷史關鍵幀${result.rois ? ' (含 ROI 座標)' : ''}`);
+
+            // ── 自動從資料夾名稱比對雲端模板並載入 ──
+            if (result.folderName) {
+                try {
+                    // 解析資料夾名稱：Session_YYYYMMDD_HHMMSS_{gameName}
+                    const folderMatch = result.folderName.match(/^Session_\d{8}_\d{6}_(.+)$/);
+
+                    if (folderMatch) {
+                        const extractedGameName = folderMatch[1].trim();
+
+                        // 若當前已有模板且遊戲名相同，跳過自動載入
+                        const currentGameName = (gameName || template?.name || '').trim();
+                        if (template && currentGameName.toUpperCase() === extractedGameName.toUpperCase()) {
+                            // 已有對應模板，不需重複載入
+                        } else {
+                            // 取得雲端模板列表：React state → sessionStorage → 遠端拉取
+                            let templates = cloudInstance.cloudTemplates;
+                            if (!templates || templates.length === 0) {
+                                try {
+                                    const cached = sessionStorage.getItem('slot_templates_cache');
+                                    if (cached) templates = JSON.parse(cached);
+                                } catch (e) {}
+                            }
+                            if (!templates || templates.length === 0) {
+                                // 快取也沒有，等待遠端拉取完成後從 sessionStorage 讀取
+                                await cloudInstance.fetchCloudTemplates();
+                                try {
+                                    const cached = sessionStorage.getItem('slot_templates_cache');
+                                    if (cached) templates = JSON.parse(cached);
+                                } catch (e) {}
+                            }
+
+
+
+                            if (templates && templates.length > 0) {
+                                const upperName = extractedGameName.toUpperCase();
+                                // 優先完全匹配 gameName
+                                let match = templates.find(t =>
+                                    (t.gameName || '').trim().toUpperCase() === upperName
+                                );
+                                // 次選：模板名或遊戲名包含目標字串
+                                if (!match) {
+                                    match = templates.find(t =>
+                                        (t.gameName || '').trim().toUpperCase().includes(upperName) ||
+                                        upperName.includes((t.gameName || '').trim().toUpperCase())
+                                    );
+                                }
+
+
+
+                                if (match) {
+                                    setTemplateMessage(`☁️ 正在自動載入雲端模板：${match.name || match.gameName}...`);
+                                    await templateIO.loadCloudTemplate(match);
+                                } else {
+                                    setTimeout(() => {
+                                        setTemplateMessage(`ℹ️ 未找到遊戲「${extractedGameName}」的雲端模板，請手動載入`);
+                                    }, 2000);
+                                }
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.warn('[AutoTemplate] 自動載入模板失敗（不影響匯入結果）', e);
+                }
+            }
+
             return result.dirHandle;
         }
         return null;
-    }, [reportGenerator, keyframeExtractor, setTemplateMessage, template, hasMultiplierReel]);
+    }, [reportGenerator, keyframeExtractor, setTemplateMessage, template, hasMultiplierReel, gameName, cloudInstance, templateIO]);
 
     // --- Vision 結算 ---
     const [visionCalcResults, setVisionCalcResults] = useState(null);
