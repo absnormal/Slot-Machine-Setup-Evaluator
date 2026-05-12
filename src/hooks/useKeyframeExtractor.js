@@ -333,7 +333,9 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                                 status: 'pending',
                                 recognitionResult: null,
                                 error: '',
-                                useWinFrame: true
+                                useWinFrame: true,
+                                // ★ 如果 WIN 追蹤器啟用，立刻標記為 polling，防止 autoPlay 過早記錄
+                                ...(ocrOptions.enableWinTracker && ocrOptions.winROI ? { winPollStatus: 'polling' } : {}),
                             };
 
                             setCandidates(prev => [...prev, candidate]);

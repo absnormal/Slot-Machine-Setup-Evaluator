@@ -128,9 +128,14 @@ export function useAutoPlay() {
 
     /**
      * 等待候選幀的 OCR 真正完成
-     * 檢查：ocrData 有實際數值（非空字串），且 winPollStatus 不是 polling
+     * 
+     * 判定邏輯：
+     *   1. ocrData 必須存在且 win 不是空字串
+     *   2. winPollStatus 必須進入終態（不存在 = 沒開 WIN tracker → 直接過）
+     *      - 'polling' → 還在追蹤，繼續等
+     *      - 'completed' / 'forced_with_data' / 'forced_empty' → 完成
      */
-    const waitForOCR = useCallback((candidateId, getCandidates, timeoutMs = 15000) => {
+    const waitForOCR = useCallback((candidateId, getCandidates, timeoutMs = 20000) => {
         return new Promise((resolve) => {
             const startTime = Date.now();
             const check = () => {
@@ -138,18 +143,33 @@ export function useAutoPlay() {
                 const candidates = getCandidates();
                 const target = candidates.find(c => c.id === candidateId);
 
-                const ocrDone = target?.ocrData
-                    && target.ocrData.win !== undefined
-                    && target.ocrData.win !== ''
-                    && target.winPollStatus !== 'polling';
+                if (!target) {
+                    setTimeout(check, 300);
+                    return;
+                }
 
-                if (ocrDone) {
+                // 條件 1：初始 OCR 已寫入（win 欄位存在且非空）
+                const hasOcrData = target.ocrData
+                    && target.ocrData.win !== undefined
+                    && target.ocrData.win !== '';
+
+                // 條件 2：WIN 追蹤特工已完成（或根本沒啟動）
+                const winPollDone = !target.winPollStatus  // 沒開 WIN tracker
+                    || target.winPollStatus === 'completed'
+                    || target.winPollStatus === 'forced_with_data'
+                    || target.winPollStatus === 'forced_empty';
+
+                if (hasOcrData && winPollDone) {
                     resolve(target);
                     return;
                 }
                 if (Date.now() - startTime > timeoutMs) {
-                    console.warn('[AutoPlay] OCR 等待超時，使用現有資料', candidateId);
-                    resolve(target || null);
+                    console.warn(`[AutoPlay] OCR 等待超時 (${timeoutMs/1000}s)，使用現有資料`, {
+                        id: candidateId,
+                        hasOcrData,
+                        winPollStatus: target.winPollStatus,
+                    });
+                    resolve(target);
                     return;
                 }
                 setTimeout(check, 300);
@@ -159,22 +179,41 @@ export function useAutoPlay() {
     }, []);
 
     /**
-     * 等待 smartDedup 完成後，從 candidates 計算實際局數
-     * smartDedup 呼叫 setCandidates → React 下一個 tick 更新 → candidatesRef 同步
+     * 等待 smartDedup 標記完成，再計算實際局數
+     * 
+     * 輪詢機制：smartDedup 呼叫 setCandidates → React 更新 → candidatesRef 同步
+     * 我們等到「最新候選幀有 spinGroupId」才算標記完成。
      */
     const getSpinGroupCount = useCallback((getCandidates) => {
         return new Promise((resolve) => {
-            // 等待 React state 更新（smartDedup 透過 setCandidates 觸發）
-            setTimeout(() => {
+            const startTime = Date.now();
+            const maxWait = 3000; // 最多等 3 秒
+
+            const poll = () => {
                 const candidates = getCandidates();
-                const hasSpinData = candidates.some(c => c.spinGroupId !== undefined);
-                if (!hasSpinData) {
-                    resolve(candidates.length); // fallback: 還沒跑過 dedup
+                if (candidates.length === 0) { resolve(0); return; }
+
+                // 檢查最新的候選幀是否已被 smartDedup 標記
+                const latest = candidates[candidates.length - 1];
+                const isMarked = latest.spinGroupId !== undefined;
+
+                if (isMarked) {
+                    const groupIds = new Set(candidates.map(c => c.spinGroupId));
+                    resolve(groupIds.size);
                     return;
                 }
-                const groupIds = new Set(candidates.map(c => c.spinGroupId));
-                resolve(groupIds.size);
-            }, 150); // 等 React 更新 + ref 同步
+
+                if (Date.now() - startTime > maxWait) {
+                    // 超時 fallback：用候選幀數量
+                    console.warn('[AutoPlay] smartDedup 標記等待超時，使用候選幀數量');
+                    resolve(candidates.length);
+                    return;
+                }
+
+                setTimeout(poll, 150);
+            };
+            // 先等一個 tick 讓 React 更新
+            setTimeout(poll, 100);
         });
     }, []);
 
