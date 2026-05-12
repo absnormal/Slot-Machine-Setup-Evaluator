@@ -1,5 +1,6 @@
 import React from 'react';
 import { Send, X, Clock, RotateCcw } from 'lucide-react';
+import usePhase4Store from '../../stores/usePhase4Store';
 
 /**
  * CandidateCard — 單張候選幀卡片
@@ -30,6 +31,7 @@ const CandidateCard = ({
     isDimmed,
     setManualBestCandidate,
 }) => {
+    const enableCascade = usePhase4Store(s => s.enableEmptyBoardFilter);
     // ── 狀態 → className 映射 ──
     const statusBorder = isBest && hasBeenGrouped
         ? 'ring-2 ring-emerald-400 border-emerald-300'
@@ -189,7 +191,7 @@ const CandidateCard = ({
                                             >
                                                 {isManual && <span className="mr-0.5 text-[10px] opacity-70">✎</span>}
                                                 {currentValue || (field === 'bet' || field === 'balance' ? '-' : '0')}
-                                                {field === 'win' && kf.isCascadeMember && kf.cascadeDeltaWin !== undefined && (
+                                                {field === 'win' && enableCascade && kf.isCascadeMember && kf.cascadeDeltaWin !== undefined && (
                                                     <span className="ml-1 text-[10px] text-rose-500 bg-rose-50 px-1 rounded border border-rose-100 inline-block align-middle" title="本盤面實際贏分">
                                                         △{kf.cascadeDeltaWin}
                                                     </span>
@@ -223,7 +225,7 @@ const CandidateCard = ({
                                     return (
                                         <div className="flex items-center justify-between leading-none mt-0.5">
                                             <span className="text-[11px] text-slate-400">
-                                                {rr.isCascadeStep ? '結算贏分 (△)' : '結算贏分'}
+                                                {(enableCascade && rr.isCascadeStep) ? '結算贏分 (△)' : '結算贏分'}
                                             </span>
                                             <span className={`text-[14px] font-bold ${aiWin > 0 ? 'text-emerald-600' : 'text-slate-400'}`}>
                                                 {aiWin.toLocaleString()}
@@ -238,7 +240,7 @@ const CandidateCard = ({
                                             </div>
                                             <div className="flex items-center justify-between text-[11px] leading-tight">
                                                 <span className="text-slate-500">
-                                                    {rr.isCascadeStep ? '△WIN' : 'OCR'}: <span className="font-bold text-slate-700">{displayCompare}</span>
+                                                    {(enableCascade && rr.isCascadeStep) ? '△WIN' : 'OCR'}: <span className="font-bold text-slate-700">{displayCompare}</span>
                                                 </span>
                                                 <span className="text-rose-600">AI: <span className="font-bold">{aiWin}</span></span>
                                             </div>

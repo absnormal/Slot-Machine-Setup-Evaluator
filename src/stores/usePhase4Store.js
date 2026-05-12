@@ -38,6 +38,7 @@ const usePhase4Store = create((set, get) => ({
     betROI: loadCachedROI('bet', { x: 70, y: 90, w: 24, h: 6 }),
     orderIdROI: loadCachedROI('orderId', { x: 40, y: 5, w: 20, h: 5 }),
     multiplierROI: loadCachedROI('multiplier', { x: 45, y: 5, w: 10, h: 8 }),
+    spinButtonROI: loadCachedROI('spinButton', { x: 90, y: 85, w: 8, h: 8 }),
 
     setReelROI: (v) => { const val = typeof v === 'function' ? v(get().reelROI) : v; set({ reelROI: val }); saveROI('reel', val); },
     setWinROI: (v) => { const val = typeof v === 'function' ? v(get().winROI) : v; set({ winROI: val }); saveROI('win', val); },
@@ -45,6 +46,7 @@ const usePhase4Store = create((set, get) => ({
     setBetROI: (v) => { const val = typeof v === 'function' ? v(get().betROI) : v; set({ betROI: val }); saveROI('bet', val); },
     setOrderIdROI: (v) => { const val = typeof v === 'function' ? v(get().orderIdROI) : v; set({ orderIdROI: val }); saveROI('orderId', val); },
     setMultiplierROI: (v) => { const val = typeof v === 'function' ? v(get().multiplierROI) : v; set({ multiplierROI: val }); saveROI('multiplier', val); },
+    setSpinButtonROI: (v) => { const val = typeof v === 'function' ? v(get().spinButtonROI) : v; set({ spinButtonROI: val }); saveROI('spinButton', val); },
 
     // ═══════════════════════════════════════
     // 偵測參數
@@ -82,6 +84,7 @@ const usePhase4Store = create((set, get) => ({
             betROI: s.betROI,
             orderIdROI: s.orderIdROI,
             multiplierROI: s.multiplierROI,
+            spinButtonROI: s.spinButtonROI,
         };
     },
 }));

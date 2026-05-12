@@ -202,12 +202,13 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                     state.spinBreakCount = (state.spinBreakCount || 0) + 1;
                     if (state.spinBreakCount >= 3) {
                         if (state.isWinPollActive) {
-                            // WIN 特工還在追蹤 → 動畫可能被誤判為旋轉
-                            // 只殺特工，不設 hadSpin；加寬限期讓動畫衰退
-                            console.log(`🌀 [V-Line] WIN 特工活躍中偵測到疑似旋轉 (連續 ${state.spinBreakCount} 幀, ${analysis.spinningCount}軸, max=${analysis.maxMAE.toFixed(1)})，終止特工並進入寬限期 (影片時間：${now.toFixed(3)}s)`);
-                            state.cancelWinPoll = true;
-                            state.isWinPollActive = false;
-                            state.winPollGraceUntil = now + 0.8; // 0.8 秒寬限
+                            // WIN 特工還在追蹤 → WIN 動畫閃動被誤判為旋轉
+                            // ★ 修正：不再殺死特工！讓它繼續追蹤 WIN 值。
+                            //   只標記 hadSpin，這樣如果真的是新的一局旋轉，
+                            //   下次停輪偵測會自然觸發新截圖（line 306 會取消舊特工）。
+                            //   如果只是 WIN 閃動，特工可以正常完成任務。
+                            console.log(`🌀 [V-Line] WIN 特工活躍中偵測到疑似旋轉 (連續 ${state.spinBreakCount} 幀, ${analysis.spinningCount}軸, max=${analysis.maxMAE.toFixed(1)})，保留特工、標記旋轉 (影片時間：${now.toFixed(3)}s)`);
+                            state.hadSpinSinceLastStop = true;
                         } else if (now > state.winPollGraceUntil) {
                             // 非特工期間 & 非寬限期 → 正常確認旋轉
                             state.hadSpinSinceLastStop = true;

@@ -10,6 +10,8 @@ import PreviewLightbox from './phase4/PreviewLightbox';
 import usePhase4Store from '../stores/usePhase4Store';
 import useAutoSave from '../hooks/useAutoSave';
 import useSpinGroupAnalysis from '../hooks/useSpinGroupAnalysis';
+import { useAutoPlay } from '../hooks/useAutoPlay';
+import AutoPlayPanel from './phase4/AutoPlayPanel';
 
 const Phase4Video = ({
     isPhase4Minimized,
@@ -51,6 +53,7 @@ const Phase4Video = ({
     const setEnableWinTracker = usePhase4Store(s => s.setEnableWinTracker);
     const enableEmptyBoardFilter = usePhase4Store(s => s.enableEmptyBoardFilter);
     const setEnableEmptyBoardFilter = usePhase4Store(s => s.setEnableEmptyBoardFilter);
+    const spinButtonROI = usePhase4Store(s => s.spinButtonROI);
 
     // ── 本地狀態 ──
     const [isLiveActive, setIsLiveActive] = useState(false);
@@ -60,6 +63,12 @@ const Phase4Video = ({
     const [enableOrderId, setEnableOrderId] = useState(true);
     const [editingOcr, setEditingOcr] = useState(null);
     const [useWinFrame, setUseWinFrame] = useState(true);
+
+    // ── 自動遊玩 (hook) ──
+    const autoPlay = useAutoPlay();
+    const candidatesRef = useRef(candidates);
+    useEffect(() => { candidatesRef.current = candidates; }, [candidates]);
+    const getCandidates = useCallback(() => candidatesRef.current, []);
 
     // ── 卡片點擊：影片模式=跳轉時間點，串流模式/無影片=開圖片預覽 ──
     const handleCardClick = useCallback((kf) => {
@@ -340,6 +349,22 @@ const Phase4Video = ({
                         </div>
                     </div>
                 </div>
+
+            {/* 自動遊玩浮動控制台 (Portal — 渲染在 body 上) */}
+            {isNativeMode && (
+                <AutoPlayPanel
+                    autoPlay={autoPlay}
+                    isNativeConnected={nativeCapture?.isConnected}
+                    wsRef={nativeCapture?.wsRef || { current: null }}
+                    getCandidates={getCandidates}
+                    spinButtonROI={spinButtonROI}
+                    spinGroupCount={groupsWithMath?.length || 0}
+                    isLiveActive={isLiveActive}
+                    onStartLive={handleStartLive}
+                    onStopLive={handleStopLive}
+                    onSmartDedup={smartDedup}
+                />
+            )}
             </div>
         </div>
     );

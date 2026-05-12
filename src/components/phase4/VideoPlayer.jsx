@@ -37,6 +37,7 @@ const VideoPlayer = ({
     const betROI = usePhase4Store(s => s.betROI);
     const orderIdROI = usePhase4Store(s => s.orderIdROI);
     const multiplierROI = usePhase4Store(s => s.multiplierROI);
+    const spinButtonROI = usePhase4Store(s => s.spinButtonROI);
 
     // ── 本地狀態 ──
     const [isPlaying, setIsPlaying] = useState(false);
@@ -156,7 +157,8 @@ const VideoPlayer = ({
                         { key: 'balance', label: 'BAL', hex: '#38bdf8' },
                         { key: 'bet', label: 'BET', hex: '#22d3ee' },
                         { key: 'orderId', label: 'ID', hex: '#a855f7' },
-                        ...(showMultiplier ? [{ key: 'multiplier', label: 'MULT', hex: '#f43f5e' }] : [])
+                        ...(showMultiplier ? [{ key: 'multiplier', label: 'MULT', hex: '#f43f5e' }] : []),
+                        { key: 'spinButton', label: 'SPIN', hex: '#16a34a' }
                     ].map(r => (
                         <button key={r.key} onClick={() => setRoiMode(r.key)}
                             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm active:scale-95 ${roiMode === r.key
@@ -223,7 +225,8 @@ const VideoPlayer = ({
                         { roi: balanceROI, mode: 'balance', hex: '#38bdf8', label: '總分' },
                         { roi: betROI, mode: 'bet', hex: '#22d3ee', label: '押分' },
                         { roi: orderIdROI, mode: 'orderId', hex: '#a855f7', label: '單號' },
-                        ...(showMultiplier ? [{ roi: multiplierROI, mode: 'multiplier', hex: '#f43f5e', label: '乘倍' }] : [])
+                        ...(showMultiplier ? [{ roi: multiplierROI, mode: 'multiplier', hex: '#f43f5e', label: '乘倍' }] : []),
+                        { roi: spinButtonROI, mode: 'spinButton', hex: '#16a34a', label: 'SPIN 🎮' }
                     ].map(r => {
                         const isActive = roiMode === r.mode;
                         return (

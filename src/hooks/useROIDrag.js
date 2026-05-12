@@ -20,6 +20,8 @@ const useROIDrag = (containerRef, roiMode) => {
     const setOrderIdROI = usePhase4Store(s => s.setOrderIdROI);
     const multiplierROI = usePhase4Store(s => s.multiplierROI);
     const setMultiplierROI = usePhase4Store(s => s.setMultiplierROI);
+    const spinButtonROI = usePhase4Store(s => s.spinButtonROI);
+    const setSpinButtonROI = usePhase4Store(s => s.setSpinButtonROI);
 
     const [dragState, setDragState] = useState(null);
 
@@ -38,6 +40,7 @@ const useROIDrag = (containerRef, roiMode) => {
         else if (roiMode === 'bet') { targetROI = betROI; setTargetROI = setBetROI; }
         else if (roiMode === 'orderId') { targetROI = orderIdROI; setTargetROI = setOrderIdROI; }
         else if (roiMode === 'multiplier') { targetROI = multiplierROI; setTargetROI = setMultiplierROI; }
+        else if (roiMode === 'spinButton') { targetROI = spinButtonROI; setTargetROI = setSpinButtonROI; }
         else { targetROI = reelROI; setTargetROI = setReelROI; }
 
         const isOverHandle = pos.x >= targetROI.x + targetROI.w - handleSize && pos.x <= targetROI.x + targetROI.w &&
@@ -48,7 +51,7 @@ const useROIDrag = (containerRef, roiMode) => {
             startX: pos.x, startY: pos.y,
             initObj: { ...targetROI }, setter: setTargetROI
         });
-    }, [roiMode, reelROI, setReelROI, winROI, setWinROI, balanceROI, setBalanceROI, betROI, setBetROI, orderIdROI, setOrderIdROI, multiplierROI, setMultiplierROI, getMousePos]);
+    }, [roiMode, reelROI, setReelROI, winROI, setWinROI, balanceROI, setBalanceROI, betROI, setBetROI, orderIdROI, setOrderIdROI, multiplierROI, setMultiplierROI, spinButtonROI, setSpinButtonROI, getMousePos]);
 
     const handleMouseMove = useCallback((e) => {
         if (!dragState) return;
