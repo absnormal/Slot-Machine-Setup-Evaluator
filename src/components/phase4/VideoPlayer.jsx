@@ -159,7 +159,7 @@ const VideoPlayer = ({
                 {/* ROI 切換器 — 分群 */}
                 <div className="absolute top-4 right-4 z-40 bg-slate-900/80 backdrop-blur-md p-1.5 rounded-lg border border-white/20 shadow-xl flex flex-col gap-1">
                     {/* ── 🔍 OCR / 偵測群 ── */}
-                    <div className="flex gap-1 items-center">
+                    <div className="flex gap-1 items-center flex-wrap">
                         <span className="text-[9px] text-slate-500 font-bold px-1 select-none shrink-0">👁️ 讀取</span>
                         {[
                             { key: 'reel', label: 'REEL', hex: '#f59e0b' },
@@ -210,6 +210,36 @@ const VideoPlayer = ({
                                 {r.label}
                             </button>
                         ))}
+                        {/* 動態讀取目標 */}
+                        {Object.entries(clickTargets).filter(([, v]) => v.category === 'ocr').map(([name]) => {
+                            const mode = `custom:${name}`;
+                            const isActive = roiMode === mode;
+                            return (
+                                <button key={name} onClick={() => setRoiMode(mode)}
+                                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 shadow-sm active:scale-95 group ${isActive
+                                        ? 'text-white ring-2 ring-offset-1'
+                                        : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}`}
+                                    style={isActive ? { backgroundColor: '#06b6d4', boxShadow: '0 0 0 2px white, 0 0 0 4px #06b6d4' } : {}}
+                                >
+                                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: isActive ? 'white' : '#06b6d4' }} />
+                                    {name}
+                                    <span onClick={(e) => { e.stopPropagation(); if (confirm(`刪除「${name}」？`)) removeClickTarget(name); }}
+                                        className="ml-0.5 text-[10px] opacity-0 group-hover:opacity-100 hover:text-red-400 cursor-pointer">✕</span>
+                                </button>
+                            );
+                        })}
+                        {/* 新增讀取目標 */}
+                        <button onClick={() => {
+                            const name = prompt('輸入讀取區域名稱（例如：FREE次數、JP金額）');
+                            if (!name?.trim()) return;
+                            const roi = { x: 45, y: 45, w: 10, h: 10, category: 'ocr' };
+                            setClickTarget(name.trim(), roi);
+                            setRoiMode(`custom:${name.trim()}`);
+                        }}
+                            className="px-2 py-1 rounded-lg text-xs font-bold bg-slate-700 text-slate-400 hover:bg-slate-600 hover:text-white transition-all flex items-center gap-0.5"
+                        >
+                            ＋
+                        </button>
                     </div>
                     {/* ── 分隔線 ── */}
                     <div className="h-px bg-slate-600/50" />
@@ -227,8 +257,8 @@ const VideoPlayer = ({
                             <div className="w-2 h-2 rounded-full" style={{ backgroundColor: roiMode === 'spinButton' ? 'white' : '#16a34a' }} />
                             SPIN
                         </button>
-                        {/* 動態點擊目標 */}
-                        {Object.keys(clickTargets).map(name => {
+                        {/* 動態點擊目標（只顯示 control 類）*/}
+                        {Object.entries(clickTargets).filter(([, v]) => v.category !== 'ocr').map(([name]) => {
                             const mode = `custom:${name}`;
                             const isActive = roiMode === mode;
                             return (
@@ -250,7 +280,7 @@ const VideoPlayer = ({
                             const name = prompt('輸入點擊目標名稱（例如：關閉X、設定齒輪）');
                             if (!name?.trim()) return;
                             const scope = platformName ? confirm(`存為「${platformName}」平台通用？\n\n確定 = 🌐 平台通用\n取消 = 🎮 本遊戲`) : false;
-                            const roi = { x: 45, y: 45, w: 10, h: 10 };
+                            const roi = { x: 45, y: 45, w: 10, h: 10, category: 'control' };
                             if (scope) { setPlatformClickTarget(name.trim(), roi); }
                             setClickTarget(name.trim(), roi);
                             setRoiMode(`custom:${name.trim()}`);
@@ -287,7 +317,9 @@ const VideoPlayer = ({
                         ...(showMultiplier ? [{ roi: multiplierROI, mode: 'multiplier', hex: '#f43f5e', label: '乘倍' }] : []),
                         { roi: spinButtonROI, mode: 'spinButton', hex: '#16a34a', label: 'SPIN 🎮' },
                         ...Object.entries(clickTargets).map(([name, roi]) => ({
-                            roi, mode: `custom:${name}`, hex: '#ec4899', label: `🎯 ${name}`
+                            roi, mode: `custom:${name}`,
+                            hex: roi.category === 'ocr' ? '#06b6d4' : '#ec4899',
+                            label: `${roi.category === 'ocr' ? '👁️' : '🎯'} ${name}`
                         }))
                     ].map(r => {
                         const isActive = roiMode === r.mode;

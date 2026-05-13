@@ -140,11 +140,18 @@ const NumInput = ({ value, onChange, min, max, step, placeholder, w = 'w-16' }) 
     />
 );
 
-// ── ROI 下拉選單 ──
+// ── ROI 下拉選單（包含動態 OCR 目標）──
 const RoiSelect = ({ value, onChange, filter }) => {
     const options = filter
         ? AVAILABLE_ROIS.filter(r => r.category === filter)
         : AVAILABLE_ROIS;
+
+    // 如果是 OCR filter，也加入動態 OCR 目標
+    const dynamicOcr = filter === 'ocr'
+        ? Object.entries(usePhase4Store(s => s.clickTargets) || {})
+            .filter(([, v]) => v.category === 'ocr')
+            .map(([name]) => ({ name, label: `📐 ${name}` }))
+        : [];
 
     return (
         <select className={SEL} value={value || ''} onChange={e => onChange(e.target.value)}
@@ -153,21 +160,30 @@ const RoiSelect = ({ value, onChange, filter }) => {
             {options.map(r => (
                 <option key={r.name} value={r.name}>{r.label}</option>
             ))}
+            {dynamicOcr.length > 0 && (
+                <optgroup label="自訂讀取區">
+                    {dynamicOcr.map(r => (
+                        <option key={r.name} value={r.name}>{r.label}</option>
+                    ))}
+                </optgroup>
+            )}
         </select>
     );
 };
 
-// ── 點擊目標下拉選單（動態，從 store 讀取）──
+// ── 點擊目標下拉選單（SPIN + 動態 control 目標）──
 const ClickTargetSelect = ({ value, onChange }) => {
-    const allTargets = usePhase4Store(s => s.getAllClickTargets)();
-    const names = Object.keys(allTargets);
+    const allTargets = usePhase4Store(s => s.clickTargets) || {};
+    const controlNames = Object.entries(allTargets)
+        .filter(([, v]) => v.category !== 'ocr')
+        .map(([name]) => name);
 
     return (
         <select className={SEL} value={value || ''} onChange={e => onChange(e.target.value)}
             onClick={e => e.stopPropagation()}>
             <option value="">選擇點擊目標</option>
             <option value="SPIN">SPIN 按鈕</option>
-            {names.map(name => (
+            {controlNames.map(name => (
                 <option key={name} value={name}>{name}</option>
             ))}
         </select>

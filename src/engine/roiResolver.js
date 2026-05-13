@@ -34,16 +34,17 @@ const ROI_NAME_MAP = {
  */
 export function resolveROI(name) {
     const key = ROI_NAME_MAP[name?.toUpperCase()];
-    if (!key) {
-        console.warn(`[ROI Resolver] 未知的 ROI 名稱: "${name}"`);
-        return null;
+    if (key) {
+        const roi = usePhase4Store.getState()[key];
+        if (roi) return roi;
     }
-    const roi = usePhase4Store.getState()[key];
-    if (!roi) {
-        console.warn(`[ROI Resolver] ROI "${name}" 在模板中未設定`);
-        return null;
-    }
-    return roi;
+
+    // Fallback：查詢動態點擊目標（遊戲層 + 平台層）
+    const allTargets = usePhase4Store.getState().getAllClickTargets();
+    if (allTargets[name]) return allTargets[name];
+
+    console.warn(`[ROI Resolver] 未知的 ROI 名稱: "${name}"`);
+    return null;
 }
 
 /**
