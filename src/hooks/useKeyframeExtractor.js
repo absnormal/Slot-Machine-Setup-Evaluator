@@ -1,4 +1,4 @@
-import { useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useSmartDedup } from './useSmartDedup';
 import { useCandidateManager } from './useCandidateManager';
 import { OcrWorkerBridge } from '../engine/ocrWorkerBridge';
@@ -66,6 +66,7 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
     const liveStateRef = useRef(null);
     const liveCancelRef = useRef(false);
     const liveRafRef = useRef(null);
+    const [isDetecting, setIsDetecting] = useState(false);
 
 
 
@@ -77,6 +78,7 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
         if (!video || !roi) return;
 
         liveCancelRef.current = false;
+        setIsDetecting(true);
         const sliceCols = ocrOptions.sliceCols || 5;
         liveStateRef.current = {
             diffWindow: [],
@@ -451,6 +453,7 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
 
     const stopLiveDetection = useCallback(() => {
         liveCancelRef.current = true;
+        setIsDetecting(false);
         if (liveRafRef.current) {
             cancelAnimationFrame(liveRafRef.current);
             liveRafRef.current = null;
@@ -554,6 +557,7 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
         confirmDedup,
         setManualBestCandidate,
         addManualCandidate,
-        updateCandidateOcr
+        updateCandidateOcr,
+        isDetecting,
     };
 }

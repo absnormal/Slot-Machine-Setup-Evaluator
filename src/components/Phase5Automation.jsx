@@ -18,7 +18,7 @@ import { useAutoPlay } from '../hooks/useAutoPlay';
  */
 const Phase5Automation = ({
     videoRef, candidates,
-    isNativeMode, nativeCapture,
+    isNativeMode, nativeCapture, isDetecting,
     startLiveDetection, stopLiveDetection, smartDedup,
     template, gameName, setTemplateMessage,
     reelROI, scanOpts,
@@ -41,11 +41,8 @@ const Phase5Automation = ({
     const getCandidates = useCallback(() => candidatesRef.current, []);
 
     // ── Live detection 橋接 ──
-    const [isLiveActive, setIsLiveActive] = useState(false);
-
     const handleStartLive = useCallback(async () => {
         if (!videoRef.current || !reelROI) return;
-        setIsLiveActive(true);
         if (videoRef.current.paused) videoRef.current.play();
         startLiveDetection(videoRef.current, reelROI, (candidate) => {
             setTemplateMessage?.(`📸 即時偵測到停輪 @ ${candidate.time.toFixed(1)}s`);
@@ -53,7 +50,6 @@ const Phase5Automation = ({
     }, [videoRef, reelROI, scanOpts, setTemplateMessage, startLiveDetection]);
 
     const handleStopLive = useCallback(() => {
-        setIsLiveActive(false);
         stopLiveDetection();
     }, [stopLiveDetection]);
 
@@ -266,7 +262,7 @@ const Phase5Automation = ({
                         </div>
                         <div className="h-4 w-px bg-slate-700" />
                         <StatusDot active={isConnected} color="emerald" label={isConnected ? '已連線' : '離線'} />
-                        <StatusDot active={isLiveActive} color="amber" label={isLiveActive ? '偵測中' : '待機'} />
+                        <StatusDot active={isDetecting} color="amber" label={isDetecting ? '偵測中' : '待機'} />
                         {isPlaying ? (
                             <span className="flex items-center gap-1 text-[11px] font-bold text-purple-400">
                                 <div className={`w-2 h-2 rounded-full ${stateColor}`} />

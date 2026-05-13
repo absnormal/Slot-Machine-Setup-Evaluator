@@ -15,7 +15,7 @@ const Phase4Video = ({
     isPhase4Minimized,
     onToggle,
     // Keyframe Extractor
-    candidates,
+    candidates, isDetecting,
     startLiveDetection, stopLiveDetection,
     removeCandidate, resetCandidateRecognition, clearCandidates, addManualCandidate, smartDedup, confirmDedup, healBreaks, setManualBestCandidate,
     updateCandidateOcr, updateCandidate,
@@ -52,7 +52,6 @@ const Phase4Video = ({
     const enableEmptyBoardFilter = usePhase4Store(s => s.enableEmptyBoardFilter);
     const setEnableEmptyBoardFilter = usePhase4Store(s => s.setEnableEmptyBoardFilter);
     // ── 本地狀態 ──
-    const [isLiveActive, setIsLiveActive] = useState(false);
     const listEndRef = useRef(null);
     const [lastAddedManualId, setLastAddedManualId] = useState(null);
     const [previewImage, setPreviewImage] = useState(null);
@@ -92,7 +91,6 @@ const Phase4Video = ({
 
     // ── VideoPlayer 影片結束回呼 ──
     const handleVideoEnded = useCallback(() => {
-        setIsLiveActive(false);
         stopLiveDetection();
     }, [stopLiveDetection]);
 
@@ -115,7 +113,6 @@ const Phase4Video = ({
                 console.error("無法建立子資料夾", err);
             }
         }
-        setIsLiveActive(true);
         if (videoRef.current.paused) videoRef.current.play();
         startLiveDetection(videoRef.current, reelROI, (candidate) => {
             setTemplateMessage?.(`📸 即時偵測到停輪 @ ${candidate.time.toFixed(1)}s`);
@@ -123,7 +120,6 @@ const Phase4Video = ({
     };
 
     const handleStopLive = () => {
-        setIsLiveActive(false);
         stopLiveDetection();
     };
 
@@ -162,12 +158,12 @@ const Phase4Video = ({
                     }
                     setLastAddedManualId(null);
                 }, 100);
-            } else if (isLiveActive && listEndRef.current) {
+            } else if (isDetecting && listEndRef.current) {
                 listEndRef.current.scrollIntoView({ behavior: 'auto', block: 'nearest' });
             }
         }
         prevLengthRef.current = candidates.length;
-    }, [candidates.length, isLiveActive, lastAddedManualId]);
+    }, [candidates.length, isDetecting, lastAddedManualId]);
 
     // ── 分局與連續性計算 (hook) ──
     const {
@@ -235,7 +231,7 @@ const Phase4Video = ({
                             handleStartNativeCapture={handleStartNativeCapture}
                             handleStopNativeCapture={handleStopNativeCapture}
                             nativeCapture={nativeCapture}
-                            isLiveActive={isLiveActive}
+                            isLiveActive={isDetecting}
                             enableOrderId={enableOrderId}
                             setEnableOrderId={setEnableOrderId}
                             balDecimalPlaces={balDecimalPlaces}
@@ -248,7 +244,7 @@ const Phase4Video = ({
                         />
 
                         <DetectionControlBar
-                            isLiveActive={isLiveActive}
+                            isLiveActive={isDetecting}
                             videoSrc={videoSrc}
                             onStartLive={handleStartLive}
                             onStopLive={handleStopLive}

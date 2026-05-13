@@ -828,6 +828,7 @@ function App() {
                         onToggle={() => handlePhaseToggle('phase4')}
                         // Keyframe Extractor
                         candidates={keyframeExtractor.candidates}
+                        isDetecting={keyframeExtractor.isDetecting}
                         startLiveDetection={keyframeExtractor.startLiveDetection}
                         stopLiveDetection={keyframeExtractor.stopLiveDetection}
                         removeCandidate={keyframeExtractor.removeCandidate}
@@ -1011,6 +1012,7 @@ function App() {
                     candidates={keyframeExtractor.candidates}
                     isNativeMode={isNativeMode}
                     nativeCapture={nativeCapture}
+                    isDetecting={keyframeExtractor.isDetecting}
                     startLiveDetection={keyframeExtractor.startLiveDetection}
                     stopLiveDetection={keyframeExtractor.stopLiveDetection}
                     smartDedup={keyframeExtractor.smartDedup}
