@@ -154,9 +154,8 @@ const RoiSelect = ({ value, onChange, filter }) => {
         : [];
 
     return (
-        <select className={SEL} value={value || ''} onChange={e => onChange(e.target.value)}
+        <select className={SEL} value={value || options[0]?.name || ''} onChange={e => onChange(e.target.value)}
             onClick={e => e.stopPropagation()}>
-            <option value="">選擇 ROI</option>
             {options.map(r => (
                 <option key={r.name} value={r.name}>{r.label}</option>
             ))}
