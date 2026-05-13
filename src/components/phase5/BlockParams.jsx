@@ -166,6 +166,7 @@ const ClickTargetSelect = ({ value, onChange }) => {
         <select className={SEL} value={value || ''} onChange={e => onChange(e.target.value)}
             onClick={e => e.stopPropagation()}>
             <option value="">選擇點擊目標</option>
+            <option value="SPIN">SPIN 按鈕</option>
             {names.map(name => (
                 <option key={name} value={name}>{name}</option>
             ))}
