@@ -14,7 +14,6 @@ import { wait } from './actions/waitAction';
 import { ocrBatch, ocrRead } from './actions/ocrAction';
 import { captureFrame } from './actions/captureAction';
 import { waitStable } from './actions/waitStableAction';
-import { recordSpin } from './actions/recordAction';
 import { resolveROI } from './roiResolver';
 
 // ═══════════════════════════════════════
@@ -63,15 +62,11 @@ export class FlowRunner extends EventTarget {
     // ═══════════════════════════════════════
 
     /**
-     * 執行 Flow
+     * 執行 Flow（獨立模式，不依賴 P4 即時偵測）
      * @param {Object} flow - Flow JSON 定義
      * @param {Object} context - 執行環境
      * @param {WebSocket} context.ws
      * @param {HTMLVideoElement} context.videoEl
-     * @param {Function} context.getCandidates
-     * @param {Function} [context.onSmartDedup]
-     * @param {Function} [context.onStartLive]
-     * @param {Function} [context.onStopLive]
      */
     async run(flow, context) {
         if (this.state === RunState.RUNNING) {
@@ -80,15 +75,11 @@ export class FlowRunner extends EventTarget {
 
         this._ws = context.ws;
         this._videoEl = context.videoEl;
-        this._getCandidates = context.getCandidates;
-        this._onSmartDedup = context.onSmartDedup;
         this._cancelRef = { current: false };
+        this._spinCount = 0;
         this.variables = {};
 
         this._setState(RunState.RUNNING);
-
-        // 啟動即時偵測
-        if (context.onStartLive) context.onStartLive();
 
         try {
             await this._executeBlocks(flow.blocks, 0);
@@ -102,9 +93,6 @@ export class FlowRunner extends EventTarget {
             }
         } finally {
             this._setState(RunState.STOPPED);
-            // 停止即時偵測
-            if (context.onStopLive) context.onStopLive();
-            // 短暫延遲後回到 idle
             setTimeout(() => this._setState(RunState.IDLE), 500);
         }
     }
@@ -266,25 +254,28 @@ export class FlowRunner extends EventTarget {
         return captureFrame(this._videoEl, roiPct);
     }
 
-    // ── 記錄積木 ──
+    // ── 記錄積木（獨立模式：自己截圖 + 讀變數空間）──
 
     async _execRecord(block) {
-        const candidates = this._getCandidates?.() || [];
-        const lastCandidate = candidates[candidates.length - 1];
+        const ocrData = {
+            win:     this.variables['$WIN']      || this.variables['$win']      || '0',
+            balance: this.variables['$BALANCE']  || this.variables['$BAL']      || this.variables['$balance'] || '',
+            bet:     this.variables['$BET']      || this.variables['$bet']      || '',
+            orderId: this.variables['$ORDER_ID'] || this.variables['$orderId']  || '',
+        };
 
-        const result = recordSpin({
-            ocrData: { ...this.variables },
-            candidate: lastCandidate,
-            getCandidates: this._getCandidates,
-            onSmartDedup: this._onSmartDedup,
+        const spinIndex = this._spinCount++;
+
+        this._emit(FlowEvent.LOG, {
+            message: `📝 #${spinIndex + 1} WIN=${ocrData.win} BAL=${ocrData.balance} BET=${ocrData.bet}`,
         });
 
         this._emit(FlowEvent.SPIN_RECORDED, {
-            spinIndex: result.spinIndex,
-            ocrData: { ...this.variables },
+            spinIndex,
+            ocrData,
         });
 
-        return result;
+        return { success: true, spinIndex };
     }
 
     // ── 流程積木 ──

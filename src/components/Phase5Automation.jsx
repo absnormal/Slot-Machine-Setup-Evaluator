@@ -149,10 +149,6 @@ const Phase5Automation = ({
                                 <FlowComposer
                                     ws={wsRef?.current}
                                     videoEl={videoRef?.current}
-                                    getCandidates={getCandidates}
-                                    onSmartDedup={smartDedup}
-                                    onStartLive={handleStartLive}
-                                    onStopLive={handleStopLive}
                                 />
                             </div>
                         )}

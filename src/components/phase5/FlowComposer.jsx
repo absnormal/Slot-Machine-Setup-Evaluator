@@ -10,7 +10,7 @@ import AddBlockButton from './AddBlockButton';
  * FlowComposer — 排程器主元件
  * 整合執行引擎 + 本地/雲端存取
  */
-const FlowComposer = ({ ws, videoEl, getCandidates, onSmartDedup, onStartLive, onStopLive }) => {
+const FlowComposer = ({ ws, videoEl }) => {
     const flow = useFlowRunner();
     const { isRunning, isPaused, isIdle, currentBlock, loopProgress, logs, spinCount, variables,
             runFlow, pause, resume, stop } = flow;
@@ -71,7 +71,7 @@ const FlowComposer = ({ ws, videoEl, getCandidates, onSmartDedup, onStartLive, o
     // 執行
     const handleRun = async () => {
         const flowDef = { name: flowName, version: 1, blocks };
-        await runFlow(flowDef, { ws, videoEl, getCandidates, onSmartDedup, onStartLive, onStopLive });
+        await runFlow(flowDef, { ws, videoEl });
     };
 
     // 儲存雲端（含衝突偵測，參考遊戲模板模式）
