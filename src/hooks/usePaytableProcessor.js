@@ -12,6 +12,7 @@ export function usePaytableProcessor({
     customApiKey,
     apiKey,
     hasDoubleSymbol,
+    gridCols = 5,
     setTemplateMessage,
     setTemplateError,
 }) {
@@ -59,11 +60,22 @@ export function usePaytableProcessor({
     };
 
     const formatPtLine = (item) => {
-        const base = `${item.name} ${item.match1} ${item.match2} ${item.match3} ${item.match4} ${item.match5}`;
-        if (hasDoubleSymbol) {
-            return `${base} ${item.match6 || 0} ${item.match7 || 0} ${item.match8 || 0} ${item.match9 || 0} ${item.match10 || 0}`;
+        // 文字格式需要 gridCols 個數值：match1(1連) 到 match{gridCols}(N連)
+        // match1 = 1連 (永遠為 0，不顯示在 UI 表格中)
+        // match2 = 2連, match3 = 3連, ... match{gridCols} = N連
+        const totalBaseCols = Math.max(gridCols, 5); // 至少 5 欄 (1~5連)
+        const parts = [item.name];
+        for (let i = 1; i <= totalBaseCols; i++) {
+            parts.push(item[`match${i}`] || 0);
         }
-        return base;
+        // 雙倍符號額外欄位
+        if (hasDoubleSymbol) {
+            const doubleCols = gridCols - 1;
+            for (let i = totalBaseCols + 1; i <= totalBaseCols + doubleCols; i++) {
+                parts.push(item[`match${i}`] || 0);
+            }
+        }
+        return parts.join(' ');
     };
 
     const handlePtTableChange = (index, field, value, setPaytableInput) => {

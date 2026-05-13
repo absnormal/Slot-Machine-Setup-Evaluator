@@ -12,6 +12,7 @@ import Phase1Setup from './components/Phase1Setup';
 import Phase2Manual from './components/Phase2Manual';
 import Phase3Vision from './components/Phase3Vision';
 import Phase4Video from './components/Phase4Video';
+import Phase5Automation from './components/Phase5Automation';
 
 // Modals (從 App.jsx 抽離)
 import PtConfirmModal from './components/modals/PtConfirmModal';
@@ -107,6 +108,7 @@ function App() {
         hasBidirectionalPaylines, setHasBidirectionalPaylines,
         hasAdjustableLines, setHasAdjustableLines,
         hasExBet, setHasExBet, exBetOptions, setExBetOptions,
+        hasLineBetDivisor, setHasLineBetDivisor, lineBetDivisor, setLineBetDivisor,
         lineImages, setLineImages, activeLineImageId, setActiveLineImageId,
         activeLineImage, imageSrc, imageObj,
         patternRows, setPatternRows, patternCols, setPatternCols,
@@ -154,6 +156,7 @@ function App() {
         setHasBidirectionalPaylines,
         setHasAdjustableLines,
         setHasExBet, setExBetOptions,
+        setHasLineBetDivisor, setLineBetDivisor,
         setLineImages, setActiveLineImageId, setLinesTextInput,
         setTemplateError,
         performAutoBuild, resetTemplateBuilder,
@@ -165,6 +168,7 @@ function App() {
         hasDoubleSymbol, hasRollingWin, hasDynamicMultiplier, multiplierCalcType,
         hasBidirectionalPaylines, hasAdjustableLines,
         hasExBet, exBetOptions,
+        hasLineBetDivisor, lineBetDivisor,
         motionCoverageMin, vLineThreshold, ocrDecimalPlaces, balDecimalPlaces, enableWinTracker, enableEmptyBoardFilter,
         setMotionCoverageMin, setVLineThreshold, setOcrDecimalPlaces, setBalDecimalPlaces, setEnableWinTracker, setEnableEmptyBoardFilter,
         setReelROI: usePhase4Store(s => s.setReelROI),
@@ -462,10 +466,76 @@ function App() {
             });
             keyframeExtractor.setCandidates(prev => [...prev, ...cleaned]);
             setTemplateMessage(`✅ 已匯入 ${cleaned.length} 張歷史關鍵幀${result.rois ? ' (含 ROI 座標)' : ''}`);
+
+            // ── 自動從資料夾名稱比對雲端模板並載入 ──
+            if (result.folderName) {
+                try {
+                    // 解析資料夾名稱：Session_YYYYMMDD_HHMMSS_{gameName}
+                    const folderMatch = result.folderName.match(/^Session_\d{8}_\d{6}_(.+)$/);
+
+                    if (folderMatch) {
+                        const extractedGameName = folderMatch[1].trim();
+
+                        // 若當前已有模板且遊戲名相同，跳過自動載入
+                        const currentGameName = (gameName || template?.name || '').trim();
+                        if (template && currentGameName.toUpperCase() === extractedGameName.toUpperCase()) {
+                            // 已有對應模板，不需重複載入
+                        } else {
+                            // 取得雲端模板列表：React state → sessionStorage → 遠端拉取
+                            let templates = cloudInstance.cloudTemplates;
+                            if (!templates || templates.length === 0) {
+                                try {
+                                    const cached = sessionStorage.getItem('slot_templates_cache');
+                                    if (cached) templates = JSON.parse(cached);
+                                } catch (e) {}
+                            }
+                            if (!templates || templates.length === 0) {
+                                // 快取也沒有，等待遠端拉取完成後從 sessionStorage 讀取
+                                await cloudInstance.fetchCloudTemplates();
+                                try {
+                                    const cached = sessionStorage.getItem('slot_templates_cache');
+                                    if (cached) templates = JSON.parse(cached);
+                                } catch (e) {}
+                            }
+
+
+
+                            if (templates && templates.length > 0) {
+                                const upperName = extractedGameName.toUpperCase();
+                                // 優先完全匹配 gameName
+                                let match = templates.find(t =>
+                                    (t.gameName || '').trim().toUpperCase() === upperName
+                                );
+                                // 次選：模板名或遊戲名包含目標字串
+                                if (!match) {
+                                    match = templates.find(t =>
+                                        (t.gameName || '').trim().toUpperCase().includes(upperName) ||
+                                        upperName.includes((t.gameName || '').trim().toUpperCase())
+                                    );
+                                }
+
+
+
+                                if (match) {
+                                    setTemplateMessage(`☁️ 正在自動載入雲端模板：${match.name || match.gameName}...`);
+                                    await templateIO.loadCloudTemplate(match);
+                                } else {
+                                    setTimeout(() => {
+                                        setTemplateMessage(`ℹ️ 未找到遊戲「${extractedGameName}」的雲端模板，請手動載入`);
+                                    }, 2000);
+                                }
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.warn('[AutoTemplate] 自動載入模板失敗（不影響匯入結果）', e);
+                }
+            }
+
             return result.dirHandle;
         }
         return null;
-    }, [reportGenerator, keyframeExtractor, setTemplateMessage, template, hasMultiplierReel]);
+    }, [reportGenerator, keyframeExtractor, setTemplateMessage, template, hasMultiplierReel, gameName, cloudInstance, templateIO]);
 
     // --- Vision 結算 ---
     const [visionCalcResults, setVisionCalcResults] = useState(null);
@@ -540,21 +610,25 @@ function App() {
 
         keyframeExtractor.setCandidates(prev => prev.map(c => {
             if (c.id === originalId) {
+                const prevRR = c.recognitionResult || {};
                 const prevOverrides = c.manualOverrides || {};
+                const newTotalWin = visionCalcResults.totalWin;
                 return {
                     ...c,
                     recognitionResult: {
-                        ...(c.recognitionResult || {}),
+                        ...prevRR,
                         grid: activeVisionImg.grid,
-                        totalWin: visionCalcResults.totalWin,
+                        totalWin: newTotalWin,
+                        expectedWin: newTotalWin,           // 同步更新比對基準
+                        settlement: visionCalcResults,       // 同步更新結算明細
                         details: visionCalcResults.details,
-                        rawText: activeVisionImg.rawText || (c.recognitionResult?.rawText || '')
+                        rawText: activeVisionImg.rawText || (prevRR.rawText || '')
                     },
                     manualOverrides: {
                         ...prevOverrides,
                         grid: true
                     },
-                    status: 'success'
+                    status: 'recognized'
                 };
             }
             return c;
@@ -677,6 +751,8 @@ function App() {
                         hasAdjustableLines={hasAdjustableLines} setHasAdjustableLines={setHasAdjustableLines}
                         hasExBet={hasExBet} setHasExBet={setHasExBet}
                         exBetOptions={exBetOptions} setExBetOptions={setExBetOptions}
+                        hasLineBetDivisor={hasLineBetDivisor} setHasLineBetDivisor={setHasLineBetDivisor}
+                        lineBetDivisor={lineBetDivisor} setLineBetDivisor={setLineBetDivisor}
                         lineImages={lineImages} removeLineImage={removeLineImage} activeLineImageId={activeLineImageId} setActiveLineImageId={setActiveLineImageId} handleLineImageUpload={handleLineImageUpload}
                         isPtProcessing={isPtProcessing} handlePtExtract={handlePtExtract} ptImages={ptImages} removePtImage={removePtImage} clearPtAll={clearPtAll} handlePtFileChange={handlePtFileChange} handlePtDrop={handlePtDrop}
                         dragState={dragState} setDragState={setDragState} containerRef={containerRef} layoutStyle={layoutStyle} handleMouseDown={handleMouseDown} handleMouseMove={handleMouseMove} handleMouseUp={handleMouseUp}
@@ -752,6 +828,7 @@ function App() {
                         onToggle={() => handlePhaseToggle('phase4')}
                         // Keyframe Extractor
                         candidates={keyframeExtractor.candidates}
+                        isDetecting={keyframeExtractor.isDetecting}
                         startLiveDetection={keyframeExtractor.startLiveDetection}
                         stopLiveDetection={keyframeExtractor.stopLiveDetection}
                         removeCandidate={keyframeExtractor.removeCandidate}
@@ -927,6 +1004,33 @@ function App() {
             )}
 
             <SessionProgressModal progress={sessionProgress} />
+
+            {/* === Phase 5: 固定底部列 (不參與手風琴，透過 Portal 渲染在 body) === */}
+            <ErrorBoundary label="Phase 5: 自動化控制">
+                <Phase5Automation
+                    videoRef={videoRef}
+                    candidates={keyframeExtractor.candidates}
+                    setCandidates={keyframeExtractor.setCandidates}
+                    isNativeMode={isNativeMode}
+                    nativeCapture={nativeCapture}
+                    isDetecting={keyframeExtractor.isDetecting}
+                    startLiveDetection={keyframeExtractor.startLiveDetection}
+                    stopLiveDetection={keyframeExtractor.stopLiveDetection}
+                    smartDedup={keyframeExtractor.smartDedup}
+                    template={template}
+                    gameName={gameName}
+                    setTemplateMessage={setTemplateMessage}
+                    reelROI={reelROI}
+                    scanOpts={{
+                        winROI, balanceROI, betROI,
+                        orderIdROI, multiplierROI: template?.hasMultiplierReel ? multiplierROI : null,
+                        ocrDecimalPlaces, balDecimalPlaces,
+                        requireStableWin: false,
+                        sliceCols: template?.cols || gridCols || 5,
+                        hasRollingWin, enableWinTracker, enableEmptyBoardFilter,
+                    }}
+                />
+            </ErrorBoundary>
         </div>
     );
 }

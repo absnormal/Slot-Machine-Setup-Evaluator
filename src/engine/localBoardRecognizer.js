@@ -1,12 +1,13 @@
 /**
- * localBoardRecognizer.js — HOG + Hue 融合辨識引擎（含亮度異常遮罩 + CASH OCR）
+ * localBoardRecognizer.js — HOG + Hue 三通道融合辨識引擎（含亮度異常遮罩 + CASH OCR）
  *
  * 架構：
  * 前處理: 亮度異常遮罩 — 偵測並移除閃電/發光等特效像素
- * Pass 1: HOG (方向梯度長條圖) — 形狀比對，搭配直方圖等化 + 梯度截尾 + 中心加權
- * Pass 2: Hue (色相直方圖距離) — 色彩比對，區分同形異色符號
- * Pass 3: CASH OCR — 對被辨識為 CASH 的格子讀取數字值
- * 融合: HOG × 0.7 + Color × 0.3
+ * Pass 1: 全圖 HOG (方向梯度長條圖) — 形狀比對，搭配直方圖等化 + 梯度截尾 + 中心加權
+ * Pass 2: 中心裁切 HOG — 去除外框裝飾，專注符號本體形狀比對
+ * Pass 3: Hue (色相直方圖距離) — 色彩比對，區分同形異色符號
+ * Pass 4: CASH OCR — 對被辨識為 CASH 的格子讀取數字值
+ * 融合: 全圖HOG × 0.55 + CenterHOG × 0.30 + Hue × 0.15
  */
 
 import { parseShorthandValue } from '../utils/symbolUtils';
@@ -159,13 +160,23 @@ function computeHOG(gray) {
                 }
             }
 
-            // L2 正規化 — 這一步是 HOG 能免疫亮度變化的核心
+            // L2-Hys 正規化（OpenCV HOGDescriptor 標準）
+            // Pass 1: L2 正規化
             const eps = 1e-6;
+            const L2HYS_CLIP = 0.2;
             let norm = 0;
             for (let i = 0; i < blockVec.length; i++) norm += blockVec[i] * blockVec[i];
             norm = Math.sqrt(norm) + eps;
+            for (let i = 0; i < blockVec.length; i++) blockVec[i] /= norm;
+            // Pass 2: 截斷到 0.2 → 防止任何單一梯度方向獨大（壓制特效殘留的強邊緣）
+            let norm2 = 0;
             for (let i = 0; i < blockVec.length; i++) {
-                features[fIdx++] = blockVec[i] / norm;
+                blockVec[i] = Math.min(blockVec[i], L2HYS_CLIP);
+                norm2 += blockVec[i] * blockVec[i];
+            }
+            norm2 = Math.sqrt(norm2) + eps;
+            for (let i = 0; i < blockVec.length; i++) {
+                features[fIdx++] = blockVec[i] / norm2;
             }
         }
     }
@@ -193,26 +204,43 @@ function cosineSimilarity(a, b) {
 // ═══════════════════════════════════════════
 
 /**
- * 計算兩張灰階影像的 SSIM
+ * 計算兩張灰階影像的 SSIM（中心裁切版）
+ * 只比較中央 60% 區域，排除邊緣特效/外框干擾
  * 回傳值：-1 ~ 1，1 = 完全相同
  */
 function computeSSIM(grayA, grayB) {
-    const len = grayA.length;
+    const W = MATCH_SIZE;
+    const H = MATCH_SIZE;
+    const margin = 0.20; // 跳過外圍 20%
+    const x0 = Math.floor(W * margin);
+    const y0 = Math.floor(H * margin);
+    const x1 = Math.floor(W * (1 - margin));
+    const y1 = Math.floor(H * (1 - margin));
+    const cropW = x1 - x0;
+    const cropH = y1 - y0;
+    const len = cropW * cropH;
+
     let sumA = 0, sumB = 0;
-    for (let i = 0; i < len; i++) {
-        sumA += grayA[i];
-        sumB += grayB[i];
+    for (let y = y0; y < y1; y++) {
+        for (let x = x0; x < x1; x++) {
+            const idx = y * W + x;
+            sumA += grayA[idx];
+            sumB += grayB[idx];
+        }
     }
     const muA = sumA / len;
     const muB = sumB / len;
 
     let varA = 0, varB = 0, covAB = 0;
-    for (let i = 0; i < len; i++) {
-        const dA = grayA[i] - muA;
-        const dB = grayB[i] - muB;
-        varA += dA * dA;
-        varB += dB * dB;
-        covAB += dA * dB;
+    for (let y = y0; y < y1; y++) {
+        for (let x = x0; x < x1; x++) {
+            const idx = y * W + x;
+            const dA = grayA[idx] - muA;
+            const dB = grayB[idx] - muB;
+            varA += dA * dA;
+            varB += dB * dB;
+            covAB += dA * dB;
+        }
     }
     varA /= len;
     varB /= len;
@@ -226,15 +254,18 @@ function computeSSIM(grayA, grayB) {
 }
 
 /**
- * 計算兩張 RGBA ImageData 之間的色相距離 (Hue Histogram Distance)
- * 專門用來區分「形狀相同但顏色不同」的符號（如檸檬 vs 橘子）
+ * 計算兩張 RGBA ImageData 之間的 HS 色彩距離 (Hue-Saturation 2D Histogram Distance)
+ * 相比 1D Hue：加入飽和度維度，能區分同色相但不同飽和度的像素
+ * （如低飽和度的閃電光暈 vs 高飽和度的符號本體）
  * 只比對中央 60% 區域，排除邊緣背景色污染
- * 回傳值：0 ~ 1，0 = 完全相同色相分佈
+ * 回傳值：0 ~ 1，0 = 完全相同色彩分佈
  */
 function computeHueHistDistance(imgDataA, imgDataB) {
-    const BINS = 36; // 360° / 10°
-    const histA = new Float32Array(BINS);
-    const histB = new Float32Array(BINS);
+    const H_BINS = 18; // Hue: 360° / 20°
+    const S_BINS = 4;  // Saturation: 0~1 分 4 段
+    const TOTAL_BINS = H_BINS * S_BINS; // 72
+    const histA = new Float32Array(TOTAL_BINS);
+    const histB = new Float32Array(TOTAL_BINS);
     const dA = imgDataA.data;
     const dB = imgDataB.data;
     const W = imgDataA.width;
@@ -248,38 +279,49 @@ function computeHueHistDistance(imgDataA, imgDataB) {
     const x1 = Math.floor(W * (1 - margin));
     const y1 = Math.floor(H * (1 - margin));
 
-    // RGB → Hue (簡化版)
+    // RGB → Hue + Saturation
     const processPixel = (r, g, b) => {
         const max = Math.max(r, g, b);
         const min = Math.min(r, g, b);
         const delta = max - min;
-        if (delta < 15 || max < 30) return -1; // 太暗或灰色跳過
+        if (delta < 15 || max < 30) return null; // 太暗或灰色跳過
         let hue;
         if (max === r) hue = ((g - b) / delta) % 6;
         else if (max === g) hue = (b - r) / delta + 2;
         else hue = (r - g) / delta + 4;
         hue *= 60;
         if (hue < 0) hue += 360;
-        return hue;
+        const sat = max > 0 ? delta / max : 0; // HSV 飽和度 0~1
+        return { hue, sat };
     };
 
     for (let y = y0; y < y1; y++) {
         for (let x = x0; x < x1; x++) {
             const i = (y * W + x) * 4;
-            const hueA = processPixel(dA[i], dA[i+1], dA[i+2]);
-            const hueB = processPixel(dB[i], dB[i+1], dB[i+2]);
-            if (hueA >= 0) { histA[Math.floor(hueA / 10) % BINS]++; countA++; }
-            if (hueB >= 0) { histB[Math.floor(hueB / 10) % BINS]++; countB++; }
+            const hsA = processPixel(dA[i], dA[i + 1], dA[i + 2]);
+            const hsB = processPixel(dB[i], dB[i + 1], dB[i + 2]);
+            if (hsA) {
+                const hBin = Math.floor(hsA.hue / 20) % H_BINS;
+                const sBin = Math.min(S_BINS - 1, Math.floor(hsA.sat * S_BINS));
+                histA[hBin * S_BINS + sBin]++;
+                countA++;
+            }
+            if (hsB) {
+                const hBin = Math.floor(hsB.hue / 20) % H_BINS;
+                const sBin = Math.min(S_BINS - 1, Math.floor(hsB.sat * S_BINS));
+                histB[hBin * S_BINS + sBin]++;
+                countB++;
+            }
         }
     }
 
     // 正規化
-    if (countA > 0) for (let i = 0; i < BINS; i++) histA[i] /= countA;
-    if (countB > 0) for (let i = 0; i < BINS; i++) histB[i] /= countB;
+    if (countA > 0) for (let i = 0; i < TOTAL_BINS; i++) histA[i] /= countA;
+    if (countB > 0) for (let i = 0; i < TOTAL_BINS; i++) histB[i] /= countB;
 
     // Bhattacharyya 距離
     let bc = 0;
-    for (let i = 0; i < BINS; i++) bc += Math.sqrt(histA[i] * histB[i]);
+    for (let i = 0; i < TOTAL_BINS; i++) bc += Math.sqrt(histA[i] * histB[i]);
     return 1 - bc; // 0 = 完全相同, 1 = 完全不同
 }
 
@@ -353,7 +395,8 @@ export async function buildReferenceIndex(symbolImagesAll) {
                 const gray = toGray(imageData);
                 const eqGray = histogramEqualize(gray);
                 const hog = computeHOG(eqGray);
-                refList.push({ hog, gray, eqGray, rgb: imageData });
+                const centerHog = computeCenterCropHOG(imageData);
+                refList.push({ hog, centerHog, gray, eqGray, rgb: imageData });
             } catch (e) {
                 console.warn(`[LocalRecognizer] 載入符號 ${symbol} 參考圖失敗`, e);
             }
@@ -364,7 +407,7 @@ export async function buildReferenceIndex(symbolImagesAll) {
     }
 
     const totalRefs = [...index.values()].reduce((s, v) => s + v.length, 0);
-    console.log(`[LocalRecognizer] HOG 參考索引建立完成：${index.size} 個符號，共 ${totalRefs} 張參考圖（HOG 60% + Hue 40%）`);
+    console.log(`[LocalRecognizer] HOG 參考索引建立完成：${index.size} 個符號，共 ${totalRefs} 張參考圖（全圖HOG 55% + 中心裁切HOG 30% + Hue 15%）`);
     return index;
 }
 
@@ -469,11 +512,13 @@ function parseOcrNumericValue(rawText) {
 // ── 亮度異常遮罩 (Brightness Outlier Masking) ──
 // ═══════════════════════════════════════════
 
-const BRIGHT_OFFSET = 60; // 亮度超過中位數 + 此值的像素被視為特效
+const BRIGHT_OFFSET = 60; // 亮度超過中位數 + 此值的像素被視為候選特效
+const SAT_THRESHOLD = 0.25; // 飽和度 < 此值視為「近白色」（閃電/發光），高飽和度的彩色高光不清洗
 
 /**
- * 清洗特效像素：偵測異常明亮的像素（閃電/發光/連線動畫）並替換
- * 原理：特效像素不管什麼顏色，都會比正常符號像素明亮很多
+ * 清洗特效像素：偵測「亮 + 低飽和度」的像素（閃電/發光/連線動畫）並替換
+ * 原理：特效像素（閃電、光暈）是近白色（高亮度 + 低飽和度），
+ *       而符號本身的彩色高光（西瓜綠、櫻桃紅）是高飽和度，不應被清除
  * @param {ImageData} imageData - 原始 RGBA 影像
  * @returns {ImageData} 清洗後的 RGBA 影像（新物件，不修改原始資料）
  */
@@ -495,23 +540,48 @@ function cleanEffectPixels(imageData) {
     const median = sorted[len >> 1];
     const threshold = median + BRIGHT_OFFSET;
 
-    // Step 3: 如果沒有異常像素（正常/反灰盤面），直接返回原圖
+    // Step 3: 如果沒有異常亮像素（正常/反灰盤面），直接返回原圖
     let brightCount = 0;
     for (let i = 0; i < len; i++) {
         if (lum[i] > threshold) brightCount++;
     }
     if (brightCount < len * 0.05) return imageData; // < 5% 異常像素 → 不需清洗
 
-    // Step 4: 建立遮罩 (true = 特效像素)
+    // Step 4: 建立遮罩 — 只標記「亮 + 低飽和度」的像素（閃電/光暈）
+    // 高飽和度的彩色高光（西瓜綠、櫻桃紅）不被標記
     const mask = new Uint8Array(len);
     for (let i = 0; i < len; i++) {
-        mask[i] = lum[i] > threshold ? 1 : 0;
+        if (lum[i] <= threshold) continue;
+        const idx = i * 4;
+        const r = d[idx], g = d[idx + 1], b = d[idx + 2];
+        const cmax = Math.max(r, g, b);
+        const cmin = Math.min(r, g, b);
+        const sat = cmax > 0 ? (cmax - cmin) / cmax : 0;
+        mask[i] = sat < SAT_THRESHOLD ? 1 : 0;
+    }
+
+    // Step 4.5: 遮罩膨脹（Dilation, radius=2）— 擴展遮罩以捕捉亮點周圍的光暈殘留
+    const dilated = new Uint8Array(len);
+    const DILATE_R = 2;
+    for (let y = 0; y < H; y++) {
+        for (let x = 0; x < W; x++) {
+            if (mask[y * W + x]) {
+                for (let dy = -DILATE_R; dy <= DILATE_R; dy++) {
+                    for (let dx = -DILATE_R; dx <= DILATE_R; dx++) {
+                        const ny = y + dy, nx = x + dx;
+                        if (ny >= 0 && ny < H && nx >= 0 && nx < W) {
+                            dilated[ny * W + nx] = 1;
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // Step 5: 計算所有「非特效像素」的 RGB 中位數（代表符號主色調）
     const normalR = [], normalG = [], normalB = [];
     for (let i = 0; i < len; i++) {
-        if (!mask[i]) {
+        if (!dilated[i]) {
             const idx4 = i * 4;
             normalR.push(d[idx4]);
             normalG.push(d[idx4 + 1]);
@@ -526,10 +596,10 @@ function cleanEffectPixels(imageData) {
     const medG = normalG[mid] || 128;
     const medB = normalB[mid] || 128;
 
-    // Step 6: 用非特效 RGB 中位數替換特效像素（避免引入背景藍色偏差）
+    // Step 6: 用非特效 RGB 中位數替換特效像素（含膨脹區域）
     const cleaned = new Uint8ClampedArray(d);
     for (let i = 0; i < len; i++) {
-        if (!mask[i]) continue;
+        if (!dilated[i]) continue;
         const pIdx = i * 4;
         cleaned[pIdx] = medR;
         cleaned[pIdx + 1] = medG;
@@ -543,15 +613,16 @@ function cleanEffectPixels(imageData) {
 // ── 融合比對 ──
 // ═══════════════════════════════════════════
 
-const HOG_WEIGHT = 0.60;        // 形狀權重（含中心加權 Gaussian）
-const COLOR_WEIGHT = 0.40;      // 色彩權重（Hue 直方圖距離）
+const HOG_WEIGHT = 0.55;        // 全圖形狀權重
+const CENTER_HOG_WEIGHT = 0.30; // 中心裁切形狀權重（去除外框裝飾，專注符號本體）
+const COLOR_WEIGHT = 0.15;      // 色彩權重
 const TIEBREAK_THRESHOLD = 0.03; // 融合分差 < 3% 視為平手，啟動 SSIM 仲裁
 
 /**
- * 辨識單一格子（清洗特效 → HOG+Hue 融合評分 → SSIM 仲裁）
+ * 辨識單一格子（清洗特效 → 三通道融合評分 → SSIM 仲裁）
  *
  * 1. 清洗特效像素
- * 2. 全圖 HOG（形狀 60%，含中心加權 Gaussian）+ Hue（色彩 40%）
+ * 2. 全圖 HOG（形狀 55%）+ 中心裁切 HOG（符號本體 30%）+ Hue（色彩 15%）
  * 3. 若前幾名接近，啟動 SSIM 仲裁
  */
 export function matchCell(cellImageData, referenceIndex) {
@@ -561,27 +632,31 @@ export function matchCell(cellImageData, referenceIndex) {
     const cellGray = toGray(cleanedImg);
     const cellEqGray = histogramEqualize(cellGray);
     const cellHOG = computeHOG(cellEqGray);
+    const cellCenterHOG = computeCenterCropHOG(cleanedImg);
 
-    // Round 1: HOG + Hue 融合
+    // Round 1: 全圖 HOG + 中心 HOG + Hue 融合
     const candidates = [];
     for (const [symbol, refList] of referenceIndex) {
         let bestFused = -1;
         let bestHog = -1;
+        let bestCenter = -1;
         let bestHue = -1;
         let bestRef = null;
         for (const ref of refList) {
             const hogScore = cosineSimilarity(cellHOG, ref.hog);
+            const centerScore = ref.centerHog ? cosineSimilarity(cellCenterHOG, ref.centerHog) : hogScore;
             const hueDist = computeHueHistDistance(cleanedImg, ref.rgb);
             const colorSim = 1 - hueDist;
-            const fused = hogScore * HOG_WEIGHT + colorSim * COLOR_WEIGHT;
+            const fused = hogScore * HOG_WEIGHT + centerScore * CENTER_HOG_WEIGHT + colorSim * COLOR_WEIGHT;
             if (fused > bestFused) {
                 bestFused = fused;
                 bestHog = hogScore;
+                bestCenter = centerScore;
                 bestHue = colorSim;
                 bestRef = ref;
             }
         }
-        if (bestRef) candidates.push({ symbol, fused: bestFused, hog: bestHog, hue: bestHue, ref: bestRef });
+        if (bestRef) candidates.push({ symbol, fused: bestFused, hog: bestHog, center: bestCenter, hue: bestHue, ref: bestRef });
     }
 
     candidates.sort((a, b) => b.fused - a.fused);
@@ -604,39 +679,48 @@ export function matchCell(cellImageData, referenceIndex) {
         const hogWinner = candidates[0].symbol;
         const tieGroup = candidates.filter(c => candidates[0].fused - c.fused < TIEBREAK_THRESHOLD);
         if (tieGroup.length > 1 && tieGroup[0].symbol !== tieGroup[1].symbol) {
-            let bestSSIM = -1;
-            let ssimWinner = null;
-            const ssimResults = [];
-            for (const c of tieGroup) {
-                const refList = referenceIndex.get(c.symbol) || [c.ref];
-                let maxSSIM = -1;
-                for (const ref of refList) {
-                    const ssim = computeSSIM(cellGray, ref.gray);
-                    if (ssim > maxSSIM) maxSSIM = ssim;
+            // ── 色彩優先決勝：形狀幾乎相同但顏色明顯不同 → 用色彩決定 ──
+            const COLOR_VETO_GAP = 0.05;
+            const HOG_NEAR_IDENTICAL = 0.08;
+            const hogGap = Math.abs(tieGroup[0].hog - tieGroup[1].hog);
+            const colorGap = Math.abs(tieGroup[0].hue - tieGroup[1].hue);
+            console.log(`[Tiebreak] hogGap=${hogGap.toFixed(4)} colorGap=${colorGap.toFixed(4)} → ${colorGap >= COLOR_VETO_GAP && hogGap < HOG_NEAR_IDENTICAL ? '色彩決勝' : 'SSIM仲裁'}`);
+            if (hogGap < HOG_NEAR_IDENTICAL && colorGap >= COLOR_VETO_GAP) {
+                const colorWinner = tieGroup.reduce((best, c) => c.hue > best.hue ? c : best, tieGroup[0]);
+                bestSymbol = colorWinner.symbol;
+                bestScore = colorWinner.fused;
+                tiebreakLog = tieGroup.map(c => ({ symbol: c.symbol, ssim: 0, fused: c.fused, colorDecision: true }));
+                console.log(`[HOG] 色彩優先決勝: ${tieGroup.map(c => `${c.symbol}(C=${c.hue.toFixed(3)})`).join(' vs ')} → ${colorWinner.symbol}`);
+            } else {
+                // ── 正常 SSIM 仲裁 ──
+                let bestSSIM = -1;
+                let ssimWinner = null;
+                const ssimResults = [];
+                for (const c of tieGroup) {
+                    const refList = referenceIndex.get(c.symbol) || [c.ref];
+                    let maxSSIM = -1;
+                    for (const ref of refList) {
+                        const ssim = computeSSIM(cellEqGray, ref.eqGray || ref.gray);
+                        if (ssim > maxSSIM) maxSSIM = ssim;
+                    }
+                    ssimResults.push({ symbol: c.symbol, ssim: maxSSIM, fused: c.fused });
+                    if (maxSSIM > bestSSIM) {
+                        bestSSIM = maxSSIM;
+                        ssimWinner = c.symbol;
+                    }
                 }
-                ssimResults.push({ symbol: c.symbol, ssim: maxSSIM, fused: c.fused });
-                if (maxSSIM > bestSSIM) {
-                    bestSSIM = maxSSIM;
-                    ssimWinner = c.symbol;
+                const hogWinnerSSIM = ssimResults.find(r => r.symbol === hogWinner)?.ssim ?? -Infinity;
+                const ssimGap = bestSSIM - hogWinnerSSIM;
+                if (ssimWinner === hogWinner || bestSSIM >= SSIM_OVERRIDE_MIN || ssimGap >= SSIM_GAP_MIN) {
+                    bestSymbol = ssimWinner;
                 }
+                tiebreakLog = ssimResults;
             }
-
-            // 計算 SSIM 勝者與 HOG 勝者的分差
-            const hogWinnerSSIM = ssimResults.find(r => r.symbol === hogWinner)?.ssim ?? -Infinity;
-            const ssimGap = bestSSIM - hogWinnerSSIM;
-
-            if (ssimWinner === hogWinner || bestSSIM >= SSIM_OVERRIDE_MIN || ssimGap >= SSIM_GAP_MIN) {
-                // 同方向確認 或 SSIM 信心足夠 或 差距明確 → 採用 SSIM 結果
-                bestSymbol = ssimWinner;
-            }
-            // else: SSIM 要改判但分數太低且差距不夠 → 維持 HOG 原判定
-
-            tiebreakLog = ssimResults;
         }
     }
 
     // 組裝診斷資料（Top 3 + tiebreaker）
-    const top3 = candidates.slice(0, 3).map(c => ({ sym: c.symbol, F: c.fused, H: c.hog, C: c.hue }));
+    const top3 = candidates.slice(0, 3).map(c => ({ sym: c.symbol, F: c.fused, H: c.hog, Ctr: c.center, C: c.hue }));
 
     const confidence = Math.max(0, Math.min(100, bestScore * 100));
     return {
@@ -668,7 +752,7 @@ export async function recognizeBoard(boardCanvas, reelROI, gridRows, gridCols, r
     const grid = [];
     const details = [];
 
-    // ── 第一輪：HOG + Hue 形狀辨識 ──
+    // ── 第一輪：全圖HOG + 中心裁切HOG + Hue 三通道融合辨識 ──
     for (let r = 0; r < gridRows; r++) {
         const gridRow = [];
         const detailRow = [];

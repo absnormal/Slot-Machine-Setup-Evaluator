@@ -101,6 +101,7 @@ export function useCloud() {
         requiresCollectToWin, hasCashCollectFeature, hasDoubleSymbol, hasRollingWin, hasDynamicMultiplier, multiplierCalcType,
         hasBidirectionalPaylines, hasAdjustableLines,
         hasExBet, exBetOptions,
+        hasLineBetDivisor, lineBetDivisor,
         motionCoverageMin, vLineThreshold, ocrDecimalPlaces, balDecimalPlaces, enableWinTracker, enableEmptyBoardFilter,
         phase4ROIs,
         localUserId, actualForceId
@@ -189,6 +190,8 @@ export function useCloud() {
                 hasAdjustableLines,
                 hasExBet,
                 exBetOptions,
+                hasLineBetDivisor,
+                lineBetDivisor,
                 motionCoverageMin,
                 vLineThreshold,
                 ocrDecimalPlaces,

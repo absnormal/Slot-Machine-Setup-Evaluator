@@ -42,6 +42,8 @@ export function computeGridResults(template, targetGrid, betAmount, options = {}
             lineBet = parsedBet / activeExBetMult;  // 畫面BET → 原BET
         } else if (evalTemplate.hasAdjustableLines && activeLineCount > 0) {
             lineBet = parsedBet / activeLineCount;
+        } else if (evalTemplate.hasLineBetDivisor && evalTemplate.lineBetDivisor > 1) {
+            lineBet = parsedBet / evalTemplate.lineBetDivisor;
         } else {
             lineBet = parsedBet;
         }

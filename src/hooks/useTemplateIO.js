@@ -20,6 +20,7 @@ export function useTemplateIO({
     setHasBidirectionalPaylines,
     setHasAdjustableLines,
     setHasExBet, setExBetOptions,
+    setHasLineBetDivisor, setLineBetDivisor,
     setLineImages, setActiveLineImageId, setLinesTextInput,
     setTemplateError,
     performAutoBuild, resetTemplateBuilder,
@@ -34,6 +35,7 @@ export function useTemplateIO({
     hasBidirectionalPaylines,
     hasAdjustableLines,
     hasExBet, exBetOptions,
+    hasLineBetDivisor, lineBetDivisor,
     // Phase 4 偵測參數（模板持久化）
     motionCoverageMin, vLineThreshold, ocrDecimalPlaces, balDecimalPlaces, enableWinTracker, enableEmptyBoardFilter,
     setMotionCoverageMin, setVLineThreshold, setOcrDecimalPlaces, setBalDecimalPlaces, setEnableWinTracker, setEnableEmptyBoardFilter,
@@ -98,6 +100,8 @@ export function useTemplateIO({
         setHasAdjustableLines(parseBool(d.hasAdjustableLines));
         setHasExBet(parseBool(d.hasExBet));
         if (Array.isArray(d.exBetOptions)) setExBetOptions(d.exBetOptions);
+        setHasLineBetDivisor(parseBool(d.hasLineBetDivisor));
+        setLineBetDivisor(d.lineBetDivisor || 1);
 
         // Paytable result items
         if (data.ptResultItems) {
@@ -147,7 +151,7 @@ export function useTemplateIO({
     }, [setGridRows, setGridCols, setLineMode, setExtractResults, setPaytableInput, setPtResultItems,
         setPaytableMode, setJpConfig, setHasJackpot, setHasMultiplierReel, setRequiresCollectToWin,
         setHasCashCollectFeature, setHasDoubleSymbol, setHasRollingWin, setHasDynamicMultiplier, setMultiplierCalcType,
-        setHasBidirectionalPaylines, setHasAdjustableLines, setHasExBet, setExBetOptions, setLineImages,
+        setHasBidirectionalPaylines, setHasAdjustableLines, setHasExBet, setExBetOptions, setHasLineBetDivisor, setLineBetDivisor, setLineImages,
         setActiveLineImageId, setLinesTextInput, setMotionCoverageMin, setVLineThreshold, setOcrDecimalPlaces, setBalDecimalPlaces, setEnableWinTracker, setEnableEmptyBoardFilter,
         setReelROI, setWinROI, setBalanceROI, setBetROI, setOrderIdROI, setMultiplierROI]);
 
@@ -199,6 +203,7 @@ export function useTemplateIO({
             hasDoubleSymbol, hasRollingWin, hasDynamicMultiplier, multiplierCalcType,
             hasBidirectionalPaylines, hasAdjustableLines,
             hasExBet, exBetOptions,
+            hasLineBetDivisor, lineBetDivisor,
             localUserId, actualForceId,
             motionCoverageMin, vLineThreshold, ocrDecimalPlaces, balDecimalPlaces, enableWinTracker, enableEmptyBoardFilter,
             phase4ROIs: usePhase4Store.getState().getRois()
@@ -215,7 +220,7 @@ export function useTemplateIO({
         setActiveSaveAction(null);
     }, [platformNameState, gameNameState, templateName, gridRows, gridCols, lineMode, extractResults,
         paytableInput, ptResultItems, jpConfig, hasJackpot, hasMultiplierReel, requiresCollectToWin, hasCashCollectFeature,
-        hasDoubleSymbol, hasRollingWin, hasDynamicMultiplier, multiplierCalcType, hasBidirectionalPaylines, hasAdjustableLines, hasExBet, exBetOptions, localUserId,
+        hasDoubleSymbol, hasRollingWin, hasDynamicMultiplier, multiplierCalcType, hasBidirectionalPaylines, hasAdjustableLines, hasExBet, exBetOptions, hasLineBetDivisor, lineBetDivisor, localUserId,
         motionCoverageMin, vLineThreshold, ocrDecimalPlaces, balDecimalPlaces, enableWinTracker, enableEmptyBoardFilter,
         useCloudInstance, setTemplateError, showOverwriteConfirm]);
 

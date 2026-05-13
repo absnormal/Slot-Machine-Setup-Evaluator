@@ -37,6 +37,14 @@ const VideoPlayer = ({
     const betROI = usePhase4Store(s => s.betROI);
     const orderIdROI = usePhase4Store(s => s.orderIdROI);
     const multiplierROI = usePhase4Store(s => s.multiplierROI);
+    const spinButtonROI = usePhase4Store(s => s.spinButtonROI);
+    const clickTargets = usePhase4Store(s => s.clickTargets);
+    const setClickTarget = usePhase4Store(s => s.setClickTarget);
+    const removeClickTarget = usePhase4Store(s => s.removeClickTarget);
+    const platformName = usePhase4Store(s => s.platformName);
+    const setPlatformClickTarget = usePhase4Store(s => s.setPlatformClickTarget);
+    const removePlatformClickTarget = usePhase4Store(s => s.removePlatformClickTarget);
+    const getPlatformClickTargets = usePhase4Store(s => s.getPlatformClickTargets);
 
     // ── 本地狀態 ──
     const [isPlaying, setIsPlaying] = useState(false);
@@ -148,57 +156,140 @@ const VideoPlayer = ({
         <div className="space-y-4">
             {/* 影片 + ROI */}
             <div className="relative rounded-2xl shadow-2xl bg-black flex flex-col items-center overflow-hidden no-invert">
-                {/* ROI 切換器 */}
-                <div className="absolute top-4 right-4 z-40 bg-slate-900/80 backdrop-blur-md p-1 rounded-lg border border-white/20 shadow-xl flex gap-1">
-                    {[
-                        { key: 'reel', label: 'REEL', hex: '#f59e0b' },
-                        { key: 'win', label: 'WIN', hex: '#10b981' },
-                        { key: 'balance', label: 'BAL', hex: '#38bdf8' },
-                        { key: 'bet', label: 'BET', hex: '#22d3ee' },
-                        { key: 'orderId', label: 'ID', hex: '#a855f7' },
-                        ...(showMultiplier ? [{ key: 'multiplier', label: 'MULT', hex: '#f43f5e' }] : [])
-                    ].map(r => (
-                        <button key={r.key} onClick={() => setRoiMode(r.key)}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm active:scale-95 ${roiMode === r.key
-                                ? 'text-white ring-2 ring-offset-2'
-                                : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
-                                } ${r.key === 'orderId' && !enableOrderId ? 'opacity-50 grayscale' : ''}`}
-                            style={roiMode === r.key ? { backgroundColor: r.hex, ringColor: r.hex, boxShadow: `0 0 0 2px white, 0 0 0 4px ${r.hex}` } : {}}
+                {/* ROI 切換器 — 分群 */}
+                <div className="absolute top-4 right-4 z-40 bg-slate-900/80 backdrop-blur-md p-1.5 rounded-lg border border-white/20 shadow-xl flex flex-col gap-1">
+                    {/* ── 🔍 OCR / 偵測群 ── */}
+                    <div className="flex gap-1 items-center flex-wrap">
+                        <span className="text-[9px] text-slate-500 font-bold px-1 select-none shrink-0">👁️ 讀取</span>
+                        {[
+                            { key: 'reel', label: 'REEL', hex: '#f59e0b' },
+                            { key: 'win', label: 'WIN', hex: '#10b981' },
+                            { key: 'balance', label: 'BAL', hex: '#38bdf8' },
+                            { key: 'bet', label: 'BET', hex: '#22d3ee' },
+                            { key: 'orderId', label: 'ID', hex: '#a855f7' },
+                            ...(showMultiplier ? [{ key: 'multiplier', label: 'MULT', hex: '#f43f5e' }] : []),
+                        ].map(r => (
+                            <button key={r.key} onClick={() => setRoiMode(r.key)}
+                                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 shadow-sm active:scale-95 ${roiMode === r.key
+                                    ? 'text-white ring-2 ring-offset-1'
+                                    : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                                    } ${r.key === 'orderId' && !enableOrderId ? 'opacity-50 grayscale' : ''}`}
+                                style={roiMode === r.key ? { backgroundColor: r.hex, ringColor: r.hex, boxShadow: `0 0 0 2px white, 0 0 0 4px ${r.hex}` } : {}}
+                            >
+                                {r.key === 'orderId' && (
+                                    <input
+                                        type="checkbox"
+                                        checked={enableOrderId}
+                                        onChange={(e) => { e.stopPropagation(); setEnableOrderId(e.target.checked); }}
+                                        className="cursor-pointer h-3 w-3 rounded accent-purple-500"
+                                        title="勾選以進行注單號擷取與 OCR"
+                                    />
+                                )}
+                                {r.key === 'balance' && (
+                                    <SettingTooltip
+                                        title="💰 總分小數位數"
+                                        desc="設定 BALANCE (總分) OCR 結果保留的小數位數"
+                                        usage="依遊戲幣值精度選擇，例如日幣選整數、美金選 2 位"
+                                        tech="影響 BAL ROI 的 OCR 解析精度與數值格式化"
+                                        position="bottom">
+                                        <select
+                                            value={balDecimalPlaces}
+                                            onChange={(e) => { e.stopPropagation(); setBalDecimalPlaces(parseInt(e.target.value, 10)); }}
+                                            className="cursor-pointer h-4 text-[9px] bg-transparent border border-white/30 rounded px-0.5 outline-none"
+                                            title="總分小數位數"
+                                            onClick={(e) => e.stopPropagation()}
+                                        >
+                                            <option value={0} className="bg-white text-slate-800">.0</option>
+                                            <option value={1} className="bg-white text-slate-800">.1</option>
+                                            <option value={2} className="bg-white text-slate-800">.2</option>
+                                            <option value={3} className="bg-white text-slate-800">.3</option>
+                                        </select>
+                                    </SettingTooltip>
+                                )}
+                                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: roiMode === r.key ? 'white' : r.hex }} />
+                                {r.label}
+                            </button>
+                        ))}
+                        {/* 動態讀取目標 */}
+                        {Object.entries(clickTargets).filter(([, v]) => v.category === 'ocr').map(([name]) => {
+                            const mode = `custom:${name}`;
+                            const isActive = roiMode === mode;
+                            return (
+                                <button key={name} onClick={() => setRoiMode(mode)}
+                                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 shadow-sm active:scale-95 group ${isActive
+                                        ? 'text-white ring-2 ring-offset-1'
+                                        : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}`}
+                                    style={isActive ? { backgroundColor: '#06b6d4', boxShadow: '0 0 0 2px white, 0 0 0 4px #06b6d4' } : {}}
+                                >
+                                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: isActive ? 'white' : '#06b6d4' }} />
+                                    {name}
+                                    <span onClick={(e) => { e.stopPropagation(); if (confirm(`刪除「${name}」？`)) removeClickTarget(name); }}
+                                        className="ml-0.5 text-[10px] opacity-0 group-hover:opacity-100 hover:text-red-400 cursor-pointer">✕</span>
+                                </button>
+                            );
+                        })}
+                        {/* 新增讀取目標 */}
+                        <button onClick={() => {
+                            const name = prompt('輸入讀取區域名稱（例如：FREE次數、JP金額）');
+                            if (!name?.trim()) return;
+                            const roi = { x: 45, y: 45, w: 10, h: 10, category: 'ocr' };
+                            setClickTarget(name.trim(), roi);
+                            setRoiMode(`custom:${name.trim()}`);
+                        }}
+                            className="px-2 py-1 rounded-lg text-xs font-bold bg-slate-700 text-slate-400 hover:bg-slate-600 hover:text-white transition-all flex items-center gap-0.5"
                         >
-                            {r.key === 'orderId' && (
-                                <input 
-                                    type="checkbox" 
-                                    checked={enableOrderId} 
-                                    onChange={(e) => { e.stopPropagation(); setEnableOrderId(e.target.checked); }} 
-                                    className="cursor-pointer h-3 w-3 rounded accent-purple-500" 
-                                    title="勾選以進行注單號擷取與 OCR"
-                                />
-                            )}
-                            {r.key === 'balance' && (
-                                <SettingTooltip
-                                    title="💰 總分小數位數"
-                                    desc="設定 BALANCE (總分) OCR 結果保留的小數位數"
-                                    usage="依遊戲幣值精度選擇，例如日幣選整數、美金選 2 位"
-                                    tech="影響 BAL ROI 的 OCR 解析精度與數值格式化"
-                                    position="bottom">
-                                    <select
-                                        value={balDecimalPlaces}
-                                        onChange={(e) => { e.stopPropagation(); setBalDecimalPlaces(parseInt(e.target.value, 10)); }}
-                                        className="cursor-pointer h-4 text-[9px] bg-transparent border border-white/30 rounded px-0.5 outline-none"
-                                        title="總分小數位數"
-                                        onClick={(e) => e.stopPropagation()}
-                                    >
-                                        <option value={0} className="bg-white text-slate-800">.0</option>
-                                        <option value={1} className="bg-white text-slate-800">.1</option>
-                                        <option value={2} className="bg-white text-slate-800">.2</option>
-                                        <option value={3} className="bg-white text-slate-800">.3</option>
-                                    </select>
-                                </SettingTooltip>
-                            )}
-                            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: roiMode === r.key ? 'white' : r.hex }} />
-                            {r.label}
+                            ＋
                         </button>
-                    ))}
+                    </div>
+                    {/* ── 分隔線 ── */}
+                    <div className="h-px bg-slate-600/50" />
+                    {/* ── 🎮 操作群 ── */}
+                    <div className="flex gap-1 items-center flex-wrap">
+                        <span className="text-[9px] text-slate-500 font-bold px-1 select-none shrink-0">🎮 操作</span>
+                        {/* SPIN 固定按鈕 */}
+                        <button onClick={() => setRoiMode('spinButton')}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 shadow-sm active:scale-95 ${roiMode === 'spinButton'
+                                ? 'text-white ring-2 ring-offset-1'
+                                : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                                }`}
+                            style={roiMode === 'spinButton' ? { backgroundColor: '#16a34a', boxShadow: '0 0 0 2px white, 0 0 0 4px #16a34a' } : {}}
+                        >
+                            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: roiMode === 'spinButton' ? 'white' : '#16a34a' }} />
+                            SPIN
+                        </button>
+                        {/* 動態點擊目標（只顯示 control 類）*/}
+                        {Object.entries(clickTargets).filter(([, v]) => v.category !== 'ocr').map(([name]) => {
+                            const mode = `custom:${name}`;
+                            const isActive = roiMode === mode;
+                            return (
+                                <button key={name} onClick={() => setRoiMode(mode)}
+                                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 shadow-sm active:scale-95 group ${isActive
+                                        ? 'text-white ring-2 ring-offset-1'
+                                        : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}`}
+                                    style={isActive ? { backgroundColor: '#ec4899', boxShadow: '0 0 0 2px white, 0 0 0 4px #ec4899' } : {}}
+                                >
+                                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: isActive ? 'white' : '#ec4899' }} />
+                                    {name}
+                                    <span onClick={(e) => { e.stopPropagation(); if (confirm(`刪除「${name}」？`)) removeClickTarget(name); }}
+                                        className="ml-0.5 text-[10px] opacity-0 group-hover:opacity-100 hover:text-red-400 cursor-pointer">✕</span>
+                                </button>
+                            );
+                        })}
+                        {/* 新增按鈕 */}
+                        <button onClick={() => {
+                            const name = prompt('輸入點擊目標名稱（例如：關閉X、設定齒輪）');
+                            if (!name?.trim()) return;
+                            const scope = platformName ? confirm(`存為「${platformName}」平台通用？\n\n確定 = 🌐 平台通用\n取消 = 🎮 本遊戲`) : false;
+                            const roi = { x: 45, y: 45, w: 10, h: 10, category: 'control' };
+                            if (scope) { setPlatformClickTarget(name.trim(), roi); }
+                            setClickTarget(name.trim(), roi);
+                            setRoiMode(`custom:${name.trim()}`);
+                        }}
+                            className="px-2 py-1 rounded-lg text-xs font-bold bg-slate-700 text-slate-400 hover:bg-slate-600 hover:text-white transition-all flex items-center gap-0.5"
+                        >
+                            ＋
+                        </button>
+                    </div>
                 </div>
 
 
@@ -223,7 +314,13 @@ const VideoPlayer = ({
                         { roi: balanceROI, mode: 'balance', hex: '#38bdf8', label: '總分' },
                         { roi: betROI, mode: 'bet', hex: '#22d3ee', label: '押分' },
                         { roi: orderIdROI, mode: 'orderId', hex: '#a855f7', label: '單號' },
-                        ...(showMultiplier ? [{ roi: multiplierROI, mode: 'multiplier', hex: '#f43f5e', label: '乘倍' }] : [])
+                        ...(showMultiplier ? [{ roi: multiplierROI, mode: 'multiplier', hex: '#f43f5e', label: '乘倍' }] : []),
+                        { roi: spinButtonROI, mode: 'spinButton', hex: '#16a34a', label: 'SPIN 🎮' },
+                        ...Object.entries(clickTargets).map(([name, roi]) => ({
+                            roi, mode: `custom:${name}`,
+                            hex: roi.category === 'ocr' ? '#06b6d4' : '#ec4899',
+                            label: `${roi.category === 'ocr' ? '👁️' : '🎯'} ${name}`
+                        }))
                     ].map(r => {
                         const isActive = roiMode === r.mode;
                         return (

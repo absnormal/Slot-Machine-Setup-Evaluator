@@ -1,13 +1,17 @@
 """
-螢幕擷取 WebSocket 伺服器
-─────────────────────────
-用途：繞過 Chrome getDisplayMedia 限制，
-      使用 Windows 原生 API 擷取螢幕/視窗畫面，
-      透過 WebSocket 將 JPEG 幀推送到瀏覽器前端。
+螢幕擷取 + 遊戲控制 WebSocket 伺服器
+─────────────────────────────────────
+用途：
+  1. 繞過 Chrome getDisplayMedia 限制，使用 Windows 原生 API 擷取螢幕/視窗畫面
+  2. 接收前端的滑鼠/鍵盤控制指令，模擬操作遊戲視窗
 
 擷取引擎：
   - 螢幕模式：mss (DXGI，高效能)
   - 視窗模式：PrintWindow API (支援被遮擋的視窗)
+
+控制引擎：
+  - pyautogui：滑鼠點擊、鍵盤輸入、拖曳
+  - win32gui：視窗前景化、定位
 
 啟動方式：python server.py
 預設埠號：ws://localhost:8765
@@ -19,12 +23,156 @@ import base64
 import io
 import sys
 import time
+import random
 
 import websockets
 import mss
 from PIL import Image
 import ctypes
 import ctypes.wintypes
+
+# ── 控制引擎 ──
+try:
+    import pyautogui
+    pyautogui.FAILSAFE = True
+    pyautogui.PAUSE = 0.03
+    HAS_PYAUTOGUI = True
+    print("[模組] pyautogui 已載入 ✓")
+except ImportError:
+    HAS_PYAUTOGUI = False
+    print("[警告] pyautogui 未安裝，控制功能將不可用。執行: pip install pyautogui")
+
+# ── 高效能 JPEG 編碼器 (libjpeg-turbo) ──
+try:
+    from turbojpeg import TurboJPEG, TJPF_RGB
+    import numpy as np
+    _turbo = TurboJPEG()
+    HAS_TURBOJPEG = True
+    print("[模組] turbojpeg 已載入 ✓ (高效能 JPEG 編碼)")
+except ImportError:
+    HAS_TURBOJPEG = False
+    print("[提示] turbojpeg 未安裝，使用 Pillow 編碼 (pip install PyTurboJPEG)")
+
+# ── 後端 OCR (RapidOCR + PaddleOCR ONNX) ──
+try:
+    import numpy as np  # 確保 numpy 可用
+except ImportError:
+    pass
+
+_ocr_engine = None  # 延遲初始化
+
+def get_ocr_engine():
+    """延遲初始化 RapidOCR 引擎（第一次呼叫時才載入模型，約 1-2 秒）"""
+    global _ocr_engine
+    if _ocr_engine is None:
+        try:
+            from rapidocr_onnxruntime import RapidOCR
+            import os
+            # 使用與前端相同的 PP-OCRv4 模型
+            model_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'public', 'ocr-models')
+            det_path = os.path.join(model_dir, 'ch_PP-OCRv4_det_infer.onnx')
+            rec_path = os.path.join(model_dir, 'ch_PP-OCRv4_rec_infer.onnx')
+            keys_path = os.path.join(model_dir, 'ppocr_keys_v1.txt')
+            
+            kwargs = {}
+            if os.path.exists(rec_path):
+                kwargs['rec_model_path'] = rec_path
+                print(f"[OCR] 使用 PP-OCRv4 rec 模型: {rec_path}")
+            if os.path.exists(det_path):
+                kwargs['det_model_path'] = det_path
+            if os.path.exists(keys_path):
+                kwargs['rec_keys_path'] = keys_path
+            
+            _ocr_engine = RapidOCR(**kwargs)
+            print("[模組] RapidOCR 已載入 ✓ (後端 PaddleOCR v4)")
+        except Exception as e:
+            print(f"[警告] RapidOCR 載入失敗: {e}")
+            return None
+    return _ocr_engine
+
+import re
+
+def ocr_crop_and_clean(pil_img, roi, decimal_places=2, label=""):
+    """
+    從 PIL Image 裁切 ROI 區域並執行 OCR。
+    roi: {x, y, w, h} -- 百分比 (0-100)
+    回傳辨識出的數字字串。
+    """
+    engine = get_ocr_engine()
+    if engine is None:
+        return ""
+    
+    img_w, img_h = pil_img.size
+    cx = int(img_w * roi["x"] / 100)
+    cy = int(img_h * roi["y"] / 100)
+    cw = int(img_w * roi["w"] / 100)
+    ch = int(img_h * roi["h"] / 100)
+    if cw < 2 or ch < 2:
+        return ""
+    
+    crop = pil_img.crop((cx, cy, cx + cw, cy + ch))
+    
+    # 放大至約 48px 高度（與前端 ocrPipeline 對齊）
+    scale = max(1.0, 48.0 / ch)
+    # rec-only 模式需要更大的水平拉寬，避免 CTC 把連續相同數字合併（如 '00' → '0'）
+    stretch_x = 2.5
+    new_w = int(cw * scale * stretch_x)
+    new_h = int(ch * scale)
+    crop = crop.resize((new_w, new_h), Image.LANCZOS)
+    
+    # 對比度 + 亮度增強（與前端 ctx.filter = 'contrast(1.2) brightness(1.1)' 對齊）
+    from PIL import ImageEnhance
+    crop = ImageEnhance.Contrast(crop).enhance(1.2)
+    crop = ImageEnhance.Brightness(crop).enhance(1.1)
+    
+    # rec-only 模式不需要 DBNet，只需最小 padding
+    PADDING = 8
+    padded = Image.new('RGB', (new_w + PADDING * 2, new_h + PADDING * 2), (0, 0, 0))
+    padded.paste(crop, (PADDING, PADDING))
+    
+    # 轉 numpy array 給 RapidOCR
+    import numpy as np
+    img_array = np.array(padded)
+    
+    # rec-only 模式：跳過偵測，只跑辨識（~70ms vs 完整管線 ~3500ms）
+    result, _ = engine(img_array, use_det=False, use_cls=False, use_rec=True)
+    if not result:
+        return ""
+    
+    # rec-only 模式回傳 [[text, score], ...]，完整模式回傳 [[box, text, score], ...]
+    texts = []
+    for line in result:
+        if isinstance(line[0], str):
+            texts.append(line[0])       # rec-only: [text, score]
+        else:
+            texts.append(str(line[1]))   # full: [box, text, score]
+    raw_text = " ".join(texts).strip()
+    
+    # 後處理（與前端 ocrPipeline.js 對齊）
+    if label == "ORDER_ID":
+        return re.sub(r'[^0-9\-]', '', raw_text)
+    
+    # 數字模式：只保留數字、小數點、逗號
+    valid = re.sub(r'[^0-9.,]', '', raw_text)
+    cleaned = valid.replace(',', '').strip('.')
+    if not cleaned:
+        return "0"
+    
+    if decimal_places == 0:
+        return cleaned.replace('.', '') or "0"
+    
+    # 多小數點修正（千分位誤判）
+    parts = cleaned.split('.')
+    if len(parts) > 2:
+        decimals = parts.pop()
+        cleaned = ''.join(parts) + '.' + decimals
+    
+    # 截斷小數位數
+    if isinstance(decimal_places, int) and decimal_places > 0 and '.' in cleaned:
+        int_part, dec_part = cleaned.split('.', 1)
+        cleaned = int_part + '.' + dec_part[:decimal_places].ljust(decimal_places, '0')
+    
+    return cleaned
 
 try:
     ctypes.windll.user32.SetProcessDPIAware()
@@ -138,6 +286,261 @@ def get_windows():
     return windows
 
 
+# ═══════════════════════════════════════════════
+#  控制指令處理器
+# ═══════════════════════════════════════════════
+
+# Win32 訊息常數
+WM_LBUTTONDOWN = 0x0201
+WM_LBUTTONUP   = 0x0202
+WM_RBUTTONDOWN = 0x0204
+WM_RBUTTONUP   = 0x0205
+MK_LBUTTON     = 0x0001
+
+def MAKELPARAM(x, y):
+    """將 (x, y) 打包成 LPARAM (低 16 bit = x, 高 16 bit = y)"""
+    return (int(y) << 16) | (int(x) & 0xFFFF)
+
+
+def get_window_rect(hwnd):
+    """取得視窗在螢幕上的絕對座標"""
+    rect = ctypes.wintypes.RECT()
+    user32.GetWindowRect(hwnd, ctypes.byref(rect))
+    return {
+        "left": rect.left,
+        "top": rect.top,
+        "width": rect.right - rect.left,
+        "height": rect.bottom - rect.top
+    }
+
+def roi_to_screen(roi_pct, window_rect):
+    """
+    ROI % -> screen absolute coords (center point).
+    roi_pct: { x, y, w, h } -- percentage (0-100)
+    window_rect: { left, top, width, height } -- pixel coords
+    Returns: (screen_x, screen_y)
+    """
+    cx_pct = roi_pct["x"] + roi_pct["w"] / 2.0
+    cy_pct = roi_pct["y"] + roi_pct["h"] / 2.0
+    screen_x = window_rect["left"] + int(cx_pct / 100.0 * window_rect["width"])
+    screen_y = window_rect["top"] + int(cy_pct / 100.0 * window_rect["height"])
+    return screen_x, screen_y
+
+def roi_to_client(roi_pct, hwnd):
+    """
+    ROI % -> window client-area coords (center point).
+    Uses ScreenToClient to correctly handle title bar / borders.
+    Returns: (client_x, client_y) or None
+    """
+    window_rect = get_window_rect(hwnd)
+    screen_x, screen_y = roi_to_screen(roi_pct, window_rect)
+    # Convert screen coords -> client-area coords
+    pt = ctypes.wintypes.POINT(screen_x, screen_y)
+    user32.ScreenToClient(hwnd, ctypes.byref(pt))
+    return pt.x, pt.y
+
+
+def click_background(hwnd, client_x, client_y, button="left"):
+    """
+    Background click via PostMessage.
+    Sends WM_LBUTTONDOWN + WM_LBUTTONUP directly to the target window
+    WITHOUT moving the physical mouse cursor. The user can continue
+    using their mouse for other tasks.
+    """
+    lparam = MAKELPARAM(client_x, client_y)
+    if button == "right":
+        user32.PostMessageW(hwnd, WM_RBUTTONDOWN, MK_LBUTTON, lparam)
+        time.sleep(0.04)
+        user32.PostMessageW(hwnd, WM_RBUTTONUP, 0, lparam)
+    else:
+        user32.PostMessageW(hwnd, WM_LBUTTONDOWN, MK_LBUTTON, lparam)
+        time.sleep(0.04)
+        user32.PostMessageW(hwnd, WM_LBUTTONUP, 0, lparam)
+
+
+def handle_control_command(cmd, active_source=None):
+    """
+    Process control commands from frontend.
+
+    For window mode, uses PostMessage (background click) by default,
+    so the user's physical mouse is never touched.
+    Falls back to pyautogui only for monitor/screen mode.
+
+    Supported actions:
+      click, click_pct, click_roi, key, hotkey, move, drag, focus
+    """
+    action = cmd.get("action")
+
+    # Get window info (if window mode)
+    window_rect = None
+    hwnd = None
+    if active_source and active_source.get("type") == "window":
+        hwnd = active_source.get("hwnd")
+        if hwnd:
+            window_rect = get_window_rect(hwnd)
+
+    try:
+        # Optional human-like random delay
+        humanize = cmd.get("humanize", False)
+        if humanize:
+            time.sleep(random.uniform(0.05, 0.15))
+
+        if action == "click":
+            x, y = int(cmd["x"]), int(cmd["y"])
+            button = cmd.get("button", "left")
+            if hwnd:
+                # Window mode -> background click (convert screen -> client)
+                pt = ctypes.wintypes.POINT(x, y)
+                user32.ScreenToClient(hwnd, ctypes.byref(pt))
+                click_background(hwnd, pt.x, pt.y, button)
+                return {"success": True, "message": f"bg_click ({x},{y}) -> client ({pt.x},{pt.y})"}
+            elif HAS_PYAUTOGUI:
+                pyautogui.click(x, y, button=button)
+                return {"success": True, "message": f"click ({x}, {y}) button={button}"}
+            else:
+                return {"success": False, "message": "No hwnd and pyautogui not installed"}
+
+        elif action == "click_pct":
+            if not window_rect:
+                return {"success": False, "message": "click_pct requires window mode"}
+            x_pct, y_pct = float(cmd["xPct"]), float(cmd["yPct"])
+            screen_x = window_rect["left"] + int(x_pct / 100.0 * window_rect["width"])
+            screen_y = window_rect["top"] + int(y_pct / 100.0 * window_rect["height"])
+            button = cmd.get("button", "left")
+            if hwnd:
+                pt = ctypes.wintypes.POINT(screen_x, screen_y)
+                user32.ScreenToClient(hwnd, ctypes.byref(pt))
+                click_background(hwnd, pt.x, pt.y, button)
+                return {"success": True, "message": f"bg_click_pct ({x_pct:.1f}%,{y_pct:.1f}%) -> client ({pt.x},{pt.y})"}
+            elif HAS_PYAUTOGUI:
+                pyautogui.click(screen_x, screen_y, button=button)
+                return {"success": True, "message": f"click_pct ({x_pct:.1f}%,{y_pct:.1f}%) -> ({screen_x},{screen_y})"}
+
+        elif action == "click_roi":
+            if not window_rect:
+                return {"success": False, "message": "click_roi requires window mode"}
+            roi = cmd["roi"]
+            button = cmd.get("button", "left")
+            if hwnd:
+                # Background click: ROI % -> client coords directly
+                client_x, client_y = roi_to_client(roi, hwnd)
+                click_background(hwnd, client_x, client_y, button)
+                return {"success": True, "message": f"bg_click_roi -> client ({client_x},{client_y})"}
+            elif HAS_PYAUTOGUI:
+                screen_x, screen_y = roi_to_screen(roi, window_rect)
+                pyautogui.click(screen_x, screen_y, button=button)
+                return {"success": True, "message": f"click_roi -> ({screen_x},{screen_y})"}
+
+        elif action == "key":
+            if not HAS_PYAUTOGUI:
+                return {"success": False, "message": "pyautogui not installed (needed for key)"}
+            key = cmd["key"]
+            pyautogui.press(key)
+            return {"success": True, "message": f"key '{key}'"}
+
+        elif action == "hotkey":
+            if not HAS_PYAUTOGUI:
+                return {"success": False, "message": "pyautogui not installed (needed for hotkey)"}
+            keys = cmd["keys"]
+            pyautogui.hotkey(*keys)
+            return {"success": True, "message": f"hotkey {'+'.join(keys)}"}
+
+        elif action == "move":
+            if not HAS_PYAUTOGUI:
+                return {"success": False, "message": "pyautogui not installed"}
+            x, y = int(cmd["x"]), int(cmd["y"])
+            pyautogui.moveTo(x, y, duration=0.1)
+            return {"success": True, "message": f"move ({x}, {y})"}
+
+        elif action == "drag":
+            if not HAS_PYAUTOGUI:
+                return {"success": False, "message": "pyautogui not installed"}
+            fx, fy = int(cmd["fromX"]), int(cmd["fromY"])
+            tx, ty = int(cmd["toX"]), int(cmd["toY"])
+            pyautogui.moveTo(fx, fy, duration=0.1)
+            pyautogui.drag(tx - fx, ty - fy, duration=0.3)
+            return {"success": True, "message": f"drag ({fx},{fy}) -> ({tx},{ty})"}
+
+        elif action == "focus":
+            if hwnd:
+                user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+                user32.SetForegroundWindow(hwnd)
+                return {"success": True, "message": f"focus window hwnd={hwnd}"}
+            else:
+                return {"success": False, "message": "No target hwnd"}
+
+        elif action == "ocr_rois":
+            # ── 後端批次 OCR：截取當前畫面，裁切多個 ROI，一次回傳全部結果 ──
+            if not window_rect and not active_source:
+                return {"success": False, "message": "ocr_rois requires active source"}
+            
+            rois = cmd.get("rois", [])  # [{name, roi: {x,y,w,h}, decimalPlaces, label}]
+            if not rois:
+                return {"success": False, "message": "No ROIs specified"}
+            
+            # 截取當前畫面
+            hwnd_ocr = active_source.get("hwnd") if active_source else None
+            pil_img = None
+            
+            if hwnd_ocr:
+                # 視窗模式：使用 PrintWindow 確保即使被遮擋也能截取
+                pil_img = capture_window_printwindow(hwnd_ocr)
+            
+            if pil_img is None:
+                # Fallback: mss 截取
+                try:
+                    with mss.MSS() as sct:
+                        if active_source and active_source.get("type") == "window" and hwnd_ocr:
+                            r = ctypes.wintypes.RECT()
+                            user32.GetWindowRect(hwnd_ocr, ctypes.byref(r))
+                            bbox = (r.left, r.top, r.right, r.bottom)
+                            raw_grab = sct.grab(bbox)
+                            pil_img = Image.frombytes("RGB", raw_grab.size, raw_grab.bgra, "raw", "BGRX")
+                        else:
+                            monitor = sct.monitors[active_source.get("index", 1)]
+                            raw_grab = sct.grab(monitor)
+                            pil_img = Image.frombytes("RGB", raw_grab.size, raw_grab.bgra, "raw", "BGRX")
+                except Exception as e:
+                    return {"success": False, "message": f"Screenshot failed: {e}"}
+            
+            if pil_img is None:
+                return {"success": False, "message": "Could not capture screen"}
+            
+            # 批次 OCR
+            t0 = time.time()
+            results = {}
+            for roi_def in rois:
+                name = roi_def.get("name", "unknown")
+                roi = roi_def.get("roi")
+                dp = roi_def.get("decimalPlaces", 2)
+                lbl = roi_def.get("label", name)
+                if roi:
+                    try:
+                        val = ocr_crop_and_clean(pil_img, roi, dp, lbl)
+                        results[name] = val
+                    except Exception as e:
+                        results[name] = ""
+                        print(f"[OCR 錯誤] {name}: {e}")
+            
+            elapsed_ms = (time.time() - t0) * 1000
+            print(f"[OCR] 批次完成 {len(rois)} 個 ROI，耗時 {elapsed_ms:.0f}ms | 結果: {results}")
+            return {"success": True, "message": f"ocr_rois done in {elapsed_ms:.0f}ms", "ocrResults": results}
+
+        else:
+            return {"success": False, "message": f"Unknown action: {action}"}
+
+    except Exception as e:
+        return {"success": False, "message": f"Control error: {str(e)}"}
+
+
+# ═══════════════════════════════════════════════
+#  WebSocket 連線處理
+# ═══════════════════════════════════════════════
+
+# 共享的活動來源資訊（讓控制連線也能知道目標視窗）
+active_sources = {}  # ws_id → source dict
+
+
 async def handle_client(websocket):
     """處理單一 WebSocket 連線"""
     print(f"[連線] 前端已連線: {websocket.remote_address}")
@@ -169,15 +572,29 @@ async def handle_client(websocket):
             except Exception as e:
                 print("無法獲取視窗列表:", e)
 
+            # 加入控制能力資訊
             await websocket.send(json.dumps({
                 "type": "monitors",
-                "data": sources
+                "data": sources,
+                "capabilities": {
+                    "control": HAS_PYAUTOGUI,
+                    "actions": ["click", "click_pct", "click_roi", "key", "hotkey", "move", "drag", "focus"]
+                        if HAS_PYAUTOGUI else []
+                }
             }))
-            print(f"[資訊] 回傳 {len(sources)} 個來源資訊")
+            print(f"[資訊] 回傳 {len(sources)} 個來源資訊 (控制能力: {HAS_PYAUTOGUI})")
 
             # 等待前端選擇螢幕後的 start 指令
             raw = await websocket.recv()
             config = json.loads(raw)
+
+        # ── 判斷連線模式 ──
+        action = config.get("action", "start")
+
+        if action == "control_only":
+            # 純控制模式：不串流畫面，只處理控制指令
+            await handle_control_session(websocket, config)
+            return
 
         # ── 2. 開始串流 ──
         source = config.get("source", {"type": "monitor", "index": 1})
@@ -185,6 +602,10 @@ async def handle_client(websocket):
         quality = config.get("quality", 60)
         # 可選：僅擷取指定區域 (相對於來源的裁切)
         crop = config.get("crop", None)
+
+        # 記錄活動來源
+        ws_id = id(websocket)
+        active_sources[ws_id] = source
 
         interval = 1.0 / fps
         frame_count = 0
@@ -241,14 +662,19 @@ async def handle_client(websocket):
                     new_h = int(float(pil_img.height) * float(ratio))
                     pil_img = pil_img.resize((max_width, new_h), Image.Resampling.NEAREST)
 
-                # 壓縮為 JPEG
-                buf = io.BytesIO()
-                pil_img.save(buf, format="JPEG", quality=quality)
+                # 壓縮為 JPEG (優先使用 turbojpeg)
+                if HAS_TURBOJPEG:
+                    arr = np.array(pil_img)
+                    jpeg_buf = _turbo.encode(arr, quality=quality, pixel_format=TJPF_RGB)
+                else:
+                    buf = io.BytesIO()
+                    pil_img.save(buf, format="JPEG", quality=quality)
+                    jpeg_buf = buf.getvalue()
                 
                 # 推送二進制幀 (不使用 Base64 與 JSON)
                 frame_count += 1
                 try:
-                    await websocket.send(buf.getvalue())
+                    await websocket.send(jpeg_buf)
                 except websockets.exceptions.ConnectionClosed:
                     break
 
@@ -256,14 +682,30 @@ async def handle_client(websocket):
                 try:
                     msg = await asyncio.wait_for(websocket.recv(), timeout=0.001)
                     cmd = json.loads(msg)
-                    if cmd.get("action") == "stop":
+                    cmd_action = cmd.get("action", "")
+                    
+                    if cmd_action == "stop":
                         print("[串流] 前端要求停止")
                         break
-                    elif cmd.get("action") == "update_config":
+                    elif cmd_action == "update_config":
                         fps = cmd.get("fps", fps)
                         quality = cmd.get("quality", quality)
                         interval = 1.0 / fps
                         print(f"[設定] 更新 FPS={fps}, 品質={quality}")
+                    elif cmd_action in ("click", "click_pct", "click_roi", "key", "hotkey", "move", "drag", "focus", "ocr_rois"):
+                        # ── 處理控制指令（串流中也能控制）──
+                        result = handle_control_command(cmd, active_source=source)
+                        try:
+                            resp = {"type": "control_result", **result}
+                            if "requestId" in cmd:
+                                resp["requestId"] = cmd["requestId"]
+                            await websocket.send(json.dumps(resp))
+                        except:
+                            pass
+                        if result["success"]:
+                            print(f"[控制] {result['message']}")
+                        else:
+                            print(f"[控制錯誤] {result['message']}")
                 except asyncio.TimeoutError:
                     pass
 
@@ -272,6 +714,9 @@ async def handle_client(websocket):
                 sleep_time = max(0, interval - elapsed)
                 if sleep_time > 0:
                     await asyncio.sleep(sleep_time)
+
+        # 清理
+        active_sources.pop(ws_id, None)
 
         elapsed_total = time.time() - start_time
         avg_fps = frame_count / elapsed_total if elapsed_total > 0 else 0
@@ -290,6 +735,57 @@ async def handle_client(websocket):
             pass
 
 
+async def handle_control_session(websocket, config):
+    """
+    純控制模式：持續監聽控制指令，不串流畫面。
+    用於前端開啟獨立的控制通道（與串流通道分離）。
+    """
+    source = config.get("source", None)
+    print(f"[控制] 進入純控制模式, 來源={source}")
+
+    try:
+        # 回報連線成功與能力
+        await websocket.send(json.dumps({
+            "type": "control_ready",
+            "capabilities": {
+                "control": HAS_PYAUTOGUI,
+                "actions": ["click", "click_pct", "click_roi", "key", "hotkey", "move", "drag", "focus"]
+                    if HAS_PYAUTOGUI else []
+            }
+        }))
+
+        async for message in websocket:
+            try:
+                cmd = json.loads(message)
+                cmd_action = cmd.get("action", "")
+
+                if cmd_action == "stop":
+                    print("[控制] 前端要求停止")
+                    break
+                elif cmd_action == "ping":
+                    await websocket.send(json.dumps({"type": "pong"}))
+                else:
+                    result = handle_control_command(cmd, active_source=source)
+                    await websocket.send(json.dumps({
+                        "type": "control_result",
+                        "requestId": cmd.get("requestId"),
+                        **result
+                    }))
+                    if result["success"]:
+                        print(f"[控制] {result['message']}")
+                    else:
+                        print(f"[控制錯誤] {result['message']}")
+            except json.JSONDecodeError:
+                await websocket.send(json.dumps({
+                    "type": "control_result",
+                    "success": False,
+                    "message": "JSON 解析錯誤"
+                }))
+
+    except websockets.exceptions.ConnectionClosed:
+        print("[控制] 前端已斷開連線")
+
+
 async def main():
     port = 8765
     if len(sys.argv) > 1:
@@ -299,9 +795,11 @@ async def main():
             pass
 
     print("=" * 50)
-    print("  螢幕擷取 WebSocket 伺服器")
+    print("  螢幕擷取 + 遊戲控制 WebSocket 伺服器")
     print(f"  ws://localhost:{port}")
     print("=" * 50)
+    print()
+    print(f"  控制引擎: {'✓ pyautogui 已就緒' if HAS_PYAUTOGUI else '✗ 未安裝 (pip install pyautogui)'}")
     print()
 
     # 列出可用螢幕

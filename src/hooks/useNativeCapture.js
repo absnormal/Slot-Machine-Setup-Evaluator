@@ -177,6 +177,7 @@ export function useNativeCapture(videoRef) {
         frameCount,
         nativeCanvasRef,
         dimensionsRef,
+        wsRef,
         // 操作
         fetchMonitors,
         startCapture,

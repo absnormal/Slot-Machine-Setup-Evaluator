@@ -1,4 +1,4 @@
-import { useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useSmartDedup } from './useSmartDedup';
 import { useCandidateManager } from './useCandidateManager';
 import { OcrWorkerBridge } from '../engine/ocrWorkerBridge';
@@ -67,6 +67,7 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
     const liveStateRef = useRef(null);
     const liveCancelRef = useRef(false);
     const liveRafRef = useRef(null);
+    const [isDetecting, setIsDetecting] = useState(false);
 
 
 
@@ -78,6 +79,7 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
         if (!video || !roi) return;
 
         liveCancelRef.current = false;
+        setIsDetecting(true);
         const sliceCols = ocrOptions.sliceCols || 5;
         liveStateRef.current = {
             diffWindow: [],
@@ -112,6 +114,15 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
             // ── 自動幀率校準（委派給 engine/frameRateCalibrator）──
             const state = liveStateRef.current;
             processCalibrationFrame(state, rafTimestamp);
+
+            // 【統一取樣頻率】：無論螢幕更新率多少，偵測迴圈最多 ~60fps
+            // 這樣 stableCount / spinBreakCount 等計數器的遞增速度在任何環境下都一致
+            const PROCESS_INTERVAL_MS = 15; // ≈ 60fps (略低於 16.7ms，容許微小抖動)
+            if (state.lastProcessTime && rafTimestamp - state.lastProcessTime < PROCESS_INTERVAL_MS) {
+                liveRafRef.current = requestAnimationFrame(processLiveFrame);
+                return;
+            }
+            state.lastProcessTime = rafTimestamp;
 
             // 【防偽停輪機制】：影片時間未前進就跳過
             const now = video.currentTime;
@@ -171,12 +182,13 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                     state.spinBreakCount = (state.spinBreakCount || 0) + 1;
                     if (state.spinBreakCount >= 3) {
                         if (state.isWinPollActive) {
-                            // WIN 特工還在追蹤 → 動畫可能被誤判為旋轉
-                            // 只殺特工，不設 hadSpin；加寬限期讓動畫衰退
-                            console.log(`🌀 [V-Line] WIN 特工活躍中偵測到疑似旋轉 (連續 ${state.spinBreakCount} 幀, ${analysis.spinningCount}軸, max=${analysis.maxMAE.toFixed(1)})，終止特工並進入寬限期 (影片時間：${now.toFixed(3)}s)`);
-                            state.cancelWinPoll = true;
-                            state.isWinPollActive = false;
-                            state.winPollGraceUntil = now + 0.8; // 0.8 秒寬限
+                            // WIN 特工還在追蹤 → WIN 動畫閃動被誤判為旋轉
+                            // ★ 修正：不再殺死特工！讓它繼續追蹤 WIN 值。
+                            //   只標記 hadSpin，這樣如果真的是新的一局旋轉，
+                            //   下次停輪偵測會自然觸發新截圖（line 306 會取消舊特工）。
+                            //   如果只是 WIN 閃動，特工可以正常完成任務。
+                            console.log(`🌀 [V-Line] WIN 特工活躍中偵測到疑似旋轉 (連續 ${state.spinBreakCount} 幀, ${analysis.spinningCount}軸, max=${analysis.maxMAE.toFixed(1)})，保留特工、標記旋轉 (影片時間：${now.toFixed(3)}s)`);
+                            state.hadSpinSinceLastStop = true;
                         } else if (now > state.winPollGraceUntil) {
                             // 非特工期間 & 非寬限期 → 正常確認旋轉
                             state.hadSpinSinceLastStop = true;
@@ -216,7 +228,7 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                     const isReelStopped = state.stableCount >= 3;
                     const isAnimationFallback = state.decayCount >= 15 && state.peakDiff > 8;
 
-                    if ((isReelStopped || isAnimationFallback) && hadMotion && (now - state.lastCandidateTime) > 0.75) {
+                    if ((isReelStopped || isAnimationFallback) && hadMotion) {
 
                         // 【V-Line 旋轉門檻】：如果自上次停輪以來沒有偵測到任何旋轉，
                         // 代表這只是同一局的動畫衰退，不是新的停輪。跳過！
@@ -301,7 +313,9 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                                 status: 'pending',
                                 recognitionResult: null,
                                 error: '',
-                                useWinFrame: true
+                                useWinFrame: true,
+                                // ★ 如果 WIN 追蹤器啟用，立刻標記為 polling，防止 autoPlay 過早記錄
+                                ...(ocrOptions.enableWinTracker && ocrOptions.winROI ? { winPollStatus: 'polling' } : {}),
                             };
 
                             setCandidates(prev => [...prev, candidate]);
@@ -366,10 +380,10 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
                                                         ? { ...c, ocrData: { ...c.ocrData, balance, bet, orderId, ...(multiplierROI ? { multiplier } : {}) } }
                                                         : c
                                                 ));
-                                            }).catch(() => {});
+                                            }).catch(() => { });
                                         }
                                     }
-                                }).catch(() => {});
+                                }).catch(() => { });
 
                                 // ── WIN 輪詢：如果啟用，立刻啟動 WIN 追蹤特工 ──
                                 if (ocrOptions.enableWinTracker && winROI) {
@@ -417,6 +431,7 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
 
     const stopLiveDetection = useCallback(() => {
         liveCancelRef.current = true;
+        setIsDetecting(false);
         if (liveRafRef.current) {
             cancelAnimationFrame(liveRafRef.current);
             liveRafRef.current = null;
@@ -520,6 +535,7 @@ export function useKeyframeExtractor({ setTemplateMessage }) {
         confirmDedup,
         setManualBestCandidate,
         addManualCandidate,
-        updateCandidateOcr
+        updateCandidateOcr,
+        isDetecting,
     };
 }

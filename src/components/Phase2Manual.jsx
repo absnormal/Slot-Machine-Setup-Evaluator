@@ -117,10 +117,10 @@ const Phase2Manual = ({
             </div>
 
             {!isPhase2Minimized && (
-                <div className="p-6 pt-0 border-t border-slate-100 mt-4 bg-slate-50">
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="p-4 pt-0 border-t border-slate-100 mt-4 bg-slate-50">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                         <div className="flex flex-col h-full">
-                            <div className="bg-slate-900 p-5 sm:p-6 rounded-xl shadow-2xl border border-slate-800 flex flex-col flex-1">
+                            <div className="bg-slate-900 p-3 sm:p-4 rounded-xl shadow-2xl border border-slate-800 flex flex-col flex-1">
                                 <BrushToolbar
                                     template={template}
                                     panelInputMode={panelInputMode} setPanelInputMode={setPanelInputMode}

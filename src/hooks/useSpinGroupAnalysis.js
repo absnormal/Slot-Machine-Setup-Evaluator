@@ -1,10 +1,12 @@
 import { useState, useCallback, useMemo } from 'react';
+import usePhase4Store from '../stores/usePhase4Store';
 
 /**
  * useSpinGroupAnalysis — 分局與連續性計算 hook
  * 從候選幀中計算分局群組、數學驗證、斷層偵測，以及導航功能
  */
 const useSpinGroupAnalysis = (candidates) => {
+    const enableCascade = usePhase4Store(s => s.enableEmptyBoardFilter);
     // ── 分局與連續性計算 ──
     const groupsWithMath = useMemo(() => {
         const hasSpinData = candidates.some(c => c.spinGroupId !== undefined);
@@ -46,8 +48,8 @@ const useSpinGroupAnalysis = (candidates) => {
 
             const hasData = bestFrame.ocrData && typeof bestFrame.ocrData.balance !== 'undefined' && typeof bestFrame.ocrData.bet !== 'undefined';
 
-            // 由底層 smartDedup 引擎的 isCascadeMember 標記驅動
-            const isCascadeSequence = group.some(c => c.kf?.isCascadeMember);
+            // 連鎖模式關閉時，強制不標記為連鎖序列
+            const isCascadeSequence = enableCascade && group.some(c => c.kf?.isCascadeMember);
 
             if (hasData && bet > 0) { 
                 if (currentBase === null) {

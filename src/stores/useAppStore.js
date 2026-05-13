@@ -16,11 +16,13 @@ const useAppStore = create((set, get) => ({
     isPhase2Minimized: true,
     isPhase3Minimized: true,
     isPhase4Minimized: true,
+    isPhase5Minimized: true,
 
     setIsTemplateMinimized: (v) => set({ isTemplateMinimized: typeof v === 'function' ? v(get().isTemplateMinimized) : v }),
     setIsPhase2Minimized: (v) => set({ isPhase2Minimized: typeof v === 'function' ? v(get().isPhase2Minimized) : v }),
     setIsPhase3Minimized: (v) => set({ isPhase3Minimized: typeof v === 'function' ? v(get().isPhase3Minimized) : v }),
     setIsPhase4Minimized: (v) => set({ isPhase4Minimized: typeof v === 'function' ? v(get().isPhase4Minimized) : v }),
+    setIsPhase5Minimized: (v) => set({ isPhase5Minimized: typeof v === 'function' ? v(get().isPhase5Minimized) : v }),
 
     /** 手風琴切換：展開指定 Phase、收合所有其他 */
     handlePhaseToggle: (phaseKey) => {
@@ -30,6 +32,7 @@ const useAppStore = create((set, get) => ({
             phase2: state.isPhase2Minimized,
             phase3: state.isPhase3Minimized,
             phase4: state.isPhase4Minimized,
+            phase5: state.isPhase5Minimized,
         }[phaseKey];
 
         if (isCurrentlyMinimized) {
@@ -38,12 +41,14 @@ const useAppStore = create((set, get) => ({
                 isPhase2Minimized: phaseKey !== 'phase2',
                 isPhase3Minimized: phaseKey !== 'phase3',
                 isPhase4Minimized: phaseKey !== 'phase4',
+                isPhase5Minimized: phaseKey !== 'phase5',
             });
         } else {
             if (phaseKey === 'phase1') set({ isTemplateMinimized: true });
             else if (phaseKey === 'phase2') set({ isPhase2Minimized: true });
             else if (phaseKey === 'phase3') set({ isPhase3Minimized: true });
             else if (phaseKey === 'phase4') set({ isPhase4Minimized: true });
+            else if (phaseKey === 'phase5') set({ isPhase5Minimized: true });
         }
     },
 

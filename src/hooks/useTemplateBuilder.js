@@ -48,6 +48,8 @@ export function useTemplateBuilder({
     const [hasAdjustableLines, setHasAdjustableLines] = useState(D.hasAdjustableLines);
     const [hasExBet, setHasExBet] = useState(D.hasExBet);
     const [exBetOptions, setExBetOptions] = useState(D.exBetOptions);
+    const [hasLineBetDivisor, setHasLineBetDivisor] = useState(D.hasLineBetDivisor);
+    const [lineBetDivisor, setLineBetDivisor] = useState(D.lineBetDivisor);
     const prevHasDoubleSymbol = useRef(hasDoubleSymbol);
 
     // Grid dimensions
@@ -69,7 +71,7 @@ export function useTemplateBuilder({
 
     // === Sub-Hook: Paytable Processor ===
     const paytableProcessor = usePaytableProcessor({
-        customApiKey, apiKey, hasDoubleSymbol,
+        customApiKey, apiKey, hasDoubleSymbol, gridCols,
         setTemplateMessage, setTemplateError,
     });
 
@@ -77,19 +79,26 @@ export function useTemplateBuilder({
     useEffect(() => {
         if (prevHasDoubleSymbol.current !== hasDoubleSymbol) {
             paytableProcessor.setPtResultItems(prev => {
+                const totalBaseCols = Math.max(gridCols, 5);
                 const formattedLines = prev.map(item => {
-                    const base = `${item.name} ${item.match1} ${item.match2} ${item.match3} ${item.match4} ${item.match5}`;
-                    if (hasDoubleSymbol) {
-                        return `${base} ${item.match6 || 0} ${item.match7 || 0} ${item.match8 || 0} ${item.match9 || 0} ${item.match10 || 0}`;
+                    const parts = [item.name];
+                    for (let i = 1; i <= totalBaseCols; i++) {
+                        parts.push(item[`match${i}`] || 0);
                     }
-                    return base;
+                    if (hasDoubleSymbol) {
+                        const doubleCols = gridCols - 1;
+                        for (let i = totalBaseCols + 1; i <= totalBaseCols + doubleCols; i++) {
+                            parts.push(item[`match${i}`] || 0);
+                        }
+                    }
+                    return parts.join(' ');
                 });
                 setPaytableInput(formattedLines.join('\n'));
                 return prev;
             });
             prevHasDoubleSymbol.current = hasDoubleSymbol;
         }
-    }, [hasDoubleSymbol, paytableProcessor]);
+    }, [hasDoubleSymbol, gridCols, paytableProcessor]);
 
     // Auto-sync JP config to paytable items so they can bind images
     useEffect(() => {
@@ -161,6 +170,7 @@ export function useTemplateBuilder({
             multiplierCalcType: mCalcType,
             hasBidirectionalPaylines: hasBDP, hasAdjustableLines: hasAL,
             hasExBet: hasEB, exBetOptions: ebOpts,
+            hasLineBetDivisor: hasLBD, lineBetDivisor: lbdVal,
             validateStrict = false
         } = p;
 
@@ -289,6 +299,8 @@ export function useTemplateBuilder({
             hasAdjustableLines: hasAL,
             hasExBet: hasEB,
             exBetOptions: ebOpts || D.exBetOptions,
+            hasLineBetDivisor: hasLBD,
+            lineBetDivisor: lbdVal || D.lineBetDivisor,
         };
     };
 
@@ -309,6 +321,8 @@ export function useTemplateBuilder({
                 hasAdjustableLines: d.hasAdjustableLines,
                 hasExBet: d.hasExBet,
                 exBetOptions: d.exBetOptions,
+                hasLineBetDivisor: d.hasLineBetDivisor,
+                lineBetDivisor: d.lineBetDivisor,
                 lineMode: data.lineMode || 'paylines',
                 paytableInput: data.paytableInput || '',
                 extractResults: data.extractResults || [],
@@ -334,6 +348,8 @@ export function useTemplateBuilder({
             setHasAdjustableLines(parseBool(d.hasAdjustableLines));
             setHasExBet(parseBool(d.hasExBet));
             if (Array.isArray(d.exBetOptions)) setExBetOptions(d.exBetOptions);
+            setHasLineBetDivisor(parseBool(d.hasLineBetDivisor));
+            setLineBetDivisor(d.lineBetDivisor || D.lineBetDivisor);
 
             if (setIsPhase2Minimized) setIsPhase2Minimized(false);
             if (setIsPhase3Minimized) setIsPhase3Minimized(true);
@@ -375,6 +391,8 @@ export function useTemplateBuilder({
                 hasAdjustableLines,
                 hasExBet,
                 exBetOptions,
+                hasLineBetDivisor,
+                lineBetDivisor,
                 validateStrict: true
             });
 
@@ -383,6 +401,26 @@ export function useTemplateBuilder({
             if (setIsPhase2Minimized) setIsPhase2Minimized(false);
             if (setIsPhase3Minimized) setIsPhase3Minimized(true);
             if (setIsTemplateMinimized) setIsTemplateMinimized(true);
+
+            // ★ 防呆提醒：模板建立成功後，提醒使用者儲存至雲端
+            setTimeout(() => {
+                const shouldGoToPhase1 = window.confirm(
+                    '✅ 模板建立成功！\n\n' +
+                    '⚠️ 請注意：模板目前僅存在於瀏覽器記憶體中，' +
+                    '重新整理頁面後將會遺失。\n\n' +
+                    '請回到 Phase 1 → 輸入儲存名稱 → 點擊「存檔」按鈕上傳至雲端，' +
+                    '才能永久保存。\n\n' +
+                    '是否立即跳回 Phase 1 進行存檔？'
+                );
+                if (shouldGoToPhase1) {
+                    if (setIsTemplateMinimized) setIsTemplateMinimized(false);
+                    if (setIsPhase2Minimized) setIsPhase2Minimized(true);
+                    if (setIsPhase3Minimized) setIsPhase3Minimized(true);
+                    // 滾動到頁面頂部，讓雲端儲存按鈕立刻可見
+                    setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 100);
+                }
+            }, 300);
+
             return tpl;
         } catch (err) {
             setTemplateError(err.message);
@@ -414,6 +452,8 @@ export function useTemplateBuilder({
         setHasAdjustableLines(D.hasAdjustableLines);
         setHasExBet(D.hasExBet);
         setExBetOptions(D.exBetOptions);
+        setHasLineBetDivisor(D.hasLineBetDivisor);
+        setLineBetDivisor(D.lineBetDivisor);
         setPatternRows(6);
         setPatternCols(5);
         setGridRows(3);
@@ -469,6 +509,8 @@ export function useTemplateBuilder({
         hasAdjustableLines, setHasAdjustableLines,
         hasExBet, setHasExBet,
         exBetOptions, setExBetOptions,
+        hasLineBetDivisor, setHasLineBetDivisor,
+        lineBetDivisor, setLineBetDivisor,
 
         // Grid dimensions
         patternRows, setPatternRows,

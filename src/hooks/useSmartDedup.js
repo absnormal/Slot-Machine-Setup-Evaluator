@@ -296,11 +296,22 @@ export function useSmartDedup({ setCandidates, setTemplateMessage }) {
                     // Step 1: 按時間排序
                     const sorted = [...group].sort((a, b) => a.kf.time - b.kf.time);
 
-                    // Step 2: 按 WIN 值去重（同一 WIN 值只保留第一張）
+                    // Step 2: 按 WIN 值去重
+                    // 規則：第一個非零 WIN 保留最早幀（第一步一定正確）
+                    //       其餘 WIN 保留最後幀（避免錯位：前步盤面抓到後步 WIN）
                     const seen = new Map(); // winKey → frame
+                    let lockedKey = null;
                     for (const f of sorted) {
-                        const winKey = Math.round(f.win * 100); // 避免浮點誤差
-                        if (!seen.has(winKey)) seen.set(winKey, f);
+                        const winKey = Math.round(f.win * 100);
+                        if (winKey > 0 && lockedKey === null) {
+                            // 第一個非零 WIN：鎖定，只保留第一張
+                            if (!seen.has(winKey)) seen.set(winKey, f);
+                            lockedKey = winKey;
+                        } else if (winKey !== lockedKey) {
+                            // 其餘 WIN（非鎖定值）：保留最後一張
+                            seen.set(winKey, f);
+                        }
+                        // winKey === lockedKey → 跳過，不覆蓋已鎖定的第一張
                     }
                     const unique = [...seen.values()];
 
@@ -324,28 +335,40 @@ export function useSmartDedup({ setCandidates, setTemplateMessage }) {
                     continue;
                 }
 
-                // ── 最佳幀選取：支援消除遊戲的一局多最佳幀 ──
+                // ── 最佳幀選取 ──
                 // 有效 Poll = completed（正常完成）或 forced_with_data（被中斷但已有 WIN）
                 const useful = group.filter(f =>
                     f.kf.winPollStatus === 'completed' || f.kf.winPollStatus === 'forced_with_data'
                 );
 
                 if (useful.length > 0) {
-                    // 每個有效 Poll 結果代表一個獨立的 cascade step → 全部標記最佳
-                    useful.forEach(f => bestIds.add(f.kf.id));
+                    if (enableCascade) {
+                        // 連鎖模式：同 WIN 值只保留一張（第一個非零取最早，其餘取最晚）
+                        const sorted = [...useful].sort((a, b) => a.kf.time - b.kf.time);
+                        const dedupMap = new Map();
+                        let lockedKey2 = null;
+                        for (const f of sorted) {
+                            const wk = Math.round(f.win * 100);
+                            if (wk > 0 && lockedKey2 === null) {
+                                if (!dedupMap.has(wk)) dedupMap.set(wk, f);
+                                lockedKey2 = wk;
+                            } else if (wk !== lockedKey2) {
+                                dedupMap.set(wk, f);
+                            }
+                        }
+                        dedupMap.forEach(f => bestIds.add(f.kf.id));
+                    } else {
+                        // 非連鎖模式：同局只保留 WIN 最大的那張
+                        const best = useful.reduce((a, b) => a.win >= b.win ? a : b);
+                        bestIds.add(best.kf.id);
+                    }
                 } else {
-                    // 無 winPollStatus → 傳統 State 2 邏輯（向下相容）
+                    // 無 winPollStatus → 直接選 WIN 最大且最早的幀
                     const withWin = group.filter(f => f.win > eps);
                     let best = null;
 
                     if (withWin.length > 0) {
-                        const minBal = Math.min(...withWin.map(f => f.bal));
-                        const state2 = withWin.filter(f => Math.abs(f.bal - minBal) < eps);
-                        if (state2.length > 0) {
-                            best = state2.reduce((a, b) => a.kf.time < b.kf.time ? a : b);
-                        } else {
-                            best = withWin.reduce((a, b) => a.win > b.win ? a : b);
-                        }
+                        best = withWin.reduce((a, b) => a.win >= b.win ? a : b);
                     } else {
                         best = group.reduce((a, b) => a.kf.time < b.kf.time ? a : b);
                     }
@@ -375,7 +398,7 @@ export function useSmartDedup({ setCandidates, setTemplateMessage }) {
                 };
             });
         });
-    }, [setCandidates, setTemplateMessage]);
+    }, [setCandidates, setTemplateMessage, enableCascade]);
 
     // 智慧刪除：移除未被標記為 isSpinBest 的幀
     const confirmDedup = useCallback(() => {
