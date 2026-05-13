@@ -1,147 +1,16 @@
-import React, { useState, useCallback } from 'react';
-import { Play, Pause, Square, Plus, Trash2, GripVertical, ChevronRight, ChevronDown, Copy, Download, Upload } from 'lucide-react';
+import React, { useState } from 'react';
+import { Play, Pause, Square, Download, Upload } from 'lucide-react';
 import { useFlowRunner } from '../../hooks/useFlowRunner';
-import { AVAILABLE_ROIS } from '../../engine/roiResolver';
+import { genId } from './blockDefs';
+import BlockRow from './BlockRow';
+import AddBlockButton from './AddBlockButton';
 
-// 積木圖示 + 顏色
-const BLOCK_META = {
-    click_roi:    { icon: '🎮', label: '點擊', color: 'border-emerald-500/30 bg-emerald-500/5' },
-    wait:         { icon: '⏱️', label: '等待', color: 'border-blue-500/30 bg-blue-500/5' },
-    wait_stable:  { icon: '👁️', label: '等待穩定', color: 'border-amber-500/30 bg-amber-500/5' },
-    ocr_batch:    { icon: '📊', label: '批次讀取', color: 'border-cyan-500/30 bg-cyan-500/5' },
-    ocr_read:     { icon: '📖', label: '讀取', color: 'border-cyan-500/30 bg-cyan-500/5' },
-    capture_frame:{ icon: '📸', label: '截圖', color: 'border-purple-500/30 bg-purple-500/5' },
-    record_spin:  { icon: '💾', label: '記錄結果', color: 'border-pink-500/30 bg-pink-500/5' },
-    loop:         { icon: '🔁', label: '迴圈', color: 'border-indigo-500/30 bg-indigo-500/5' },
-    if_then:      { icon: '❓', label: '條件', color: 'border-yellow-500/30 bg-yellow-500/5' },
-    set_var:      { icon: '📝', label: '設定變數', color: 'border-slate-500/30 bg-slate-500/5' },
-    log:          { icon: '📋', label: '記錄', color: 'border-slate-500/30 bg-slate-500/5' },
-    key_press:    { icon: '⌨️', label: '按鍵', color: 'border-emerald-500/30 bg-emerald-500/5' },
-};
-
-const NEW_BLOCK_TEMPLATES = [
-    { type: 'click_roi', params: { roi: 'SPIN' } },
-    { type: 'wait', params: { ms: 500 } },
-    { type: 'wait_stable', params: { roi: 'REEL', stableCount: 3, interval: 200 } },
-    { type: 'ocr_batch', params: { rois: ['WIN', 'BAL', 'BET', 'ORDER_ID'] } },
-    { type: 'record_spin', params: {} },
-    { type: 'loop', params: { count: 100 }, children: [] },
-    { type: 'set_var', params: { name: '$totalWin', value: 0 } },
-    { type: 'log', params: { message: '第 $loopIndex 局完成' } },
-    { type: 'capture_frame', params: {} },
-    { type: 'key_press', params: { key: 'space' } },
-];
-
-let _blockIdCounter = 0;
-const genId = () => `blk_${Date.now()}_${_blockIdCounter++}`;
-
-// ══════════════════════════════════════
-// 單一積木列
-// ══════════════════════════════════════
-const BlockRow = ({ block, depth, onDelete, onUpdate, currentBlockId, isRunning }) => {
-    const [expanded, setExpanded] = useState(true);
-    const meta = BLOCK_META[block.type] || { icon: '❔', label: block.type, color: 'border-slate-600 bg-slate-800' };
-    const isActive = currentBlockId === block.id;
-    const hasChildren = block.children && block.children.length > 0;
-    const isContainer = block.type === 'loop' || block.type === 'if_then';
-
-    const paramSummary = () => {
-        const p = block.params || {};
-        switch (block.type) {
-            case 'click_roi': return p.roi || '';
-            case 'wait': return `${p.ms}ms`;
-            case 'wait_stable': return `${p.roi || 'REEL'} ×${p.stableCount || 3}`;
-            case 'ocr_batch': return (p.rois || []).join(', ');
-            case 'loop': return p.count ? `${p.count} 次` : p.condition || '';
-            case 'set_var': return `${p.name} = ${p.value}`;
-            case 'log': return p.message?.substring(0, 20) || '';
-            case 'key_press': return p.key || '';
-            default: return '';
-        }
-    };
-
-    const addChild = (template) => {
-        const newBlock = { ...template, id: genId(), params: { ...template.params } };
-        if (template.children) newBlock.children = [];
-        onUpdate({ ...block, children: [...(block.children || []), newBlock] });
-    };
-
-    const deleteChild = (childId) => {
-        onUpdate({ ...block, children: (block.children || []).filter(c => c.id !== childId) });
-    };
-
-    const updateChild = (updated) => {
-        onUpdate({ ...block, children: (block.children || []).map(c => c.id === updated.id ? updated : c) });
-    };
-
-    return (
-        <div style={{ marginLeft: depth * 20 }}>
-            <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-all ${meta.color} ${isActive ? 'ring-2 ring-purple-400 shadow-lg shadow-purple-500/10' : ''}`}>
-                {isContainer && (
-                    <button onClick={() => setExpanded(!expanded)} className="text-slate-500 hover:text-slate-300 p-0.5">
-                        {expanded ? <ChevronDown size={14}/> : <ChevronRight size={14}/>}
-                    </button>
-                )}
-                <span className="text-base">{meta.icon}</span>
-                <span className="text-slate-300 font-semibold">{meta.label}</span>
-                <span className="text-slate-500 text-xs truncate flex-1">{paramSummary()}</span>
-                {!isRunning && (
-                    <button onClick={() => onDelete(block.id)} className="text-slate-600 hover:text-rose-400 p-1">
-                        <Trash2 size={14}/>
-                    </button>
-                )}
-            </div>
-
-            {isContainer && expanded && (
-                <div className="mt-1 space-y-1">
-                    {(block.children || []).map(child => (
-                        <BlockRow key={child.id} block={child} depth={depth + 1}
-                            onDelete={deleteChild} onUpdate={updateChild}
-                            currentBlockId={currentBlockId} isRunning={isRunning} />
-                    ))}
-                    {!isRunning && (
-                        <AddBlockButton depth={depth + 1} onAdd={addChild} />
-                    )}
-                </div>
-            )}
-        </div>
-    );
-};
-
-// ══════════════════════════════════════
-// 新增積木按鈕
-// ══════════════════════════════════════
-const AddBlockButton = ({ depth, onAdd }) => {
-    const [open, setOpen] = useState(false);
-    return (
-        <div style={{ marginLeft: depth * 20 }} className="relative">
-            <button onClick={() => setOpen(!open)}
-                className="flex items-center gap-1.5 text-xs text-slate-600 hover:text-indigo-400 px-3 py-1.5 transition-colors">
-                <Plus size={14}/> 新增積木
-            </button>
-            {open && (
-                <div className="absolute left-0 bottom-8 z-50 bg-slate-800 border border-slate-600 rounded-xl shadow-xl p-2 w-56 space-y-0.5 max-h-56 overflow-y-auto">
-                    {NEW_BLOCK_TEMPLATES.map(t => {
-                        const m = BLOCK_META[t.type];
-                        return (
-                            <button key={t.type} onClick={() => { onAdd(t); setOpen(false); }}
-                                className="flex items-center gap-2 w-full text-left px-3 py-1.5 rounded-lg text-sm text-slate-300 hover:bg-slate-700 transition-colors">
-                                <span className="text-base">{m?.icon}</span> {m?.label}
-                            </button>
-                        );
-                    })}
-                </div>
-            )}
-        </div>
-    );
-};
-
-// ══════════════════════════════════════
-// 主元件
-// ══════════════════════════════════════
+/**
+ * FlowComposer — 排程器主元件
+ */
 const FlowComposer = ({ ws, videoEl, getCandidates, onSmartDedup, onStartLive, onStopLive }) => {
     const flow = useFlowRunner();
-    const { runState, isRunning, isPaused, isIdle, currentBlock, loopProgress, logs, spinCount, variables,
+    const { isRunning, isPaused, isIdle, currentBlock, loopProgress, logs, spinCount, variables,
             runFlow, pause, resume, stop, presetFlows } = flow;
 
     const [blocks, setBlocks] = useState(() => presetFlows[0].blocks);
@@ -156,21 +25,24 @@ const FlowComposer = ({ ws, videoEl, getCandidates, onSmartDedup, onStartLive, o
     // 積木操作
     const deleteBlock = (id) => setBlocks(prev => prev.filter(b => b.id !== id));
     const updateBlock = (updated) => setBlocks(prev => prev.map(b => b.id === updated.id ? updated : b));
-    const addBlock = (template) => {
-        const newBlock = { ...template, id: genId(), params: { ...template.params } };
-        if (template.children) newBlock.children = [];
-        setBlocks(prev => [...prev, newBlock]);
+    const addBlock = (newBlock) => setBlocks(prev => [...prev, newBlock]);
+    const moveBlock = (index, direction) => {
+        setBlocks(prev => {
+            const arr = [...prev];
+            const target = index + direction;
+            if (target < 0 || target >= arr.length) return arr;
+            [arr[index], arr[target]] = [arr[target], arr[index]];
+            return arr;
+        });
     };
 
     // 執行
     const handleRun = async () => {
         const flowDef = { name: flowName, version: 1, blocks };
-        await runFlow(flowDef, {
-            ws, videoEl, getCandidates, onSmartDedup, onStartLive, onStopLive,
-        });
+        await runFlow(flowDef, { ws, videoEl, getCandidates, onSmartDedup, onStartLive, onStopLive });
     };
 
-    // 匯出/匯入
+    // 匯出
     const handleExport = () => {
         const data = JSON.stringify({ name: flowName, version: 1, blocks }, null, 2);
         const blob = new Blob([data], { type: 'application/json' });
@@ -179,6 +51,7 @@ const FlowComposer = ({ ws, videoEl, getCandidates, onSmartDedup, onStartLive, o
         URL.revokeObjectURL(url);
     };
 
+    // 匯入
     const handleImport = () => {
         const input = document.createElement('input'); input.type = 'file'; input.accept = '.json';
         input.onchange = async (e) => {
@@ -194,19 +67,16 @@ const FlowComposer = ({ ws, videoEl, getCandidates, onSmartDedup, onStartLive, o
 
     return (
         <div className="space-y-3">
-            {/* ── 頂部：預設選擇 + 控制 ── */}
+            {/* ── 工具列 ── */}
             <div className="flex items-center gap-2 flex-wrap">
                 <select value="" onChange={e => { const p = presetFlows.find(f => f.id === e.target.value); if (p) loadPreset(p); }}
                     className="bg-slate-800 border border-slate-600 rounded-lg text-sm text-slate-300 px-3 py-1.5 outline-none">
                     <option value="">📂 預設模板...</option>
                     {presetFlows.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
-
                 <div className="flex-1" />
-
                 <button onClick={handleImport} className="text-slate-500 hover:text-slate-300 p-1.5" title="匯入"><Upload size={16}/></button>
                 <button onClick={handleExport} className="text-slate-500 hover:text-slate-300 p-1.5" title="匯出"><Download size={16}/></button>
-
                 {isIdle ? (
                     <button onClick={handleRun} disabled={!ws || blocks.length === 0}
                         className="px-4 py-2 rounded-xl text-sm font-bold bg-gradient-to-r from-emerald-500 to-green-600 text-white hover:from-emerald-600 hover:to-green-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5 active:scale-95 transition-all">
@@ -242,9 +112,10 @@ const FlowComposer = ({ ws, videoEl, getCandidates, onSmartDedup, onStartLive, o
 
             {/* ── 積木列表 ── */}
             <div className="bg-slate-950/50 rounded-xl border border-slate-700/50 p-3 space-y-1 max-h-[45vh] overflow-y-auto">
-                {blocks.map(block => (
+                {blocks.map((block, i) => (
                     <BlockRow key={block.id} block={block} depth={0}
-                        onDelete={deleteBlock} onUpdate={updateBlock}
+                        index={i} siblingCount={blocks.length}
+                        onDelete={deleteBlock} onUpdate={updateBlock} onMove={moveBlock}
                         currentBlockId={currentBlock?.id} isRunning={isRunning} />
                 ))}
                 {!isRunning && <AddBlockButton depth={0} onAdd={addBlock} />}
