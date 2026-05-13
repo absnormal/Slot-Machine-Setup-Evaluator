@@ -1,46 +1,41 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Gamepad2, Wifi, WifiOff, Activity, Zap, ZapOff, ChevronUp, ChevronDown } from 'lucide-react';
+import {
+    Gamepad2, Wifi, WifiOff, Activity, Zap, ZapOff,
+    ChevronUp, ChevronDown, Play, Pause, Square, Settings,
+    BarChart3, AlertTriangle
+} from 'lucide-react';
 import usePhase4Store from '../stores/usePhase4Store';
 import useSpinGroupAnalysis from '../hooks/useSpinGroupAnalysis';
 import { useAutoPlay } from '../hooks/useAutoPlay';
-import AutoPlayPanel from './phase4/AutoPlayPanel';
 
 /**
- * Phase5Automation — 固定底部狀態列 + 浮動控制台
+ * Phase5Automation — 固定底部狀態列 + 整合控制面板
  *
- * 不參與手風琴系統，永遠固定在頁面底部。
- * 顯示：連線狀態 / 偵測狀態 / 自動遊玩狀態 / 局數
- * 點擊可展開詳細面板。
- *
- * P5 = 操控遊戲的雙手，P4 = 偵測結果的眼睛
+ * 取代獨立的 AutoPlayPanel 浮動視窗。
+ * 底部列：永遠可見的狀態指示
+ * 展開面板：控制按鈕、統計、設定、紀錄
  */
 const Phase5Automation = ({
-    // 共用：來自 App 的 videoRef & 候選幀
-    videoRef,
-    candidates,
-    // 共用：NativeCapture
-    isNativeMode,
-    nativeCapture,
-    // P4 偵測橋接 (callbacks)
-    startLiveDetection,
-    stopLiveDetection,
-    smartDedup,
-    // 環境資訊
-    template,
-    gameName,
-    setTemplateMessage,
-    // P4 scanOpts (供 startLiveDetection 使用)
-    reelROI,
-    scanOpts,
+    videoRef, candidates,
+    isNativeMode, nativeCapture,
+    startLiveDetection, stopLiveDetection, smartDedup,
+    template, gameName, setTemplateMessage,
+    reelROI, scanOpts,
 }) => {
     // ── ROI ──
     const spinButtonROI = usePhase4Store(s => s.spinButtonROI);
 
     // ── 自動遊玩 Hook ──
     const autoPlay = useAutoPlay();
+    const {
+        isPlaying, isPaused, gameState, spinCount,
+        stats, logs, error, config, GameState,
+        startAutoPlay, stopAutoPlay, togglePause,
+        resetStats, updateConfig,
+    } = autoPlay;
 
-    // ── candidates ref for getCandidates ──
+    // ── candidates ref ──
     const candidatesRef = useRef(candidates);
     useEffect(() => { candidatesRef.current = candidates; }, [candidates]);
     const getCandidates = useCallback(() => candidatesRef.current, []);
@@ -64,157 +59,252 @@ const Phase5Automation = ({
 
     // ── 分局分析 ──
     const { groupsWithMath } = useSpinGroupAnalysis(candidates);
+    const actualSpins = groupsWithMath?.length || 0;
 
-    // ── 展開/收合 ──
+    // ── 展開/收合 + 子面板 ──
     const [isExpanded, setIsExpanded] = useState(false);
+    const [showSettings, setShowSettings] = useState(false);
+    const [showLogs, setShowLogs] = useState(false);
 
     const isConnected = nativeCapture?.isConnected;
-    const { isPlaying, isPaused } = autoPlay;
+    const wsRef = nativeCapture?.wsRef || { current: null };
+
+    // ── 衍生統計 ──
+    const derived = useMemo(() => {
+        const rtp = stats.totalBet > 0 ? ((stats.totalWin / stats.totalBet) * 100).toFixed(1) : '0.0';
+        const hitRate = actualSpins > 0 ? ((stats.hitCount / actualSpins) * 100).toFixed(1) : '0.0';
+        const netPL = stats.currentBalance - stats.startBalance;
+        return { rtp, hitRate, netPL };
+    }, [stats, actualSpins]);
+
+    // ── 狀態標籤 ──
+    const stateLabel = useMemo(() => {
+        const labels = {
+            [GameState.IDLE]: '準備中', [GameState.CLICKING_SPIN]: '點擊 SPIN',
+            [GameState.WAITING_SPIN]: '等待間隔', [GameState.SPINNING]: '轉輪中...',
+            [GameState.WAITING_RESULT]: '等待辨識', [GameState.RECORDING]: '記錄結果',
+            [GameState.PAUSED]: '已暫停', [GameState.STOPPED]: '已停止', [GameState.ERROR]: '錯誤',
+        };
+        return labels[gameState] || gameState;
+    }, [gameState, GameState]);
+
+    const stateColor = useMemo(() => {
+        if (gameState === GameState.SPINNING) return 'bg-amber-400 animate-pulse';
+        if (gameState === GameState.PAUSED) return 'bg-yellow-400';
+        if (gameState === GameState.ERROR) return 'bg-red-500';
+        if (isPlaying) return 'bg-emerald-400 animate-pulse';
+        return 'bg-slate-500';
+    }, [gameState, isPlaying, GameState]);
+
+    // ── 開始遊玩 ──
+    const handleStart = () => {
+        updateConfig({ spinROI: spinButtonROI });
+        setTimeout(() => {
+            startAutoPlay(wsRef?.current, getCandidates, {
+                onStartLive: handleStartLive,
+                onStopLive: handleStopLive,
+                onSmartDedup: smartDedup,
+            });
+        }, 100);
+    };
+
+    const canStart = isConnected && spinButtonROI && !isPlaying;
+    const progress = config.targetSpins > 0 ? Math.min(100, (actualSpins / config.targetSpins) * 100) : 0;
 
     // 底部列只在 nativeMode 時顯示
     if (!isNativeMode) return null;
 
     return createPortal(
         <div className="fixed bottom-0 left-0 right-0 z-[9998]" style={{ pointerEvents: 'none' }}>
-            {/* ── 展開面板 ── */}
+            {/* ══ 展開面板 ══ */}
             {isExpanded && (
                 <div
-                    className="mx-auto max-w-2xl mb-1 bg-slate-900/95 backdrop-blur-xl rounded-t-2xl border border-slate-700/50 shadow-2xl p-4 animate-in slide-in-from-bottom-4 duration-300"
+                    className="mx-auto max-w-lg mb-0 bg-slate-900/95 backdrop-blur-xl rounded-t-2xl border border-b-0 border-slate-700/50 shadow-2xl animate-in slide-in-from-bottom-4 duration-200"
                     style={{ pointerEvents: 'auto' }}
                 >
-                    <div className="space-y-3">
-                        {/* 前置條件警告 */}
+                    <div className="p-4 space-y-3 max-h-[60vh] overflow-y-auto">
+                        {/* ── 錯誤/警告 ── */}
+                        {error && (
+                            <div className="flex items-center gap-2 p-2 bg-red-500/10 border border-red-500/20 rounded-lg text-red-300 text-xs">
+                                <AlertTriangle size={12} /> {error}
+                            </div>
+                        )}
                         {!isConnected && (
-                            <div className="flex items-center gap-2 p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-lg text-amber-300 text-xs">
-                                <WifiOff size={13} />
-                                <span>請在 Phase 4 啟動 Python 後端擷取以建立連線</span>
+                            <div className="flex items-center gap-2 p-2 bg-amber-500/10 border border-amber-500/20 rounded-lg text-amber-300 text-xs">
+                                <AlertTriangle size={12} /> 請先在 Phase 4 啟動擷取伺服器
                             </div>
                         )}
-                        {isConnected && !spinButtonROI && (
-                            <div className="flex items-center gap-2 p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-lg text-amber-300 text-xs">
-                                <Gamepad2 size={13} />
-                                <span>請在 Phase 4 的 ROI 設定中標記 SPIN 按鈕位置</span>
+                        {!spinButtonROI && isConnected && (
+                            <div className="flex items-center gap-2 p-2 bg-amber-500/10 border border-amber-500/20 rounded-lg text-amber-300 text-xs">
+                                <AlertTriangle size={12} /> 請在 ROI 設定中標記 SPIN 按鈕
                             </div>
                         )}
 
-                        {/* 狀態卡片 */}
-                        <div className="grid grid-cols-3 gap-2">
-                            <MiniStatusCard
-                                icon={isConnected ? <Wifi size={13} /> : <WifiOff size={13} />}
-                                label="後端連線"
-                                value={isConnected ? '已連線' : '未連線'}
-                                active={isConnected}
-                                color={isConnected ? 'emerald' : 'slate'}
-                            />
-                            <MiniStatusCard
-                                icon={<Activity size={13} />}
-                                label="即時偵測"
-                                value={isLiveActive ? '偵測中' : '待機'}
-                                active={isLiveActive}
-                                color={isLiveActive ? 'amber' : 'slate'}
-                            />
-                            <MiniStatusCard
-                                icon={isPlaying ? <Zap size={13} /> : <ZapOff size={13} />}
-                                label="自動遊玩"
-                                value={isPlaying ? (isPaused ? '暫停' : '運行中') : '停止'}
-                                active={isPlaying && !isPaused}
-                                color={isPlaying ? (isPaused ? 'amber' : 'purple') : 'slate'}
-                            />
+                        {/* ── 控制按鈕 ── */}
+                        <div className="flex gap-2">
+                            {!isPlaying ? (
+                                <button onClick={handleStart} disabled={!canStart}
+                                    className={`flex-1 py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all ${
+                                        canStart
+                                            ? 'bg-gradient-to-r from-emerald-500 to-green-600 text-white hover:from-emerald-600 hover:to-green-700 active:scale-95'
+                                            : 'bg-slate-700 text-slate-500 cursor-not-allowed'
+                                    }`}>
+                                    <Play size={14} fill="currentColor" /> 開始遊玩
+                                </button>
+                            ) : (
+                                <>
+                                    <button onClick={togglePause}
+                                        className={`flex-1 py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all active:scale-95 ${
+                                            isPaused ? 'bg-amber-500 text-white' : 'bg-blue-500 text-white'
+                                        }`}>
+                                        {isPaused ? <><Play size={12} fill="currentColor" /> 恢復</> : <><Pause size={12} /> 暫停</>}
+                                    </button>
+                                    <button onClick={stopAutoPlay}
+                                        className="px-4 py-2.5 rounded-xl font-bold text-sm flex items-center gap-2 bg-rose-500 text-white hover:bg-rose-600 active:scale-95">
+                                        <Square size={10} fill="currentColor" /> 停止
+                                    </button>
+                                </>
+                            )}
+                            <button onClick={() => setShowSettings(v => !v)}
+                                className={`px-3 py-2.5 rounded-xl transition-all border active:scale-95 ${
+                                    showSettings ? 'bg-indigo-500/20 border-indigo-500/30 text-indigo-300' : 'bg-slate-800 border-slate-700 text-slate-400'
+                                }`}>
+                                <Settings size={14} />
+                            </button>
                         </div>
 
-                        {/* 數據摘要 */}
-                        <div className="flex items-center justify-between text-[11px] text-slate-400 px-1">
-                            <span>候選幀: <span className="text-slate-200 font-bold">{candidates.length}</span></span>
-                            <span>局數: <span className="text-slate-200 font-bold">{groupsWithMath?.length || 0}</span></span>
-                            <span>已辨識: <span className="text-slate-200 font-bold">{candidates.filter(c => c.status === 'recognized').length}</span></span>
-                        </div>
+                        {/* ── 進度條 ── */}
+                        {isPlaying && config.targetSpins > 0 && (
+                            <div>
+                                <div className="flex justify-between text-[10px] text-slate-400 mb-0.5">
+                                    <span>{actualSpins} / {config.targetSpins} 局</span>
+                                    <span>{progress.toFixed(0)}%</span>
+                                </div>
+                                <div className="h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                                    <div className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full transition-all duration-500"
+                                         style={{ width: `${progress}%` }} />
+                                </div>
+                            </div>
+                        )}
+
+                        {/* ── 即時統計 ── */}
+                        {actualSpins > 0 && (
+                            <div className="grid grid-cols-4 gap-1.5">
+                                <DarkMiniStat label="局數" value={actualSpins} />
+                                <DarkMiniStat label="命中率" value={`${derived.hitRate}%`} />
+                                <DarkMiniStat label="RTP" value={`${derived.rtp}%`}
+                                    color={parseFloat(derived.rtp) >= 96 ? 'emerald' : parseFloat(derived.rtp) < 90 ? 'rose' : null} />
+                                <DarkMiniStat label="最大贏" value={stats.maxWin.toFixed(0)} />
+                                <DarkMiniStat label="總押注" value={stats.totalBet.toFixed(0)} />
+                                <DarkMiniStat label="總贏分" value={stats.totalWin.toFixed(0)} />
+                                <DarkMiniStat label="餘額" value={stats.currentBalance.toFixed(0)} />
+                                <DarkMiniStat label="損益"
+                                    value={`${derived.netPL >= 0 ? '+' : ''}${derived.netPL.toFixed(0)}`}
+                                    color={derived.netPL >= 0 ? 'emerald' : 'rose'} />
+                            </div>
+                        )}
+
+                        {/* ── 設定 ── */}
+                        {showSettings && (
+                            <div className="bg-slate-800 p-3 rounded-xl border border-slate-700 space-y-2">
+                                <div className="grid grid-cols-2 gap-2">
+                                    <DarkMiniInput label="目標局數" value={config.targetSpins}
+                                        onChange={v => updateConfig({ targetSpins: parseInt(v) || 0 })}
+                                        type="number" min={0} hint="0=無限" />
+                                    <DarkMiniInput label="SPIN 間隔(ms)" value={config.spinInterval}
+                                        onChange={v => updateConfig({ spinInterval: parseInt(v) || 500 })}
+                                        type="number" min={300}
+                                        hint="上一局完成→下一次點擊" />
+                                </div>
+                                <button onClick={resetStats} disabled={isPlaying}
+                                    className="text-[10px] text-rose-400 hover:text-rose-300 underline disabled:opacity-40">
+                                    重置統計
+                                </button>
+                            </div>
+                        )}
+
+                        {/* ── 遊玩紀錄 ── */}
+                        <button onClick={() => setShowLogs(v => !v)}
+                            className="flex items-center gap-1 text-[10px] text-slate-500 hover:text-indigo-400 transition-colors w-full">
+                            <BarChart3 size={10} /> {showLogs ? '收合' : '展開'}紀錄 ({logs.length})
+                        </button>
+                        {showLogs && (
+                            <div className="max-h-32 overflow-y-auto bg-slate-950 rounded-lg p-2 font-mono text-[10px] text-slate-300 space-y-px">
+                                {logs.length === 0 && <div className="text-slate-600 text-center py-3">尚無紀錄</div>}
+                                {logs.map((log, i) => (
+                                    <div key={i} className="flex gap-2 hover:bg-slate-800 px-1.5 py-px rounded">
+                                        <span className="text-slate-600 w-8 shrink-0">{log.spin === '-' ? '-' : `#${log.spin}`}</span>
+                                        <span className="text-slate-600 w-16 shrink-0">{log.time}</span>
+                                        {log.message ? (
+                                            <span className="text-amber-400">{log.message}</span>
+                                        ) : (
+                                            <>
+                                                <span className="text-cyan-400 w-14">B:{log.bet}</span>
+                                                <span className={`w-14 ${log.win > 0 ? 'text-emerald-400 font-bold' : 'text-slate-600'}`}>W:{log.win}</span>
+                                                <span className="text-slate-400">{log.balance}</span>
+                                            </>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 </div>
             )}
 
-            {/* ── 固定底部列 ── */}
+            {/* ══ 固定底部列 ══ */}
             <div
                 className="bg-slate-900/95 backdrop-blur-xl border-t border-slate-700/50 shadow-lg"
                 style={{ pointerEvents: 'auto' }}
             >
-                <div className="max-w-screen-xl mx-auto px-4 h-10 flex items-center justify-between gap-4">
-                    {/* 左側：品牌 + 狀態指示燈 */}
+                <div className="max-w-screen-xl mx-auto px-4 h-10 flex items-center justify-between gap-3">
+                    {/* 左：品牌 + 狀態指示燈 */}
                     <div className="flex items-center gap-3">
                         <div className="flex items-center gap-1.5">
                             <Gamepad2 size={14} className="text-purple-400" />
                             <span className="text-xs font-bold text-slate-300">P5</span>
                         </div>
-
                         <div className="h-4 w-px bg-slate-700" />
-
-                        {/* 連線狀態 */}
                         <StatusDot active={isConnected} color="emerald" label={isConnected ? '已連線' : '離線'} />
-
-                        {/* 偵測狀態 */}
                         <StatusDot active={isLiveActive} color="amber" label={isLiveActive ? '偵測中' : '待機'} />
-
-                        {/* 自動遊玩狀態 */}
                         {isPlaying ? (
-                            <span className={`flex items-center gap-1 text-[11px] font-bold ${isPaused ? 'text-amber-400' : 'text-purple-400'}`}>
-                                <Zap size={11} className={isPaused ? '' : 'animate-pulse'} />
-                                {isPaused ? '暫停' : '自動遊玩中'}
+                            <span className="flex items-center gap-1 text-[11px] font-bold text-purple-400">
+                                <div className={`w-2 h-2 rounded-full ${stateColor}`} />
+                                {stateLabel}
                             </span>
                         ) : (
                             <StatusDot active={false} color="purple" label="自動遊玩" />
                         )}
                     </div>
 
-                    {/* 中間：數據快報 */}
+                    {/* 中：數據快報 */}
                     <div className="flex items-center gap-4 text-[11px] text-slate-500">
-                        <span>幀 <span className="text-slate-300 font-bold">{candidates.length}</span></span>
-                        <span>局 <span className="text-slate-300 font-bold">{groupsWithMath?.length || 0}</span></span>
+                        {actualSpins > 0 && (
+                            <>
+                                <span>局 <span className="text-slate-300 font-bold">{actualSpins}</span></span>
+                                <span>RTP <span className="text-slate-300 font-bold">{derived.rtp}%</span></span>
+                                <span className={`font-bold ${derived.netPL >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                    {derived.netPL >= 0 ? '+' : ''}{derived.netPL.toFixed(0)}
+                                </span>
+                            </>
+                        )}
+                        {actualSpins === 0 && (
+                            <span>幀 <span className="text-slate-300 font-bold">{candidates.length}</span></span>
+                        )}
                     </div>
 
-                    {/* 右側：展開按鈕 */}
+                    {/* 右：展開按鈕 */}
                     <button
                         onClick={() => setIsExpanded(v => !v)}
                         className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-200 transition-colors px-2 py-1 rounded-lg hover:bg-slate-800"
                     >
                         {isExpanded ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
-                        <span className="hidden sm:inline">{isExpanded ? '收合' : '展開'}</span>
+                        <span className="hidden sm:inline">{isExpanded ? '收合' : '控制台'}</span>
                     </button>
                 </div>
             </div>
-
-            {/* ── 自動遊玩浮動控制台 (已有的拖曳面板) ── */}
-            <AutoPlayPanel
-                autoPlay={autoPlay}
-                isNativeConnected={isConnected}
-                wsRef={nativeCapture?.wsRef || { current: null }}
-                getCandidates={getCandidates}
-                spinButtonROI={spinButtonROI}
-                spinGroupCount={groupsWithMath?.length || 0}
-                isLiveActive={isLiveActive}
-                onStartLive={handleStartLive}
-                onStopLive={handleStopLive}
-                onSmartDedup={smartDedup}
-            />
         </div>,
         document.body
-    );
-};
-
-// ── 迷你狀態卡 (展開面板用) ──
-const MiniStatusCard = ({ icon, label, value, active, color = 'slate' }) => {
-    const colorMap = {
-        emerald: active ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-slate-800 text-slate-500 border-slate-700',
-        amber: active ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' : 'bg-slate-800 text-slate-500 border-slate-700',
-        purple: active ? 'bg-purple-500/10 text-purple-400 border-purple-500/20' : 'bg-slate-800 text-slate-500 border-slate-700',
-        slate: 'bg-slate-800 text-slate-500 border-slate-700',
-    };
-    return (
-        <div className={`flex items-center gap-2 p-2 rounded-lg border ${colorMap[color]}`}>
-            {icon}
-            <div>
-                <div className="text-[9px] opacity-60 font-bold uppercase">{label}</div>
-                <div className="text-[11px] font-bold">{value}</div>
-            </div>
-        </div>
     );
 };
 
@@ -232,5 +322,27 @@ const StatusDot = ({ active, color, label }) => {
         </span>
     );
 };
+
+// ── 深色主題統計格 ──
+const DarkMiniStat = ({ label, value, color }) => {
+    const c = color === 'emerald' ? 'text-emerald-400' : color === 'rose' ? 'text-rose-400' : 'text-slate-200';
+    return (
+        <div className="bg-slate-800 border border-slate-700 rounded-lg p-1.5 text-center">
+            <div className="text-[9px] text-slate-500 font-bold leading-tight">{label}</div>
+            <div className={`text-xs font-bold font-mono ${c} leading-tight mt-0.5`}>{value}</div>
+        </div>
+    );
+};
+
+// ── 深色主題輸入框 ──
+const DarkMiniInput = ({ label, value, onChange, hint, ...props }) => (
+    <div>
+        <label className="text-[10px] text-slate-400 font-bold">{label}</label>
+        <input value={value} onChange={e => onChange(e.target.value)}
+            className="w-full mt-0.5 px-2 py-1 rounded-md border border-slate-600 bg-slate-900 text-slate-200 text-xs focus:ring-1 focus:ring-indigo-500 outline-none"
+            {...props} />
+        {hint && <div className="text-[9px] text-slate-500">{hint}</div>}
+    </div>
+);
 
 export default Phase5Automation;
