@@ -86,6 +86,72 @@ function doGet(e) {
     return ContentService.createTextOutput(jsonString)
       .setMimeType(ContentService.MimeType.JSON);
   }
+
+  // ═══════════════════════════════════════
+  // 3. Flow 流程列表
+  // ═══════════════════════════════════════
+  if (action === 'listFlows') {
+    var fSheet = getFlowSheet();
+    var fCache = CacheService.getScriptCache();
+    var fCached = fCache.get('flowList');
+
+    if (!nocache && fCached != null) {
+      return ContentService.createTextOutput(fCached)
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    var fData = fSheet.getDataRange().getValues();
+    var fResult = [];
+    if (fData.length > 1) {
+      for (var i = 1; i < fData.length; i++) {
+        try {
+          var obj = JSON.parse(fData[i][3]);
+          fResult.push({
+            id: obj.id,
+            name: obj.name,
+            version: obj.version || 1,
+            blockCount: obj.blocks ? obj.blocks.length : 0,
+            createdAt: obj.createdAt,
+            updatedAt: obj.updatedAt
+          });
+        } catch(err) {}
+      }
+    }
+    fResult.sort(function(a,b) { return new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt); });
+    var fJson = JSON.stringify(fResult);
+    fCache.put('flowList', fJson, 21600);
+    return ContentService.createTextOutput(fJson)
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
+  // 4. 取得單一 Flow 完整資料
+  if (action === 'getFlow') {
+    var fSheet = getFlowSheet();
+    var fData = fSheet.getDataRange().getValues();
+    var fId = e.parameter.id;
+    for (var i = 1; i < fData.length; i++) {
+      if (fData[i][0] === fId) {
+        return ContentService.createTextOutput(fData[i][3])
+          .setMimeType(ContentService.MimeType.JSON);
+      }
+    }
+    return ContentService.createTextOutput(JSON.stringify({error: 'Flow not found'}))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+/**
+ * 取得或建立「Flows」分頁
+ * 與遊戲模板分頁完全獨立
+ */
+function getFlowSheet() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName('Flows');
+  if (!sheet) {
+    sheet = ss.insertSheet('Flows');
+    sheet.appendRow(['ID', '名稱', '更新時間', '完整JSON資料']);
+  }
+  return sheet;
 }
 
 function doPost(e) {
@@ -132,6 +198,49 @@ function doPost(e) {
     }
     
     cache.remove("slotTemplateList"); // 刪除資料，清除舊快取
+    return ContentService.createTextOutput(JSON.stringify({status: 'success'}))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
+  // ═══════════════════════════════════════
+  // Flow 流程 — 儲存 / 更新 / 刪除
+  // ═══════════════════════════════════════
+  var fSheet = getFlowSheet();
+  var fCache = CacheService.getScriptCache();
+
+  if (req.action === 'saveFlow') {
+    var d = req.data;
+    fSheet.appendRow([d.id, d.name, d.updatedAt || d.createdAt, JSON.stringify(d)]);
+    fCache.remove('flowList');
+    return ContentService.createTextOutput(JSON.stringify({status: 'success'}))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+  else if (req.action === 'updateFlow') {
+    var d = req.data;
+    var fData = fSheet.getDataRange().getValues();
+    for (var i = 1; i < fData.length; i++) {
+      if (fData[i][0] == d.id) {
+        fSheet.getRange(i + 1, 1, 1, 4).setValues([[d.id, d.name, d.updatedAt || d.createdAt, JSON.stringify(d)]]);
+        fCache.remove('flowList');
+        return ContentService.createTextOutput(JSON.stringify({status: 'success'}))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
+    }
+    // 找不到就新增
+    fSheet.appendRow([d.id, d.name, d.updatedAt || d.createdAt, JSON.stringify(d)]);
+    fCache.remove('flowList');
+    return ContentService.createTextOutput(JSON.stringify({status: 'success'}))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+  else if (req.action === 'deleteFlow') {
+    var fData = fSheet.getDataRange().getValues();
+    for (var i = 1; i < fData.length; i++) {
+      if (fData[i][0] === req.id) {
+        fSheet.deleteRow(i + 1);
+        break;
+      }
+    }
+    fCache.remove('flowList');
     return ContentService.createTextOutput(JSON.stringify({status: 'success'}))
       .setMimeType(ContentService.MimeType.JSON);
   }
