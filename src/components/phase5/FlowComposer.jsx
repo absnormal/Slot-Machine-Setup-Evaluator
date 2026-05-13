@@ -28,9 +28,29 @@ const FlowComposer = ({ ws, videoEl, getCandidates, onSmartDedup, onStartLive, o
     // 初始化載入雲端
     useEffect(() => { fetchCloudFlows(); }, [fetchCloudFlows]);
 
-    // 載入流程
-    const loadFlow = (f) => {
-        setBlocks(JSON.parse(JSON.stringify(f.blocks)));
+    // 載入流程（雲端流程需遠端取得完整資料）
+    const loadFlow = async (f) => {
+        let blocks = f.blocks;
+
+        // 雲端流程的 listFlows 只有摘要，需用 getFlow 取完整資料
+        if (!blocks && f._source === 'cloud' && f.id) {
+            try {
+                const { GAS_URL } = await import('../../utils/constants');
+                const res = await fetch(`${GAS_URL}?action=getFlow&id=${encodeURIComponent(f.id)}&t=${Date.now()}`);
+                const full = await res.json();
+                blocks = full.blocks;
+            } catch (err) {
+                console.error('[FlowComposer] 載入雲端流程失敗', err);
+                return;
+            }
+        }
+
+        if (!blocks) {
+            console.warn('[FlowComposer] 流程無 blocks 資料', f);
+            return;
+        }
+
+        setBlocks(JSON.parse(JSON.stringify(blocks)));
         setFlowName(f.name);
         setCurrentFlowId(f.id);
         setCurrentSource(f._source);
