@@ -18,7 +18,7 @@ import StatusBar from './phase5/StatusBar';
  *   - FlowComposer: 排程器
  */
 const Phase5Automation = ({
-    videoRef, candidates,
+    videoRef, candidates, setCandidates,
     isNativeMode, nativeCapture, isDetecting,
     startLiveDetection, stopLiveDetection, smartDedup,
     template, gameName, setTemplateMessage,
@@ -121,9 +121,9 @@ const Phase5Automation = ({
 
     return createPortal(
         <div className="fixed bottom-0 left-0 right-0 z-[9998]" style={{ pointerEvents: 'none' }}>
-            {/* ══ 展開面板（保持 mounted 以保留編輯狀態）══ */}
+            {/* ══ 展開面板（左側對齊，避開右側候選幀區域）══ */}
                 <div
-                    className="mx-auto max-w-2xl mb-0 bg-slate-900/95 backdrop-blur-xl rounded-t-2xl border border-b-0 border-slate-700/50 shadow-2xl"
+                    className="ml-4 max-w-lg mb-0 bg-slate-900/95 backdrop-blur-xl rounded-t-2xl border border-b-0 border-slate-700/50 shadow-2xl"
                     style={{ pointerEvents: isExpanded ? 'auto' : 'none', display: isExpanded ? 'block' : 'none' }}
                 >
                     <div className="p-5 flex flex-col gap-4 h-[75vh]">
@@ -149,6 +149,8 @@ const Phase5Automation = ({
                                 <FlowComposer
                                     ws={wsRef?.current}
                                     videoEl={videoRef?.current}
+                                    setCandidates={setCandidates}
+                                    reelROI={reelROI}
                                 />
                             </div>
                         )}

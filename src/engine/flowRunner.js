@@ -67,6 +67,8 @@ export class FlowRunner extends EventTarget {
      * @param {Object} context - 執行環境
      * @param {WebSocket} context.ws
      * @param {HTMLVideoElement} context.videoEl
+     * @param {Function} [context.setCandidates] - 推送候選幀至 P4 顯示
+     * @param {Object} [context.reelROI] - 轉輪 ROI（用於截圖縮圖）
      */
     async run(flow, context) {
         if (this.state === RunState.RUNNING) {
@@ -75,6 +77,8 @@ export class FlowRunner extends EventTarget {
 
         this._ws = context.ws;
         this._videoEl = context.videoEl;
+        this._setCandidates = context.setCandidates;
+        this._reelROI = context.reelROI;
         this._cancelRef = { current: false };
         this._spinCount = 0;
         this.variables = {};
@@ -265,6 +269,30 @@ export class FlowRunner extends EventTarget {
         };
 
         const spinIndex = this._spinCount++;
+
+        // 截圖並推送至 P4 候選幀區域
+        if (this._setCandidates && this._videoEl) {
+            const frame = captureFrame(this._videoEl);
+            // 產生 REEL 區域縮圖
+            let thumbUrl = frame.dataUrl;
+            if (this._reelROI) {
+                try {
+                    const thumb = captureFrame(this._videoEl, this._reelROI);
+                    thumbUrl = thumb.dataUrl;
+                } catch { /* fallback to full frame */ }
+            }
+
+            const candidate = {
+                id: `flow_${Date.now()}_${spinIndex}`,
+                time: Date.now() / 1000,
+                canvas: frame.canvas,
+                thumbUrl,
+                status: 'completed',
+                winPollStatus: 'completed',
+                ocrData,
+            };
+            this._setCandidates(prev => [...prev, candidate]);
+        }
 
         this._emit(FlowEvent.LOG, {
             message: `📝 #${spinIndex + 1} WIN=${ocrData.win} BAL=${ocrData.balance} BET=${ocrData.bet}`,

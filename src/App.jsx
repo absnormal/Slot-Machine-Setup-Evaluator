@@ -1010,6 +1010,7 @@ function App() {
                 <Phase5Automation
                     videoRef={videoRef}
                     candidates={keyframeExtractor.candidates}
+                    setCandidates={keyframeExtractor.setCandidates}
                     isNativeMode={isNativeMode}
                     nativeCapture={nativeCapture}
                     isDetecting={keyframeExtractor.isDetecting}
