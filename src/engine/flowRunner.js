@@ -267,22 +267,24 @@ export class FlowRunner extends EventTarget {
                 } catch { /* fallback */ }
             }
 
+            const candidateId = `cap_${Date.now()}`;
             const candidate = {
-                id: `cap_${Date.now()}`,
-                time: Date.now() / 1000,
+                id: candidateId,
+                time: this._videoEl?.currentTime || 0,
                 canvas: frame.canvas,
                 thumbUrl,
                 status: 'pending',
                 ocrData: { win: '', balance: '', bet: '' },
             };
             this._setCandidates(prev => [...prev, candidate]);
+            this._lastCaptureId = candidateId; // 供 record_spin 更新用
             this._emit(FlowEvent.LOG, { message: '📸 截圖已加入候選幀' });
         }
 
         return frame;
     }
 
-    // ── 記錄積木（獨立模式：自己截圖 + 讀變數空間）──
+    // ── 記錄積木（更新最後截圖的候選幀，或新建一張）──
 
     async _execRecord(block) {
         const ocrData = {
@@ -294,28 +296,37 @@ export class FlowRunner extends EventTarget {
 
         const spinIndex = this._spinCount++;
 
-        // 截圖並推送至 P4 候選幀區域
-        if (this._setCandidates && this._videoEl) {
-            const frame = captureFrame(this._videoEl);
-            // 產生 REEL 區域縮圖
-            let thumbUrl = frame.dataUrl;
-            if (this._reelROI) {
-                try {
-                    const thumb = captureFrame(this._videoEl, this._reelROI);
-                    thumbUrl = thumb.dataUrl;
-                } catch { /* fallback to full frame */ }
-            }
+        if (this._setCandidates) {
+            if (this._lastCaptureId) {
+                // 更新 capture_frame 建立的候選幀（補上 OCR + 完成狀態）
+                this._setCandidates(prev => prev.map(c =>
+                    c.id === this._lastCaptureId
+                        ? { ...c, ocrData, status: 'completed', winPollStatus: 'completed' }
+                        : c
+                ));
+                this._lastCaptureId = null;
+            } else if (this._videoEl) {
+                // 沒有先截圖 → 自行截圖建立候選幀
+                const frame = captureFrame(this._videoEl);
+                let thumbUrl = frame.dataUrl;
+                if (this._reelROI) {
+                    try {
+                        const thumb = captureFrame(this._videoEl, this._reelROI);
+                        thumbUrl = thumb.dataUrl;
+                    } catch { /* fallback */ }
+                }
 
-            const candidate = {
-                id: `flow_${Date.now()}_${spinIndex}`,
-                time: Date.now() / 1000,
-                canvas: frame.canvas,
-                thumbUrl,
-                status: 'completed',
-                winPollStatus: 'completed',
-                ocrData,
-            };
-            this._setCandidates(prev => [...prev, candidate]);
+                const candidate = {
+                    id: `flow_${Date.now()}_${spinIndex}`,
+                    time: this._videoEl?.currentTime || 0,
+                    canvas: frame.canvas,
+                    thumbUrl,
+                    status: 'completed',
+                    winPollStatus: 'completed',
+                    ocrData,
+                };
+                this._setCandidates(prev => [...prev, candidate]);
+            }
         }
 
         this._emit(FlowEvent.LOG, {
