@@ -1,22 +1,21 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Gamepad2, ChevronDown, ChevronUp, Play, Pause, Square, Settings, BarChart3, AlertTriangle, Zap } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { Gamepad2, Wifi, WifiOff, Activity, Zap, ZapOff, ChevronUp, ChevronDown } from 'lucide-react';
 import usePhase4Store from '../stores/usePhase4Store';
 import useSpinGroupAnalysis from '../hooks/useSpinGroupAnalysis';
 import { useAutoPlay } from '../hooks/useAutoPlay';
 import AutoPlayPanel from './phase4/AutoPlayPanel';
 
 /**
- * Phase5Automation — 自動化控制平台
+ * Phase5Automation — 固定底部狀態列 + 浮動控制台
  *
- * P5 = 操控遊戲的雙手
- * P4 = 偵測結果的眼睛
+ * 不參與手風琴系統，永遠固定在頁面底部。
+ * 顯示：連線狀態 / 偵測狀態 / 自動遊玩狀態 / 局數
+ * 點擊可展開詳細面板。
  *
- * 兩者共用 videoRef、candidates、useNativeCapture
- * P5 透過 callback 呼叫 P4 的 startLiveDetection / smartDedup
+ * P5 = 操控遊戲的雙手，P4 = 偵測結果的眼睛
  */
 const Phase5Automation = ({
-    isPhase5Minimized,
-    onToggle,
     // 共用：來自 App 的 videoRef & 候選幀
     videoRef,
     candidates,
@@ -46,7 +45,7 @@ const Phase5Automation = ({
     useEffect(() => { candidatesRef.current = candidates; }, [candidates]);
     const getCandidates = useCallback(() => candidatesRef.current, []);
 
-    // ── Live detection 橋接（P5 開啟/關閉 P4 偵測）──
+    // ── Live detection 橋接 ──
     const [isLiveActive, setIsLiveActive] = useState(false);
 
     const handleStartLive = useCallback(async () => {
@@ -63,146 +62,174 @@ const Phase5Automation = ({
         stopLiveDetection();
     }, [stopLiveDetection]);
 
-    // ── 分局分析（從 candidates 計算，用於顯示局數）──
+    // ── 分局分析 ──
     const { groupsWithMath } = useSpinGroupAnalysis(candidates);
 
-    // ══════════════════════════════════════
-    // RENDER
-    // ══════════════════════════════════════
+    // ── 展開/收合 ──
+    const [isExpanded, setIsExpanded] = useState(false);
+
     const isConnected = nativeCapture?.isConnected;
+    const { isPlaying, isPaused } = autoPlay;
 
-    return (
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden mb-8 animate-in fade-in slide-in-from-top-4 duration-500">
-            {/* Header */}
-            <div className="p-5 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors bg-white" onClick={onToggle}>
-                <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-purple-100 text-purple-600 rounded-xl flex items-center justify-center shadow-sm">
-                        <Gamepad2 size={20} />
-                    </div>
-                    <div>
-                        <h2 className="text-lg font-bold text-slate-800">Phase 5: 自動化控制</h2>
-                        <p className="text-xs text-slate-500">
-                            {isPhase5Minimized ? '遊戲操控 · 排程執行 · 數據收集 (已最小化)' : '自動遊玩 · 動作排程 · 即時監控'}
-                        </p>
-                    </div>
-                </div>
-                <div className="flex items-center gap-2">
-                    {/* 連線狀態燈號 */}
-                    {!isPhase5Minimized && (
-                        <span className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                            isConnected
-                                ? 'bg-emerald-100 text-emerald-600'
-                                : 'bg-slate-100 text-slate-400'
-                        }`}>
-                            <div className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-emerald-500' : 'bg-slate-300'}`} />
-                            {isConnected ? '已連線' : '未連線'}
-                        </span>
-                    )}
-                    {autoPlay.isPlaying && (
-                        <span className="bg-purple-100 text-purple-600 px-2 py-0.5 rounded-full text-[10px] font-bold animate-pulse">
-                            <Zap size={10} className="inline mr-0.5" />
-                            運行中
-                        </span>
-                    )}
-                    <div className="p-1 hover:bg-slate-100 rounded-full transition-colors">
-                        {isPhase5Minimized ? <ChevronDown className="text-slate-400" /> : <ChevronUp className="text-slate-400" />}
-                    </div>
-                </div>
-            </div>
+    // 底部列只在 nativeMode 時顯示
+    if (!isNativeMode) return null;
 
-            {/* Main content */}
-            <div className={`${isPhase5Minimized ? 'hidden' : ''}`}>
-                <div className="p-6 space-y-4">
-
-                    {/* ── 狀態總覽 ── */}
-                    <div className="grid grid-cols-3 gap-3">
-                        <StatusCard
-                            icon={<Gamepad2 size={16} />}
-                            label="後端連線"
-                            value={isConnected ? '已連線' : '未連線'}
-                            color={isConnected ? 'emerald' : 'slate'}
-                        />
-                        <StatusCard
-                            icon={<BarChart3 size={16} />}
-                            label="偵測狀態"
-                            value={isLiveActive ? '偵測中' : '待機'}
-                            color={isLiveActive ? 'amber' : 'slate'}
-                        />
-                        <StatusCard
-                            icon={<Zap size={16} />}
-                            label="自動遊玩"
-                            value={autoPlay.isPlaying ? (autoPlay.isPaused ? '暫停' : '運行中') : '停止'}
-                            color={autoPlay.isPlaying ? (autoPlay.isPaused ? 'amber' : 'purple') : 'slate'}
-                        />
-                    </div>
-
-                    {/* ── 前置條件檢查 ── */}
-                    {!isConnected && (
-                        <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-700 text-xs">
-                            <AlertTriangle size={14} />
-                            <span>請先在 <strong>Phase 4</strong> 中啟動 Python 後端擷取（Native Capture）以建立連線。P5 將共用該畫面來源進行操控。</span>
-                        </div>
-                    )}
-
-                    {isConnected && !spinButtonROI && (
-                        <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-700 text-xs">
-                            <AlertTriangle size={14} />
-                            <span>請先在 Phase 4 的 ROI 設定中標記 <strong>SPIN 按鈕</strong>位置。</span>
-                        </div>
-                    )}
-
-                    {/* ── 未來：動作排程器 UI ── */}
-                    {isConnected && (
-                        <div className="bg-gradient-to-br from-slate-50 to-purple-50/30 border border-slate-200 rounded-xl p-4">
-                            <div className="flex items-center gap-2 mb-3">
-                                <Settings size={14} className="text-purple-500" />
-                                <span className="text-sm font-bold text-slate-700">動作排程器</span>
-                                <span className="text-[10px] bg-purple-100 text-purple-500 px-1.5 py-0.5 rounded-full font-bold">即將推出</span>
+    return createPortal(
+        <div className="fixed bottom-0 left-0 right-0 z-[9998]" style={{ pointerEvents: 'none' }}>
+            {/* ── 展開面板 ── */}
+            {isExpanded && (
+                <div
+                    className="mx-auto max-w-2xl mb-1 bg-slate-900/95 backdrop-blur-xl rounded-t-2xl border border-slate-700/50 shadow-2xl p-4 animate-in slide-in-from-bottom-4 duration-300"
+                    style={{ pointerEvents: 'auto' }}
+                >
+                    <div className="space-y-3">
+                        {/* 前置條件警告 */}
+                        {!isConnected && (
+                            <div className="flex items-center gap-2 p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-lg text-amber-300 text-xs">
+                                <WifiOff size={13} />
+                                <span>請在 Phase 4 啟動 Python 後端擷取以建立連線</span>
                             </div>
-                            <p className="text-xs text-slate-500 leading-relaxed">
-                                將支援可組合的動作佇列：Click → Wait Stop → Wait OCR → Record → Loop，
-                                並可儲存為流程範本，靈活排程不同的遊戲操作策略。
-                            </p>
+                        )}
+                        {isConnected && !spinButtonROI && (
+                            <div className="flex items-center gap-2 p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-lg text-amber-300 text-xs">
+                                <Gamepad2 size={13} />
+                                <span>請在 Phase 4 的 ROI 設定中標記 SPIN 按鈕位置</span>
+                            </div>
+                        )}
+
+                        {/* 狀態卡片 */}
+                        <div className="grid grid-cols-3 gap-2">
+                            <MiniStatusCard
+                                icon={isConnected ? <Wifi size={13} /> : <WifiOff size={13} />}
+                                label="後端連線"
+                                value={isConnected ? '已連線' : '未連線'}
+                                active={isConnected}
+                                color={isConnected ? 'emerald' : 'slate'}
+                            />
+                            <MiniStatusCard
+                                icon={<Activity size={13} />}
+                                label="即時偵測"
+                                value={isLiveActive ? '偵測中' : '待機'}
+                                active={isLiveActive}
+                                color={isLiveActive ? 'amber' : 'slate'}
+                            />
+                            <MiniStatusCard
+                                icon={isPlaying ? <Zap size={13} /> : <ZapOff size={13} />}
+                                label="自動遊玩"
+                                value={isPlaying ? (isPaused ? '暫停' : '運行中') : '停止'}
+                                active={isPlaying && !isPaused}
+                                color={isPlaying ? (isPaused ? 'amber' : 'purple') : 'slate'}
+                            />
                         </div>
-                    )}
+
+                        {/* 數據摘要 */}
+                        <div className="flex items-center justify-between text-[11px] text-slate-400 px-1">
+                            <span>候選幀: <span className="text-slate-200 font-bold">{candidates.length}</span></span>
+                            <span>局數: <span className="text-slate-200 font-bold">{groupsWithMath?.length || 0}</span></span>
+                            <span>已辨識: <span className="text-slate-200 font-bold">{candidates.filter(c => c.status === 'recognized').length}</span></span>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ── 固定底部列 ── */}
+            <div
+                className="bg-slate-900/95 backdrop-blur-xl border-t border-slate-700/50 shadow-lg"
+                style={{ pointerEvents: 'auto' }}
+            >
+                <div className="max-w-screen-xl mx-auto px-4 h-10 flex items-center justify-between gap-4">
+                    {/* 左側：品牌 + 狀態指示燈 */}
+                    <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-1.5">
+                            <Gamepad2 size={14} className="text-purple-400" />
+                            <span className="text-xs font-bold text-slate-300">P5</span>
+                        </div>
+
+                        <div className="h-4 w-px bg-slate-700" />
+
+                        {/* 連線狀態 */}
+                        <StatusDot active={isConnected} color="emerald" label={isConnected ? '已連線' : '離線'} />
+
+                        {/* 偵測狀態 */}
+                        <StatusDot active={isLiveActive} color="amber" label={isLiveActive ? '偵測中' : '待機'} />
+
+                        {/* 自動遊玩狀態 */}
+                        {isPlaying ? (
+                            <span className={`flex items-center gap-1 text-[11px] font-bold ${isPaused ? 'text-amber-400' : 'text-purple-400'}`}>
+                                <Zap size={11} className={isPaused ? '' : 'animate-pulse'} />
+                                {isPaused ? '暫停' : '自動遊玩中'}
+                            </span>
+                        ) : (
+                            <StatusDot active={false} color="purple" label="自動遊玩" />
+                        )}
+                    </div>
+
+                    {/* 中間：數據快報 */}
+                    <div className="flex items-center gap-4 text-[11px] text-slate-500">
+                        <span>幀 <span className="text-slate-300 font-bold">{candidates.length}</span></span>
+                        <span>局 <span className="text-slate-300 font-bold">{groupsWithMath?.length || 0}</span></span>
+                    </div>
+
+                    {/* 右側：展開按鈕 */}
+                    <button
+                        onClick={() => setIsExpanded(v => !v)}
+                        className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-200 transition-colors px-2 py-1 rounded-lg hover:bg-slate-800"
+                    >
+                        {isExpanded ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+                        <span className="hidden sm:inline">{isExpanded ? '收合' : '展開'}</span>
+                    </button>
                 </div>
             </div>
 
-            {/* ── 自動遊玩浮動控制台 (Portal → body) ── */}
-            {isNativeMode && (
-                <AutoPlayPanel
-                    autoPlay={autoPlay}
-                    isNativeConnected={isConnected}
-                    wsRef={nativeCapture?.wsRef || { current: null }}
-                    getCandidates={getCandidates}
-                    spinButtonROI={spinButtonROI}
-                    spinGroupCount={groupsWithMath?.length || 0}
-                    isLiveActive={isLiveActive}
-                    onStartLive={handleStartLive}
-                    onStopLive={handleStopLive}
-                    onSmartDedup={smartDedup}
-                />
-            )}
+            {/* ── 自動遊玩浮動控制台 (已有的拖曳面板) ── */}
+            <AutoPlayPanel
+                autoPlay={autoPlay}
+                isNativeConnected={isConnected}
+                wsRef={nativeCapture?.wsRef || { current: null }}
+                getCandidates={getCandidates}
+                spinButtonROI={spinButtonROI}
+                spinGroupCount={groupsWithMath?.length || 0}
+                isLiveActive={isLiveActive}
+                onStartLive={handleStartLive}
+                onStopLive={handleStopLive}
+                onSmartDedup={smartDedup}
+            />
+        </div>,
+        document.body
+    );
+};
+
+// ── 迷你狀態卡 (展開面板用) ──
+const MiniStatusCard = ({ icon, label, value, active, color = 'slate' }) => {
+    const colorMap = {
+        emerald: active ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-slate-800 text-slate-500 border-slate-700',
+        amber: active ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' : 'bg-slate-800 text-slate-500 border-slate-700',
+        purple: active ? 'bg-purple-500/10 text-purple-400 border-purple-500/20' : 'bg-slate-800 text-slate-500 border-slate-700',
+        slate: 'bg-slate-800 text-slate-500 border-slate-700',
+    };
+    return (
+        <div className={`flex items-center gap-2 p-2 rounded-lg border ${colorMap[color]}`}>
+            {icon}
+            <div>
+                <div className="text-[9px] opacity-60 font-bold uppercase">{label}</div>
+                <div className="text-[11px] font-bold">{value}</div>
+            </div>
         </div>
     );
 };
 
-// ── 狀態卡片 ──
-const StatusCard = ({ icon, label, value, color = 'slate' }) => {
-    const colorMap = {
-        emerald: 'bg-emerald-50 text-emerald-600 border-emerald-200',
-        amber: 'bg-amber-50 text-amber-600 border-amber-200',
-        purple: 'bg-purple-50 text-purple-600 border-purple-200',
-        slate: 'bg-slate-50 text-slate-400 border-slate-200',
+// ── 底部列狀態圓點 ──
+const StatusDot = ({ active, color, label }) => {
+    const dotColor = {
+        emerald: active ? 'bg-emerald-400' : 'bg-slate-600',
+        amber: active ? 'bg-amber-400' : 'bg-slate-600',
+        purple: active ? 'bg-purple-400' : 'bg-slate-600',
     };
     return (
-        <div className={`flex items-center gap-2 p-3 rounded-xl border ${colorMap[color] || colorMap.slate}`}>
-            {icon}
-            <div>
-                <div className="text-[10px] opacity-70 font-bold">{label}</div>
-                <div className="text-xs font-bold">{value}</div>
-            </div>
-        </div>
+        <span className={`flex items-center gap-1 text-[11px] ${active ? 'text-slate-300' : 'text-slate-600'}`}>
+            <div className={`w-1.5 h-1.5 rounded-full ${dotColor[color]} ${active ? 'animate-pulse' : ''}`} />
+            {label}
+        </span>
     );
 };
 
