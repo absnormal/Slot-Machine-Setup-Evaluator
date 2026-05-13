@@ -126,23 +126,23 @@ const Phase5Automation = ({
             {/* ══ 展開面板 ══ */}
             {isExpanded && (
                 <div
-                    className="mx-auto max-w-lg mb-0 bg-slate-900/95 backdrop-blur-xl rounded-t-2xl border border-b-0 border-slate-700/50 shadow-2xl animate-in slide-in-from-bottom-4 duration-200"
+                    className="mx-auto max-w-2xl mb-0 bg-slate-900/95 backdrop-blur-xl rounded-t-2xl border border-b-0 border-slate-700/50 shadow-2xl animate-in slide-in-from-bottom-4 duration-200"
                     style={{ pointerEvents: 'auto' }}
                 >
-                    <div className="p-4 space-y-3 max-h-[60vh] overflow-y-auto">
+                    <div className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
                         {/* ── Tab 切換 ── */}
-                        <div className="flex gap-1 bg-slate-800 rounded-lg p-0.5">
+                        <div className="flex gap-1 bg-slate-800 rounded-xl p-1">
                             <button onClick={() => setActiveTab('quick')}
-                                className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-[11px] font-bold transition-all ${
+                                className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-bold transition-all ${
                                     activeTab === 'quick' ? 'bg-indigo-500/20 text-indigo-300 shadow-sm' : 'text-slate-500 hover:text-slate-300'
                                 }`}>
-                                <Zap size={11}/> 快速模式
+                                <Zap size={14}/> 快速模式
                             </button>
                             <button onClick={() => setActiveTab('composer')}
-                                className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-[11px] font-bold transition-all ${
+                                className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-bold transition-all ${
                                     activeTab === 'composer' ? 'bg-purple-500/20 text-purple-300 shadow-sm' : 'text-slate-500 hover:text-slate-300'
                                 }`}>
-                                <Workflow size={11}/> 排程器
+                                <Workflow size={14}/> 排程器
                             </button>
                         </div>
 
