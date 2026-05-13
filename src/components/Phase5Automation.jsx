@@ -129,7 +129,7 @@ const Phase5Automation = ({
                     className="mx-auto max-w-2xl mb-0 bg-slate-900/95 backdrop-blur-xl rounded-t-2xl border border-b-0 border-slate-700/50 shadow-2xl animate-in slide-in-from-bottom-4 duration-200"
                     style={{ pointerEvents: 'auto' }}
                 >
-                    <div className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
+                    <div className="p-5 space-y-4 h-[75vh] overflow-y-auto">
                         {/* ── Tab 切換 ── */}
                         <div className="flex gap-1 bg-slate-800 rounded-xl p-1">
                             <button onClick={() => setActiveTab('quick')}
