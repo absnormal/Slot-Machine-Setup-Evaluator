@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Pause, Square, Download, Upload, Save, Cloud, HardDrive, Trash2, RefreshCw } from 'lucide-react';
+import { Play, Pause, Square, Cloud, Trash2, RefreshCw } from 'lucide-react';
 import { useFlowRunner } from '../../hooks/useFlowRunner';
 import { useFlowStorage } from '../../hooks/useFlowStorage';
 import { genId } from './blockDefs';
@@ -74,63 +74,49 @@ const FlowComposer = ({ ws, videoEl, getCandidates, onSmartDedup, onStartLive, o
         await runFlow(flowDef, { ws, videoEl, getCandidates, onSmartDedup, onStartLive, onStopLive });
     };
 
-    // 儲存本地
-    const handleSaveLocal = () => {
-        const id = saveToLocal({
-            id: currentSource === 'local' ? currentFlowId : undefined,
-            name: flowName, blocks
-        });
-        setCurrentFlowId(id);
-        setCurrentSource('local');
-    };
-
-    // 儲存雲端
+    // 儲存雲端（含衝突偵測，參考遊戲模板模式）
     const handleSaveCloud = async () => {
-        await saveToCloud({
-            _cloudId: currentSource === 'cloud' ? currentFlowId : undefined,
-            name: flowName, blocks
-        });
+        if (!flowName.trim()) { storage.setError('請輸入流程名稱'); return; }
+
+        // 檢查同名衝突
+        const existing = storage.cloudFlows.find(f =>
+            f.name?.trim().toUpperCase() === flowName.trim().toUpperCase() &&
+            f.id !== currentFlowId
+        );
+
+        if (existing) {
+            const action = confirm(
+                `雲端已有同名流程「${existing.name}」\n\n` +
+                `確定 → 覆蓋該流程\n取消 → 取消儲存`
+            );
+            if (!action) return;
+            // 覆蓋既有
+            await saveToCloud({ _cloudId: existing.id, name: flowName, blocks });
+            setCurrentFlowId(existing.id);
+            setCurrentSource('cloud');
+            return;
+        }
+
+        // 當前正在編輯雲端流程 → 直接更新
+        if (currentSource === 'cloud' && currentFlowId) {
+            await saveToCloud({ _cloudId: currentFlowId, name: flowName, blocks });
+            return;
+        }
+
+        // 新增
+        await saveToCloud({ name: flowName, blocks });
     };
 
-    // 刪除
+    // 刪除（含確認）
     const handleDelete = () => {
         if (!currentFlowId || currentSource === 'preset') return;
-        if (!confirm(`確定刪除「${flowName}」？`)) return;
+        if (!confirm(`確定刪除「${flowName}」？此操作無法復原。`)) return;
         if (currentSource === 'local') deleteFromLocal(currentFlowId);
         if (currentSource === 'cloud') deleteFromCloud(currentFlowId);
-        // 重設為空
         setBlocks([]);
         setFlowName('新流程');
         setCurrentFlowId(null);
         setCurrentSource(null);
-    };
-
-    // 匯出 JSON
-    const handleExport = () => {
-        const data = JSON.stringify({ name: flowName, version: 1, blocks }, null, 2);
-        const blob = new Blob([data], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a'); a.href = url; a.download = `flow_${flowName}.json`; a.click();
-        URL.revokeObjectURL(url);
-    };
-
-    // 匯入 JSON
-    const handleImport = () => {
-        const input = document.createElement('input'); input.type = 'file'; input.accept = '.json';
-        input.onchange = async (e) => {
-            const file = e.target.files?.[0]; if (!file) return;
-            try {
-                const text = await file.text();
-                const data = JSON.parse(text);
-                if (data.blocks) {
-                    setBlocks(data.blocks);
-                    setFlowName(data.name || '匯入的流程');
-                    setCurrentFlowId(null);
-                    setCurrentSource(null);
-                }
-            } catch { /* ignore */ }
-        };
-        input.click();
     };
 
     // 來源標籤
@@ -170,16 +156,11 @@ const FlowComposer = ({ ws, videoEl, getCandidates, onSmartDedup, onStartLive, o
 
             {/* ── 存取按鈕列 ── */}
             <div className="flex items-center gap-1.5 shrink-0">
-                <button onClick={handleSaveLocal} disabled={blocks.length === 0}
-                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-40 transition-colors"
-                    title="儲存至本地">
-                    <HardDrive size={12}/> 本地存檔
-                </button>
                 {hasCloud && (
                     <button onClick={handleSaveCloud} disabled={blocks.length === 0 || storageSaving}
                         className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-40 transition-colors"
                         title="儲存至雲端">
-                        <Cloud size={12}/> {storageSaving ? '儲存中...' : '雲端存檔'}
+                        <Cloud size={12}/> {storageSaving ? '儲存中...' : currentSource === 'cloud' && currentFlowId ? '☁️ 更新' : '☁️ 存檔'}
                     </button>
                 )}
                 {hasCloud && (
@@ -189,8 +170,6 @@ const FlowComposer = ({ ws, videoEl, getCandidates, onSmartDedup, onStartLive, o
                     </button>
                 )}
                 <div className="flex-1" />
-                <button onClick={handleImport} className="text-slate-500 hover:text-slate-300 p-1.5" title="匯入 JSON"><Upload size={14}/></button>
-                <button onClick={handleExport} className="text-slate-500 hover:text-slate-300 p-1.5" title="匯出 JSON"><Download size={14}/></button>
                 {currentFlowId && currentSource !== 'preset' && (
                     <button onClick={handleDelete} className="text-slate-600 hover:text-rose-400 p-1.5" title="刪除此流程"><Trash2 size={14}/></button>
                 )}
