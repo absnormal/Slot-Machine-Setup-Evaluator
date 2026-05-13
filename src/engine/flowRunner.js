@@ -14,6 +14,7 @@ import { wait } from './actions/waitAction';
 import { ocrBatch, ocrRead } from './actions/ocrAction';
 import { captureFrame } from './actions/captureAction';
 import { waitStable } from './actions/waitStableAction';
+import { waitChange } from './actions/waitChangeAction';
 import { resolveROI } from './roiResolver';
 
 // ═══════════════════════════════════════
@@ -157,6 +158,9 @@ export class FlowRunner extends EventTarget {
                 case 'wait_stable':
                     result = await this._execWaitStable(block);
                     break;
+                case 'wait_change':
+                    result = await this._execWaitChange(block);
+                    break;
                 case 'ocr_batch':
                     result = await this._execOcrBatch(block);
                     break;
@@ -222,6 +226,16 @@ export class FlowRunner extends EventTarget {
         const { roi, stableCount, interval, timeout } = block.params;
         return await waitStable(this._videoEl, roi, {
             stableCount: stableCount ?? 3,
+            interval: interval ?? 200,
+            timeout: timeout ?? 30000,
+            cancelRef: this._cancelRef,
+        });
+    }
+
+    async _execWaitChange(block) {
+        const { roi, changeCount, interval, timeout } = block.params;
+        return await waitChange(this._videoEl, roi, {
+            changeCount: changeCount ?? 2,
             interval: interval ?? 200,
             timeout: timeout ?? 30000,
             cancelRef: this._cancelRef,

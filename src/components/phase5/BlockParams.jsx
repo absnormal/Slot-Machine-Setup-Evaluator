@@ -49,6 +49,18 @@ const BlockParams = ({ block, onUpdate }) => {
                 </div>
             );
 
+        case 'wait_change':
+            return (
+                <div className="flex items-center gap-1.5 flex-wrap">
+                    <RoiSelect value={p.roi} onChange={v => set('roi', v)} />
+                    <span className="text-slate-500 text-[10px]">×</span>
+                    <NumInput value={p.changeCount ?? 2} onChange={v => set('changeCount', v)} min={1} max={20} w="w-10" />
+                    <span className="text-slate-500 text-[10px]">間隔</span>
+                    <NumInput value={p.interval ?? 200} onChange={v => set('interval', v)} min={50} step={50} w="w-14" />
+                    <span className="text-slate-500 text-[10px]">ms</span>
+                </div>
+            );
+
         case 'ocr_batch':
             return (
                 <div className="flex items-center gap-1 flex-wrap">

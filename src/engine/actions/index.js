@@ -11,6 +11,7 @@ export { wait } from './waitAction';
 
 // 偵測積木
 export { waitStable } from './waitStableAction';
+export { waitChange } from './waitChangeAction';
 
 // 讀取積木
 export { ocrBatch, ocrRead } from './ocrAction';
