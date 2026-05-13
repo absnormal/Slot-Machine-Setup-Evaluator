@@ -4,7 +4,7 @@ function doGet(e) {
   
   // 1. 單筆完整資料 API (按需載入) - 不快取
   if (action === 'getTemplate') {
-    var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
     var data = sheet.getDataRange().getValues();
     var id = e.parameter.id;
     for (var i = 1; i < data.length; i++) {
@@ -29,7 +29,7 @@ function doGet(e) {
     }
     
     // 如果沒有快取，或是要求強制刷新 (nocache=true)，才去讀試算表
-    var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
     var data = sheet.getDataRange().getValues();
     var result = [];
     if (data.length > 1) {
@@ -155,7 +155,7 @@ function getFlowSheet() {
 }
 
 function doPost(e) {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
   var req = JSON.parse(e.postData.contents);
   var cache = CacheService.getScriptCache(); // 準備清除快取
 
