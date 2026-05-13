@@ -38,6 +38,13 @@ const VideoPlayer = ({
     const orderIdROI = usePhase4Store(s => s.orderIdROI);
     const multiplierROI = usePhase4Store(s => s.multiplierROI);
     const spinButtonROI = usePhase4Store(s => s.spinButtonROI);
+    const clickTargets = usePhase4Store(s => s.clickTargets);
+    const setClickTarget = usePhase4Store(s => s.setClickTarget);
+    const removeClickTarget = usePhase4Store(s => s.removeClickTarget);
+    const platformName = usePhase4Store(s => s.platformName);
+    const setPlatformClickTarget = usePhase4Store(s => s.setPlatformClickTarget);
+    const removePlatformClickTarget = usePhase4Store(s => s.removePlatformClickTarget);
+    const getPlatformClickTargets = usePhase4Store(s => s.getPlatformClickTargets);
 
     // ── 本地狀態 ──
     const [isPlaying, setIsPlaying] = useState(false);
@@ -207,22 +214,51 @@ const VideoPlayer = ({
                     {/* ── 分隔線 ── */}
                     <div className="h-px bg-slate-600/50" />
                     {/* ── 🎮 操作群 ── */}
-                    <div className="flex gap-1 items-center">
+                    <div className="flex gap-1 items-center flex-wrap">
                         <span className="text-[9px] text-slate-500 font-bold px-1 select-none shrink-0">🎮 操作</span>
-                        {[
-                            { key: 'spinButton', label: 'SPIN', hex: '#16a34a' },
-                        ].map(r => (
-                            <button key={r.key} onClick={() => setRoiMode(r.key)}
-                                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 shadow-sm active:scale-95 ${roiMode === r.key
-                                    ? 'text-white ring-2 ring-offset-1'
-                                    : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
-                                    }`}
-                                style={roiMode === r.key ? { backgroundColor: r.hex, ringColor: r.hex, boxShadow: `0 0 0 2px white, 0 0 0 4px ${r.hex}` } : {}}
-                            >
-                                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: roiMode === r.key ? 'white' : r.hex }} />
-                                {r.label}
-                            </button>
-                        ))}
+                        {/* SPIN 固定按鈕 */}
+                        <button onClick={() => setRoiMode('spinButton')}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 shadow-sm active:scale-95 ${roiMode === 'spinButton'
+                                ? 'text-white ring-2 ring-offset-1'
+                                : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                                }`}
+                            style={roiMode === 'spinButton' ? { backgroundColor: '#16a34a', boxShadow: '0 0 0 2px white, 0 0 0 4px #16a34a' } : {}}
+                        >
+                            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: roiMode === 'spinButton' ? 'white' : '#16a34a' }} />
+                            SPIN
+                        </button>
+                        {/* 動態點擊目標 */}
+                        {Object.keys(clickTargets).map(name => {
+                            const mode = `custom:${name}`;
+                            const isActive = roiMode === mode;
+                            return (
+                                <button key={name} onClick={() => setRoiMode(mode)}
+                                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 shadow-sm active:scale-95 group ${isActive
+                                        ? 'text-white ring-2 ring-offset-1'
+                                        : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}`}
+                                    style={isActive ? { backgroundColor: '#ec4899', boxShadow: '0 0 0 2px white, 0 0 0 4px #ec4899' } : {}}
+                                >
+                                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: isActive ? 'white' : '#ec4899' }} />
+                                    {name}
+                                    <span onClick={(e) => { e.stopPropagation(); if (confirm(`刪除「${name}」？`)) removeClickTarget(name); }}
+                                        className="ml-0.5 text-[10px] opacity-0 group-hover:opacity-100 hover:text-red-400 cursor-pointer">✕</span>
+                                </button>
+                            );
+                        })}
+                        {/* 新增按鈕 */}
+                        <button onClick={() => {
+                            const name = prompt('輸入點擊目標名稱（例如：關閉X、設定齒輪）');
+                            if (!name?.trim()) return;
+                            const scope = platformName ? confirm(`存為「${platformName}」平台通用？\n\n確定 = 🌐 平台通用\n取消 = 🎮 本遊戲`) : false;
+                            const roi = { x: 45, y: 45, w: 10, h: 10 };
+                            if (scope) { setPlatformClickTarget(name.trim(), roi); }
+                            setClickTarget(name.trim(), roi);
+                            setRoiMode(`custom:${name.trim()}`);
+                        }}
+                            className="px-2 py-1 rounded-lg text-xs font-bold bg-slate-700 text-slate-400 hover:bg-slate-600 hover:text-white transition-all flex items-center gap-0.5"
+                        >
+                            ＋
+                        </button>
                     </div>
                 </div>
 
@@ -249,7 +285,10 @@ const VideoPlayer = ({
                         { roi: betROI, mode: 'bet', hex: '#22d3ee', label: '押分' },
                         { roi: orderIdROI, mode: 'orderId', hex: '#a855f7', label: '單號' },
                         ...(showMultiplier ? [{ roi: multiplierROI, mode: 'multiplier', hex: '#f43f5e', label: '乘倍' }] : []),
-                        { roi: spinButtonROI, mode: 'spinButton', hex: '#16a34a', label: 'SPIN 🎮' }
+                        { roi: spinButtonROI, mode: 'spinButton', hex: '#16a34a', label: 'SPIN 🎮' },
+                        ...Object.entries(clickTargets).map(([name, roi]) => ({
+                            roi, mode: `custom:${name}`, hex: '#ec4899', label: `🎯 ${name}`
+                        }))
                     ].map(r => {
                         const isActive = roiMode === r.mode;
                         return (

@@ -23,6 +23,9 @@ const useROIDrag = (containerRef, roiMode) => {
     const spinButtonROI = usePhase4Store(s => s.spinButtonROI);
     const setSpinButtonROI = usePhase4Store(s => s.setSpinButtonROI);
 
+    const clickTargets = usePhase4Store(s => s.clickTargets);
+    const setClickTarget = usePhase4Store(s => s.setClickTarget);
+
     const [dragState, setDragState] = useState(null);
 
     const getMousePos = useCallback((e) => {
@@ -35,7 +38,13 @@ const useROIDrag = (containerRef, roiMode) => {
         const pos = getMousePos(e);
         const handleSize = 5;
         let targetROI, setTargetROI;
-        if (roiMode === 'win') { targetROI = winROI; setTargetROI = setWinROI; }
+
+        // 動態點擊目標（custom:名稱）
+        if (roiMode.startsWith('custom:')) {
+            const name = roiMode.slice(7);
+            targetROI = clickTargets[name] || { x: 45, y: 45, w: 10, h: 10 };
+            setTargetROI = (val) => setClickTarget(name, val);
+        } else if (roiMode === 'win') { targetROI = winROI; setTargetROI = setWinROI; }
         else if (roiMode === 'balance') { targetROI = balanceROI; setTargetROI = setBalanceROI; }
         else if (roiMode === 'bet') { targetROI = betROI; setTargetROI = setBetROI; }
         else if (roiMode === 'orderId') { targetROI = orderIdROI; setTargetROI = setOrderIdROI; }
@@ -51,7 +60,7 @@ const useROIDrag = (containerRef, roiMode) => {
             startX: pos.x, startY: pos.y,
             initObj: { ...targetROI }, setter: setTargetROI
         });
-    }, [roiMode, reelROI, setReelROI, winROI, setWinROI, balanceROI, setBalanceROI, betROI, setBetROI, orderIdROI, setOrderIdROI, multiplierROI, setMultiplierROI, spinButtonROI, setSpinButtonROI, getMousePos]);
+    }, [roiMode, reelROI, setReelROI, winROI, setWinROI, balanceROI, setBalanceROI, betROI, setBetROI, orderIdROI, setOrderIdROI, multiplierROI, setMultiplierROI, spinButtonROI, setSpinButtonROI, clickTargets, setClickTarget, getMousePos]);
 
     const handleMouseMove = useCallback((e) => {
         if (!dragState) return;
