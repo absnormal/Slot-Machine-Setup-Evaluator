@@ -10,6 +10,7 @@ import { BLOCK_META, NEW_BLOCK_TEMPLATES, genId } from './blockDefs';
 const AddBlockButton = ({ depth, onAdd }) => {
     const [open, setOpen] = useState(false);
     const btnRef = useRef(null);
+    const menuRef = useRef(null);
     const [menuPos, setMenuPos] = useState({ top: 0, left: 0, openUp: false });
 
     // 計算選單位置
@@ -27,13 +28,13 @@ const AddBlockButton = ({ depth, onAdd }) => {
         });
     }, [open]);
 
-    // 點擊外部關閉
+    // 點擊外部關閉（排除按鈕和選單本身）
     useEffect(() => {
         if (!open) return;
         const handleClick = (e) => {
-            if (btnRef.current && !btnRef.current.contains(e.target)) {
-                setOpen(false);
-            }
+            if (btnRef.current?.contains(e.target)) return;
+            if (menuRef.current?.contains(e.target)) return;
+            setOpen(false);
         };
         document.addEventListener('mousedown', handleClick);
         return () => document.removeEventListener('mousedown', handleClick);
@@ -55,6 +56,7 @@ const AddBlockButton = ({ depth, onAdd }) => {
 
             {open && createPortal(
                 <div
+                    ref={menuRef}
                     className="fixed z-[99999] bg-slate-800 border border-slate-600 rounded-xl shadow-2xl p-2 w-56 space-y-0.5 max-h-64 overflow-y-auto"
                     style={{ top: menuPos.top, left: menuPos.left }}
                 >
