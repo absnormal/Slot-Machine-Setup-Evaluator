@@ -401,6 +401,26 @@ export function useTemplateBuilder({
             if (setIsPhase2Minimized) setIsPhase2Minimized(false);
             if (setIsPhase3Minimized) setIsPhase3Minimized(true);
             if (setIsTemplateMinimized) setIsTemplateMinimized(true);
+
+            // ★ 防呆提醒：模板建立成功後，提醒使用者儲存至雲端
+            setTimeout(() => {
+                const shouldGoToPhase1 = window.confirm(
+                    '✅ 模板建立成功！\n\n' +
+                    '⚠️ 請注意：模板目前僅存在於瀏覽器記憶體中，' +
+                    '重新整理頁面後將會遺失。\n\n' +
+                    '請回到 Phase 1 → 輸入儲存名稱 → 點擊「存檔」按鈕上傳至雲端，' +
+                    '才能永久保存。\n\n' +
+                    '是否立即跳回 Phase 1 進行存檔？'
+                );
+                if (shouldGoToPhase1) {
+                    if (setIsTemplateMinimized) setIsTemplateMinimized(false);
+                    if (setIsPhase2Minimized) setIsPhase2Minimized(true);
+                    if (setIsPhase3Minimized) setIsPhase3Minimized(true);
+                    // 滾動到頁面頂部，讓雲端儲存按鈕立刻可見
+                    setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 100);
+                }
+            }, 300);
+
             return tpl;
         } catch (err) {
             setTemplateError(err.message);
