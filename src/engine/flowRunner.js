@@ -255,7 +255,31 @@ export class FlowRunner extends EventTarget {
 
     async _execCapture(block) {
         const roiPct = block.params?.roi ? resolveROI(block.params.roi) : null;
-        return captureFrame(this._videoEl, roiPct);
+        const frame = captureFrame(this._videoEl, roiPct);
+
+        // 推送至 P4 候選幀區域
+        if (this._setCandidates) {
+            let thumbUrl = frame.dataUrl;
+            if (!roiPct && this._reelROI) {
+                try {
+                    const thumb = captureFrame(this._videoEl, this._reelROI);
+                    thumbUrl = thumb.dataUrl;
+                } catch { /* fallback */ }
+            }
+
+            const candidate = {
+                id: `cap_${Date.now()}`,
+                time: Date.now() / 1000,
+                canvas: frame.canvas,
+                thumbUrl,
+                status: 'pending',
+                ocrData: { win: '', balance: '', bet: '' },
+            };
+            this._setCandidates(prev => [...prev, candidate]);
+            this._emit(FlowEvent.LOG, { message: '📸 截圖已加入候選幀' });
+        }
+
+        return frame;
     }
 
     // ── 記錄積木（獨立模式：自己截圖 + 讀變數空間）──
