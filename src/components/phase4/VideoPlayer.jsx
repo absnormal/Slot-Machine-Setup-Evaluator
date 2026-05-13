@@ -149,58 +149,81 @@ const VideoPlayer = ({
         <div className="space-y-4">
             {/* 影片 + ROI */}
             <div className="relative rounded-2xl shadow-2xl bg-black flex flex-col items-center overflow-hidden no-invert">
-                {/* ROI 切換器 */}
-                <div className="absolute top-4 right-4 z-40 bg-slate-900/80 backdrop-blur-md p-1 rounded-lg border border-white/20 shadow-xl flex gap-1">
-                    {[
-                        { key: 'reel', label: 'REEL', hex: '#f59e0b' },
-                        { key: 'win', label: 'WIN', hex: '#10b981' },
-                        { key: 'balance', label: 'BAL', hex: '#38bdf8' },
-                        { key: 'bet', label: 'BET', hex: '#22d3ee' },
-                        { key: 'orderId', label: 'ID', hex: '#a855f7' },
-                        ...(showMultiplier ? [{ key: 'multiplier', label: 'MULT', hex: '#f43f5e' }] : []),
-                        { key: 'spinButton', label: 'SPIN', hex: '#16a34a' }
-                    ].map(r => (
-                        <button key={r.key} onClick={() => setRoiMode(r.key)}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm active:scale-95 ${roiMode === r.key
-                                ? 'text-white ring-2 ring-offset-2'
-                                : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
-                                } ${r.key === 'orderId' && !enableOrderId ? 'opacity-50 grayscale' : ''}`}
-                            style={roiMode === r.key ? { backgroundColor: r.hex, ringColor: r.hex, boxShadow: `0 0 0 2px white, 0 0 0 4px ${r.hex}` } : {}}
-                        >
-                            {r.key === 'orderId' && (
-                                <input 
-                                    type="checkbox" 
-                                    checked={enableOrderId} 
-                                    onChange={(e) => { e.stopPropagation(); setEnableOrderId(e.target.checked); }} 
-                                    className="cursor-pointer h-3 w-3 rounded accent-purple-500" 
-                                    title="勾選以進行注單號擷取與 OCR"
-                                />
-                            )}
-                            {r.key === 'balance' && (
-                                <SettingTooltip
-                                    title="💰 總分小數位數"
-                                    desc="設定 BALANCE (總分) OCR 結果保留的小數位數"
-                                    usage="依遊戲幣值精度選擇，例如日幣選整數、美金選 2 位"
-                                    tech="影響 BAL ROI 的 OCR 解析精度與數值格式化"
-                                    position="bottom">
-                                    <select
-                                        value={balDecimalPlaces}
-                                        onChange={(e) => { e.stopPropagation(); setBalDecimalPlaces(parseInt(e.target.value, 10)); }}
-                                        className="cursor-pointer h-4 text-[9px] bg-transparent border border-white/30 rounded px-0.5 outline-none"
-                                        title="總分小數位數"
-                                        onClick={(e) => e.stopPropagation()}
-                                    >
-                                        <option value={0} className="bg-white text-slate-800">.0</option>
-                                        <option value={1} className="bg-white text-slate-800">.1</option>
-                                        <option value={2} className="bg-white text-slate-800">.2</option>
-                                        <option value={3} className="bg-white text-slate-800">.3</option>
-                                    </select>
-                                </SettingTooltip>
-                            )}
-                            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: roiMode === r.key ? 'white' : r.hex }} />
-                            {r.label}
-                        </button>
-                    ))}
+                {/* ROI 切換器 — 分群 */}
+                <div className="absolute top-4 right-4 z-40 bg-slate-900/80 backdrop-blur-md p-1.5 rounded-lg border border-white/20 shadow-xl flex flex-col gap-1">
+                    {/* ── 🔍 OCR / 偵測群 ── */}
+                    <div className="flex gap-1 items-center">
+                        <span className="text-[9px] text-slate-500 font-bold px-1 select-none shrink-0">👁️ 讀取</span>
+                        {[
+                            { key: 'reel', label: 'REEL', hex: '#f59e0b' },
+                            { key: 'win', label: 'WIN', hex: '#10b981' },
+                            { key: 'balance', label: 'BAL', hex: '#38bdf8' },
+                            { key: 'bet', label: 'BET', hex: '#22d3ee' },
+                            { key: 'orderId', label: 'ID', hex: '#a855f7' },
+                            ...(showMultiplier ? [{ key: 'multiplier', label: 'MULT', hex: '#f43f5e' }] : []),
+                        ].map(r => (
+                            <button key={r.key} onClick={() => setRoiMode(r.key)}
+                                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 shadow-sm active:scale-95 ${roiMode === r.key
+                                    ? 'text-white ring-2 ring-offset-1'
+                                    : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                                    } ${r.key === 'orderId' && !enableOrderId ? 'opacity-50 grayscale' : ''}`}
+                                style={roiMode === r.key ? { backgroundColor: r.hex, ringColor: r.hex, boxShadow: `0 0 0 2px white, 0 0 0 4px ${r.hex}` } : {}}
+                            >
+                                {r.key === 'orderId' && (
+                                    <input
+                                        type="checkbox"
+                                        checked={enableOrderId}
+                                        onChange={(e) => { e.stopPropagation(); setEnableOrderId(e.target.checked); }}
+                                        className="cursor-pointer h-3 w-3 rounded accent-purple-500"
+                                        title="勾選以進行注單號擷取與 OCR"
+                                    />
+                                )}
+                                {r.key === 'balance' && (
+                                    <SettingTooltip
+                                        title="💰 總分小數位數"
+                                        desc="設定 BALANCE (總分) OCR 結果保留的小數位數"
+                                        usage="依遊戲幣值精度選擇，例如日幣選整數、美金選 2 位"
+                                        tech="影響 BAL ROI 的 OCR 解析精度與數值格式化"
+                                        position="bottom">
+                                        <select
+                                            value={balDecimalPlaces}
+                                            onChange={(e) => { e.stopPropagation(); setBalDecimalPlaces(parseInt(e.target.value, 10)); }}
+                                            className="cursor-pointer h-4 text-[9px] bg-transparent border border-white/30 rounded px-0.5 outline-none"
+                                            title="總分小數位數"
+                                            onClick={(e) => e.stopPropagation()}
+                                        >
+                                            <option value={0} className="bg-white text-slate-800">.0</option>
+                                            <option value={1} className="bg-white text-slate-800">.1</option>
+                                            <option value={2} className="bg-white text-slate-800">.2</option>
+                                            <option value={3} className="bg-white text-slate-800">.3</option>
+                                        </select>
+                                    </SettingTooltip>
+                                )}
+                                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: roiMode === r.key ? 'white' : r.hex }} />
+                                {r.label}
+                            </button>
+                        ))}
+                    </div>
+                    {/* ── 分隔線 ── */}
+                    <div className="h-px bg-slate-600/50" />
+                    {/* ── 🎮 操作群 ── */}
+                    <div className="flex gap-1 items-center">
+                        <span className="text-[9px] text-slate-500 font-bold px-1 select-none shrink-0">🎮 操作</span>
+                        {[
+                            { key: 'spinButton', label: 'SPIN', hex: '#16a34a' },
+                        ].map(r => (
+                            <button key={r.key} onClick={() => setRoiMode(r.key)}
+                                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 shadow-sm active:scale-95 ${roiMode === r.key
+                                    ? 'text-white ring-2 ring-offset-1'
+                                    : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                                    }`}
+                                style={roiMode === r.key ? { backgroundColor: r.hex, ringColor: r.hex, boxShadow: `0 0 0 2px white, 0 0 0 4px ${r.hex}` } : {}}
+                            >
+                                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: roiMode === r.key ? 'white' : r.hex }} />
+                                {r.label}
+                            </button>
+                        ))}
+                    </div>
                 </div>
 
 
