@@ -60,7 +60,7 @@ const FlowComposer = ({ ws, videoEl, getCandidates, onSmartDedup, onStartLive, o
     };
 
     return (
-        <div className="space-y-3">
+        <div className="flex flex-col gap-3 h-full">
             {/* ── 工具列 ── */}
             <div className="flex items-center gap-2 flex-wrap">
                 <select value="" onChange={e => { const p = presetFlows.find(f => f.id === e.target.value); if (p) loadPreset(p); }}
@@ -105,7 +105,7 @@ const FlowComposer = ({ ws, videoEl, getCandidates, onSmartDedup, onStartLive, o
             )}
 
             {/* ── 積木列表 ── */}
-            <div className="bg-slate-950/50 rounded-xl border border-slate-700/50 p-3 space-y-0 max-h-[45vh] overflow-y-auto">
+            <div className="bg-slate-950/50 rounded-xl border border-slate-700/50 p-3 space-y-0 flex-1 min-h-0 overflow-y-auto">
                 {blocks.map((block) => (
                     <BlockRow key={block.id} block={block} depth={0}
                         onDelete={deleteBlock} onUpdate={updateBlock} onDragOps={rootDragOps}

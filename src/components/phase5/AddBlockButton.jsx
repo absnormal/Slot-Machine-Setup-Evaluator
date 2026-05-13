@@ -1,12 +1,41 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Plus } from 'lucide-react';
 import { BLOCK_META, NEW_BLOCK_TEMPLATES, genId } from './blockDefs';
 
 /**
  * AddBlockButton — 新增積木下拉選單
+ * 使用 Portal 避免被 overflow-y 的父容器裁切。
  */
 const AddBlockButton = ({ depth, onAdd }) => {
     const [open, setOpen] = useState(false);
+    const btnRef = useRef(null);
+    const menuRef = useRef(null);
+    const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
+
+    // 計算選單位置（在按鈕上方）
+    useEffect(() => {
+        if (open && btnRef.current) {
+            const rect = btnRef.current.getBoundingClientRect();
+            setMenuPos({
+                top: rect.top - 4,  // 在按鈕正上方
+                left: rect.left,
+            });
+        }
+    }, [open]);
+
+    // 點擊外部關閉
+    useEffect(() => {
+        if (!open) return;
+        const handleClick = (e) => {
+            if (menuRef.current && !menuRef.current.contains(e.target) &&
+                btnRef.current && !btnRef.current.contains(e.target)) {
+                setOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClick);
+        return () => document.removeEventListener('mousedown', handleClick);
+    }, [open]);
 
     const handleAdd = (template) => {
         const newBlock = { ...template, id: genId(), params: { ...template.params } };
@@ -16,13 +45,19 @@ const AddBlockButton = ({ depth, onAdd }) => {
     };
 
     return (
-        <div style={{ marginLeft: depth * 20 }} className="relative">
-            <button onClick={() => setOpen(!open)}
-                className="flex items-center gap-1.5 text-xs text-slate-600 hover:text-indigo-400 px-3 py-1.5 transition-colors">
-                <Plus size={14}/> 新增積木
-            </button>
-            {open && (
-                <div className="absolute left-0 bottom-8 z-50 bg-slate-800 border border-slate-600 rounded-xl shadow-xl p-2 w-56 space-y-0.5 max-h-56 overflow-y-auto">
+        <>
+            <div style={{ marginLeft: depth * 20 }}>
+                <button ref={btnRef} onClick={() => setOpen(!open)}
+                    className="flex items-center gap-1.5 text-xs text-slate-600 hover:text-indigo-400 px-3 py-1.5 transition-colors">
+                    <Plus size={14}/> 新增積木
+                </button>
+            </div>
+
+            {open && createPortal(
+                <div ref={menuRef}
+                    className="fixed z-[10000] bg-slate-800 border border-slate-600 rounded-xl shadow-2xl p-2 w-56 space-y-0.5 max-h-56 overflow-y-auto"
+                    style={{ top: menuPos.top, left: menuPos.left, transform: 'translateY(-100%)' }}
+                >
                     {NEW_BLOCK_TEMPLATES.map(t => {
                         const m = BLOCK_META[t.type];
                         return (
@@ -32,9 +67,10 @@ const AddBlockButton = ({ depth, onAdd }) => {
                             </button>
                         );
                     })}
-                </div>
+                </div>,
+                document.body
             )}
-        </div>
+        </>
     );
 };
 
