@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Play, Pause, Square, Download, Upload } from 'lucide-react';
 import { useFlowRunner } from '../../hooks/useFlowRunner';
 import { genId } from './blockDefs';
-import BlockRow from './BlockRow';
+import BlockRow, { useRootDrag } from './BlockRow';
 import AddBlockButton from './AddBlockButton';
 
 /**
@@ -26,15 +26,9 @@ const FlowComposer = ({ ws, videoEl, getCandidates, onSmartDedup, onStartLive, o
     const deleteBlock = (id) => setBlocks(prev => prev.filter(b => b.id !== id));
     const updateBlock = (updated) => setBlocks(prev => prev.map(b => b.id === updated.id ? updated : b));
     const addBlock = (newBlock) => setBlocks(prev => [...prev, newBlock]);
-    const moveBlock = (index, direction) => {
-        setBlocks(prev => {
-            const arr = [...prev];
-            const target = index + direction;
-            if (target < 0 || target >= arr.length) return arr;
-            [arr[index], arr[target]] = [arr[target], arr[index]];
-            return arr;
-        });
-    };
+
+    // 拖放排序
+    const rootDragOps = useRootDrag(blocks, setBlocks);
 
     // 執行
     const handleRun = async () => {
@@ -111,13 +105,20 @@ const FlowComposer = ({ ws, videoEl, getCandidates, onSmartDedup, onStartLive, o
             )}
 
             {/* ── 積木列表 ── */}
-            <div className="bg-slate-950/50 rounded-xl border border-slate-700/50 p-3 space-y-1 max-h-[45vh] overflow-y-auto">
-                {blocks.map((block, i) => (
+            <div className="bg-slate-950/50 rounded-xl border border-slate-700/50 p-3 space-y-0 max-h-[45vh] overflow-y-auto">
+                {blocks.map((block) => (
                     <BlockRow key={block.id} block={block} depth={0}
-                        index={i} siblingCount={blocks.length}
-                        onDelete={deleteBlock} onUpdate={updateBlock} onMove={moveBlock}
+                        onDelete={deleteBlock} onUpdate={updateBlock} onDragOps={rootDragOps}
                         currentBlockId={currentBlock?.id} isRunning={isRunning} />
                 ))}
+                {/* 尾部 drop 區域 */}
+                {!isRunning && blocks.length > 0 && (
+                    <div
+                        className="h-3"
+                        onDragOver={(e) => { e.preventDefault(); rootDragOps.onDragOver('__end__', 'end'); }}
+                        onDrop={(e) => { e.preventDefault(); rootDragOps.onDrop('__end__', 'end'); }}
+                    />
+                )}
                 {!isRunning && <AddBlockButton depth={0} onAdd={addBlock} />}
                 {blocks.length === 0 && (
                     <div className="text-center text-slate-600 text-sm py-6">從上方選擇預設模板，或點擊「新增積木」開始編排</div>
