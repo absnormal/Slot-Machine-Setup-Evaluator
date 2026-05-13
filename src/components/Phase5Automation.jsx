@@ -129,9 +129,9 @@ const Phase5Automation = ({
                     className="mx-auto max-w-2xl mb-0 bg-slate-900/95 backdrop-blur-xl rounded-t-2xl border border-b-0 border-slate-700/50 shadow-2xl animate-in slide-in-from-bottom-4 duration-200"
                     style={{ pointerEvents: 'auto' }}
                 >
-                    <div className="p-5 space-y-4 h-[75vh] overflow-y-auto">
+                    <div className="p-5 flex flex-col gap-4 h-[75vh]">
                         {/* ── Tab 切換 ── */}
-                        <div className="flex gap-1 bg-slate-800 rounded-xl p-1">
+                        <div className="flex gap-1 bg-slate-800 rounded-xl p-1 shrink-0">
                             <button onClick={() => setActiveTab('quick')}
                                 className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-bold transition-all ${
                                     activeTab === 'quick' ? 'bg-indigo-500/20 text-indigo-300 shadow-sm' : 'text-slate-500 hover:text-slate-300'
@@ -146,8 +146,9 @@ const Phase5Automation = ({
                             </button>
                         </div>
 
-                        {/* ── 排程器 Tab ── */}
+                        {/* ── 排程器 Tab（flex-1 填滿）── */}
                         {activeTab === 'composer' && (
+                            <div className="flex-1 min-h-0">
                             <FlowComposer
                                 ws={wsRef?.current}
                                 videoEl={videoRef?.current}
@@ -156,10 +157,11 @@ const Phase5Automation = ({
                                 onStartLive={handleStartLive}
                                 onStopLive={handleStopLive}
                             />
+                            </div>
                         )}
 
                         {/* ── 快速模式 Tab ── */}
-                        {activeTab === 'quick' && (<>
+                        {activeTab === 'quick' && (<div className="flex-1 min-h-0 overflow-y-auto space-y-3">
                         {/* ── 錯誤/警告 ── */}
                         {error && (
                             <div className="flex items-center gap-2 p-2 bg-red-500/10 border border-red-500/20 rounded-lg text-red-300 text-xs">
@@ -285,7 +287,7 @@ const Phase5Automation = ({
                                 ))}
                             </div>
                         )}
-                        </>)}{/* end quick tab */}
+                        </div>)}{/* end quick tab */}
                     </div>
                 </div>
             )}

@@ -60,7 +60,7 @@ const FlowComposer = ({ ws, videoEl, getCandidates, onSmartDedup, onStartLive, o
     };
 
     return (
-        <div className="flex flex-col gap-3 h-full">
+        <div className="flex flex-col h-full gap-3">
             {/* ── 工具列 ── */}
             <div className="flex items-center gap-2 flex-wrap">
                 <select value="" onChange={e => { const p = presetFlows.find(f => f.id === e.target.value); if (p) loadPreset(p); }}
@@ -104,25 +104,28 @@ const FlowComposer = ({ ws, videoEl, getCandidates, onSmartDedup, onStartLive, o
                 </div>
             )}
 
-            {/* ── 積木列表 ── */}
-            <div className="bg-slate-950/50 rounded-xl border border-slate-700/50 p-3 space-y-0 flex-1 min-h-0 overflow-y-auto">
-                {blocks.map((block) => (
-                    <BlockRow key={block.id} block={block} depth={0}
-                        onDelete={deleteBlock} onUpdate={updateBlock} onDragOps={rootDragOps}
-                        currentBlockId={currentBlock?.id} isRunning={isRunning} />
-                ))}
-                {/* 尾部 drop 區域 */}
-                {!isRunning && blocks.length > 0 && (
-                    <div
-                        className="h-3"
-                        onDragOver={(e) => { e.preventDefault(); rootDragOps.onDragOver('__end__', 'end'); }}
-                        onDrop={(e) => { e.preventDefault(); rootDragOps.onDrop('__end__', 'end'); }}
-                    />
-                )}
+            {/* ── 積木區域（填滿剩餘空間）── */}
+            <div className="flex-1 min-h-0 flex flex-col">
+                <div className="flex-1 min-h-0 bg-slate-950/50 rounded-xl border border-slate-700/50 p-3 space-y-0 overflow-y-auto">
+                    {blocks.map((block) => (
+                        <BlockRow key={block.id} block={block} depth={0}
+                            onDelete={deleteBlock} onUpdate={updateBlock} onDragOps={rootDragOps}
+                            currentBlockId={currentBlock?.id} isRunning={isRunning} />
+                    ))}
+                    {/* 尾部 drop 區域 */}
+                    {!isRunning && blocks.length > 0 && (
+                        <div
+                            className="h-3"
+                            onDragOver={(e) => { e.preventDefault(); rootDragOps.onDragOver('__end__', 'end'); }}
+                            onDrop={(e) => { e.preventDefault(); rootDragOps.onDrop('__end__', 'end'); }}
+                        />
+                    )}
+                    {blocks.length === 0 && (
+                        <div className="text-center text-slate-600 text-sm py-6">從上方選擇預設模板，或點擊「新增積木」開始編排</div>
+                    )}
+                </div>
+                {/* 新增按鈕放在捲動區外面 */}
                 {!isRunning && <AddBlockButton depth={0} onAdd={addBlock} />}
-                {blocks.length === 0 && (
-                    <div className="text-center text-slate-600 text-sm py-6">從上方選擇預設模板，或點擊「新增積木」開始編排</div>
-                )}
             </div>
 
             {/* ── 變數空間 ── */}
