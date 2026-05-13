@@ -64,10 +64,13 @@ const FlowComposer = ({ ws, videoEl, getCandidates, onSmartDedup, onStartLive, o
             {/* ── 工具列 ── */}
             <div className="flex items-center gap-2 flex-wrap">
                 <select value="" onChange={e => { const p = presetFlows.find(f => f.id === e.target.value); if (p) loadPreset(p); }}
-                    className="bg-slate-800 border border-slate-600 rounded-lg text-sm text-slate-300 px-3 py-1.5 outline-none">
-                    <option value="">📂 預設模板...</option>
+                    className="bg-slate-800 border border-slate-600 rounded-lg text-sm text-slate-300 px-3 py-1.5 outline-none shrink-0">
+                    <option value="">📂 載入模板...</option>
                     {presetFlows.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
+                <input value={flowName} onChange={e => setFlowName(e.target.value)}
+                    className="bg-transparent border-b border-slate-700 text-sm text-slate-300 font-medium px-1 py-0.5 outline-none focus:border-indigo-500 transition-colors min-w-0 w-32"
+                    placeholder="流程名稱" />
                 <div className="flex-1" />
                 <button onClick={handleImport} className="text-slate-500 hover:text-slate-300 p-1.5" title="匯入"><Upload size={16}/></button>
                 <button onClick={handleExport} className="text-slate-500 hover:text-slate-300 p-1.5" title="匯出"><Download size={16}/></button>
