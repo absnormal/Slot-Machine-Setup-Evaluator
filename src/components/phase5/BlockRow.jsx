@@ -4,10 +4,16 @@ import { BLOCK_META } from './blockDefs';
 import AddBlockButton from './AddBlockButton';
 
 /**
- * BlockRow — 單一積木列（支援拖放排序）
+ * BlockRow — 單一積木列（拖放排序）
+ *
+ * 拖放原理：每個積木偵測滑鼠在上半或下半，
+ * 上半 = 插入在此積木之前，下半 = 插入在此積木之後。
  */
 const BlockRow = ({ block, depth, onDelete, onUpdate, onDragOps, currentBlockId, isRunning }) => {
     const [expanded, setExpanded] = useState(true);
+    const [dropPosition, setDropPosition] = useState(null); // 'before' | 'after' | null
+    const rowRef = useRef(null);
+
     const meta = BLOCK_META[block.type] || { icon: '❔', label: block.type, color: 'border-slate-600 bg-slate-800' };
     const isActive = currentBlockId === block.id;
     const isContainer = block.type === 'loop' || block.type === 'if_then';
@@ -37,24 +43,58 @@ const BlockRow = ({ block, depth, onDelete, onUpdate, onDragOps, currentBlockId,
     const updateChild = (updated) => {
         onUpdate({ ...block, children: (block.children || []).map(c => c.id === updated.id ? updated : c) });
     };
+    const childDragOps = useListDrag(block.children || [], (newChildren) => {
+        onUpdate({ ...block, children: newChildren });
+    });
 
-    // 子積木的拖放操作
-    const childDragOps = useChildDrag(block, onUpdate);
+    // 拖放事件
+    const handleDragStart = (e) => {
+        e.stopPropagation();
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', block.id);
+        onDragOps?.onStart(block.id);
+        // 讓拖曳的影子稍微透明
+        setTimeout(() => { if (rowRef.current) rowRef.current.style.opacity = '0.4'; }, 0);
+    };
+    const handleDragEnd = () => {
+        if (rowRef.current) rowRef.current.style.opacity = '1';
+        setDropPosition(null);
+        onDragOps?.onEnd();
+    };
+    const handleDragOver = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        e.dataTransfer.dropEffect = 'move';
+        if (!rowRef.current || !onDragOps) return;
+        // 上半 = before, 下半 = after
+        const rect = rowRef.current.getBoundingClientRect();
+        const mid = rect.top + rect.height / 2;
+        setDropPosition(e.clientY < mid ? 'before' : 'after');
+    };
+    const handleDragLeave = () => setDropPosition(null);
+    const handleDrop = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (dropPosition && onDragOps) {
+            onDragOps.onDrop(block.id, dropPosition);
+        }
+        setDropPosition(null);
+    };
 
     return (
-        <div style={{ marginLeft: depth * 20 }}>
-            {/* 拖放指示線 */}
-            <DropIndicator blockId={block.id} position="before" onDragOps={onDragOps} />
+        <div style={{ marginLeft: depth * 20 }} ref={rowRef}>
+            {/* 上方 drop 指示線 */}
+            {dropPosition === 'before' && (
+                <div className="h-1 mx-1 -mb-0.5 rounded bg-indigo-400 shadow-lg shadow-indigo-500/30 transition-all" />
+            )}
 
             <div
                 draggable={!isRunning}
-                onDragStart={(e) => {
-                    e.stopPropagation();
-                    e.dataTransfer.effectAllowed = 'move';
-                    e.dataTransfer.setData('text/plain', block.id);
-                    onDragOps?.onDragStart(block.id);
-                }}
-                onDragEnd={() => onDragOps?.onDragEnd()}
+                onDragStart={handleDragStart}
+                onDragEnd={handleDragEnd}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
                 className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-all ${meta.color} ${
                     isActive ? 'ring-2 ring-purple-400 shadow-lg shadow-purple-500/10' : ''
                 } ${!isRunning ? 'cursor-grab active:cursor-grabbing' : ''}`}
@@ -79,15 +119,18 @@ const BlockRow = ({ block, depth, onDelete, onUpdate, onDragOps, currentBlockId,
                 )}
             </div>
 
+            {/* 下方 drop 指示線 */}
+            {dropPosition === 'after' && (
+                <div className="h-1 mx-1 -mt-0.5 rounded bg-indigo-400 shadow-lg shadow-indigo-500/30 transition-all" />
+            )}
+
             {isContainer && expanded && (
-                <div className="mt-1 space-y-0">
+                <div className="mt-1 space-y-1">
                     {(block.children || []).map((child) => (
                         <BlockRow key={child.id} block={child} depth={depth + 1}
                             onDelete={deleteChild} onUpdate={updateChild} onDragOps={childDragOps}
                             currentBlockId={currentBlockId} isRunning={isRunning} />
                     ))}
-                    {/* 最後一個 drop 區域 */}
-                    <DropIndicator blockId="__end__" position="end" onDragOps={childDragOps} />
                     {!isRunning && <AddBlockButton depth={depth + 1} onAdd={addChild} />}
                 </div>
             )}
@@ -96,108 +139,35 @@ const BlockRow = ({ block, depth, onDelete, onUpdate, onDragOps, currentBlockId,
 };
 
 /**
- * DropIndicator — 拖放位置指示器
- * 當拖曳經過時顯示藍色線條
+ * useListDrag — 通用列表拖放 hook
+ * 管理一組 blocks 的拖曳排序。
+ * @param {Array} items - 當前項目陣列
+ * @param {Function} setItems - 更新項目的函式
  */
-const DropIndicator = ({ blockId, position, onDragOps }) => {
-    const [isOver, setIsOver] = useState(false);
-
-    if (!onDragOps) return null;
-
-    return (
-        <div
-            className={`transition-all ${isOver ? 'h-2 my-0.5' : 'h-0'}`}
-            onDragOver={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                e.dataTransfer.dropEffect = 'move';
-                if (!isOver) setIsOver(true);
-                onDragOps.onDragOver(blockId, position);
-            }}
-            onDragLeave={() => setIsOver(false)}
-            onDrop={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setIsOver(false);
-                onDragOps.onDrop(blockId, position);
-            }}
-        >
-            <div className={`mx-2 rounded transition-all ${isOver ? 'h-1 bg-indigo-400 shadow-lg shadow-indigo-500/30' : 'h-0'}`} />
-        </div>
-    );
-};
-
-/**
- * useChildDrag — 子積木拖放邏輯 hook
- * 管理一個 block 容器內 children 的排序
- */
-function useChildDrag(parentBlock, onUpdateParent) {
+export function useListDrag(items, setItems) {
     const draggedIdRef = useRef(null);
 
     return {
-        onDragStart: (id) => { draggedIdRef.current = id; },
-        onDragEnd: () => { draggedIdRef.current = null; },
-        onDragOver: () => {},
-        onDrop: (targetBlockId, position) => {
+        onStart: (id) => { draggedIdRef.current = id; },
+        onEnd: () => { draggedIdRef.current = null; },
+        onDrop: (targetId, position) => {
             const draggedId = draggedIdRef.current;
-            if (!draggedId) return;
+            if (!draggedId || draggedId === targetId) return;
 
-            const children = [...(parentBlock.children || [])];
-            const fromIdx = children.findIndex(c => c.id === draggedId);
+            const arr = [...items];
+            const fromIdx = arr.findIndex(b => b.id === draggedId);
             if (fromIdx === -1) return;
 
-            // 移除原始位置
-            const [moved] = children.splice(fromIdx, 1);
+            const [moved] = arr.splice(fromIdx, 1);
+            let toIdx = arr.findIndex(b => b.id === targetId);
+            if (toIdx === -1) toIdx = arr.length;
+            if (position === 'after') toIdx++;
 
-            if (targetBlockId === '__end__') {
-                children.push(moved);
-            } else {
-                // 插入到目標之前
-                let toIdx = children.findIndex(c => c.id === targetBlockId);
-                if (toIdx === -1) toIdx = children.length;
-                children.splice(toIdx, 0, moved);
-            }
-
-            onUpdateParent({ ...parentBlock, children });
+            arr.splice(toIdx, 0, moved);
+            setItems(arr);
             draggedIdRef.current = null;
         },
     };
 }
 
 export default BlockRow;
-
-/**
- * useRootDrag — 根層級積木拖放 hook（供 FlowComposer 使用）
- */
-export function useRootDrag(blocks, setBlocks) {
-    const draggedIdRef = useRef(null);
-
-    return {
-        onDragStart: (id) => { draggedIdRef.current = id; },
-        onDragEnd: () => { draggedIdRef.current = null; },
-        onDragOver: () => {},
-        onDrop: (targetBlockId, position) => {
-            const draggedId = draggedIdRef.current;
-            if (!draggedId) return;
-
-            setBlocks(prev => {
-                const arr = [...prev];
-                const fromIdx = arr.findIndex(b => b.id === draggedId);
-                if (fromIdx === -1) return arr;
-
-                const [moved] = arr.splice(fromIdx, 1);
-
-                if (targetBlockId === '__end__') {
-                    arr.push(moved);
-                } else {
-                    let toIdx = arr.findIndex(b => b.id === targetBlockId);
-                    if (toIdx === -1) toIdx = arr.length;
-                    arr.splice(toIdx, 0, moved);
-                }
-
-                return arr;
-            });
-            draggedIdRef.current = null;
-        },
-    };
-}

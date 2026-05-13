@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Play, Pause, Square, Download, Upload } from 'lucide-react';
 import { useFlowRunner } from '../../hooks/useFlowRunner';
 import { genId } from './blockDefs';
-import BlockRow, { useRootDrag } from './BlockRow';
+import BlockRow, { useListDrag } from './BlockRow';
 import AddBlockButton from './AddBlockButton';
 
 /**
@@ -28,7 +28,7 @@ const FlowComposer = ({ ws, videoEl, getCandidates, onSmartDedup, onStartLive, o
     const addBlock = (newBlock) => setBlocks(prev => [...prev, newBlock]);
 
     // 拖放排序
-    const rootDragOps = useRootDrag(blocks, setBlocks);
+    const rootDragOps = useListDrag(blocks, setBlocks);
 
     // 執行
     const handleRun = async () => {
