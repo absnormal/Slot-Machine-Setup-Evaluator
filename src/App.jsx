@@ -12,6 +12,7 @@ import Phase1Setup from './components/Phase1Setup';
 import Phase2Manual from './components/Phase2Manual';
 import Phase3Vision from './components/Phase3Vision';
 import Phase4Video from './components/Phase4Video';
+import Phase5Automation from './components/Phase5Automation';
 
 // Modals (從 App.jsx 抽離)
 import PtConfirmModal from './components/modals/PtConfirmModal';
@@ -44,10 +45,12 @@ function App() {
     const isPhase2Minimized = useAppStore(s => s.isPhase2Minimized);
     const isPhase3Minimized = useAppStore(s => s.isPhase3Minimized);
     const isPhase4Minimized = useAppStore(s => s.isPhase4Minimized);
+    const isPhase5Minimized = useAppStore(s => s.isPhase5Minimized);
     const setIsTemplateMinimized = useAppStore(s => s.setIsTemplateMinimized);
     const setIsPhase2Minimized = useAppStore(s => s.setIsPhase2Minimized);
     const setIsPhase3Minimized = useAppStore(s => s.setIsPhase3Minimized);
     const setIsPhase4Minimized = useAppStore(s => s.setIsPhase4Minimized);
+    const setIsPhase5Minimized = useAppStore(s => s.setIsPhase5Minimized);
     const handlePhaseToggle = useAppStore(s => s.handlePhaseToggle);
 
     const templateMessage = useAppStore(s => s.templateMessage);
@@ -668,13 +671,13 @@ function App() {
 
     // --- 快捷鍵 (方向鍵切換 Phase) ---
     useEffect(() => {
-        const phases = ['phase1', 'phase2', 'phase3', 'phase4'];
+        const phases = ['phase1', 'phase2', 'phase3', 'phase4', 'phase5'];
         const handleKeyDown = (e) => {
             if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return;
             if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
             e.preventDefault();
 
-            const minimizedMap = { phase1: isTemplateMinimized, phase2: isPhase2Minimized, phase3: isPhase3Minimized, phase4: isPhase4Minimized };
+            const minimizedMap = { phase1: isTemplateMinimized, phase2: isPhase2Minimized, phase3: isPhase3Minimized, phase4: isPhase4Minimized, phase5: isPhase5Minimized };
             const currentIdx = phases.findIndex(p => !minimizedMap[p]);
             let nextIdx;
             if (e.key === 'ArrowDown') {
@@ -692,7 +695,7 @@ function App() {
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [isTemplateMinimized, isPhase2Minimized, isPhase3Minimized, isPhase4Minimized, handlePhaseToggle, handleTransferVisionToManual, handleReturnToVision]);
+    }, [isTemplateMinimized, isPhase2Minimized, isPhase3Minimized, isPhase4Minimized, isPhase5Minimized, handlePhaseToggle, handleTransferVisionToManual, handleReturnToVision]);
 
     // --- 雲端 Modal 開啟自動載入 ---
     useEffect(() => {
@@ -872,6 +875,32 @@ function App() {
                         gameName={gameName}
                         gridRows={gridRows} gridCols={gridCols} hasMultiplierReel={hasMultiplierReel}
                         hasRollingWin={hasRollingWin} setHasRollingWin={setHasRollingWin}
+                    />
+                </ErrorBoundary>
+
+                <ErrorBoundary label="Phase 5: 自動化控制">
+                    <Phase5Automation
+                        isPhase5Minimized={isPhase5Minimized}
+                        onToggle={() => handlePhaseToggle('phase5')}
+                        videoRef={videoRef}
+                        candidates={keyframeExtractor.candidates}
+                        isNativeMode={isNativeMode}
+                        nativeCapture={nativeCapture}
+                        startLiveDetection={keyframeExtractor.startLiveDetection}
+                        stopLiveDetection={keyframeExtractor.stopLiveDetection}
+                        smartDedup={keyframeExtractor.smartDedup}
+                        template={template}
+                        gameName={gameName}
+                        setTemplateMessage={setTemplateMessage}
+                        reelROI={reelROI}
+                        scanOpts={{
+                            winROI, balanceROI, betROI,
+                            orderIdROI, multiplierROI: template?.hasMultiplierReel ? multiplierROI : null,
+                            ocrDecimalPlaces, balDecimalPlaces,
+                            requireStableWin: false,
+                            sliceCols: template?.cols || gridCols || 5,
+                            hasRollingWin, enableWinTracker, enableEmptyBoardFilter,
+                        }}
                     />
                 </ErrorBoundary>
 
