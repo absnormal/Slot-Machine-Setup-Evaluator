@@ -1,33 +1,45 @@
-import React, { useState } from 'react';
-import { Play, Pause, Square, Download, Upload } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Play, Pause, Square, Download, Upload, Save, Cloud, HardDrive, Trash2, RefreshCw } from 'lucide-react';
 import { useFlowRunner } from '../../hooks/useFlowRunner';
+import { useFlowStorage } from '../../hooks/useFlowStorage';
 import { genId } from './blockDefs';
 import BlockRow, { useListDrag } from './BlockRow';
 import AddBlockButton from './AddBlockButton';
 
 /**
  * FlowComposer — 排程器主元件
+ * 整合執行引擎 + 本地/雲端存取
  */
 const FlowComposer = ({ ws, videoEl, getCandidates, onSmartDedup, onStartLive, onStopLive }) => {
     const flow = useFlowRunner();
     const { isRunning, isPaused, isIdle, currentBlock, loopProgress, logs, spinCount, variables,
-            runFlow, pause, resume, stop, presetFlows } = flow;
+            runFlow, pause, resume, stop } = flow;
 
-    const [blocks, setBlocks] = useState(() => presetFlows[0].blocks);
-    const [flowName, setFlowName] = useState(presetFlows[0].name);
+    const storage = useFlowStorage();
+    const { allFlows, hasCloud, isLoading: storageLoading, isSaving: storageSaving,
+            error: storageError, message: storageMsg,
+            saveToLocal, deleteFromLocal, saveToCloud, deleteFromCloud, fetchCloudFlows } = storage;
 
-    // 載入預設
-    const loadPreset = (preset) => {
-        setBlocks(JSON.parse(JSON.stringify(preset.blocks)));
-        setFlowName(preset.name);
+    const [blocks, setBlocks] = useState(() => allFlows[0]?.blocks || []);
+    const [flowName, setFlowName] = useState(allFlows[0]?.name || '新流程');
+    const [currentFlowId, setCurrentFlowId] = useState(null);
+    const [currentSource, setCurrentSource] = useState(null); // 'preset' | 'local' | 'cloud'
+
+    // 初始化載入雲端
+    useEffect(() => { fetchCloudFlows(); }, [fetchCloudFlows]);
+
+    // 載入流程
+    const loadFlow = (f) => {
+        setBlocks(JSON.parse(JSON.stringify(f.blocks)));
+        setFlowName(f.name);
+        setCurrentFlowId(f.id);
+        setCurrentSource(f._source);
     };
 
     // 積木操作
     const deleteBlock = (id) => setBlocks(prev => prev.filter(b => b.id !== id));
     const updateBlock = (updated) => setBlocks(prev => prev.map(b => b.id === updated.id ? updated : b));
     const addBlock = (newBlock) => setBlocks(prev => [...prev, newBlock]);
-
-    // 拖放排序
     const rootDragOps = useListDrag(blocks, setBlocks);
 
     // 執行
@@ -36,7 +48,38 @@ const FlowComposer = ({ ws, videoEl, getCandidates, onSmartDedup, onStartLive, o
         await runFlow(flowDef, { ws, videoEl, getCandidates, onSmartDedup, onStartLive, onStopLive });
     };
 
-    // 匯出
+    // 儲存本地
+    const handleSaveLocal = () => {
+        const id = saveToLocal({
+            id: currentSource === 'local' ? currentFlowId : undefined,
+            name: flowName, blocks
+        });
+        setCurrentFlowId(id);
+        setCurrentSource('local');
+    };
+
+    // 儲存雲端
+    const handleSaveCloud = async () => {
+        await saveToCloud({
+            _cloudId: currentSource === 'cloud' ? currentFlowId : undefined,
+            name: flowName, blocks
+        });
+    };
+
+    // 刪除
+    const handleDelete = () => {
+        if (!currentFlowId || currentSource === 'preset') return;
+        if (!confirm(`確定刪除「${flowName}」？`)) return;
+        if (currentSource === 'local') deleteFromLocal(currentFlowId);
+        if (currentSource === 'cloud') deleteFromCloud(currentFlowId);
+        // 重設為空
+        setBlocks([]);
+        setFlowName('新流程');
+        setCurrentFlowId(null);
+        setCurrentSource(null);
+    };
+
+    // 匯出 JSON
     const handleExport = () => {
         const data = JSON.stringify({ name: flowName, version: 1, blocks }, null, 2);
         const blob = new Blob([data], { type: 'application/json' });
@@ -45,7 +88,7 @@ const FlowComposer = ({ ws, videoEl, getCandidates, onSmartDedup, onStartLive, o
         URL.revokeObjectURL(url);
     };
 
-    // 匯入
+    // 匯入 JSON
     const handleImport = () => {
         const input = document.createElement('input'); input.type = 'file'; input.accept = '.json';
         input.onchange = async (e) => {
@@ -53,49 +96,109 @@ const FlowComposer = ({ ws, videoEl, getCandidates, onSmartDedup, onStartLive, o
             try {
                 const text = await file.text();
                 const data = JSON.parse(text);
-                if (data.blocks) { setBlocks(data.blocks); setFlowName(data.name || '匯入的流程'); }
+                if (data.blocks) {
+                    setBlocks(data.blocks);
+                    setFlowName(data.name || '匯入的流程');
+                    setCurrentFlowId(null);
+                    setCurrentSource(null);
+                }
             } catch { /* ignore */ }
         };
         input.click();
     };
 
+    // 來源標籤
+    const sourceLabel = { preset: '📦 預設', local: '💾 本地', cloud: '☁️ 雲端' };
+
     return (
         <div className="flex flex-col h-full gap-3">
             {/* ── 工具列 ── */}
-            <div className="flex items-center gap-2 flex-wrap">
-                <select value="" onChange={e => { const p = presetFlows.find(f => f.id === e.target.value); if (p) loadPreset(p); }}
-                    className="bg-slate-800 border border-slate-600 rounded-lg text-sm text-slate-300 px-3 py-1.5 outline-none shrink-0">
-                    <option value="">📂 載入模板...</option>
-                    {presetFlows.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            <div className="flex items-center gap-2 flex-wrap shrink-0">
+                {/* 載入選單：分組顯示 */}
+                <select value="" onChange={e => {
+                    const f = allFlows.find(f => `${f._source}_${f.id}` === e.target.value);
+                    if (f) loadFlow(f);
+                }} className="bg-slate-800 border border-slate-600 rounded-lg text-sm text-slate-300 px-3 py-1.5 outline-none shrink-0 max-w-[180px]">
+                    <option value="">📂 載入流程...</option>
+                    {storage.presetFlows.length > 0 && <optgroup label="📦 預設">
+                        {storage.presetFlows.map(f => <option key={`preset_${f.id}`} value={`preset_${f.id}`}>{f.name}</option>)}
+                    </optgroup>}
+                    {storage.localFlows.length > 0 && <optgroup label="💾 本地">
+                        {storage.localFlows.map(f => <option key={`local_${f.id}`} value={`local_${f.id}`}>{f.name}</option>)}
+                    </optgroup>}
+                    {storage.cloudFlows.length > 0 && <optgroup label="☁️ 雲端">
+                        {storage.cloudFlows.map(f => <option key={`cloud_${f.id}`} value={`cloud_${f.id}`}>{f.name}</option>)}
+                    </optgroup>}
                 </select>
+
+                {/* 流程名稱 */}
                 <input value={flowName} onChange={e => setFlowName(e.target.value)}
-                    className="bg-transparent border-b border-slate-700 text-sm text-slate-300 font-medium px-1 py-0.5 outline-none focus:border-indigo-500 transition-colors min-w-0 w-32"
+                    className="bg-transparent border-b border-slate-700 text-sm text-slate-300 font-medium px-1 py-0.5 outline-none focus:border-indigo-500 transition-colors min-w-0 flex-1"
                     placeholder="流程名稱" />
+
+                {/* 來源標示 */}
+                {currentSource && (
+                    <span className="text-[10px] text-slate-500 shrink-0">{sourceLabel[currentSource]}</span>
+                )}
+            </div>
+
+            {/* ── 存取按鈕列 ── */}
+            <div className="flex items-center gap-1.5 shrink-0">
+                <button onClick={handleSaveLocal} disabled={blocks.length === 0}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-40 transition-colors"
+                    title="儲存至本地">
+                    <HardDrive size={12}/> 本地存檔
+                </button>
+                {hasCloud && (
+                    <button onClick={handleSaveCloud} disabled={blocks.length === 0 || storageSaving}
+                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-40 transition-colors"
+                        title="儲存至雲端">
+                        <Cloud size={12}/> {storageSaving ? '儲存中...' : '雲端存檔'}
+                    </button>
+                )}
+                {hasCloud && (
+                    <button onClick={fetchCloudFlows} disabled={storageLoading}
+                        className="text-slate-500 hover:text-slate-300 p-1.5 transition-colors" title="重新整理雲端">
+                        <RefreshCw size={12} className={storageLoading ? 'animate-spin' : ''}/>
+                    </button>
+                )}
                 <div className="flex-1" />
-                <button onClick={handleImport} className="text-slate-500 hover:text-slate-300 p-1.5" title="匯入"><Upload size={16}/></button>
-                <button onClick={handleExport} className="text-slate-500 hover:text-slate-300 p-1.5" title="匯出"><Download size={16}/></button>
+                <button onClick={handleImport} className="text-slate-500 hover:text-slate-300 p-1.5" title="匯入 JSON"><Upload size={14}/></button>
+                <button onClick={handleExport} className="text-slate-500 hover:text-slate-300 p-1.5" title="匯出 JSON"><Download size={14}/></button>
+                {currentFlowId && currentSource !== 'preset' && (
+                    <button onClick={handleDelete} className="text-slate-600 hover:text-rose-400 p-1.5" title="刪除此流程"><Trash2 size={14}/></button>
+                )}
+
+                {/* 執行控制 */}
                 {isIdle ? (
                     <button onClick={handleRun} disabled={!ws || blocks.length === 0}
-                        className="px-4 py-2 rounded-xl text-sm font-bold bg-gradient-to-r from-emerald-500 to-green-600 text-white hover:from-emerald-600 hover:to-green-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5 active:scale-95 transition-all">
+                        className="px-4 py-1.5 rounded-xl text-sm font-bold bg-gradient-to-r from-emerald-500 to-green-600 text-white hover:from-emerald-600 hover:to-green-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5 active:scale-95 transition-all">
                         <Play size={14} fill="currentColor"/> 執行
                     </button>
                 ) : (
                     <>
                         <button onClick={isPaused ? resume : pause}
-                            className={`px-3 py-2 rounded-xl text-sm font-bold flex items-center gap-1.5 active:scale-95 ${isPaused ? 'bg-amber-500 text-white' : 'bg-blue-500 text-white'}`}>
+                            className={`px-3 py-1.5 rounded-xl text-sm font-bold flex items-center gap-1.5 active:scale-95 ${isPaused ? 'bg-amber-500 text-white' : 'bg-blue-500 text-white'}`}>
                             {isPaused ? <><Play size={12} fill="currentColor"/> 繼續</> : <><Pause size={12}/> 暫停</>}
                         </button>
                         <button onClick={stop}
-                            className="px-3 py-2 rounded-xl text-sm font-bold bg-rose-500 text-white flex items-center gap-1.5 active:scale-95">
+                            className="px-3 py-1.5 rounded-xl text-sm font-bold bg-rose-500 text-white flex items-center gap-1.5 active:scale-95">
                             <Square size={10} fill="currentColor"/> 停止
                         </button>
                     </>
                 )}
             </div>
 
+            {/* ── 狀態訊息 ── */}
+            {(storageError || storageMsg) && (
+                <div className={`text-xs px-2 py-1 rounded-lg shrink-0 ${storageError ? 'bg-red-500/10 text-red-300' : 'bg-emerald-500/10 text-emerald-300'}`}>
+                    {storageError || storageMsg}
+                </div>
+            )}
+
             {/* ── 進度 ── */}
             {isRunning && loopProgress && (
-                <div className="flex items-center gap-2 text-xs text-slate-400">
+                <div className="flex items-center gap-2 text-xs text-slate-400 shrink-0">
                     <span>第 {loopProgress.current}{loopProgress.total > 0 ? ` / ${loopProgress.total}` : ''} 局</span>
                     {loopProgress.total > 0 && (
                         <div className="flex-1 h-1.5 bg-slate-700 rounded-full overflow-hidden">
@@ -107,7 +210,7 @@ const FlowComposer = ({ ws, videoEl, getCandidates, onSmartDedup, onStartLive, o
                 </div>
             )}
 
-            {/* ── 積木區域（填滿剩餘空間）── */}
+            {/* ── 積木區域 ── */}
             <div className="flex-1 min-h-0 flex flex-col">
                 <div className="flex-1 min-h-0 bg-slate-950/50 rounded-xl border border-slate-700/50 p-3 space-y-0 overflow-y-auto">
                     {blocks.map((block) => (
@@ -115,25 +218,21 @@ const FlowComposer = ({ ws, videoEl, getCandidates, onSmartDedup, onStartLive, o
                             onDelete={deleteBlock} onUpdate={updateBlock} onDragOps={rootDragOps}
                             currentBlockId={currentBlock?.id} isRunning={isRunning} />
                     ))}
-                    {/* 尾部 drop 區域 */}
                     {!isRunning && blocks.length > 0 && (
-                        <div
-                            className="h-3"
+                        <div className="h-3"
                             onDragOver={(e) => { e.preventDefault(); rootDragOps.onDragOver('__end__', 'end'); }}
-                            onDrop={(e) => { e.preventDefault(); rootDragOps.onDrop('__end__', 'end'); }}
-                        />
+                            onDrop={(e) => { e.preventDefault(); rootDragOps.onDrop('__end__', 'end'); }} />
                     )}
                     {blocks.length === 0 && (
-                        <div className="text-center text-slate-600 text-sm py-6">從上方選擇預設模板，或點擊「新增積木」開始編排</div>
+                        <div className="text-center text-slate-600 text-sm py-6">從上方選擇流程，或點擊「新增積木」開始編排</div>
                     )}
                 </div>
-                {/* 新增按鈕放在捲動區外面 */}
                 {!isRunning && <AddBlockButton depth={0} onAdd={addBlock} />}
             </div>
 
             {/* ── 變數空間 ── */}
             {Object.keys(variables).length > 0 && (
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-2 shrink-0">
                     {Object.entries(variables).map(([k, v]) => (
                         <span key={k} className="text-xs bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 font-mono">
                             <span className="text-cyan-400">{k}</span>
@@ -146,7 +245,7 @@ const FlowComposer = ({ ws, videoEl, getCandidates, onSmartDedup, onStartLive, o
 
             {/* ── 執行紀錄 ── */}
             {logs.length > 0 && (
-                <div className="max-h-28 overflow-y-auto bg-slate-950 rounded-xl p-2.5 font-mono text-xs text-slate-400 space-y-0.5">
+                <div className="max-h-28 overflow-y-auto bg-slate-950 rounded-xl p-2.5 font-mono text-xs text-slate-400 space-y-0.5 shrink-0">
                     {logs.slice(-20).map((log, i) => (
                         <div key={i} className="flex gap-2 px-1.5 py-0.5 hover:bg-slate-800 rounded">
                             <span className="text-slate-600 w-16 shrink-0">{log.time}</span>
