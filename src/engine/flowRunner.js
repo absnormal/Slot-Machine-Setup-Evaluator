@@ -9,13 +9,13 @@
  *   - 執行時透過 EventTarget 發出事件，供 UI 監聽
  *   - 執行狀態（running/paused/stopped）透過 ref 控制
  */
-import { clickROI } from '../actions/clickAction';
-import { wait } from '../actions/waitAction';
-import { ocrBatch, ocrRead } from '../actions/ocrAction';
-import { captureFrame } from '../actions/captureAction';
-import { waitStable } from '../actions/waitStableAction';
-import { recordSpin } from '../actions/recordAction';
-import { resolveROI } from '../roiResolver';
+import { clickROI } from './actions/clickAction';
+import { wait } from './actions/waitAction';
+import { ocrBatch, ocrRead } from './actions/ocrAction';
+import { captureFrame } from './actions/captureAction';
+import { waitStable } from './actions/waitStableAction';
+import { recordSpin } from './actions/recordAction';
+import { resolveROI } from './roiResolver';
 
 // ═══════════════════════════════════════
 // 執行狀態

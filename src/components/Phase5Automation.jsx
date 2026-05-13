@@ -3,11 +3,12 @@ import { createPortal } from 'react-dom';
 import {
     Gamepad2, Wifi, WifiOff, Activity, Zap, ZapOff,
     ChevronUp, ChevronDown, Play, Pause, Square, Settings,
-    BarChart3, AlertTriangle
+    BarChart3, AlertTriangle, Workflow
 } from 'lucide-react';
 import usePhase4Store from '../stores/usePhase4Store';
 import useSpinGroupAnalysis from '../hooks/useSpinGroupAnalysis';
 import { useAutoPlay } from '../hooks/useAutoPlay';
+import FlowComposer from './phase5/FlowComposer';
 
 /**
  * Phase5Automation — 固定底部狀態列 + 整合控制面板
@@ -61,6 +62,7 @@ const Phase5Automation = ({
     const [isExpanded, setIsExpanded] = useState(false);
     const [showSettings, setShowSettings] = useState(false);
     const [showLogs, setShowLogs] = useState(false);
+    const [activeTab, setActiveTab] = useState('quick'); // 'quick' | 'composer'
 
     const isConnected = nativeCapture?.isConnected;
     const wsRef = nativeCapture?.wsRef || { current: null };
@@ -128,6 +130,36 @@ const Phase5Automation = ({
                     style={{ pointerEvents: 'auto' }}
                 >
                     <div className="p-4 space-y-3 max-h-[60vh] overflow-y-auto">
+                        {/* ── Tab 切換 ── */}
+                        <div className="flex gap-1 bg-slate-800 rounded-lg p-0.5">
+                            <button onClick={() => setActiveTab('quick')}
+                                className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-[11px] font-bold transition-all ${
+                                    activeTab === 'quick' ? 'bg-indigo-500/20 text-indigo-300 shadow-sm' : 'text-slate-500 hover:text-slate-300'
+                                }`}>
+                                <Zap size={11}/> 快速模式
+                            </button>
+                            <button onClick={() => setActiveTab('composer')}
+                                className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-[11px] font-bold transition-all ${
+                                    activeTab === 'composer' ? 'bg-purple-500/20 text-purple-300 shadow-sm' : 'text-slate-500 hover:text-slate-300'
+                                }`}>
+                                <Workflow size={11}/> 排程器
+                            </button>
+                        </div>
+
+                        {/* ── 排程器 Tab ── */}
+                        {activeTab === 'composer' && (
+                            <FlowComposer
+                                ws={wsRef?.current}
+                                videoEl={videoRef?.current}
+                                getCandidates={getCandidates}
+                                onSmartDedup={smartDedup}
+                                onStartLive={handleStartLive}
+                                onStopLive={handleStopLive}
+                            />
+                        )}
+
+                        {/* ── 快速模式 Tab ── */}
+                        {activeTab === 'quick' && (<>
                         {/* ── 錯誤/警告 ── */}
                         {error && (
                             <div className="flex items-center gap-2 p-2 bg-red-500/10 border border-red-500/20 rounded-lg text-red-300 text-xs">
@@ -253,6 +285,7 @@ const Phase5Automation = ({
                                 ))}
                             </div>
                         )}
+                        </>)}{/* end quick tab */}
                     </div>
                 </div>
             )}
