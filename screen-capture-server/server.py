@@ -67,8 +67,24 @@ def get_ocr_engine():
     if _ocr_engine is None:
         try:
             from rapidocr_onnxruntime import RapidOCR
-            _ocr_engine = RapidOCR()
-            print("[模組] RapidOCR 已載入 ✓ (後端 PaddleOCR)")
+            import os
+            # 使用與前端相同的 PP-OCRv4 模型
+            model_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'public', 'ocr-models')
+            det_path = os.path.join(model_dir, 'ch_PP-OCRv4_det_infer.onnx')
+            rec_path = os.path.join(model_dir, 'ch_PP-OCRv4_rec_infer.onnx')
+            keys_path = os.path.join(model_dir, 'ppocr_keys_v1.txt')
+            
+            kwargs = {}
+            if os.path.exists(rec_path):
+                kwargs['rec_model_path'] = rec_path
+                print(f"[OCR] 使用 PP-OCRv4 rec 模型: {rec_path}")
+            if os.path.exists(det_path):
+                kwargs['det_model_path'] = det_path
+            if os.path.exists(keys_path):
+                kwargs['rec_keys_path'] = keys_path
+            
+            _ocr_engine = RapidOCR(**kwargs)
+            print("[模組] RapidOCR 已載入 ✓ (後端 PaddleOCR v4)")
         except Exception as e:
             print(f"[警告] RapidOCR 載入失敗: {e}")
             return None
@@ -98,24 +114,39 @@ def ocr_crop_and_clean(pil_img, roi, decimal_places=2, label=""):
     
     # 放大至約 48px 高度（與前端 ocrPipeline 對齊）
     scale = max(1.0, 48.0 / ch)
-    stretch_x = 1.25
+    # rec-only 模式需要更大的水平拉寬，避免 CTC 把連續相同數字合併（如 '00' → '0'）
+    stretch_x = 2.5
     new_w = int(cw * scale * stretch_x)
     new_h = int(ch * scale)
     crop = crop.resize((new_w, new_h), Image.LANCZOS)
     
-    # 加黑邊 padding
-    padded = Image.new('RGB', (new_w + 60, new_h + 60), (0, 0, 0))
-    padded.paste(crop, (30, 30))
+    # 對比度 + 亮度增強（與前端 ctx.filter = 'contrast(1.2) brightness(1.1)' 對齊）
+    from PIL import ImageEnhance
+    crop = ImageEnhance.Contrast(crop).enhance(1.2)
+    crop = ImageEnhance.Brightness(crop).enhance(1.1)
+    
+    # rec-only 模式不需要 DBNet，只需最小 padding
+    PADDING = 8
+    padded = Image.new('RGB', (new_w + PADDING * 2, new_h + PADDING * 2), (0, 0, 0))
+    padded.paste(crop, (PADDING, PADDING))
     
     # 轉 numpy array 給 RapidOCR
     import numpy as np
     img_array = np.array(padded)
     
-    result, _ = engine(img_array)
+    # rec-only 模式：跳過偵測，只跑辨識（~70ms vs 完整管線 ~3500ms）
+    result, _ = engine(img_array, use_det=False, use_cls=False, use_rec=True)
     if not result:
         return ""
     
-    raw_text = " ".join([line[1] for line in result]).strip()
+    # rec-only 模式回傳 [[text, score], ...]，完整模式回傳 [[box, text, score], ...]
+    texts = []
+    for line in result:
+        if isinstance(line[0], str):
+            texts.append(line[0])       # rec-only: [text, score]
+        else:
+            texts.append(str(line[1]))   # full: [box, text, score]
+    raw_text = " ".join(texts).strip()
     
     # 後處理（與前端 ocrPipeline.js 對齊）
     if label == "ORDER_ID":
