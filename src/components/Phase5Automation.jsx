@@ -95,11 +95,20 @@ const Phase5Automation = ({
     // ── 開始遊玩 ──
     const handleStart = () => {
         updateConfig({ spinROI: spinButtonROI });
+
+        // 建立後端 OCR 的 ROI 定義
+        const ocrRois = [];
+        if (scanOpts.winROI) ocrRois.push({ name: 'win', roi: scanOpts.winROI, decimalPlaces: scanOpts.ocrDecimalPlaces ?? 2, label: 'WIN' });
+        if (scanOpts.balanceROI) ocrRois.push({ name: 'balance', roi: scanOpts.balanceROI, decimalPlaces: scanOpts.balDecimalPlaces ?? scanOpts.ocrDecimalPlaces ?? 2, label: 'BALANCE' });
+        if (scanOpts.betROI) ocrRois.push({ name: 'bet', roi: scanOpts.betROI, decimalPlaces: 0, label: 'BET' });
+        if (scanOpts.orderIdROI) ocrRois.push({ name: 'orderId', roi: scanOpts.orderIdROI, decimalPlaces: 0, label: 'ORDER_ID' });
+
         setTimeout(() => {
             startAutoPlay(wsRef?.current, getCandidates, {
                 onStartLive: handleStartLive,
                 onStopLive: handleStopLive,
                 onSmartDedup: smartDedup,
+                ocrRois,  // ← 後端 OCR 路徑
             });
         }, 100);
     };

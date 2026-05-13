@@ -90,12 +90,31 @@ export function useAutoPlay() {
                 setTimeout(() => {
                     ws.removeEventListener('message', onMessage);
                     resolve({ success: true, message: 'timeout - assumed ok' });
-                }, 2000);
+                }, 10000);  // OCR 可能耗時較久，加長超時
             } catch (e) {
                 reject(e);
             }
         });
     }, []);
+
+    /**
+     * 後端批次 OCR：透過 Python 伺服器截取當前畫面並 OCR 多個 ROI
+     * 只在 nativeMode (P5) 下使用，繞過瀏覽器端的 winPollAgent + Tesseract
+     * @returns {Object} { win, balance, bet, orderId, ... }
+     */
+    const requestBackendOCR = useCallback(async (ws, ocrRois) => {
+        if (!ws || ws.readyState !== WebSocket.OPEN || !ocrRois?.length) return null;
+        try {
+            const result = await sendCommand(ws, {
+                action: 'ocr_rois',
+                rois: ocrRois,
+            });
+            return result?.ocrResults || null;
+        } catch (e) {
+            console.warn('[AutoPlay] 後端 OCR 失敗:', e);
+            return null;
+        }
+    }, [sendCommand]);
 
     const clickSpin = useCallback(async (ws) => {
         const cfg = configRef.current;
@@ -259,8 +278,10 @@ export function useAutoPlay() {
      * @param {WebSocket} ws
      * @param {Function} getCandidates
      * @param {Function} onSmartDedup - 每次 SPIN 完成後呼叫，重新標記局數
+     * @param {Object} opts - { ocrRois, useBackendOCR }
      */
-    const playLoop = useCallback(async (ws, getCandidates, onSmartDedup) => {
+    const playLoop = useCallback(async (ws, getCandidates, onSmartDedup, opts = {}) => {
+        const { ocrRois, useBackendOCR } = opts;
         let loopSpinCount = 0;
 
         while (!cancelRef.current) {
@@ -284,9 +305,40 @@ export function useAutoPlay() {
                 setGameState(GameState.SPINNING);
                 const newCandidate = await waitForNewCandidate(beforeCount, getCandidates, 45000);
 
-                // 4. 等待 OCR 完成
+                // 4. OCR：後端模式 vs 前端模式
                 setGameState(GameState.WAITING_RESULT);
-                const finalCandidate = await waitForOCR(newCandidate.id, getCandidates, 15000);
+                let finalCandidate;
+
+                if (useBackendOCR && ocrRois?.length) {
+                    // ★ 後端快速路徑：Python 截圖 + 原生 PaddleOCR
+                    // 等 1 秒讓 WIN 動畫結束
+                    await new Promise(r => setTimeout(r, 1000));
+                    const ocrResults = await requestBackendOCR(ws, ocrRois);
+
+                    if (ocrResults) {
+                        // 將後端 OCR 結果寫回 candidate
+                        const candidates = getCandidates();
+                        const target = candidates.find(c => c.id === newCandidate.id);
+                        if (target) {
+                            target.ocrData = {
+                                ...target.ocrData,
+                                win: ocrResults.win || '0',
+                                balance: ocrResults.balance || '',
+                                bet: ocrResults.bet || '',
+                                orderId: ocrResults.orderId || '',
+                            };
+                            target.winPollStatus = 'completed';
+                        }
+                        finalCandidate = target || newCandidate;
+                        console.log(`[AutoPlay] 後端 OCR 完成:`, ocrResults);
+                    } else {
+                        // 後端失敗，回退到前端
+                        finalCandidate = await waitForOCR(newCandidate.id, getCandidates, 15000);
+                    }
+                } else {
+                    // 前端模式（原流程）
+                    finalCandidate = await waitForOCR(newCandidate.id, getCandidates, 15000);
+                }
 
                 // 5. 記錄結果
                 setGameState(GameState.RECORDING);
@@ -324,7 +376,7 @@ export function useAutoPlay() {
         setGameState(GameState.STOPPED);
         setIsPlaying(false);
         addLog('⏹ 自動遊玩已停止');
-    }, [clickSpin, waitForNewCandidate, waitForOCR, recordSpin, addLog, getSpinGroupCount]);
+    }, [clickSpin, waitForNewCandidate, waitForOCR, recordSpin, addLog, getSpinGroupCount, requestBackendOCR]);
 
     /**
      * 開始自動遊玩
@@ -350,7 +402,10 @@ export function useAutoPlay() {
         if (opts.onStartLive) opts.onStartLive();
 
         // 啟動遊玩循環（結束後自動關閉即時偵測）
-        playLoop(ws, getCandidates, opts.onSmartDedup).then(() => {
+        playLoop(ws, getCandidates, opts.onSmartDedup, {
+            ocrRois: opts.ocrRois,
+            useBackendOCR: !!opts.ocrRois?.length,
+        }).then(() => {
             if (opts.onStopLive) opts.onStopLive();
         });
         return true;

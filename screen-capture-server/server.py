@@ -53,6 +53,96 @@ except ImportError:
     HAS_TURBOJPEG = False
     print("[提示] turbojpeg 未安裝，使用 Pillow 編碼 (pip install PyTurboJPEG)")
 
+# ── 後端 OCR (RapidOCR + PaddleOCR ONNX) ──
+try:
+    import numpy as np  # 確保 numpy 可用
+except ImportError:
+    pass
+
+_ocr_engine = None  # 延遲初始化
+
+def get_ocr_engine():
+    """延遲初始化 RapidOCR 引擎（第一次呼叫時才載入模型，約 1-2 秒）"""
+    global _ocr_engine
+    if _ocr_engine is None:
+        try:
+            from rapidocr_onnxruntime import RapidOCR
+            _ocr_engine = RapidOCR()
+            print("[模組] RapidOCR 已載入 ✓ (後端 PaddleOCR)")
+        except Exception as e:
+            print(f"[警告] RapidOCR 載入失敗: {e}")
+            return None
+    return _ocr_engine
+
+import re
+
+def ocr_crop_and_clean(pil_img, roi, decimal_places=2, label=""):
+    """
+    從 PIL Image 裁切 ROI 區域並執行 OCR。
+    roi: {x, y, w, h} -- 百分比 (0-100)
+    回傳辨識出的數字字串。
+    """
+    engine = get_ocr_engine()
+    if engine is None:
+        return ""
+    
+    img_w, img_h = pil_img.size
+    cx = int(img_w * roi["x"] / 100)
+    cy = int(img_h * roi["y"] / 100)
+    cw = int(img_w * roi["w"] / 100)
+    ch = int(img_h * roi["h"] / 100)
+    if cw < 2 or ch < 2:
+        return ""
+    
+    crop = pil_img.crop((cx, cy, cx + cw, cy + ch))
+    
+    # 放大至約 48px 高度（與前端 ocrPipeline 對齊）
+    scale = max(1.0, 48.0 / ch)
+    stretch_x = 1.25
+    new_w = int(cw * scale * stretch_x)
+    new_h = int(ch * scale)
+    crop = crop.resize((new_w, new_h), Image.LANCZOS)
+    
+    # 加黑邊 padding
+    padded = Image.new('RGB', (new_w + 60, new_h + 60), (0, 0, 0))
+    padded.paste(crop, (30, 30))
+    
+    # 轉 numpy array 給 RapidOCR
+    import numpy as np
+    img_array = np.array(padded)
+    
+    result, _ = engine(img_array)
+    if not result:
+        return ""
+    
+    raw_text = " ".join([line[1] for line in result]).strip()
+    
+    # 後處理（與前端 ocrPipeline.js 對齊）
+    if label == "ORDER_ID":
+        return re.sub(r'[^0-9\-]', '', raw_text)
+    
+    # 數字模式：只保留數字、小數點、逗號
+    valid = re.sub(r'[^0-9.,]', '', raw_text)
+    cleaned = valid.replace(',', '').strip('.')
+    if not cleaned:
+        return "0"
+    
+    if decimal_places == 0:
+        return cleaned.replace('.', '') or "0"
+    
+    # 多小數點修正（千分位誤判）
+    parts = cleaned.split('.')
+    if len(parts) > 2:
+        decimals = parts.pop()
+        cleaned = ''.join(parts) + '.' + decimals
+    
+    # 截斷小數位數
+    if isinstance(decimal_places, int) and decimal_places > 0 and '.' in cleaned:
+        int_part, dec_part = cleaned.split('.', 1)
+        cleaned = int_part + '.' + dec_part[:decimal_places].ljust(decimal_places, '0')
+    
+    return cleaned
+
 try:
     ctypes.windll.user32.SetProcessDPIAware()
 except AttributeError:
@@ -348,6 +438,63 @@ def handle_control_command(cmd, active_source=None):
             else:
                 return {"success": False, "message": "No target hwnd"}
 
+        elif action == "ocr_rois":
+            # ── 後端批次 OCR：截取當前畫面，裁切多個 ROI，一次回傳全部結果 ──
+            if not window_rect and not active_source:
+                return {"success": False, "message": "ocr_rois requires active source"}
+            
+            rois = cmd.get("rois", [])  # [{name, roi: {x,y,w,h}, decimalPlaces, label}]
+            if not rois:
+                return {"success": False, "message": "No ROIs specified"}
+            
+            # 截取當前畫面
+            hwnd_ocr = active_source.get("hwnd") if active_source else None
+            pil_img = None
+            
+            if hwnd_ocr:
+                # 視窗模式：使用 PrintWindow 確保即使被遮擋也能截取
+                pil_img = capture_window_printwindow(hwnd_ocr)
+            
+            if pil_img is None:
+                # Fallback: mss 截取
+                try:
+                    with mss.MSS() as sct:
+                        if active_source and active_source.get("type") == "window" and hwnd_ocr:
+                            r = ctypes.wintypes.RECT()
+                            user32.GetWindowRect(hwnd_ocr, ctypes.byref(r))
+                            bbox = (r.left, r.top, r.right, r.bottom)
+                            raw_grab = sct.grab(bbox)
+                            pil_img = Image.frombytes("RGB", raw_grab.size, raw_grab.bgra, "raw", "BGRX")
+                        else:
+                            monitor = sct.monitors[active_source.get("index", 1)]
+                            raw_grab = sct.grab(monitor)
+                            pil_img = Image.frombytes("RGB", raw_grab.size, raw_grab.bgra, "raw", "BGRX")
+                except Exception as e:
+                    return {"success": False, "message": f"Screenshot failed: {e}"}
+            
+            if pil_img is None:
+                return {"success": False, "message": "Could not capture screen"}
+            
+            # 批次 OCR
+            t0 = time.time()
+            results = {}
+            for roi_def in rois:
+                name = roi_def.get("name", "unknown")
+                roi = roi_def.get("roi")
+                dp = roi_def.get("decimalPlaces", 2)
+                lbl = roi_def.get("label", name)
+                if roi:
+                    try:
+                        val = ocr_crop_and_clean(pil_img, roi, dp, lbl)
+                        results[name] = val
+                    except Exception as e:
+                        results[name] = ""
+                        print(f"[OCR 錯誤] {name}: {e}")
+            
+            elapsed_ms = (time.time() - t0) * 1000
+            print(f"[OCR] 批次完成 {len(rois)} 個 ROI，耗時 {elapsed_ms:.0f}ms | 結果: {results}")
+            return {"success": True, "message": f"ocr_rois done in {elapsed_ms:.0f}ms", "ocrResults": results}
+
         else:
             return {"success": False, "message": f"Unknown action: {action}"}
 
@@ -514,14 +661,14 @@ async def handle_client(websocket):
                         quality = cmd.get("quality", quality)
                         interval = 1.0 / fps
                         print(f"[設定] 更新 FPS={fps}, 品質={quality}")
-                    elif cmd_action in ("click", "click_pct", "click_roi", "key", "hotkey", "move", "drag", "focus"):
+                    elif cmd_action in ("click", "click_pct", "click_roi", "key", "hotkey", "move", "drag", "focus", "ocr_rois"):
                         # ── 處理控制指令（串流中也能控制）──
                         result = handle_control_command(cmd, active_source=source)
                         try:
-                            await websocket.send(json.dumps({
-                                "type": "control_result",
-                                **result
-                            }))
+                            resp = {"type": "control_result", **result}
+                            if "requestId" in cmd:
+                                resp["requestId"] = cmd["requestId"]
+                            await websocket.send(json.dumps(resp))
                         except:
                             pass
                         if result["success"]:
