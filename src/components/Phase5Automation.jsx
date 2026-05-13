@@ -121,11 +121,10 @@ const Phase5Automation = ({
 
     return createPortal(
         <div className="fixed bottom-0 left-0 right-0 z-[9998]" style={{ pointerEvents: 'none' }}>
-            {/* ══ 展開面板 ══ */}
-            {isExpanded && (
+            {/* ══ 展開面板（保持 mounted 以保留編輯狀態）══ */}
                 <div
-                    className="mx-auto max-w-2xl mb-0 bg-slate-900/95 backdrop-blur-xl rounded-t-2xl border border-b-0 border-slate-700/50 shadow-2xl animate-in slide-in-from-bottom-4 duration-200"
-                    style={{ pointerEvents: 'auto' }}
+                    className="mx-auto max-w-2xl mb-0 bg-slate-900/95 backdrop-blur-xl rounded-t-2xl border border-b-0 border-slate-700/50 shadow-2xl"
+                    style={{ pointerEvents: isExpanded ? 'auto' : 'none', display: isExpanded ? 'block' : 'none' }}
                 >
                     <div className="p-5 flex flex-col gap-4 h-[75vh]">
                         {/* ── Tab 切換 ── */}
@@ -173,9 +172,8 @@ const Phase5Automation = ({
                                 showLogs={showLogs} setShowLogs={setShowLogs}
                             />
                         )}
-                    </div>
                 </div>
-            )}
+                </div>
 
             {/* ══ 固定底部列 ══ */}
             <StatusBar
