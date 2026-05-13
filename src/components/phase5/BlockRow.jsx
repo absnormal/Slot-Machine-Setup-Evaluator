@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { Trash2, ChevronRight, ChevronDown, GripVertical } from 'lucide-react';
 import { BLOCK_META } from './blockDefs';
 import AddBlockButton from './AddBlockButton';
+import BlockParams from './BlockParams';
 
 /**
  * BlockRow — 單一積木列（拖放排序）
@@ -109,9 +110,15 @@ const BlockRow = ({ block, depth, onDelete, onUpdate, onDragOps, currentBlockId,
                         {expanded ? <ChevronDown size={14}/> : <ChevronRight size={14}/>}
                     </button>
                 )}
-                <span className="text-base">{meta.icon}</span>
-                <span className="text-slate-300 font-semibold">{meta.label}</span>
-                <span className="text-slate-500 text-xs truncate flex-1">{paramSummary()}</span>
+                <span className="text-base shrink-0">{meta.icon}</span>
+                <span className="text-slate-300 font-semibold shrink-0">{meta.label}</span>
+                {isRunning ? (
+                    <span className="text-slate-500 text-xs truncate flex-1">{paramSummary()}</span>
+                ) : (
+                    <div className="flex-1 min-w-0" onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
+                        <BlockParams block={block} onUpdate={onUpdate} />
+                    </div>
+                )}
                 {!isRunning && (
                     <button onClick={() => onDelete(block.id)} className="text-slate-600 hover:text-rose-400 p-1">
                         <Trash2 size={14}/>
