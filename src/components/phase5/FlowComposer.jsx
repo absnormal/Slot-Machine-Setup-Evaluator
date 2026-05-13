@@ -24,6 +24,7 @@ const FlowComposer = ({ ws, videoEl, getCandidates, onSmartDedup, onStartLive, o
     const [flowName, setFlowName] = useState(allFlows[0]?.name || '新流程');
     const [currentFlowId, setCurrentFlowId] = useState(null);
     const [currentSource, setCurrentSource] = useState(null); // 'preset' | 'local' | 'cloud'
+    const [isLoadingFlow, setIsLoadingFlow] = useState(false);
 
     // 初始化載入雲端
     useEffect(() => { fetchCloudFlows(); }, [fetchCloudFlows]);
@@ -34,6 +35,9 @@ const FlowComposer = ({ ws, videoEl, getCandidates, onSmartDedup, onStartLive, o
 
         // 雲端流程的 listFlows 只有摘要，需用 getFlow 取完整資料
         if (!blocks && f._source === 'cloud' && f.id) {
+            setIsLoadingFlow(true);
+            setBlocks([]);
+            setFlowName(f.name);
             try {
                 const { GAS_URL } = await import('../../utils/constants');
                 const res = await fetch(`${GAS_URL}?action=getFlow&id=${encodeURIComponent(f.id)}&t=${Date.now()}`);
@@ -41,8 +45,10 @@ const FlowComposer = ({ ws, videoEl, getCandidates, onSmartDedup, onStartLive, o
                 blocks = full.blocks;
             } catch (err) {
                 console.error('[FlowComposer] 載入雲端流程失敗', err);
+                setIsLoadingFlow(false);
                 return;
             }
+            setIsLoadingFlow(false);
         }
 
         if (!blocks) {
@@ -243,7 +249,13 @@ const FlowComposer = ({ ws, videoEl, getCandidates, onSmartDedup, onStartLive, o
                             onDragOver={(e) => { e.preventDefault(); rootDragOps.onDragOver('__end__', 'end'); }}
                             onDrop={(e) => { e.preventDefault(); rootDragOps.onDrop('__end__', 'end'); }} />
                     )}
-                    {blocks.length === 0 && (
+                    {isLoadingFlow && (
+                        <div className="text-center text-slate-400 text-sm py-8 flex flex-col items-center gap-2">
+                            <RefreshCw size={18} className="animate-spin text-indigo-400" />
+                            正在載入雲端流程...
+                        </div>
+                    )}
+                    {!isLoadingFlow && blocks.length === 0 && (
                         <div className="text-center text-slate-600 text-sm py-6">從上方選擇流程，或點擊「新增積木」開始編排</div>
                     )}
                 </div>
