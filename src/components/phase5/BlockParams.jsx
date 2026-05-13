@@ -1,5 +1,6 @@
 import React from 'react';
 import { AVAILABLE_ROIS } from '../../engine/roiResolver';
+import usePhase4Store from '../../stores/usePhase4Store';
 
 /**
  * BlockParams — 積木參數行內編輯
@@ -9,9 +10,6 @@ import { AVAILABLE_ROIS } from '../../engine/roiResolver';
 
 const MINI = 'bg-slate-900 border border-slate-600 rounded px-1.5 py-0.5 text-xs text-slate-200 outline-none focus:border-indigo-500 transition-colors';
 const SEL  = 'bg-slate-900 border border-slate-600 rounded px-1.5 py-0.5 text-xs text-slate-200 outline-none focus:border-indigo-500';
-
-// ROI 下拉選項
-const ROI_OPTIONS = AVAILABLE_ROIS.map(r => ({ value: r.name, label: `${r.label} (${r.name})` }));
 
 // OCR ROI 多選（勾選框式）
 const OCR_ROIS = AVAILABLE_ROIS.filter(r => r.category === 'ocr').map(r => r.name);
@@ -27,7 +25,7 @@ const BlockParams = ({ block, onUpdate }) => {
         case 'click_roi':
             return (
                 <div className="flex items-center gap-1.5">
-                    <RoiSelect value={p.roi} onChange={v => set('roi', v)} filter="control" />
+                    <ClickTargetSelect value={p.roi} onChange={v => set('roi', v)} />
                 </div>
             );
 
@@ -154,6 +152,22 @@ const RoiSelect = ({ value, onChange, filter }) => {
             <option value="">選擇 ROI</option>
             {options.map(r => (
                 <option key={r.name} value={r.name}>{r.label}</option>
+            ))}
+        </select>
+    );
+};
+
+// ── 點擊目標下拉選單（動態，從 store 讀取）──
+const ClickTargetSelect = ({ value, onChange }) => {
+    const allTargets = usePhase4Store(s => s.getAllClickTargets)();
+    const names = Object.keys(allTargets);
+
+    return (
+        <select className={SEL} value={value || ''} onChange={e => onChange(e.target.value)}
+            onClick={e => e.stopPropagation()}>
+            <option value="">選擇點擊目標</option>
+            {names.map(name => (
+                <option key={name} value={name}>{name}</option>
             ))}
         </select>
     );

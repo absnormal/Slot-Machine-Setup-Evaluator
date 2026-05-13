@@ -87,6 +87,77 @@ const usePhase4Store = create((set, get) => ({
             spinButtonROI: s.spinButtonROI,
         };
     },
+
+    // ═══════════════════════════════════════
+    // 動態點擊目標（遊戲層）
+    // ═══════════════════════════════════════
+    clickTargets: loadCachedROI('clickTargets', {}),
+
+    setClickTarget: (name, roi) => {
+        const targets = { ...get().clickTargets, [name]: roi };
+        set({ clickTargets: targets });
+        saveROI('clickTargets', targets);
+    },
+
+    removeClickTarget: (name) => {
+        const targets = { ...get().clickTargets };
+        delete targets[name];
+        set({ clickTargets: targets });
+        saveROI('clickTargets', targets);
+    },
+
+    setClickTargets: (targets) => {
+        set({ clickTargets: targets });
+        saveROI('clickTargets', targets);
+    },
+
+    // ═══════════════════════════════════════
+    // 平台層點擊目標（依 platformName 存 localStorage）
+    // ═══════════════════════════════════════
+    platformName: '',
+    setPlatformName: (v) => set({ platformName: v }),
+
+    /** 取得平台層點擊目標 */
+    getPlatformClickTargets: () => {
+        const pName = get().platformName;
+        if (!pName) return {};
+        try {
+            return JSON.parse(localStorage.getItem(`slot_platform_clicks_${pName}`) || '{}');
+        } catch { return {}; }
+    },
+
+    /** 設定平台層單一點擊目標 */
+    setPlatformClickTarget: (name, roi) => {
+        const pName = get().platformName;
+        if (!pName) return;
+        const key = `slot_platform_clicks_${pName}`;
+        try {
+            const targets = JSON.parse(localStorage.getItem(key) || '{}');
+            targets[name] = roi;
+            localStorage.setItem(key, JSON.stringify(targets));
+        } catch { /* silent */ }
+    },
+
+    /** 刪除平台層單一點擊目標 */
+    removePlatformClickTarget: (name) => {
+        const pName = get().platformName;
+        if (!pName) return;
+        const key = `slot_platform_clicks_${pName}`;
+        try {
+            const targets = JSON.parse(localStorage.getItem(key) || '{}');
+            delete targets[name];
+            localStorage.setItem(key, JSON.stringify(targets));
+        } catch { /* silent */ }
+    },
+
+    /** 合併取得所有點擊目標（平台 + 遊戲，遊戲層優先覆蓋） */
+    getAllClickTargets: () => {
+        const s = get();
+        const platform = s.getPlatformClickTargets();
+        const game = s.clickTargets || {};
+        return { ...platform, ...game }; // 遊戲層覆蓋同名
+    },
 }));
 
 export default usePhase4Store;
+
