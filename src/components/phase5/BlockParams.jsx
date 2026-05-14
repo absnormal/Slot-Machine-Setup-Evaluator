@@ -143,7 +143,10 @@ const BlockParams = ({ block, onUpdate, allFlows }) => {
 
         case 'sub_flow': {
             const sourceLabel = (f) => f._source === 'preset' ? '預設' : f._source === 'cloud' ? '雲端' : '本地';
-            const available = (allFlows || []).filter(f => f.blocks && f.blocks.length > 0);
+            // 雲端 listFlows 只有摘要（無 blocks），不能用 blocks.length 過濾
+            const available = (allFlows || []).filter(f =>
+                (f.blocks && f.blocks.length > 0) || f._source === 'cloud'
+            );
             return (
                 <div className="flex items-center gap-1.5 flex-1 min-w-0">
                     <select className={`${SEL} flex-1 min-w-0`}
@@ -155,11 +158,15 @@ const BlockParams = ({ block, onUpdate, allFlows }) => {
                         }}
                     >
                         <option value="">— 選擇子流程 —</option>
-                        {available.map(f => (
-                            <option key={f.id} value={f.id}>
-                                [{sourceLabel(f)}] {f.name || f.id} ({f.blocks.length} 積木)
-                            </option>
-                        ))}
+                        {available.map(f => {
+                            const countBlocks = (bs) => (bs || []).reduce((n, b) => n + 1 + countBlocks(b.children) + countBlocks(b.elseChildren), 0);
+                            const total = countBlocks(f.blocks);
+                            return (
+                                <option key={f.id} value={f.id}>
+                                    [{sourceLabel(f)}] {f.name || f.id}{total ? ` (${total} 積木)` : ''}
+                                </option>
+                            );
+                        })}
                     </select>
                 </div>
             );

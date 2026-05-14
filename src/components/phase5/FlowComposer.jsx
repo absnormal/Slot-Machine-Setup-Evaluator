@@ -93,9 +93,43 @@ const FlowComposer = ({ ws, videoEl, setCandidates, reelROI, recognizeLocal }) =
             }
         }
 
+        // ── 預先抓取雲端子流程（選項 2：跑整個流程之前先把雲端資料抓下來）──
+        const subFlowCache = new Map(); // flowId → { name, blocks, ... }
+        const collectSubFlowIds = (blockList) => {
+            for (const b of (blockList || [])) {
+                if (b.type === 'sub_flow' && b.params?.flowId) {
+                    subFlowCache.set(b.params.flowId, null); // 先佔位
+                }
+                if (b.children) collectSubFlowIds(b.children);
+                if (b.elseChildren) collectSubFlowIds(b.elseChildren);
+            }
+        };
+        collectSubFlowIds(blocks);
+
+        // 對每個引用的 flowId，優先從 allFlows 取完整資料，雲端的額外 fetch
+        if (subFlowCache.size > 0) {
+            const { GAS_URL } = await import('../../utils/constants');
+            for (const flowId of subFlowCache.keys()) {
+                const local = storage.allFlows.find(f => f.id === flowId);
+                if (local?.blocks && local.blocks.length > 0) {
+                    // 預設或本地流程：已有完整 blocks
+                    subFlowCache.set(flowId, local);
+                } else if (GAS_URL && flowId) {
+                    // 雲端流程：需 fetch 完整資料
+                    try {
+                        const res = await fetch(`${GAS_URL}?action=getFlow&id=${encodeURIComponent(flowId)}&t=${Date.now()}`);
+                        const full = await res.json();
+                        subFlowCache.set(flowId, { name: local?.name || flowId, ...full });
+                    } catch (err) {
+                        console.error(`[FlowComposer] 預載子流程失敗: ${flowId}`, err);
+                    }
+                }
+            }
+        }
+
         const flowDef = { name: flowName, version: 1, blocks };
-        // 子流程解析器：從 allFlows 查找
-        const subFlowResolver = (flowId) => storage.allFlows.find(f => f.id === flowId);
+        // 子流程解析器：優先從快取查找
+        const subFlowResolver = (flowId) => subFlowCache.get(flowId) || storage.allFlows.find(f => f.id === flowId);
         await runFlow(flowDef, { ws, videoEl, setCandidates, reelROI, ocrWorker: ocrWorkerRef.current, recognizeLocal, subFlowResolver });
     };
 
