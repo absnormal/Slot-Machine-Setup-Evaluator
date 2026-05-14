@@ -310,7 +310,9 @@ export class FlowRunner extends EventTarget {
             results = {};
             for (const name of rois) {
                 const roi = resolveROI(name);
-                if (!roi) continue;
+                if (!roi) {
+                    throw new Error(`[ocr_batch] 無法解析 ROI: "${name}"（當前環境未設定此區域）`);
+                }
                 const upper = name.toUpperCase();
                 const key = upper === 'BAL' || upper === 'BALANCE' ? 'balance'
                     : upper === 'ORDER_ID' || upper === 'ORDERID' ? 'orderId'
