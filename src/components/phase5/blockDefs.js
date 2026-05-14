@@ -21,6 +21,7 @@ export const BLOCK_META = {
     // 🔁 流程 — 靛色系
     loop:         { icon: '🔁', label: '迴圈', color: 'border-indigo-400/50 bg-indigo-500/15' },
     if_then:      { icon: '❓', label: '條件', color: 'border-violet-400/50 bg-violet-500/15' },
+    sub_flow:     { icon: '📦', label: '子流程', color: 'border-cyan-400/50 bg-cyan-500/15' },
     // 🔧 工具 — 灰色系
     set_var:      { icon: '📝', label: '設定變數', color: 'border-slate-400/40 bg-slate-500/10' },
     log:          { icon: '📋', label: '記錄', color: 'border-slate-400/40 bg-slate-500/10' },
@@ -34,6 +35,8 @@ export const NEW_BLOCK_TEMPLATES = [
     { type: 'ocr_batch', params: { rois: ['WIN', 'BAL', 'BET', 'ORDER_ID'] } },
     { type: 'record_spin', params: { fields: ['WIN', 'BAL', 'BET', 'ORDER_ID', 'MULT'] } },
     { type: 'loop', params: { count: 100 }, children: [] },
+    { type: 'if_then', params: { condition: '$win > 0' }, children: [], elseChildren: [] },
+    { type: 'sub_flow', params: { flowId: '', label: '' } },
     { type: 'set_var', params: { name: '$totalWin', value: 0 } },
     { type: 'log', params: { message: '第 $loopIndex 局完成' } },
     { type: 'capture_frame', params: {} },

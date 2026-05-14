@@ -105,12 +105,13 @@ export async function waitChange(ws, roiName, options = {}) {
         }
     }
 
-    // 超時
-    console.warn(`[waitChange] 超時 ${timeout}ms，OCR 值未穩定變化 (${roiName}: baseline=${baselineNum})`);
-    return {
+    // 超時 → 拋出錯誤（讓 errorPolicy 機制攔截）
+    const timeoutError = new Error(`[waitChange] 超時 ${timeout}ms，${roiName} 數值未變化 (基準=${baselineNum})`);
+    timeoutError.waitChangeResult = {
         changed: false,
         elapsed: Date.now() - startTime,
         oldValue: baselineNum,
         newValue: lastChangedNum,
     };
+    throw timeoutError;
 }

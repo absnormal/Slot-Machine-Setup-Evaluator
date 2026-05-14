@@ -84,6 +84,7 @@ export class FlowRunner extends EventTarget {
         this._reelROI = context.reelROI;
         this._ocrWorker = context.ocrWorker || null;
         this._recognizeLocal = context.recognizeLocal || null;
+        this._subFlowResolver = context.subFlowResolver || null;
         this._cancelRef = { current: false };
         this._spinCount = 0;
         this.variables = {};
@@ -148,65 +149,98 @@ export class FlowRunner extends EventTarget {
     }
 
     async _executeBlock(block, depth) {
-        this._emit(FlowEvent.BLOCK_START, { block, depth });
+        const policy = block.errorPolicy || 'stop';
+        const maxRetry = policy === 'retry' ? Math.min(block.retryCount || 3, 10) : 1;
 
-        let result;
-        try {
-            switch (block.type) {
-                case 'click_roi':
-                    result = await this._execClick(block);
-                    break;
-                case 'wait':
-                    result = await this._execWait(block);
-                    break;
-                case 'wait_stable':
-                    result = await this._execWaitStable(block);
-                    break;
-                case 'wait_change':
-                    result = await this._execWaitChange(block);
-                    break;
-                case 'ocr_batch':
-                    result = await this._execOcrBatch(block);
-                    break;
-                case 'ocr_read':
-                    result = await this._execOcrRead(block);
-                    break;
-                case 'capture_frame':
-                    result = await this._execCapture(block);
-                    break;
-                case 'record_spin':
-                    result = await this._execRecord(block);
-                    break;
-                case 'recognize_grid':
-                    result = await this._execRecognizeGrid(block);
-                    break;
-                case 'loop':
-                    result = await this._execLoop(block, depth);
-                    break;
-                case 'if_then':
-                    result = await this._execIfThen(block, depth);
-                    break;
-                case 'set_var':
-                    result = this._execSetVar(block);
-                    break;
-                case 'log':
-                    result = this._execLog(block);
-                    break;
-                case 'key_press':
-                    result = await this._execKeyPress(block);
-                    break;
-                default:
-                    console.warn(`[FlowRunner] 未知積木類型: ${block.type}`);
+        for (let attempt = 0; attempt < maxRetry; attempt++) {
+            this._emit(FlowEvent.BLOCK_START, { block, depth });
+
+            let result;
+            try {
+                switch (block.type) {
+                    case 'click_roi':
+                        result = await this._execClick(block);
+                        break;
+                    case 'wait':
+                        result = await this._execWait(block);
+                        break;
+                    case 'wait_stable':
+                        result = await this._execWaitStable(block);
+                        break;
+                    case 'wait_change':
+                        result = await this._execWaitChange(block);
+                        break;
+                    case 'ocr_batch':
+                        result = await this._execOcrBatch(block);
+                        break;
+                    case 'ocr_read':
+                        result = await this._execOcrRead(block);
+                        break;
+                    case 'capture_frame':
+                        result = await this._execCapture(block);
+                        break;
+                    case 'record_spin':
+                        result = await this._execRecord(block);
+                        break;
+                    case 'recognize_grid':
+                        result = await this._execRecognizeGrid(block);
+                        break;
+                    case 'loop':
+                        result = await this._execLoop(block, depth);
+                        break;
+                    case 'if_then':
+                        result = await this._execIfThen(block, depth);
+                        break;
+                    case 'sub_flow':
+                        result = await this._execSubFlow(block, depth);
+                        break;
+                    case 'set_var':
+                        result = this._execSetVar(block);
+                        break;
+                    case 'log':
+                        result = this._execLog(block);
+                        break;
+                    case 'key_press':
+                        result = await this._execKeyPress(block);
+                        break;
+                    default:
+                        console.warn(`[FlowRunner] 未知積木類型: ${block.type}`);
+                }
+
+                this._emit(FlowEvent.BLOCK_END, { block, depth, result });
+                return result;
+
+            } catch (e) {
+                // 控制信號：直接向上傳播，不受 errorPolicy 影響
+                if (e.message === 'cancelled' || e.message === 'stopped' || e.message === 'break') {
+                    throw e;
+                }
+
+                const isLastAttempt = attempt >= maxRetry - 1;
+
+                if (policy === 'retry' && !isLastAttempt) {
+                    this._emit(FlowEvent.LOG, {
+                        message: `🔄 ${block.type} 失敗，重試 ${attempt + 1}/${maxRetry}: ${e.message}`
+                    });
+                    this._sendPythonLog(`🔄 重試 ${attempt + 1}/${maxRetry}: ${e.message}`);
+                    await new Promise(r => setTimeout(r, 1000)); // 冷卻 1 秒
+                    continue;
+                }
+
+                if (policy === 'skip') {
+                    this._emit(FlowEvent.LOG, {
+                        message: `⏭️ ${block.type} 失敗已跳過: ${e.message}`
+                    });
+                    this._sendPythonLog(`⏭️ 跳過: ${e.message}`);
+                    this._emit(FlowEvent.BLOCK_END, { block, depth, result: null });
+                    return null;
+                }
+
+                // stop（預設）：發射錯誤事件 + 向上拋出
+                this._emit(FlowEvent.ERROR, { block, error: e });
+                throw e;
             }
-        } catch (e) {
-            if (e.message === 'cancelled' || e.message === 'stopped' || e.message === 'break') {
-                throw e; // 向上傳播控制信號
-            }
-            this._emit(FlowEvent.ERROR, { block, error: e });
         }
-
-        this._emit(FlowEvent.BLOCK_END, { block, depth, result });
-        return result;
     }
 
     // ── 控制積木 ──
@@ -251,6 +285,7 @@ export class FlowRunner extends EventTarget {
 
     async _execWaitChange(block) {
         const { roi, changeCount, interval, timeout } = block.params;
+        // waitChange 超時會 throw Error（由外層 errorPolicy 攔截）
         const result = await waitChange(this._ws, roi, {
             changeCount: changeCount ?? 2,
             interval: interval ?? 200,
@@ -258,15 +293,9 @@ export class FlowRunner extends EventTarget {
             cancelRef: this._cancelRef,
         });
 
-        if (result.changed) {
-            const msg = `⚡ ${roi}: ${result.oldValue} → ${result.newValue} (穩定 ${changeCount ?? 2} 次, ${(result.elapsed / 1000).toFixed(1)}s)`;
-            this._emit(FlowEvent.LOG, { message: msg });
-            this._sendPythonLog(msg);
-        } else {
-            const msg = `⚠️ ${roi}: 逾時 ${timeout ?? 30}s 未變化 (基準=${result.oldValue})`;
-            this._emit(FlowEvent.LOG, { message: msg });
-            this._sendPythonLog(msg);
-        }
+        const msg = `⚡ ${roi}: ${result.oldValue} → ${result.newValue} (穩定 ${changeCount ?? 2} 次, ${(result.elapsed / 1000).toFixed(1)}s)`;
+        this._emit(FlowEvent.LOG, { message: msg });
+        this._sendPythonLog(msg);
         return result;
     }
 
@@ -444,21 +473,14 @@ export class FlowRunner extends EventTarget {
 
     async _execRecognizeGrid() {
         if (!this._recognizeLocal) {
-            this._emit(FlowEvent.LOG, { message: '⚠️ 盤面辨識未設定' });
-            return;
+            throw new Error('盤面辨識未設定（recognizeLocal callback 不存在）');
         }
         if (!this._lastCaptureId) {
-            this._emit(FlowEvent.LOG, { message: '⚠️ 沒有截圖可辨識（請先執行「截圖」）' });
-            return;
+            throw new Error('沒有截圖可辨識（請先執行「截圖」積木）');
         }
         this._emit(FlowEvent.LOG, { message: '🔍 盤面辨識中...' });
-        try {
-            await this._recognizeLocal(this._lastCaptureId);
-            this._sendPythonLog(`🔍 盤面辨識完成 ${this._lastCaptureId}`);
-        } catch (e) {
-            this._emit(FlowEvent.LOG, { message: `❌ 辨識失敗: ${e.message}` });
-            this._sendPythonLog(`❌ 辨識失敗: ${e.message}`);
-        }
+        await this._recognizeLocal(this._lastCaptureId);
+        this._sendPythonLog(`🔍 盤面辨識完成 ${this._lastCaptureId}`);
     }
 
     // ── 流程積木 ──
@@ -515,6 +537,31 @@ export class FlowRunner extends EventTarget {
         } else if (block.elseChildren) {
             await this._executeBlocks(block.elseChildren, depth + 1);
         }
+    }
+
+    async _execSubFlow(block, depth) {
+        const MAX_DEPTH = 10;
+        if (depth >= MAX_DEPTH) {
+            throw new Error(`子流程巢狀深度超過上限 (${MAX_DEPTH})，可能存在循環引用`);
+        }
+
+        const { flowId, label } = block.params;
+        if (!flowId) {
+            throw new Error('子流程未選擇（flowId 為空）');
+        }
+        if (!this._subFlowResolver) {
+            throw new Error('子流程解析器未設定');
+        }
+
+        const subFlow = this._subFlowResolver(flowId);
+        if (!subFlow || !subFlow.blocks) {
+            throw new Error(`找不到子流程: ${label || flowId}`);
+        }
+
+        this._emit(FlowEvent.LOG, { message: `📦 進入子流程: ${subFlow.name || label || flowId}` });
+        this._sendPythonLog(`📦 子流程: ${subFlow.name || flowId}`);
+        await this._executeBlocks(subFlow.blocks, depth + 1);
+        this._emit(FlowEvent.LOG, { message: `📦 離開子流程: ${subFlow.name || label || flowId}` });
     }
 
     _execSetVar(block) {

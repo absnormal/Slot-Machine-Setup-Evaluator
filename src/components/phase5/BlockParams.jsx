@@ -1,5 +1,6 @@
 import React from 'react';
 import { AVAILABLE_ROIS } from '../../engine/roiResolver';
+import { PRESET_FLOWS } from '../../engine/flowRunner';
 import usePhase4Store from '../../stores/usePhase4Store';
 
 /**
@@ -131,6 +132,47 @@ const BlockParams = ({ block, onUpdate }) => {
                         onChange={e => set('key', e.target.value)} />
                 </div>
             );
+
+        case 'if_then':
+            return (
+                <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                    <span className="text-slate-500 text-[10px] shrink-0">如果</span>
+                    <input className={`${MINI} flex-1 min-w-0`} value={p.condition || ''} placeholder="$win > 0"
+                        onChange={e => set('condition', e.target.value)} />
+                </div>
+            );
+
+        case 'sub_flow': {
+            // 靜態讀取所有來源
+            let localFlows = [];
+            try { localFlows = JSON.parse(localStorage.getItem('slot_flow_recipes') || '[]'); } catch {}
+            let cloudFlows = [];
+            try { cloudFlows = JSON.parse(sessionStorage.getItem('slot_flows_cloud_cache') || '[]'); } catch {}
+            const available = [
+                ...PRESET_FLOWS.map(f => ({ ...f, _src: '預設' })),
+                ...localFlows.map(f => ({ ...f, _src: '本地' })),
+                ...cloudFlows.map(f => ({ ...f, _src: '雲端' })),
+            ].filter(f => f.blocks && f.blocks.length > 0);
+            return (
+                <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                    <select className={`${SEL} flex-1 min-w-0`}
+                        value={p.flowId || ''}
+                        onChange={e => {
+                            const id = e.target.value;
+                            const found = available.find(f => f.id === id);
+                            onUpdate({ ...block, params: { ...p, flowId: id, label: found?.name || '' } });
+                        }}
+                    >
+                        <option value="">— 選擇子流程 —</option>
+                        {available.map(f => (
+                            <option key={f.id} value={f.id}>
+                                [{f._src}] {f.name || f.id} ({f.blocks.length} 積木)
+                            </option>
+                        ))}
+                    </select>
+                </div>
+            );
+        }
 
         case 'record_spin': {
             const RECORD_FIELDS = ['WIN', 'BAL', 'BET', 'ORDER_ID', 'MULT'];

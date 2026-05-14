@@ -94,7 +94,9 @@ const FlowComposer = ({ ws, videoEl, setCandidates, reelROI, recognizeLocal }) =
         }
 
         const flowDef = { name: flowName, version: 1, blocks };
-        await runFlow(flowDef, { ws, videoEl, setCandidates, reelROI, ocrWorker: ocrWorkerRef.current, recognizeLocal });
+        // 子流程解析器：從 allFlows 查找
+        const subFlowResolver = (flowId) => storage.allFlows.find(f => f.id === flowId);
+        await runFlow(flowDef, { ws, videoEl, setCandidates, reelROI, ocrWorker: ocrWorkerRef.current, recognizeLocal, subFlowResolver });
     };
 
     // 儲存雲端（含衝突偵測，參考遊戲模板模式）

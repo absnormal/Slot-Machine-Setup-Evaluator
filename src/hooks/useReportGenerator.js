@@ -171,7 +171,7 @@ export function useReportGenerator() {
             // 從第一張有 canvas 的截圖取得寬高比，算出 ROI 裁切後容器高度
             const sampleCanvas = spins.find(c => c.canvas)?.canvas;
             if (sampleCanvas) {
-                const imgScale = 130 * 100 / reelROI.w; // 放大後的圖片寬度(px)
+                const imgScale = 240 * 100 / reelROI.w; // 放大後的圖片寬度(px)
                 const imgH = imgScale * sampleCanvas.height / sampleCanvas.width;
                 cssThumbH = `${Math.round(imgH * reelROI.h / 100)}px`;
             }
@@ -248,9 +248,6 @@ export function useReportGenerator() {
             }
 
             // ── 截圖來源：外部檔案路徑 vs 內嵌 Base64 ──
-            // 若 WIN/BET/BAL/ID 有任一欄空白或 '-'，使用全圖（表示重點不在盤面）
-            const ocrFields = [ocr.win, ocr.bet, ocr.balance, ocr.orderId];
-            const hasIncompleteOcr = ocrFields.some(v => !v || v === '-' || v === '');
             let fullSrc, displaySrc, winPollFullSrc, winPollDisplaySrc;
             if (useExternalImages) {
                 // 外部模式：引用 useAutoSave 已存好的本地檔案（displaySrc = fullSrc，由 CSS 裁切顯示 ROI）
@@ -261,7 +258,7 @@ export function useReportGenerator() {
             } else {
                 // 降級模式：內嵌 Base64（無存檔目錄時）
                 fullSrc = c.canvas ? c.canvas.toDataURL('image/jpeg', 0.92) : (c.thumbUrl || '');
-                displaySrc = hasIncompleteOcr ? fullSrc : (c.thumbUrl || fullSrc);
+                displaySrc = c.thumbUrl || fullSrc;
                 winPollFullSrc = c.winPollCanvas ? c.winPollCanvas.toDataURL('image/jpeg', 0.92) : '';
                 winPollDisplaySrc = c.winPollThumbUrl || winPollFullSrc;
             }
@@ -351,15 +348,13 @@ export function useReportGenerator() {
             const manualMult = c.manualOverrides?.multiplier ? `<span style="background:#fef3c7;color:#d97706;border:1px solid #fcd34d;font-size:9px;padding:1px 3px;border-radius:3px;margin-left:4px;white-space:nowrap;" title="人工校正">✏️人工</span>` : '';
 
             // 外部圖片模式：用 CSS overflow + transform 做 ROI 裁切，不產生新檔案
-            // OCR 不完整時跳過裁切，直接顯示全圖
-            const shouldCrop = useCssCrop && !hasIncompleteOcr;
-            const thumbImgStyle = shouldCrop
+            const thumbImgStyle = useCssCrop
                 ? `display:block;width:${cssThumbW};transform:translate(${cssThumbTx},${cssThumbTy});cursor:pointer;`
                 : '';
-            const thumbWrapOpen = shouldCrop
-                ? `<div style="width:130px;max-height:${cssThumbH};overflow:hidden;border-radius:6px;border:1px solid #e2e8f0;">`
+            const thumbWrapOpen = useCssCrop
+                ? `<div style="width:240px;max-height:${cssThumbH};overflow:hidden;border-radius:6px;border:1px solid #e2e8f0;">` 
                 : '';
-            const thumbWrapClose = shouldCrop ? '</div>' : '';
+            const thumbWrapClose = useCssCrop ? '</div>' : '';
 
             const rowHtml = `<tr ${dataAttrs}>
                 <td class="idx">${i + 1}</td>
@@ -494,13 +489,14 @@ th { padding:10px 12px; text-align:left; font-size:11px; font-weight:700; color:
 td { padding:8px 12px; border-bottom:1px solid #f1f5f9; vertical-align:middle; }
 tr:hover { background:#f8fafc; }
 .idx { color:#94a3b8; font-weight:600; width:40px; text-align:center; }
-.thumb { width:140px; padding:4px 8px; }
-.thumb img { width:130px; height:auto; border-radius:6px; border:1px solid #e2e8f0; display:block; cursor:pointer; transition:transform .15s; }
+.thumb { width:250px; padding:4px 8px; }
+.thumb img { width:240px; height:auto; border-radius:6px; border:1px solid #e2e8f0; display:block; cursor:pointer; transition:transform .15s; }
 .thumb img:hover { transform:scale(1.05); box-shadow:0 2px 8px rgba(0,0,0,.15); }
 .lightbox { display:none; position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,.85); backdrop-filter:blur(4px); justify-content:center; align-items:center; cursor:pointer; }
 .lightbox.show { display:flex; }
 .lightbox img { max-width:90vw; max-height:90vh; border-radius:12px; box-shadow:0 8px 32px rgba(0,0,0,.4); }
 .lightbox .hint { position:absolute; bottom:20px; color:#94a3b8; font-size:13px; }
+.lb-counter { position:absolute; top:20px; left:50%; transform:translateX(-50%); color:#fff; font-size:15px; font-weight:700; background:rgba(0,0,0,.6); padding:6px 16px; border-radius:8px; letter-spacing:1px; }
 .time { font-family:monospace; color:#64748b; font-size:12px; }
 .num { font-family:monospace; font-weight:600; text-align:right; }
 .win-positive { color:#059669; font-weight:800; }
@@ -570,8 +566,9 @@ tr.highlight { animation: rowFlash .6s ease; }
     <div class="footer">由老虎機線獎辨識工具自動生成</div>
 </div>
 <div class="lightbox" id="lb" onclick="closeLb()">
-    <img id="lbImg" src="" alt="preview" />
-    <div class="hint">點擊任意處關閉</div>
+    <img id="lbImg" src="" alt="preview" onclick="event.stopPropagation()" />
+    <div class="lb-counter" id="lbCounter"></div>
+    <div class="hint">↑↓ 切換截圖 · ESC 關閉 · 點擊背景關閉</div>
 </div>
 <div class="nav-bar">
     <button class="nav-btn top" onclick="window.scrollTo({top:0,behavior:'smooth'})">⬆ 頂部</button>
@@ -583,9 +580,40 @@ tr.highlight { animation: rowFlash .6s ease; }
     <span class="nav-counter" id="navCascadeCount"></span>
 </div>
 <script>
-function openLb(src) { const lb=document.getElementById('lb'); document.getElementById('lbImg').src=src; lb.classList.add('show'); }
-function closeLb() { document.getElementById('lb').classList.remove('show'); }
-document.addEventListener('keydown', e => { if(e.key==='Escape') closeLb(); });
+// ── Lightbox 上下切換 ──
+var lbImages = [];  // 所有截圖 src 列表
+var lbIndex = -1;   // 當前索引
+(function() {
+    // 收集所有 .thumb img 的 data-full 屬性
+    var imgs = document.querySelectorAll('.thumb img[data-full]');
+    imgs.forEach(function(img) { if (img.getAttribute('data-full')) lbImages.push(img.getAttribute('data-full')); });
+})();
+function openLb(src) {
+    var lb = document.getElementById('lb');
+    document.getElementById('lbImg').src = src;
+    lb.classList.add('show');
+    lbIndex = lbImages.indexOf(src);
+    updateLbCounter();
+}
+function closeLb() { document.getElementById('lb').classList.remove('show'); lbIndex = -1; }
+function lbNav(dir) {
+    if (lbImages.length === 0) return;
+    if (lbIndex < 0) lbIndex = 0;
+    lbIndex = (lbIndex + dir + lbImages.length) % lbImages.length;
+    document.getElementById('lbImg').src = lbImages[lbIndex];
+    updateLbCounter();
+}
+function updateLbCounter() {
+    var el = document.getElementById('lbCounter');
+    if (el && lbIndex >= 0) el.textContent = (lbIndex + 1) + ' / ' + lbImages.length;
+}
+document.addEventListener('keydown', function(e) {
+    var lb = document.getElementById('lb');
+    if (!lb.classList.contains('show')) return;
+    if (e.key === 'Escape') { closeLb(); e.preventDefault(); }
+    else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') { lbNav(-1); e.preventDefault(); }
+    else if (e.key === 'ArrowDown' || e.key === 'ArrowRight') { lbNav(1); e.preventDefault(); }
+});
 
 function hi(idx, coords, amt) {
     const grid = document.getElementById('g-' + idx);

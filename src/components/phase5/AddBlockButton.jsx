@@ -48,6 +48,7 @@ const AddBlockButton = ({ depth, onAdd, inline = false }) => {
     const handleAdd = (template) => {
         const newBlock = { ...template, id: genId(), params: { ...template.params } };
         if (template.children) newBlock.children = [];
+        if (template.elseChildren) newBlock.elseChildren = [];
         onAdd(newBlock);
         setOpen(false);
     };
