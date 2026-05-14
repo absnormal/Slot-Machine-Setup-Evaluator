@@ -3,6 +3,7 @@ import { Play, Pause, Square, Cloud, Trash2, RefreshCw, ChevronDown, ChevronUp }
 import { useFlowRunner } from '../../hooks/useFlowRunner';
 import { useFlowStorage } from '../../hooks/useFlowStorage';
 import { OcrWorkerBridge } from '../../engine/ocrWorkerBridge';
+import { resolveROI } from '../../engine/roiResolver';
 import { genId } from './blockDefs';
 import BlockRow, { useListDrag } from './BlockRow';
 import AddBlockButton from './AddBlockButton';
@@ -82,6 +83,55 @@ const FlowComposer = ({ ws, videoEl, setCandidates, reelROI, recognizeLocal }) =
 
     // 執行
     const handleRun = async () => {
+        // ── Pre-flight 檢查：跑之前先驗證 ──
+        const warnings = [];
+        const checkBlocks = (blockList, path = '') => {
+            for (const b of (blockList || [])) {
+                const loc = path ? `${path} → ${b.type}` : b.type;
+                // ROI 檢查
+                if (b.type === 'click_roi' && b.params?.roi) {
+                    const roi = resolveROI(b.params.roi);
+                    if (!roi) warnings.push(`⚠️ [${loc}] ROI "${b.params.roi}" 未設定`);
+                }
+                if (b.type === 'wait_stable' && b.params?.roi) {
+                    const roi = resolveROI(b.params.roi);
+                    if (!roi) warnings.push(`⚠️ [${loc}] ROI "${b.params.roi}" 未設定`);
+                }
+                if (b.type === 'wait_change' && b.params?.roi) {
+                    const roi = resolveROI(b.params.roi);
+                    if (!roi) warnings.push(`⚠️ [${loc}] ROI "${b.params.roi}" 未設定`);
+                }
+                if (b.type === 'ocr_batch' && b.params?.rois) {
+                    for (const name of b.params.rois) {
+                        const roi = resolveROI(name);
+                        if (!roi) warnings.push(`⚠️ [${loc}] OCR ROI "${name}" 未設定`);
+                    }
+                }
+                // 子流程檢查
+                if (b.type === 'sub_flow') {
+                    if (!b.params?.flowId) {
+                        warnings.push(`❌ [${loc}] 子流程未選擇`);
+                    } else {
+                        const found = storage.allFlows.find(f => f.id === b.params.flowId);
+                        if (!found) warnings.push(`❌ [${loc}] 子流程 "${b.params.label || b.params.flowId}" 不存在`);
+                    }
+                }
+                // 遞迴
+                if (b.children) checkBlocks(b.children, loc);
+                if (b.elseChildren) checkBlocks(b.elseChildren, `${loc}(else)`);
+            }
+        };
+        checkBlocks(blocks);
+
+        // 環境檢查
+        if (!ws || ws.readyState !== WebSocket.OPEN) warnings.push('❌ WebSocket 未連線');
+        if (!videoEl) warnings.push('❌ 影像來源未設定');
+        if (blocks.length === 0) warnings.push('❌ 流程是空的');
+
+        if (warnings.length > 0) {
+            const msg = `執行前檢查發現 ${warnings.length} 個問題：\n\n${warnings.join('\n')}\n\n是否仍要執行？`;
+            if (!window.confirm(msg)) return;
+        }
         // 懶載入前端 OCR Worker
         if (!ocrWorkerRef.current) {
             try {
