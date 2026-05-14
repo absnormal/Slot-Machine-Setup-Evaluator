@@ -1,6 +1,6 @@
 ---
 name: Slot Machine Evaluator Architecture
-description: 老虎機辨識工具的完整架構文件，涵蓋 Phase 1-4 流程、檔案導覽、資料結構、狀態管理與關鍵設計決策。每次對話優先查閱此文件以避免重複讀取原始碼。
+description: 老虎機辨識工具的完整架構文件，涵蓋 Phase 1-5 流程、檔案導覽、資料結構、狀態管理與關鍵設計決策。每次對話優先查閱此文件以避免重複讀取原始碼。
 ---
 
 # 🎰 Slot Machine Setup Evaluator — 架構文件
@@ -67,18 +67,105 @@ Phase 1 (模板設定) → Phase 2 (手動驗證) → Phase 3 (AI辨識) → Pha
   - `ocrPipeline.js` — `captureFullFrame`, `generateThumbUrl`, `cropAndOCR`
 - **元件**：`Phase4Video.jsx` → `VideoPlayer.jsx`, `DetectionControlBar.jsx`, `SpinGroupList.jsx`, `CandidateCard.jsx`, `DiagnosticDashboard.jsx`, `SavePanel.jsx`, `ActionPanel.jsx`
 
-### Phase 5 — 自動化控制（操控）
-- **目的**：透過 Python 後端控制遊戲視窗，自動遊玩並收集數據
-- **職責**：遊戲操控與排程（P5 = 雙手），共用 P4 的偵測結果
+### Phase 5 — 自動化排程器（操控）
+- **目的**：透過 Python 後端控制遊戲視窗，以積木式排程自動遊玩並收集數據
+- **職責**：遊戲操控與排程（P5 = 雙手），共用 P4 的偵測結果與候選幀
+- **核心架構**：FlowRunner 積木排程引擎（取代舊版 QuickMode/useAutoPlay）
 - **核心 Hook**：
-  - `useAutoPlay` — 自動遊玩迴圈（click SPIN → 等停輪 → 等 OCR → 記錄 → dedup）
+  - `useFlowRunner` — 積木排程引擎（解析 Flow JSON → 逐塊執行）
+  - `useFlowStorage` — 流程存取（本地 localStorage + 雲端 GAS）
   - `useNativeCapture` — Python WebSocket 後端連線（P4/P5 共用，提升至 App 層級）
 - **橋接 P4**：
-  - 共用 `videoRef`、`candidates`
-  - 呼叫 P4 的 `startLiveDetection` / `stopLiveDetection` / `smartDedup`
-  - 讀取 P4 的 `spinGroupCount` 判斷停止條件
-- **元件**：`Phase5Automation.jsx` → `phase4/AutoPlayPanel.jsx`（浮動控制台）
-- **後端**：`screen-capture-server/server.py` — WebSocket 串流 + PostMessage 背景點擊
+  - 共用 `videoRef`、`candidates`、`setCandidates`
+  - `recognizeLocal` callback → 呼叫 P4 的 `recognizeLocalBatch`（本機辨識）
+  - 讀取 P4 的 ROI 設定（透過 `usePhase4Store`）
+- **元件**：
+  - `Phase5Automation.jsx` — 容器：Portal 底部狀態列 + 展開面板
+  - `phase5/FlowComposer.jsx` — 排程器主 UI：積木編輯、流程管理、執行控制
+  - `phase5/BlockRow.jsx` — 單個積木渲染（拖曳、展開、參數編輯）
+  - `phase5/BlockParams.jsx` — 積木參數 UI（ROI 選擇、數字輸入、勾選框）
+  - `phase5/AddBlockButton.jsx` — 新增積木按鈕
+  - `phase5/StatusBar.jsx` — 底部狀態列
+  - `phase5/blockDefs.js` — 積木定義（icon、label、color、預設參數）
+- **引擎**：
+  - `engine/flowRunner.js` — FlowRunner class：積木解析、執行迴圈、變數空間
+  - `engine/roiResolver.js` — ROI 名稱 → 百分比座標解析（讀 Zustand store + clickTargets）
+  - `engine/actions/ocrAction.js` — OCR 積木動作（批次讀取、單次讀取）
+  - `engine/actions/waitChangeAction.js` — 等待數字變化積木
+- **後端**：`screen-capture-server/server.py` — WebSocket 串流 + PostMessage 背景點擊 + OCR
+
+#### P5 積木類型
+| 類型 | icon | 說明 | 顏色 |
+|------|------|------|------|
+| `click_roi` | 🎮 | 點擊指定 ROI 區域 | 藍色 |
+| `key_press` | ⌨️ | 按下鍵盤按鍵 | 藍色 |
+| `wait` | ⏱️ | 等待固定秒數 | 黃色 |
+| `wait_stable` | 👁️ | 等待 ROI 穩定（像素不變） | 黃色 |
+| `wait_change` | ⚡ | 等待 ROI 數字變化 | 黃色 |
+| `ocr_batch` | 📊 | 批次 OCR 多個 ROI → 寫入變數 | 綠色 |
+| `ocr_read` | 🔢 | 單次 OCR 一個 ROI → 寫入變數 | 綠色 |
+| `capture_frame` | 📸 | 截圖建立候選幀 | 玫紅 |
+| `record_spin` | 💾 | 從變數組裝 ocrData 寫入候選幀 | 玫紅 |
+| `recognize_grid` | 🔍 | 呼叫本機辨識 → recognitionResult | 青色 |
+| `loop` | 🔁 | 迴圈 N 次（含子積木） | 靛色 |
+| `if_then` | ❓ | 條件分支 | 紫色 |
+| `set_var` | 📝 | 設定變數值 | 灰色 |
+| `log` | 📋 | 輸出日誌 | 灰色 |
+
+#### P5 FlowRunner 資料流
+```
+FlowComposer (UI)
+  → runFlow(flowDef, context)
+    context = { ws, videoEl, setCandidates, reelROI, ocrWorker, recognizeLocal }
+  → FlowRunner.run(flow, context)
+    → _executeBlocks(blocks, depth)
+      → 逐塊 switch(block.type) → 對應 _exec 方法
+
+執行期間狀態：
+  this.variables    → 變數空間 ($win, $balance, $bet, ...)
+  this._lastCaptureId → 最後截圖候選幀 ID
+  this._lastCapturedCanvas → 最後截圖 Canvas
+  this._spinCount   → 已記錄局數
+
+事件發射（FlowEvent）：
+  LOG, BLOCK_START, BLOCK_END, VAR_UPDATE, SPIN_RECORDED, ERROR
+  → FlowComposer 訂閱更新 UI
+```
+
+#### P5 典型流程範例
+```
+🔁 迴圈 100 次
+  🎮 點擊 SPIN
+  ⏱️ 等待 1 秒
+  👁️ 等待穩定 REEL ×3
+  📸 截圖
+  🔍 盤面辨識
+  ⚡ 等待數字變化 WIN
+  📊 批次讀取 WIN, BAL, BET, ORDER_ID
+  💾 記錄結果 [✓WIN ✓BAL ✓BET ✓ORDER_ID]
+```
+
+#### P5 ↔ P4 候選幀寫入流程
+```
+capture_frame:
+  → videoEl.drawImage → Canvas
+  → setCandidates(prev => [...prev, { id, canvas, thumbUrl, status:'pending' }])
+  → 存 _lastCaptureId, _lastCapturedCanvas
+
+recognize_grid:
+  → recognizeLocal(_lastCaptureId)  // 用 candidatesRef 取最新候選幀
+  → autoRecognition.recognizeLocalBatch([kf], updateCandidate, rois)
+  → updateCandidate(id, { status:'recognized', recognitionResult:{grid, settlement} })
+
+ocr_batch:
+  → cropAndOCR(_lastCapturedCanvas, roi)  // 從截圖 canvas 裁切 OCR
+  → 結果存入 variables ($win, $bal, ...)
+
+record_spin:
+  → 從 variables 組裝 ocrData（依 fields 勾選決定哪些欄位寫入）
+  → setCandidates 更新候選幀 ocrData
+  → status: 已是 'recognized' 則保留，否則設為 'completed'
+```
 
 ## 3. 檔案導覽 (File Map)
 
@@ -96,6 +183,13 @@ Phase 1 (模板設定) → Phase 2 (手動驗證) → Phase 3 (AI辨識) → Pha
 | `phase4/SpinGroupList.jsx` | 分局列表（群組化展示、cascade 標記） | 11KB |
 | `phase4/DetectionControlBar.jsx` | 偵測參數控制列 | 7KB |
 | `phase4/DiagnosticDashboard.jsx` | 輕量診斷面板 | 5KB |
+| `Phase5Automation.jsx` | Phase 5 容器：Portal + StatusBar + FlowComposer | 3KB |
+| `phase5/FlowComposer.jsx` | 排程器主 UI：積木列表、流程管理、執行控制、日誌 | 16KB |
+| `phase5/BlockRow.jsx` | 單個積木渲染：拖曳、展開、參數 UI、遞迴子積木 | 6KB |
+| `phase5/BlockParams.jsx` | 積木參數 UI：ROI 選擇、數字輸入、勾選框 | 9KB |
+| `phase5/AddBlockButton.jsx` | 新增積木按鈕 + 下拉選單 | 3KB |
+| `phase5/StatusBar.jsx` | 底部固定狀態列 | 3KB |
+| `phase5/blockDefs.js` | 積木定義：icon、label、color、預設模板 | 2KB |
 | `phase1/LineModeConfig.jsx` | 線獎模式設定 (paylines/allways/symbolcount) | 28KB |
 | `phase1/PaytableConfig.jsx` | 賠付表編輯器 | 20KB |
 | `phase1/SpecialSymbolQA.jsx` | 特殊符號問答設定 (WILD/SCATTER/JP/CASH) | 24KB |
@@ -115,6 +209,9 @@ Phase 1 (模板設定) → Phase 2 (手動驗證) → Phase 3 (AI辨識) → Pha
 | `useTemplateIO.js` | 模板 JSON I/O | `exportTemplate`, `importTemplate` |
 | `useROIDrag.js` | ROI 拖曳邏輯 | `handleMouseDown/Move/Up` |
 | `useNativeCapture.js` | WebSocket 本地擷取 | `startCapture`, `stopCapture` |
+| `useFlowRunner.js` | 積木排程引擎 Hook | `runFlow`, `pause`, `resume`, `stop`, `variables` |
+| `useFlowStorage.js` | 流程存取（local + cloud） | `saveToLocal`, `saveToCloud`, `allFlows` |
+| `useListDrag.js` | 積木拖曳排序 | `handleDragStart`, `handleDrop` |
 | `useCloud.js` | Firebase 雲端同步 | `uploadTemplate`, `fetchTemplates` |
 | `useSlotEngine.js` | Phase 2 結算包裝 | `computeResults` |
 
@@ -127,6 +224,10 @@ Phase 1 (模板設定) → Phase 2 (手動驗證) → Phase 3 (AI辨識) → Pha
 | `vlineScanner.js` | V-Line 切片式停輪偵測 |
 | `winPollAgent.js` | WIN 特工：高頻輪詢 WIN ROI 像素變化 |
 | `ocrWorkerBridge.js` | Tesseract OCR Worker 橋接 |
+| `flowRunner.js` | FlowRunner class：積木解析、迴圈、條件分支、變數空間 |
+| `roiResolver.js` | ROI 名稱解析：標準名稱 + 自訂 clickTargets → 百分比座標 |
+| `actions/ocrAction.js` | OCR 積木動作：批次讀取、單次讀取 |
+| `actions/waitChangeAction.js` | 等待數字變化積木：輪詢 OCR 直到穩定 |
 
 ### Stores (Zustand)
 | 檔案 | 用途 |
@@ -317,6 +418,15 @@ handleTransferPhase4ToPhase3:
 | Phase 間資料傳遞 | `App.jsx` (搜尋 `handleTransfer`) |
 | 偵測參數 UI | `phase4/DetectionControlBar.jsx` |
 | 存檔功能 | `useAutoSave.js`, `phase4/SavePanel.jsx` |
+| P5 積木定義 | `phase5/blockDefs.js` |
+| P5 積木參數 UI | `phase5/BlockParams.jsx` |
+| P5 排程器 UI | `phase5/FlowComposer.jsx` |
+| P5 流程執行邏輯 | `engine/flowRunner.js` |
+| P5 ROI 名稱解析 | `engine/roiResolver.js` |
+| P5 OCR 動作 | `engine/actions/ocrAction.js` |
+| P5 等待動作 | `engine/actions/waitChangeAction.js` |
+| P5 流程存取 | `hooks/useFlowStorage.js` |
+| P5 ↔ P4 候選幀 | `App.jsx` (`recognizeLocalSingle` + `candidatesRef`) |
 
 
 ## 9. 驗證流程
@@ -358,5 +468,5 @@ npm run dev
 | 賠率表操作不同步 | `usePaytableProcessor` 的函數需透過參數接收 `setPaytableInput`，`useTemplateBuilder` 使用 wrapper 綁定 |
 
 ---
-*最後更新：2026-05-14*
+*最後更新：2026-05-14（P5 排程器架構）*
 
