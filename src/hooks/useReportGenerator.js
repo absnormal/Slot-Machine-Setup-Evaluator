@@ -248,6 +248,9 @@ export function useReportGenerator() {
             }
 
             // ── 截圖來源：外部檔案路徑 vs 內嵌 Base64 ──
+            // 若 WIN/BET/BAL/ID 有任一欄空白或 '-'，使用全圖（表示重點不在盤面）
+            const ocrFields = [ocr.win, ocr.bet, ocr.balance, ocr.orderId];
+            const hasIncompleteOcr = ocrFields.some(v => !v || v === '-' || v === '');
             let fullSrc, displaySrc, winPollFullSrc, winPollDisplaySrc;
             if (useExternalImages) {
                 // 外部模式：引用 useAutoSave 已存好的本地檔案（displaySrc = fullSrc，由 CSS 裁切顯示 ROI）
@@ -258,7 +261,7 @@ export function useReportGenerator() {
             } else {
                 // 降級模式：內嵌 Base64（無存檔目錄時）
                 fullSrc = c.canvas ? c.canvas.toDataURL('image/jpeg', 0.92) : (c.thumbUrl || '');
-                displaySrc = c.thumbUrl || fullSrc;
+                displaySrc = hasIncompleteOcr ? fullSrc : (c.thumbUrl || fullSrc);
                 winPollFullSrc = c.winPollCanvas ? c.winPollCanvas.toDataURL('image/jpeg', 0.92) : '';
                 winPollDisplaySrc = c.winPollThumbUrl || winPollFullSrc;
             }
@@ -348,13 +351,15 @@ export function useReportGenerator() {
             const manualMult = c.manualOverrides?.multiplier ? `<span style="background:#fef3c7;color:#d97706;border:1px solid #fcd34d;font-size:9px;padding:1px 3px;border-radius:3px;margin-left:4px;white-space:nowrap;" title="人工校正">✏️人工</span>` : '';
 
             // 外部圖片模式：用 CSS overflow + transform 做 ROI 裁切，不產生新檔案
-            const thumbImgStyle = useCssCrop
+            // OCR 不完整時跳過裁切，直接顯示全圖
+            const shouldCrop = useCssCrop && !hasIncompleteOcr;
+            const thumbImgStyle = shouldCrop
                 ? `display:block;width:${cssThumbW};transform:translate(${cssThumbTx},${cssThumbTy});cursor:pointer;`
                 : '';
-            const thumbWrapOpen = useCssCrop
+            const thumbWrapOpen = shouldCrop
                 ? `<div style="width:130px;max-height:${cssThumbH};overflow:hidden;border-radius:6px;border:1px solid #e2e8f0;">`
                 : '';
-            const thumbWrapClose = useCssCrop ? '</div>' : '';
+            const thumbWrapClose = shouldCrop ? '</div>' : '';
 
             const rowHtml = `<tr ${dataAttrs}>
                 <td class="idx">${i + 1}</td>
