@@ -222,6 +222,7 @@ function App() {
 
     // --- Phase 4 (影片智慧分析 — 新架構) ---
     const videoRef = useRef(null);
+    const candidatesRef = useRef([]);
     const [videoSrc, setVideoSrc] = useState(null);
     const [isStreamMode, setIsStreamMode] = useState(false);
     const [isNativeMode, setIsNativeMode] = useState(false);
@@ -366,6 +367,7 @@ function App() {
 
     // 新 Phase 4 Hooks
     const keyframeExtractor = useKeyframeExtractor({ setTemplateMessage });
+    candidatesRef.current = keyframeExtractor.candidates;
     const autoRecognition = useAutoRecognition({
         template, availableSymbols, customApiKey,
         setTemplateMessage, setTemplateError,
@@ -396,6 +398,22 @@ function App() {
             decimalPlaces ?? ocrDecimalPlaces
         );
     }, [autoRecognition, keyframeExtractor, reelROI, winROI, balanceROI, betROI, orderIdROI, multiplierROI, ocrDecimalPlaces]);
+
+    // P5 用：單張候選幀本機辨識（接收 candidateId，用 ref 取最新 candidates 避免閉包過期）
+    const recognizeLocalSingle = useCallback(async (candidateId) => {
+        const kf = candidatesRef.current.find(c => c.id === candidateId);
+        if (!kf) {
+            console.warn('[recognizeLocalSingle] 找不到候選幀', candidateId, 'candidates:', candidatesRef.current.length);
+            return;
+        }
+        const rois = { reelROI, winROI, balanceROI, betROI, orderIdROI, multiplierROI };
+        await autoRecognition.recognizeLocalBatch(
+            [kf],
+            keyframeExtractor.updateCandidate,
+            rois,
+            ocrDecimalPlaces
+        );
+    }, [autoRecognition, keyframeExtractor.updateCandidate, reelROI, winROI, balanceROI, betROI, orderIdROI, multiplierROI, ocrDecimalPlaces]);
 
     // --- Phase 間數據傳遞 ---
     const handleTransferPhase4ToPhase3 = useCallback(async (specificCandidates) => {
@@ -1029,6 +1047,7 @@ function App() {
                         sliceCols: template?.cols || gridCols || 5,
                         hasRollingWin, enableWinTracker, enableEmptyBoardFilter,
                     }}
+                    recognizeLocal={recognizeLocalSingle}
                 />
             </ErrorBoundary>
         </div>

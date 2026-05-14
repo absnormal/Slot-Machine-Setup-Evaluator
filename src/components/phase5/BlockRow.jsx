@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Trash2, ChevronRight, ChevronDown, GripVertical } from 'lucide-react';
 import { BLOCK_META } from './blockDefs';
 import AddBlockButton from './AddBlockButton';
@@ -19,6 +19,13 @@ const BlockRow = ({ block, depth, onDelete, onUpdate, onDragOps, currentBlockId,
     const isActive = currentBlockId === block.id;
     const isContainer = block.type === 'loop' || block.type === 'if_then';
 
+    // 執行中的積木自動滾入可視範圍
+    useEffect(() => {
+        if (isActive && rowRef.current) {
+            rowRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+    }, [isActive]);
+
     const paramSummary = () => {
         const p = block.params || {};
         switch (block.type) {
@@ -35,8 +42,15 @@ const BlockRow = ({ block, depth, onDelete, onUpdate, onDragOps, currentBlockId,
     };
 
     // 子積木操作
-    const addChild = (newBlock) => {
-        onUpdate({ ...block, children: [...(block.children || []), newBlock] });
+    const insertChild = (newBlock, index) => {
+        const children = block.children || [];
+        if (index === undefined || index === null || index >= children.length) {
+            onUpdate({ ...block, children: [...children, newBlock] });
+        } else {
+            const next = [...children];
+            next.splice(index, 0, newBlock);
+            onUpdate({ ...block, children: next });
+        }
     };
     const deleteChild = (childId) => {
         onUpdate({ ...block, children: (block.children || []).filter(c => c.id !== childId) });
@@ -112,13 +126,10 @@ const BlockRow = ({ block, depth, onDelete, onUpdate, onDragOps, currentBlockId,
                 )}
                 <span className="text-base shrink-0">{meta.icon}</span>
                 <span className="text-slate-300 font-semibold shrink-0">{meta.label}</span>
-                {isRunning ? (
-                    <span className="text-slate-500 text-xs truncate flex-1">{paramSummary()}</span>
-                ) : (
-                    <div className="flex-1 min-w-0" onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
-                        <BlockParams block={block} onUpdate={onUpdate} />
-                    </div>
-                )}
+                <div className={`flex-1 min-w-0 ${isRunning ? 'pointer-events-none opacity-75' : ''}`}
+                    onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
+                    <BlockParams block={block} onUpdate={onUpdate} />
+                </div>
                 {!isRunning && (
                     <button onClick={() => onDelete(block.id)} className="text-slate-600 hover:text-rose-400 p-1">
                         <Trash2 size={14}/>
@@ -132,13 +143,18 @@ const BlockRow = ({ block, depth, onDelete, onUpdate, onDragOps, currentBlockId,
             )}
 
             {isContainer && expanded && (
-                <div className="mt-1 space-y-1">
-                    {(block.children || []).map((child) => (
-                        <BlockRow key={child.id} block={child} depth={depth + 1}
-                            onDelete={deleteChild} onUpdate={updateChild} onDragOps={childDragOps}
-                            currentBlockId={currentBlockId} isRunning={isRunning} />
+                <div className="mt-1 space-y-0">
+                    {(block.children || []).map((child, i) => (
+                        <React.Fragment key={child.id}>
+                            {!isRunning && (
+                                <AddBlockButton depth={depth + 1} inline onAdd={(b) => insertChild(b, i)} />
+                            )}
+                            <BlockRow block={child} depth={depth + 1}
+                                onDelete={deleteChild} onUpdate={updateChild} onDragOps={childDragOps}
+                                currentBlockId={currentBlockId} isRunning={isRunning} />
+                        </React.Fragment>
                     ))}
-                    {!isRunning && <AddBlockButton depth={depth + 1} onAdd={addChild} />}
+                    {!isRunning && <AddBlockButton depth={depth + 1} onAdd={(b) => insertChild(b)} />}
                 </div>
             )}
         </div>

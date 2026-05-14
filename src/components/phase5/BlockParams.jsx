@@ -32,8 +32,8 @@ const BlockParams = ({ block, onUpdate }) => {
         case 'wait':
             return (
                 <div className="flex items-center gap-1.5">
-                    <NumInput value={p.ms} onChange={v => set('ms', v)} min={0} step={100} />
-                    <span className="text-slate-500 text-[10px]">ms</span>
+                    <NumInput value={p.seconds ?? 1} onChange={v => set('seconds', v)} min={0} step={0.5} />
+                    <span className="text-slate-500 text-[10px]">秒</span>
                 </div>
             );
 
@@ -52,12 +52,14 @@ const BlockParams = ({ block, onUpdate }) => {
         case 'wait_change':
             return (
                 <div className="flex items-center gap-1.5 flex-wrap">
-                    <RoiSelect value={p.roi} onChange={v => set('roi', v)} />
+                    <RoiSelect value={p.roi} onChange={v => set('roi', v)} filter="ocr" />
                     <span className="text-slate-500 text-[10px]">×</span>
                     <NumInput value={p.changeCount ?? 2} onChange={v => set('changeCount', v)} min={1} max={20} w="w-10" />
-                    <span className="text-slate-500 text-[10px]">間隔</span>
                     <NumInput value={p.interval ?? 200} onChange={v => set('interval', v)} min={50} step={50} w="w-14" />
                     <span className="text-slate-500 text-[10px]">ms</span>
+                    <span className="text-slate-500 text-[10px]">逾時</span>
+                    <NumInput value={p.timeout == null ? 30 : p.timeout} onChange={v => set('timeout', v)} min={0} step={1} w="w-12" />
+                    <span className="text-slate-500 text-[10px]">秒</span>
                 </div>
             );
 
@@ -130,7 +132,31 @@ const BlockParams = ({ block, onUpdate }) => {
                 </div>
             );
 
-        case 'record_spin':
+        case 'record_spin': {
+            const RECORD_FIELDS = ['WIN', 'BAL', 'BET', 'ORDER_ID', 'MULT'];
+            return (
+                <div className="flex items-center gap-1 flex-wrap">
+                    {RECORD_FIELDS.map(name => {
+                        const checked = (p.fields || RECORD_FIELDS).includes(name);
+                        return (
+                            <label key={name} className={`flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded cursor-pointer transition-colors ${
+                                checked ? 'bg-rose-500/15 text-rose-300' : 'text-slate-500 hover:text-slate-300'
+                            }`}>
+                                <input type="checkbox" checked={checked}
+                                    className="w-3 h-3 accent-rose-500"
+                                    onChange={() => {
+                                        const fields = checked
+                                            ? (p.fields || RECORD_FIELDS).filter(f => f !== name)
+                                            : [...(p.fields || RECORD_FIELDS), name];
+                                        set('fields', fields);
+                                    }} />
+                                {name}
+                            </label>
+                        );
+                    })}
+                </div>
+            );
+        }
         case 'capture_frame':
             return null; // 無參數
 

@@ -47,9 +47,10 @@ function sendWSCommand(ws, command, timeoutMs = 15000) {
  * 批次讀取多個 ROI 的 OCR 值
  * @param {WebSocket} ws
  * @param {string[]} roiNames - ROI 名稱陣列（如 ['WIN', 'BAL', 'BET', 'ORDER_ID']）
+ * @param {string|null} [imageBase64] - 可選，提供截圖的 base64 JPEG（有值時 Python 不再自行截圖）
  * @returns {Promise<Object>} { WIN: '500.00', BAL: '12345.67', ... }
  */
-export async function ocrBatch(ws, roiNames) {
+export async function ocrBatch(ws, roiNames, imageBase64 = null) {
     const rois = [];
 
     for (const name of roiNames) {
@@ -75,7 +76,12 @@ export async function ocrBatch(ws, roiNames) {
         throw new Error('[ocrAction] 沒有有效的 ROI 可讀取');
     }
 
-    const result = await sendWSCommand(ws, { action: 'ocr_rois', rois });
+    const cmd = { action: 'ocr_rois', rois };
+    if (imageBase64) {
+        cmd.image = imageBase64;
+    }
+
+    const result = await sendWSCommand(ws, cmd);
     return result.ocrResults || {};
 }
 

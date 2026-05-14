@@ -60,6 +60,7 @@ except ImportError:
     pass
 
 _ocr_engine = None  # 延遲初始化
+_last_ocr_results = {}  # 追蹤上次 OCR 結果，只在變化時印 log
 
 def get_ocr_engine():
     """延遲初始化 RapidOCR 引擎（第一次呼叫時才載入模型，約 1-2 秒）"""
@@ -114,8 +115,8 @@ def ocr_crop_and_clean(pil_img, roi, decimal_places=2, label=""):
     
     # 放大至約 48px 高度（與前端 ocrPipeline 對齊）
     scale = max(1.0, 48.0 / ch)
-    # rec-only 模式需要更大的水平拉寬，避免 CTC 把連續相同數字合併（如 '00' → '0'）
-    stretch_x = 2.5
+    # 水平拉寬 1.25 倍（與前端對齊）：解決 CTC 把連續相同數字合併的問題
+    stretch_x = 1.25
     new_w = int(cw * scale * stretch_x)
     new_h = int(ch * scale)
     crop = crop.resize((new_w, new_h), Image.LANCZOS)
@@ -125,8 +126,8 @@ def ocr_crop_and_clean(pil_img, roi, decimal_places=2, label=""):
     crop = ImageEnhance.Contrast(crop).enhance(1.2)
     crop = ImageEnhance.Brightness(crop).enhance(1.1)
     
-    # rec-only 模式不需要 DBNet，只需最小 padding
-    PADDING = 8
+    # rec-only 不需要大 padding，最小 padding 即可
+    PADDING = 10
     padded = Image.new('RGB', (new_w + PADDING * 2, new_h + PADDING * 2), (0, 0, 0))
     padded.paste(crop, (PADDING, PADDING))
     
@@ -134,7 +135,8 @@ def ocr_crop_and_clean(pil_img, roi, decimal_places=2, label=""):
     import numpy as np
     img_array = np.array(padded)
     
-    # rec-only 模式：跳過偵測，只跑辨識（~70ms vs 完整管線 ~3500ms）
+    # rec-only 模式：跳過 DBNet 偵測，直接辨識（~70ms vs 完整管線 ~330ms）
+    # stretch_x=1.25 已修正，小數點不再丟失
     result, _ = engine(img_array, use_det=False, use_cls=False, use_rec=True)
     if not result:
         return ""
@@ -478,30 +480,46 @@ def handle_control_command(cmd, active_source=None):
             if not rois:
                 return {"success": False, "message": "No ROIs specified"}
             
-            # 截取當前畫面
-            hwnd_ocr = active_source.get("hwnd") if active_source else None
+            # 優先使用前端提供的截圖（capture_frame 產生的）
+            provided_image = cmd.get("image")
             pil_img = None
             
-            if hwnd_ocr:
-                # 視窗模式：使用 PrintWindow 確保即使被遮擋也能截取
-                pil_img = capture_window_printwindow(hwnd_ocr)
-            
-            if pil_img is None:
-                # Fallback: mss 截取
+            if provided_image:
                 try:
-                    with mss.MSS() as sct:
-                        if active_source and active_source.get("type") == "window" and hwnd_ocr:
-                            r = ctypes.wintypes.RECT()
-                            user32.GetWindowRect(hwnd_ocr, ctypes.byref(r))
-                            bbox = (r.left, r.top, r.right, r.bottom)
-                            raw_grab = sct.grab(bbox)
-                            pil_img = Image.frombytes("RGB", raw_grab.size, raw_grab.bgra, "raw", "BGRX")
-                        else:
-                            monitor = sct.monitors[active_source.get("index", 1)]
-                            raw_grab = sct.grab(monitor)
-                            pil_img = Image.frombytes("RGB", raw_grab.size, raw_grab.bgra, "raw", "BGRX")
+                    # 解析 data:image/jpeg;base64,... 格式
+                    img_data = provided_image
+                    if ',' in img_data:
+                        img_data = img_data.split(',', 1)[1]
+                    pil_img = Image.open(io.BytesIO(base64.b64decode(img_data))).convert('RGB')
                 except Exception as e:
-                    return {"success": False, "message": f"Screenshot failed: {e}"}
+                    print(f"[OCR] 前端截圖解析失敗，改用本地截取: {e}")
+                    pil_img = None
+            
+            # 沒有前端截圖 → 自行截取當前畫面
+            if pil_img is None:
+                if not window_rect and not active_source:
+                    return {"success": False, "message": "ocr_rois requires active source or image"}
+                
+                hwnd_ocr = active_source.get("hwnd") if active_source else None
+                
+                if hwnd_ocr:
+                    pil_img = capture_window_printwindow(hwnd_ocr)
+                
+                if pil_img is None:
+                    try:
+                        with mss.MSS() as sct:
+                            if active_source and active_source.get("type") == "window" and hwnd_ocr:
+                                r = ctypes.wintypes.RECT()
+                                user32.GetWindowRect(hwnd_ocr, ctypes.byref(r))
+                                bbox = (r.left, r.top, r.right, r.bottom)
+                                raw_grab = sct.grab(bbox)
+                                pil_img = Image.frombytes("RGB", raw_grab.size, raw_grab.bgra, "raw", "BGRX")
+                            else:
+                                monitor = sct.monitors[active_source.get("index", 1)]
+                                raw_grab = sct.grab(monitor)
+                                pil_img = Image.frombytes("RGB", raw_grab.size, raw_grab.bgra, "raw", "BGRX")
+                    except Exception as e:
+                        return {"success": False, "message": f"Screenshot failed: {e}"}
             
             if pil_img is None:
                 return {"success": False, "message": "Could not capture screen"}
@@ -523,8 +541,21 @@ def handle_control_command(cmd, active_source=None):
                         print(f"[OCR 錯誤] {name}: {e}")
             
             elapsed_ms = (time.time() - t0) * 1000
-            print(f"[OCR] 批次完成 {len(rois)} 個 ROI，耗時 {elapsed_ms:.0f}ms | 結果: {results}")
+            global _last_ocr_results
+            if results != _last_ocr_results:
+                if _last_ocr_results:
+                    print(f"[OCR] ⚡ {_last_ocr_results} → {results} ({elapsed_ms:.0f}ms)")
+                else:
+                    print(f"[OCR] 基準值: {results} ({elapsed_ms:.0f}ms)")
+                _last_ocr_results = dict(results)
+            else:
+                print(f"[OCR] {results} ({elapsed_ms:.0f}ms)")
             return {"success": True, "message": f"ocr_rois done in {elapsed_ms:.0f}ms", "ocrResults": results}
+
+        elif action == "log":
+            msg = cmd.get("message", "")
+            print(f"[流程] {msg}")
+            return {"success": True, "message": "logged"}
 
         else:
             return {"success": False, "message": f"Unknown action: {action}"}
@@ -692,7 +723,7 @@ async def handle_client(websocket):
                         quality = cmd.get("quality", quality)
                         interval = 1.0 / fps
                         print(f"[設定] 更新 FPS={fps}, 品質={quality}")
-                    elif cmd_action in ("click", "click_pct", "click_roi", "key", "hotkey", "move", "drag", "focus", "ocr_rois"):
+                    elif cmd_action in ("click", "click_pct", "click_roi", "key", "hotkey", "move", "drag", "focus", "ocr_rois", "log"):
                         # ── 處理控制指令（串流中也能控制）──
                         result = handle_control_command(cmd, active_source=source)
                         try:
@@ -702,9 +733,9 @@ async def handle_client(websocket):
                             await websocket.send(json.dumps(resp))
                         except:
                             pass
-                        if result["success"]:
+                        if result["success"] and cmd_action != "log":
                             print(f"[控制] {result['message']}")
-                        else:
+                        elif not result["success"]:
                             print(f"[控制錯誤] {result['message']}")
                 except asyncio.TimeoutError:
                     pass
