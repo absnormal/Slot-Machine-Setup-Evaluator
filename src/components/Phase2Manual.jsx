@@ -190,11 +190,19 @@ const Phase2Manual = ({
                                                 <div className="flex items-center gap-2 text-indigo-300 text-sm font-bold bg-indigo-500/20 px-3 py-1.5 rounded-lg border border-indigo-500/30 animate-in fade-in slide-in-from-left-2 duration-200 shadow-sm">
                                                     <Zap size={14} className="fill-indigo-400" />
                                                     <span>正在查看第 <span className="text-white text-base mx-0.5">{hoveredLineId}</span> 條連線軌跡</span>
-                                                    {calcResults?.details?.find(d => d.lineId === hoveredLineId) && calcResults.details.find(d => d.lineId === hoveredLineId).winAmount > 0 && (
+                                                    {(() => {
+                                                        let hoverInfo = calcResults?.details?.find(d => d.lineId === hoveredLineId);
+                                                        if (!hoverInfo && String(hoveredLineId).endsWith('_GROUP')) {
+                                                            const groupSym = hoveredLineId.replace(/^WAYS_/, '').replace(/_GROUP$/, '');
+                                                            const ch = calcResults?.details?.filter(d => String(d.lineId).startsWith('WAYS_') && d.symbol === groupSym) || [];
+                                                            if (ch.length) hoverInfo = { winAmount: ch.reduce((s, c) => s + c.winAmount, 0) };
+                                                        }
+                                                        return hoverInfo && hoverInfo.winAmount > 0 ? (
                                                         <span className="text-emerald-400 bg-emerald-500/20 border border-emerald-500/30 px-2 py-0.5 rounded ml-1 flex items-center gap-1">
-                                                            <Trophy size={12} /> +{calcResults.details.find(d => d.lineId === hoveredLineId).winAmount.toLocaleString()}
+                                                            <Trophy size={12} /> +{hoverInfo.winAmount.toLocaleString()}
                                                         </span>
-                                                    )}
+                                                    ) : null;
+                                                    })()}
                                                 </div>
                                             ) : (
                                                 <div className="text-slate-500 text-xs flex items-center gap-1.5 opacity-80">
@@ -214,7 +222,15 @@ const Phase2Manual = ({
                                                             let isOnLine = false;
                                                             if (calcResults) {
                                                                 if (hoveredLineId) {
-                                                                    const hoveredResult = calcResults.details.find(d => d.lineId === hoveredLineId);
+                                                                    let hoveredResult = calcResults.details.find(d => d.lineId === hoveredLineId);
+                                                                    // GROUP fallback：合併同符號所有子項的 winCoords
+                                                                    if (!hoveredResult && String(hoveredLineId).endsWith('_GROUP')) {
+                                                                        const groupSym = hoveredLineId.replace(/^WAYS_/, '').replace(/_GROUP$/, '');
+                                                                        const children = calcResults.details.filter(d => String(d.lineId).startsWith('WAYS_') && d.symbol === groupSym);
+                                                                        if (children.length) {
+                                                                            hoveredResult = { lineId: hoveredLineId, winCoords: children.flatMap(c => c.winCoords || []), winAmount: children.reduce((s, c) => s + c.winAmount, 0) };
+                                                                        }
+                                                                    }
                                                                     if (hoveredResult) {
                                                                         const isFeatureWin = String(hoveredResult.lineId).startsWith('SCATTER') || String(hoveredResult.lineId).startsWith('COLLECT');
                                                                         if (!isFeatureWin) isOnLine = template.lines[hoveredResult.lineId]?.[cIndex] - 1 === rIndex;

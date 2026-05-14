@@ -262,6 +262,20 @@ handleTransferPhase4ToPhase3:
 - 支援乘數轉軸 (multiplier reel)
 - 支援 EXBET（額外押注解鎖功能，結算仍基於基礎 bet）
 - 支援雙向連線 (bidirectional paylines)
+- **AllWays xN 每條路線獨立乘倍**（2026-05-14）：
+  - 盤面含 xN 符號時，透過笛卡爾積枚舉所有路線（最大 rows^cols ≤ 243）
+  - 每條路線各自計算乘倍（依 `multiplierCalcType`：`product` 相乘 / `sum` 相加）
+  - 按乘倍值分組輸出，每組為獨立的 `calculatedResults` 條目（`lineId: WAYS_SYM_xN`）
+  - 純 WILD 路線在枚舉階段即排除（`allWild && !isWildSymbol(target)` guard）
+  - 無 xN 時退化為原始聚合格式（單筆 `WAYS_SYM`）
+  - Paylines 模式原本就每條線獨立計算 xN，未改動
+
+### 結算清單 UI (ResultView)
+- WAYS 結果按符號分組：`groupedDisplayItems` memo
+- 同符號多筆 xN 子項 → 收合為一列（`_isWaysGroup: true`），顯示合計 ways + 合計贏分
+- 點擊展開 → 顯示各乘倍組子卡片（縮排 + 縮小風格）
+- 單筆 WAYS 結果（無 xN）不顯示展開按鈕
+- GROUP 行懸停 → Phase2Manual 透過 `_GROUP` 後綴 fallback 合併子項 winCoords 高亮
 
 ### 報表系統 (useReportGenerator)
 - 產出自包含 HTML 報表（內嵌 base64 圖片）
@@ -344,5 +358,5 @@ npm run dev
 | 賠率表操作不同步 | `usePaytableProcessor` 的函數需透過參數接收 `setPaytableInput`，`useTemplateBuilder` 使用 wrapper 綁定 |
 
 ---
-*最後更新：2026-05-09*
+*最後更新：2026-05-14*
 
