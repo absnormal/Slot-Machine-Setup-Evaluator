@@ -1,6 +1,5 @@
 import React from 'react';
 import { AVAILABLE_ROIS } from '../../engine/roiResolver';
-import { PRESET_FLOWS } from '../../engine/flowRunner';
 import usePhase4Store from '../../stores/usePhase4Store';
 
 /**
@@ -15,7 +14,7 @@ const SEL  = 'bg-slate-900 border border-slate-600 rounded px-1.5 py-0.5 text-xs
 // OCR ROI 多選（勾選框式）
 const OCR_ROIS = AVAILABLE_ROIS.filter(r => r.category === 'ocr').map(r => r.name);
 
-const BlockParams = ({ block, onUpdate }) => {
+const BlockParams = ({ block, onUpdate, allFlows }) => {
     const p = block.params || {};
 
     const set = (key, val) => {
@@ -143,16 +142,8 @@ const BlockParams = ({ block, onUpdate }) => {
             );
 
         case 'sub_flow': {
-            // 靜態讀取所有來源
-            let localFlows = [];
-            try { localFlows = JSON.parse(localStorage.getItem('slot_flow_recipes') || '[]'); } catch {}
-            let cloudFlows = [];
-            try { cloudFlows = JSON.parse(sessionStorage.getItem('slot_flows_cloud_cache') || '[]'); } catch {}
-            const available = [
-                ...PRESET_FLOWS.map(f => ({ ...f, _src: '預設' })),
-                ...localFlows.map(f => ({ ...f, _src: '本地' })),
-                ...cloudFlows.map(f => ({ ...f, _src: '雲端' })),
-            ].filter(f => f.blocks && f.blocks.length > 0);
+            const sourceLabel = (f) => f._source === 'preset' ? '預設' : f._source === 'cloud' ? '雲端' : '本地';
+            const available = (allFlows || []).filter(f => f.blocks && f.blocks.length > 0);
             return (
                 <div className="flex items-center gap-1.5 flex-1 min-w-0">
                     <select className={`${SEL} flex-1 min-w-0`}
@@ -166,7 +157,7 @@ const BlockParams = ({ block, onUpdate }) => {
                         <option value="">— 選擇子流程 —</option>
                         {available.map(f => (
                             <option key={f.id} value={f.id}>
-                                [{f._src}] {f.name || f.id} ({f.blocks.length} 積木)
+                                [{sourceLabel(f)}] {f.name || f.id} ({f.blocks.length} 積木)
                             </option>
                         ))}
                     </select>

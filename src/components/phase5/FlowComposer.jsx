@@ -250,7 +250,7 @@ const FlowComposer = ({ ws, videoEl, setCandidates, reelROI, recognizeLocal }) =
                             )}
                             <BlockRow block={block} depth={0}
                                 onDelete={deleteBlock} onUpdate={updateBlock} onDragOps={rootDragOps}
-                                currentBlockId={currentBlock?.id} isRunning={isRunning} />
+                                currentBlockId={currentBlock?.id} isRunning={isRunning} allFlows={allFlows} />
                         </React.Fragment>
                     ))}
                     {!isRunning && blocks.length > 0 && (

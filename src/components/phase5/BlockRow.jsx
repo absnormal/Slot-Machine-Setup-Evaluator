@@ -10,7 +10,7 @@ import BlockParams from './BlockParams';
  * 拖放原理：每個積木偵測滑鼠在上半或下半，
  * 上半 = 插入在此積木之前，下半 = 插入在此積木之後。
  */
-const BlockRow = ({ block, depth, onDelete, onUpdate, onDragOps, currentBlockId, isRunning }) => {
+const BlockRow = ({ block, depth, onDelete, onUpdate, onDragOps, currentBlockId, isRunning, allFlows }) => {
     const [expanded, setExpanded] = useState(true);
     const [dropPosition, setDropPosition] = useState(null); // 'before' | 'after' | null
     const rowRef = useRef(null);
@@ -151,7 +151,7 @@ const BlockRow = ({ block, depth, onDelete, onUpdate, onDragOps, currentBlockId,
                 <span className="text-slate-300 font-semibold shrink-0">{meta.label}</span>
                 <div className={`flex-1 min-w-0 ${isRunning ? 'pointer-events-none opacity-75' : ''}`}
                     onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
-                    <BlockParams block={block} onUpdate={onUpdate} />
+                    <BlockParams block={block} onUpdate={onUpdate} allFlows={allFlows} />
                 </div>
                 {/* 錯誤策略（僅對可能失敗的積木顯示）*/}
                 {!isRunning && !['loop', 'if_then', 'set_var', 'log', 'wait'].includes(block.type) && (
@@ -198,7 +198,7 @@ const BlockRow = ({ block, depth, onDelete, onUpdate, onDragOps, currentBlockId,
                             )}
                             <BlockRow block={child} depth={depth + 1}
                                 onDelete={deleteChild} onUpdate={updateChild} onDragOps={childDragOps}
-                                currentBlockId={currentBlockId} isRunning={isRunning} />
+                                currentBlockId={currentBlockId} isRunning={isRunning} allFlows={allFlows} />
                         </React.Fragment>
                     ))}
                     {!isRunning && <AddBlockButton depth={depth + 1} onAdd={(b) => insertChild(b)} />}
@@ -219,7 +219,7 @@ const BlockRow = ({ block, depth, onDelete, onUpdate, onDragOps, currentBlockId,
                             )}
                             <BlockRow block={child} depth={depth + 1}
                                 onDelete={deleteElseChild} onUpdate={updateElseChild} onDragOps={elseChildDragOps}
-                                currentBlockId={currentBlockId} isRunning={isRunning} />
+                                currentBlockId={currentBlockId} isRunning={isRunning} allFlows={allFlows} />
                         </React.Fragment>
                     ))}
                     {!isRunning && <AddBlockButton depth={depth + 1} onAdd={(b) => insertElseChild(b)} />}
