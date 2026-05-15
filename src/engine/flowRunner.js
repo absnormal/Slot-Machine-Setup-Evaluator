@@ -346,6 +346,10 @@ export class FlowRunner extends EventTarget {
                 : rawValue;
             if (key === 'orderId' && rawValue !== value) results[key] = value; // 同步回 results
             const varName = `$${key}`;
+            // 空值不覆蓋現有變數（避免子流程清空主流程的值）
+            if (value === '' || value === null || value === undefined) {
+                if (this.variables[varName] !== undefined) continue; // 保留舊值
+            }
             this.variables[varName] = value;
             this._emit(FlowEvent.VAR_UPDATE, { name: varName, value });
         }
