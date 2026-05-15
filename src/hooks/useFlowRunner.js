@@ -29,7 +29,10 @@ export function useFlowRunner() {
         });
 
         runner.addEventListener(FlowEvent.BLOCK_START, (e) => {
-            setCurrentBlock(e.detail.block);
+            // 子流程內部的積木不覆蓋 currentBlock（保持 sub_flow 積木高亮）
+            if (!e.detail.inSubFlow) {
+                setCurrentBlock(e.detail.block);
+            }
         });
 
         runner.addEventListener(FlowEvent.BLOCK_END, () => {

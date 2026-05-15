@@ -153,7 +153,7 @@ export class FlowRunner extends EventTarget {
         const maxRetry = policy === 'retry' ? Math.min(block.retryCount || 3, 10) : 1;
 
         for (let attempt = 0; attempt < maxRetry; attempt++) {
-            this._emit(FlowEvent.BLOCK_START, { block, depth });
+            this._emit(FlowEvent.BLOCK_START, { block, depth, inSubFlow: this._inSubFlow || false });
 
             let result;
             try {
@@ -575,7 +575,12 @@ export class FlowRunner extends EventTarget {
 
         this._emit(FlowEvent.LOG, { message: `📦 進入子流程: ${subFlow.name || label || flowId}` });
         this._sendPythonLog(`📦 子流程: ${subFlow.name || flowId}`);
-        await this._executeBlocks(subFlow.blocks, depth + 1);
+        this._inSubFlow = (this._inSubFlow || 0) + 1;
+        try {
+            await this._executeBlocks(subFlow.blocks, depth + 1);
+        } finally {
+            this._inSubFlow = Math.max(0, (this._inSubFlow || 1) - 1);
+        }
         this._emit(FlowEvent.LOG, { message: `📦 離開子流程: ${subFlow.name || label || flowId}` });
     }
 
