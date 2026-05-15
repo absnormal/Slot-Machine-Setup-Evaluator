@@ -21,6 +21,7 @@ export const TEMPLATE_FIELD_DEFAULTS = {
     exBetOptions:             [1.5],    // EXBET 可用倍率清單，預設一個 ×1.5
     hasLineBetDivisor:        false,    // 是否啟用固定除數模式 (BET / 固定值 × 賠率)
     lineBetDivisor:           100,       // 固定除數值
+    reelHeights:              null,      // 每轉軸可見列數陣列，null = 標準方格盤面
     // ── Phase 4 偵測參數 ──
     motionCoverageMin:        60,
     vLineThreshold:           0.25,

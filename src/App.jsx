@@ -109,6 +109,7 @@ function App() {
         hasAdjustableLines, setHasAdjustableLines,
         hasExBet, setHasExBet, exBetOptions, setExBetOptions,
         hasLineBetDivisor, setHasLineBetDivisor, lineBetDivisor, setLineBetDivisor,
+        reelHeights, setReelHeights,
         lineImages, setLineImages, activeLineImageId, setActiveLineImageId,
         activeLineImage, imageSrc, imageObj,
         patternRows, setPatternRows, patternCols, setPatternCols,
@@ -157,6 +158,7 @@ function App() {
         setHasAdjustableLines,
         setHasExBet, setExBetOptions,
         setHasLineBetDivisor, setLineBetDivisor,
+        setReelHeights,
         setLineImages, setActiveLineImageId, setLinesTextInput,
         setTemplateError,
         performAutoBuild, resetTemplateBuilder,
@@ -169,6 +171,7 @@ function App() {
         hasBidirectionalPaylines, hasAdjustableLines,
         hasExBet, exBetOptions,
         hasLineBetDivisor, lineBetDivisor,
+        reelHeights,
         motionCoverageMin, vLineThreshold, ocrDecimalPlaces, balDecimalPlaces, enableWinTracker, enableEmptyBoardFilter,
         setMotionCoverageMin, setVLineThreshold, setOcrDecimalPlaces, setBalDecimalPlaces, setEnableWinTracker, setEnableEmptyBoardFilter,
         setReelROI: usePhase4Store(s => s.setReelROI),
@@ -771,6 +774,7 @@ function App() {
                         exBetOptions={exBetOptions} setExBetOptions={setExBetOptions}
                         hasLineBetDivisor={hasLineBetDivisor} setHasLineBetDivisor={setHasLineBetDivisor}
                         lineBetDivisor={lineBetDivisor} setLineBetDivisor={setLineBetDivisor}
+                        reelHeights={reelHeights} setReelHeights={setReelHeights}
                         lineImages={lineImages} removeLineImage={removeLineImage} activeLineImageId={activeLineImageId} setActiveLineImageId={setActiveLineImageId} handleLineImageUpload={handleLineImageUpload}
                         isPtProcessing={isPtProcessing} handlePtExtract={handlePtExtract} ptImages={ptImages} removePtImage={removePtImage} clearPtAll={clearPtAll} handlePtFileChange={handlePtFileChange} handlePtDrop={handlePtDrop}
                         dragState={dragState} setDragState={setDragState} containerRef={containerRef} layoutStyle={layoutStyle} handleMouseDown={handleMouseDown} handleMouseMove={handleMouseMove} handleMouseUp={handleMouseUp}

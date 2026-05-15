@@ -211,6 +211,7 @@
  * @property {number[]} exBetOptions             - 可用的 EXBET 倍率清單（如 [2, 3, 5]）
  * @property {boolean} hasLineBetDivisor         - 是否啟用固定除數模式 (LineBet = BET / 固定值)
  * @property {number} lineBetDivisor             - 固定除數值 (預設 1)
+ * @property {number[]|null} reelHeights          - 每轉軸可見列數陣列（null=標準方格，如 [3,4,5,4,3] 表示鑽石形盤面）
  */
 
 // ═══════════════════════════════════════════════

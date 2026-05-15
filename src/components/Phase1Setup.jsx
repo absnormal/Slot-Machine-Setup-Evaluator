@@ -50,6 +50,7 @@ export default function Phase1Setup(props) {
         hasAdjustableLines, setHasAdjustableLines,
         hasExBet, setHasExBet, exBetOptions, setExBetOptions,
         hasLineBetDivisor, setHasLineBetDivisor, lineBetDivisor, setLineBetDivisor,
+        reelHeights, setReelHeights,
         hasApiKey
     } = props;
 
@@ -66,7 +67,7 @@ export default function Phase1Setup(props) {
                         {template && isTemplateMinimized && (
                             <div className="flex items-center space-x-2 text-emerald-600 text-sm font-medium">
                                 <CheckCircle2 size={16} />
-                                <span>已載入: {template.rows}x{template.cols} 盤面, {template.linesCount} 條連線{template.hasMultiplierReel && ", 啟用乘倍區域"}</span>
+                                <span>已載入: {template.reelHeights ? `[${template.reelHeights.join('-')}]` : `${template.rows}x${template.cols}`} 盤面, {template.linesCount} 條連線{template.hasMultiplierReel && ", 啟用乘倍區域"}</span>
                             </div>
                         )}
                         {isTemplateMinimized ? <ChevronDown className="text-slate-400" /> : <ChevronUp className="text-slate-400" />}
@@ -116,6 +117,7 @@ export default function Phase1Setup(props) {
                             gridRows={gridRows} setGridRows={setGridRows}
                             gridCols={gridCols} setGridCols={setGridCols}
                             hasMultiplierReel={hasMultiplierReel} setHasMultiplierReel={setHasMultiplierReel}
+                            reelHeights={reelHeights} setReelHeights={setReelHeights}
                             linesMode={linesMode} setLinesMode={setLinesMode}
                             linesTextInput={linesTextInput} setLinesTextInput={setLinesTextInput}
                             extractResults={extractResults} setExtractResults={setExtractResults}
