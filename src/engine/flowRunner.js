@@ -611,7 +611,7 @@ export class FlowRunner extends EventTarget {
 
         // 簡單算術：替換變數後 eval
         try {
-            const substituted = expr.replace(/\$(\w+)/g, (_, name) => {
+            const substituted = expr.replace(/\$([\w\u4e00-\u9fff]+)/g, (_, name) => {
                 const val = this.variables[`$${name}`];
                 return typeof val === 'number' ? val : parseFloat(val) || 0;
             });
@@ -633,7 +633,7 @@ export class FlowRunner extends EventTarget {
         if (typeof condition !== 'string') return !!condition;
 
         try {
-            const substituted = condition.replace(/\$(\w+)/g, (_, name) => {
+            const substituted = condition.replace(/\$([\w\u4e00-\u9fff]+)/g, (_, name) => {
                 const val = this.variables[`$${name}`];
                 if (val === undefined) return '0';
                 return typeof val === 'number' ? val : `"${val}"`;
@@ -653,7 +653,7 @@ export class FlowRunner extends EventTarget {
      */
     _interpolate(template) {
         if (typeof template !== 'string') return String(template);
-        return template.replace(/\$(\w+)/g, (match, name) => {
+        return template.replace(/\$([\w\u4e00-\u9fff]+)/g, (match, name) => {
             return this.variables[`$${name}`] ?? match;
         });
     }

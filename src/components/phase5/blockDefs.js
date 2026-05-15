@@ -33,6 +33,7 @@ export const NEW_BLOCK_TEMPLATES = [
     { type: 'wait_stable', params: { roi: 'REEL', stableCount: 3, interval: 200 } },
     { type: 'wait_change', params: { roi: 'WIN', changeCount: 2, interval: 200, timeout: 30 } },
     { type: 'ocr_batch', params: { rois: ['WIN', 'BAL', 'BET', 'ORDER_ID'] } },
+    { type: 'ocr_read', params: { roi: 'WIN', varName: '$win' } },
     { type: 'record_spin', params: { fields: ['WIN', 'BAL', 'BET', 'ORDER_ID', 'MULT'] } },
     { type: 'loop', params: { count: 100 }, children: [] },
     { type: 'if_then', params: { condition: '$win > 0' }, children: [], elseChildren: [] },
