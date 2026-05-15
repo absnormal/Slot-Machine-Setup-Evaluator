@@ -1,4 +1,5 @@
 import { isCashSymbol, isCollectSymbol, isDynamicMultiplierSymbol } from './symbolUtils';
+import { getGridMask, isIrregularGrid } from './gridShapeUtils';
 
 /**
  * 驗證並清洗 AI 回傳的盤面與押注資料
@@ -75,6 +76,18 @@ export function validateVisionResponse(responseData, template, availableSymbols)
 
     if (unknownSymbolsCount > MAX_UNKNOWN_ALLOWED) {
         throw new Error(`過多未知符號 (共 ${unknownSymbolsCount} 個)，疑似 AI 幻覺，已拒絕。`);
+    }
+
+    // 2.5 非方格盤面：強制清空 masked cells
+    if (isIrregularGrid(template)) {
+        const mask = getGridMask(template);
+        for (let r = 0; r < safeGrid.length; r++) {
+            for (let c = 0; c < safeGrid[r].length; c++) {
+                if (mask[r] && mask[r][c] === false) {
+                    safeGrid[r][c] = '';
+                }
+            }
+        }
     }
 
     // 3. BET 數值校驗

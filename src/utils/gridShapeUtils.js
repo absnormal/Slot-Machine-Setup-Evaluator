@@ -25,7 +25,7 @@ export function getGridMask(template) {
     const mask = Array.from({ length: rows }, () => Array(cols).fill(false));
     for (let c = 0; c < cols; c++) {
         const h = Math.min(reelHeights[c] || rows, rows);
-        const offset = Math.floor((rows - h) / 2); // 垂直置中
+        const offset = Math.ceil((rows - h) / 2); // 垂直置中（奇數差時空格在頂部，匹配遊戲視覺）
         for (let r = offset; r < offset + h; r++) {
             mask[r][c] = true;
         }
@@ -52,7 +52,7 @@ export function isIrregularGrid(template) {
 export function getReelOffset(template, col) {
     if (!template?.reelHeights || !Array.isArray(template.reelHeights)) return 0;
     const h = template.reelHeights[col] || template.rows;
-    return Math.floor((template.rows - h) / 2);
+    return Math.ceil((template.rows - h) / 2);
 }
 
 /**

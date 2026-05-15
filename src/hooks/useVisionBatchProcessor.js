@@ -4,6 +4,7 @@ import { recognizeROIText, createOcrWorker } from '../utils/ocrUtils';
 import { buildReferenceIndex, recognizeBoard } from '../engine/localBoardRecognizer';
 import { validateVisionResponse } from '../utils/aiValidator';
 import { isCashSymbol, isCollectSymbol, isDynamicMultiplierSymbol } from '../utils/symbolUtils';
+import { getGridMask, isIrregularGrid } from '../utils/gridShapeUtils';
 import { apiKey } from '../utils/constants';
 import {
     buildCashRule, buildDynamicMultiplierRule, buildMultiplierReelRule,
@@ -162,17 +163,33 @@ export function useVisionBatchProcessor({
                 const cellH = rh1 / template.rows;
                 ctx1.strokeStyle = 'rgba(255, 0, 0, 0.6)';
                 ctx1.lineWidth = Math.max(2, Math.floor(Math.min(rw1, rh1) / 200));
-                for (let c = 1; c < displayCols; c++) {
-                    ctx1.beginPath();
-                    ctx1.moveTo(c * cellW, 0);
-                    ctx1.lineTo(c * cellW, rh1);
-                    ctx1.stroke();
-                }
-                for (let r = 1; r < template.rows; r++) {
-                    ctx1.beginPath();
-                    ctx1.moveTo(0, r * cellH);
-                    ctx1.lineTo(rw1, r * cellH);
-                    ctx1.stroke();
+
+                if (isIrregularGrid(template)) {
+                    // 非方格盤面：逐列置中畫格線
+                    for (let c = 0; c < displayCols; c++) {
+                        const h = template.reelHeights[c] || template.rows;
+                        const offsetY = (rh1 - h * cellH) / 2;
+                        for (let r = 0; r < h; r++) {
+                            ctx1.strokeRect(
+                                c * cellW,
+                                offsetY + r * cellH,
+                                cellW, cellH
+                            );
+                        }
+                    }
+                } else {
+                    for (let c = 1; c < displayCols; c++) {
+                        ctx1.beginPath();
+                        ctx1.moveTo(c * cellW, 0);
+                        ctx1.lineTo(c * cellW, rh1);
+                        ctx1.stroke();
+                    }
+                    for (let r = 1; r < template.rows; r++) {
+                        ctx1.beginPath();
+                        ctx1.moveTo(0, r * cellH);
+                        ctx1.lineTo(rw1, r * cellH);
+                        ctx1.stroke();
+                    }
                 }
 
                 const raw1 = offCanvas1.toDataURL('image/jpeg', 0.75).split(',')[1];
@@ -368,6 +385,18 @@ export function useVisionBatchProcessor({
                     hasCashCollect: !!template.hasCashCollectFeature,
                     jpConfig: template.jpConfig
                 });
+
+                // 非方格盤面：強制清空 masked cells
+                if (isIrregularGrid(template)) {
+                    const mask = getGridMask(template);
+                    for (let r = 0; r < grid.length; r++) {
+                        for (let c = 0; c < (grid[r]?.length || 0); c++) {
+                            if (mask[r] && mask[r][c] === false) {
+                                grid[r][c] = '';
+                            }
+                        }
+                    }
+                }
 
                 let validatedBet = null;
                 if (hasBetBox && ocrWorkerRef.current) {

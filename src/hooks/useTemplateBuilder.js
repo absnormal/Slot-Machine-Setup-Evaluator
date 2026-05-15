@@ -65,7 +65,7 @@ export function useTemplateBuilder({
 
     // === Sub-Hook: Canvas Line Extractor ===
     const canvasExtractor = useCanvasLineExtractor({
-        gridRows, gridCols, patternRows, patternCols, startIndex,
+        gridRows, gridCols, reelHeights, patternRows, patternCols, startIndex,
         isTemplateMinimized, linesTabMode,
         setExtractResults, setTemplateError, setTemplateMessage,
     });
