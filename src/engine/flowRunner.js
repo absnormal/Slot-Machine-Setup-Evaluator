@@ -348,11 +348,15 @@ export class FlowRunner extends EventTarget {
             const varName = `$${key}`;
             // 空值不覆蓋現有變數（避免子流程清空主流程的值）
             if (value === '' || value === null || value === undefined) {
-                if (this.variables[varName] !== undefined) continue; // 保留舊值
+                if (this.variables[varName] !== undefined) {
+                    console.log(`[ocr_batch] 跳過空值覆蓋: ${varName} 保留="${this.variables[varName]}"`);
+                    continue;
+                }
             }
             this.variables[varName] = value;
             this._emit(FlowEvent.VAR_UPDATE, { name: varName, value });
         }
+        console.log('[ocr_batch] variables 快照:', JSON.stringify(this.variables));
 
         return results;
     }
@@ -414,11 +418,11 @@ export class FlowRunner extends EventTarget {
         };
 
         const ocrData = {
-            win:        has('WIN') ? (findVar('$WIN', '$win', '$道具卡贏分') || '') : '-',
-            balance:    has('BAL') ? (findVar('$BALANCE', '$BAL', '$balance') || '') : '-',
-            bet:        has('BET') ? (findVar('$BET', '$bet') || '') : '-',
-            orderId:    has('ORDER_ID') ? (findVar('$ORDER_ID', '$orderId') || '') : '',
-            ...(has('MULT') ? { multiplier: findVar('$MULT', '$multiplier') || '' } : {}),
+            win:        findVar('$WIN', '$win', '$道具卡贏分') || '-',
+            balance:    findVar('$BALANCE', '$BAL', '$balance') || '-',
+            bet:        findVar('$BET', '$bet') || '-',
+            orderId:    findVar('$ORDER_ID', '$orderId') || '',
+            ...(findVar('$MULT', '$multiplier') ? { multiplier: findVar('$MULT', '$multiplier') } : {}),
         };
 
         // 如果標準名稱都沒找到，掃描所有變數尋找可能的 win 值
