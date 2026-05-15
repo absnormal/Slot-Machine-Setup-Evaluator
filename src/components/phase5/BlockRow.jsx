@@ -34,7 +34,7 @@ const BlockRow = ({ block, depth, onDelete, onUpdate, onDragOps, currentBlockId,
             case 'wait_stable': return `${p.roi || 'REEL'} ×${p.stableCount || 3}`;
             case 'ocr_batch': return (p.rois || []).join(', ');
             case 'loop': return p.count ? `${p.count} 次` : p.condition || '';
-            case 'set_var': return `${p.name} = ${p.value}`;
+            case 'set_var': return `${p.name} ${p.op || '='} ${p.value}`;
             case 'log': return p.message?.substring(0, 20) || '';
             case 'key_press': return p.key || '';
             case 'if_then': return p.condition || '';

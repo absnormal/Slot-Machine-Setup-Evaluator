@@ -110,7 +110,14 @@ const BlockParams = ({ block, onUpdate, allFlows }) => {
                 <div className="flex items-center gap-1.5">
                     <input className={`${MINI} w-20`} value={p.name || ''} placeholder="$name"
                         onChange={e => set('name', e.target.value)} />
-                    <span className="text-slate-500 text-[10px]">=</span>
+                    <select className={`${SEL} w-12 text-center`} value={p.op || '='}
+                        onChange={e => set('op', e.target.value)}>
+                        <option value="=">=</option>
+                        <option value="+=">+=</option>
+                        <option value="-=">-=</option>
+                        <option value="*=">*=</option>
+                        <option value="/=">/=</option>
+                    </select>
                     <input className={`${MINI} w-20`} value={p.value ?? ''} placeholder="值"
                         onChange={e => set('value', e.target.value)} />
                 </div>

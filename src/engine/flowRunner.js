@@ -567,11 +567,20 @@ export class FlowRunner extends EventTarget {
     }
 
     _execSetVar(block) {
-        const { name, value } = block.params;
+        const { name, value, op } = block.params;
         const resolved = this._evalExpr(value);
-        this.variables[name] = resolved;
-        this._emit(FlowEvent.VAR_UPDATE, { name, value: resolved });
-        return resolved;
+        const current = this.variables[name] ?? 0;
+        let final;
+        switch (op) {
+            case '+=': final = (parseFloat(current) || 0) + (parseFloat(resolved) || 0); break;
+            case '-=': final = (parseFloat(current) || 0) - (parseFloat(resolved) || 0); break;
+            case '*=': final = (parseFloat(current) || 0) * (parseFloat(resolved) || 0); break;
+            case '/=': final = (parseFloat(resolved) || 0) !== 0 ? (parseFloat(current) || 0) / parseFloat(resolved) : 0; break;
+            default:   final = resolved; break; // '=' 或舊資料沒有 op
+        }
+        this.variables[name] = final;
+        this._emit(FlowEvent.VAR_UPDATE, { name, value: final });
+        return final;
     }
 
     _execLog(block) {
