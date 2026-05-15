@@ -386,12 +386,23 @@ export function useVisionBatchProcessor({
                     jpConfig: template.jpConfig
                 });
 
-                // 非方格盤面：強制清空 masked cells
+                // 非方格盤面：提取每列非空符號 → 對齊到 mask 可見位置
                 if (isIrregularGrid(template)) {
                     const mask = getGridMask(template);
-                    for (let r = 0; r < grid.length; r++) {
-                        for (let c = 0; c < (grid[r]?.length || 0); c++) {
-                            if (mask[r] && mask[r][c] === false) {
+                    for (let c = 0; c < template.cols; c++) {
+                        const symbols = [];
+                        for (let r = 0; r < grid.length; r++) {
+                            if (grid[r]?.[c] && grid[r][c] !== '') symbols.push(grid[r][c]);
+                        }
+                        const visibleRows = [];
+                        for (let r = 0; r < grid.length; r++) {
+                            if (mask[r]?.[c]) visibleRows.push(r);
+                        }
+                        for (let r = 0; r < grid.length; r++) {
+                            const visIdx = visibleRows.indexOf(r);
+                            if (visIdx >= 0 && visIdx < symbols.length) {
+                                grid[r][c] = symbols[visIdx];
+                            } else {
                                 grid[r][c] = '';
                             }
                         }
