@@ -139,6 +139,17 @@ const BlockParams = ({ block, onUpdate, allFlows }) => {
                 </div>
             );
 
+        case 'stop':
+            return (
+                <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                    <input className={`${MINI} flex-1 min-w-0`} value={p.reason || ''} placeholder="終止原因"
+                        onChange={e => set('reason', e.target.value)} />
+                </div>
+            );
+
+        case 'break_loop':
+            return null; // 不需要參數
+
         case 'if_then':
             return (
                 <div className="flex items-center gap-1.5 flex-1 min-w-0">

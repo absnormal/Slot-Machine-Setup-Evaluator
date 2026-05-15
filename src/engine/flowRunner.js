@@ -203,6 +203,14 @@ export class FlowRunner extends EventTarget {
                     case 'key_press':
                         result = await this._execKeyPress(block);
                         break;
+                    case 'stop': {
+                        const reason = block.params?.reason || '流程終止';
+                        this._emit(FlowEvent.LOG, { message: `🛑 ${reason}` });
+                        throw new Error('stopped');
+                    }
+                    case 'break_loop':
+                        this._emit(FlowEvent.LOG, { message: '⏏️ 跳出迴圈' });
+                        throw new Error('break');
                     default:
                         console.warn(`[FlowRunner] 未知積木類型: ${block.type}`);
                 }

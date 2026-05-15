@@ -25,6 +25,9 @@ export const BLOCK_META = {
     // 🔧 工具 — 灰色系
     set_var:      { icon: '📝', label: '設定變數', color: 'border-slate-400/40 bg-slate-500/10' },
     log:          { icon: '📋', label: '記錄', color: 'border-slate-400/40 bg-slate-500/10' },
+    // 🛑 控制 — 紅色系
+    stop:         { icon: '🛑', label: '終止流程', color: 'border-red-400/50 bg-red-500/15' },
+    break_loop:   { icon: '⏏️', label: '跳出迴圈', color: 'border-red-400/50 bg-red-500/15' },
 };
 
 export const NEW_BLOCK_TEMPLATES = [
@@ -43,6 +46,8 @@ export const NEW_BLOCK_TEMPLATES = [
     { type: 'capture_frame', params: {} },
     { type: 'recognize_grid', params: {} },
     { type: 'key_press', params: { key: 'space' } },
+    { type: 'stop', params: { reason: '手動終止' } },
+    { type: 'break_loop', params: {} },
 ];
 
 let _blockIdCounter = 0;
