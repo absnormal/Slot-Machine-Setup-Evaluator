@@ -343,6 +343,12 @@ export class FlowRunner extends EventTarget {
             const varName = `$${key}`;
             this.variables[varName] = value;
             this._emit(FlowEvent.VAR_UPDATE, { name: varName, value });
+            // orderId 額外產生正規化版本（去除 - 空格，純數字），方便比對
+            if (key === 'orderId' && value) {
+                const norm = String(value).replace(/[-\s]/g, '');
+                this.variables['$orderIdNorm'] = norm;
+                this._emit(FlowEvent.VAR_UPDATE, { name: '$orderIdNorm', value: norm });
+            }
         }
 
         return results;
