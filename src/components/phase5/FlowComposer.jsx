@@ -27,6 +27,7 @@ const FlowComposer = ({ ws, videoEl, setCandidates, reelROI, recognizeLocal }) =
     const [currentFlowId, setCurrentFlowId] = useState(null);
     const [currentSource, setCurrentSource] = useState(null); // 'preset' | 'local' | 'cloud'
     const [isLoadingFlow, setIsLoadingFlow] = useState(false);
+    const [isPreparing, setIsPreparing] = useState(false); // pre-flight + 子流程預載
     const [logsExpanded, setLogsExpanded] = useState(false);
 
     // 初始化載入雲端
@@ -83,6 +84,10 @@ const FlowComposer = ({ ws, videoEl, setCandidates, reelROI, recognizeLocal }) =
 
     // 執行
     const handleRun = async () => {
+        setIsPreparing(true);
+        try { await _handleRunInner(); } finally { setIsPreparing(false); }
+    };
+    const _handleRunInner = async () => {
         // ── Pre-flight 檢查：跑之前先驗證 ──
         const warnings = [];
         const checkBlocks = (blockList, path = '') => {
@@ -307,9 +312,13 @@ const FlowComposer = ({ ws, videoEl, setCandidates, reelROI, recognizeLocal }) =
 
                 {/* 執行控制 */}
                 {isIdle ? (
-                    <button onClick={handleRun} disabled={!ws || blocks.length === 0}
+                    <button onClick={handleRun} disabled={!ws || blocks.length === 0 || isPreparing}
                         className="px-4 py-1.5 rounded-xl text-sm font-bold bg-gradient-to-r from-emerald-500 to-green-600 text-white hover:from-emerald-600 hover:to-green-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5 active:scale-95 transition-all">
-                        <Play size={14} fill="currentColor" /> 執行
+                        {isPreparing ? (
+                            <><RefreshCw size={14} className="animate-spin" /> 準備中...</>
+                        ) : (
+                            <><Play size={14} fill="currentColor" /> 執行</>
+                        )}
                     </button>
                 ) : (
                     <>
