@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause, Square, Cloud, Trash2, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
+import { Play, Pause, Square, Cloud, Trash2, RefreshCw, ChevronDown, ChevronUp, Copy } from 'lucide-react';
 import { useFlowRunner } from '../../hooks/useFlowRunner';
 import { useFlowStorage } from '../../hooks/useFlowStorage';
 import { OcrWorkerBridge } from '../../engine/ocrWorkerBridge';
@@ -214,6 +214,17 @@ const FlowComposer = ({ ws, videoEl, setCandidates, reelROI, recognizeLocal }) =
 
         // 新增
         await saveToCloud({ name: flowName, blocks });
+        setCurrentSource('cloud');
+    };
+
+    // 另存為（載入雲端/本地模板 → 改名存成新流程）
+    const handleSaveAs = async () => {
+        const newName = prompt('請輸入新的流程名稱：', `${flowName} (副本)`);
+        if (!newName?.trim()) return;
+        await saveToCloud({ name: newName.trim(), blocks });
+        setFlowName(newName.trim());
+        setCurrentFlowId(null); // 斷開與原流程的連結
+        setCurrentSource('cloud');
     };
 
     // 刪除（含確認）
@@ -272,6 +283,13 @@ const FlowComposer = ({ ws, videoEl, setCandidates, reelROI, recognizeLocal }) =
                         <Cloud size={12} /> {storageSaving ? '儲存中...' : currentSource === 'cloud' && currentFlowId ? '☁️ 更新' : '☁️ 存檔'}
                     </button>
                 )}
+                {hasCloud && blocks.length > 0 && (
+                    <button onClick={handleSaveAs} disabled={storageSaving}
+                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-cyan-400 disabled:opacity-40 transition-colors"
+                        title="另存為新流程">
+                        <Copy size={12} /> 另存為
+                    </button>
+                )}
                 {hasCloud && (
                     <button onClick={fetchCloudFlows} disabled={storageLoading}
                         className="text-slate-500 hover:text-slate-300 p-1.5 transition-colors" title="重新整理雲端">
@@ -280,7 +298,11 @@ const FlowComposer = ({ ws, videoEl, setCandidates, reelROI, recognizeLocal }) =
                 )}
                 <div className="flex-1" />
                 {currentFlowId && currentSource !== 'preset' && (
-                    <button onClick={handleDelete} className="text-slate-600 hover:text-rose-400 p-1.5" title="刪除此流程"><Trash2 size={14} /></button>
+                    <button onClick={handleDelete}
+                        className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                        title="刪除此流程">
+                        <Trash2 size={12} /> 刪除
+                    </button>
                 )}
 
                 {/* 執行控制 */}
