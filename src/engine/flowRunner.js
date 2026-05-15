@@ -339,16 +339,15 @@ export class FlowRunner extends EventTarget {
         }
 
         // 自動將結果寫入變數空間
-        for (const [key, value] of Object.entries(results)) {
+        for (const [key, rawValue] of Object.entries(results)) {
+            // orderId 直接正規化（去除 - 空格），統一格式
+            const value = key === 'orderId' && rawValue
+                ? String(rawValue).replace(/[-\s]/g, '')
+                : rawValue;
+            if (key === 'orderId' && rawValue !== value) results[key] = value; // 同步回 results
             const varName = `$${key}`;
             this.variables[varName] = value;
             this._emit(FlowEvent.VAR_UPDATE, { name: varName, value });
-            // orderId 額外產生正規化版本（去除 - 空格，純數字），方便比對
-            if (key === 'orderId' && value) {
-                const norm = String(value).replace(/[-\s]/g, '');
-                this.variables['$orderIdNorm'] = norm;
-                this._emit(FlowEvent.VAR_UPDATE, { name: '$orderIdNorm', value: norm });
-            }
         }
 
         return results;
