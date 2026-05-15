@@ -440,6 +440,16 @@ def handle_control_command(cmd, active_source=None):
             pyautogui.press(key)
             return {"success": True, "message": f"key '{key}'"}
 
+        elif action == "type_text":
+            if not HAS_PYAUTOGUI:
+                return {"success": False, "message": "pyautogui not installed (needed for type_text)"}
+            text = str(cmd.get("text", ""))
+            # 用剪貼簿 + Ctrl+V 貼上（支援中英文）
+            import pyperclip
+            pyperclip.copy(text)
+            pyautogui.hotkey('ctrl', 'v')
+            return {"success": True, "message": f"typed '{text}'"}
+
         elif action == "hotkey":
             if not HAS_PYAUTOGUI:
                 return {"success": False, "message": "pyautogui not installed (needed for hotkey)"}
@@ -609,7 +619,7 @@ async def handle_client(websocket):
                 "data": sources,
                 "capabilities": {
                     "control": HAS_PYAUTOGUI,
-                    "actions": ["click", "click_pct", "click_roi", "key", "hotkey", "move", "drag", "focus"]
+                    "actions": ["click", "click_pct", "click_roi", "key", "type_text", "hotkey", "move", "drag", "focus"]
                         if HAS_PYAUTOGUI else []
                 }
             }))
@@ -723,7 +733,7 @@ async def handle_client(websocket):
                         quality = cmd.get("quality", quality)
                         interval = 1.0 / fps
                         print(f"[設定] 更新 FPS={fps}, 品質={quality}")
-                    elif cmd_action in ("click", "click_pct", "click_roi", "key", "hotkey", "move", "drag", "focus", "ocr_rois", "log"):
+                    elif cmd_action in ("click", "click_pct", "click_roi", "key", "type_text", "hotkey", "move", "drag", "focus", "ocr_rois", "log"):
                         # ── 處理控制指令（串流中也能控制）──
                         result = handle_control_command(cmd, active_source=source)
                         try:
@@ -780,7 +790,7 @@ async def handle_control_session(websocket, config):
             "type": "control_ready",
             "capabilities": {
                 "control": HAS_PYAUTOGUI,
-                "actions": ["click", "click_pct", "click_roi", "key", "hotkey", "move", "drag", "focus"]
+                "actions": ["click", "click_pct", "click_roi", "key", "type_text", "hotkey", "move", "drag", "focus"]
                     if HAS_PYAUTOGUI else []
             }
         }))

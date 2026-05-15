@@ -203,6 +203,12 @@ export class FlowRunner extends EventTarget {
                     case 'key_press':
                         result = await this._execKeyPress(block);
                         break;
+                    case 'type_text':
+                        result = await this._execTypeText(block);
+                        break;
+                    case 'hotkey':
+                        result = await this._execHotkey(block);
+                        break;
                     case 'stop': {
                         const reason = block.params?.reason || '流程終止';
                         this._emit(FlowEvent.LOG, { message: `🛑 ${reason}` });
@@ -277,6 +283,25 @@ export class FlowRunner extends EventTarget {
         const { key } = block.params;
         const requestId = `key_${Date.now()}`;
         this._ws.send(JSON.stringify({ action: 'key', key, requestId }));
+    }
+
+    async _execTypeText(block) {
+        const { text } = block.params;
+        const resolved = this._interpolate(String(text || ''));
+        const requestId = `type_${Date.now()}`;
+        this._ws.send(JSON.stringify({ action: 'type_text', text: resolved, requestId }));
+        this._emit(FlowEvent.LOG, { message: `💬 輸入: "${resolved}"` });
+        // 給一點時間讓剪貼簿操作完成
+        await new Promise(r => setTimeout(r, 200));
+    }
+
+    async _execHotkey(block) {
+        const { keys } = block.params;
+        const keyList = String(keys || '').split('+').map(k => k.trim()).filter(Boolean);
+        if (keyList.length === 0) return;
+        const requestId = `hotkey_${Date.now()}`;
+        this._ws.send(JSON.stringify({ action: 'hotkey', keys: keyList, requestId }));
+        this._emit(FlowEvent.LOG, { message: `🔑 組合鍵: ${keyList.join('+')}` });
     }
 
     // ── 偵測積木 ──

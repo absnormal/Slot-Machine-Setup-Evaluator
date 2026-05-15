@@ -37,6 +37,9 @@ const BlockRow = ({ block, depth, onDelete, onUpdate, onDragOps, currentBlockId,
             case 'set_var': return `${p.name} ${p.op || '='} ${p.value}`;
             case 'log': return p.message?.substring(0, 20) || '';
             case 'key_press': return p.key || '';
+            case 'type_text': return p.text?.substring(0, 20) || '';
+            case 'hotkey': return p.keys || '';
+            case 'stop': return p.reason?.substring(0, 15) || '';
             case 'if_then': return p.condition || '';
             case 'sub_flow': return p.label || p.flowId || '(未選擇)';
             default: return '';

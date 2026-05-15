@@ -7,6 +7,8 @@ export const BLOCK_META = {
     // 🎮 操控 — 藍色系
     click_roi:    { icon: '🎮', label: '點擊', color: 'border-blue-400/50 bg-blue-500/15' },
     key_press:    { icon: '⌨️', label: '按鍵', color: 'border-blue-400/50 bg-blue-500/15' },
+    type_text:    { icon: '💬', label: '輸入文字', color: 'border-blue-400/50 bg-blue-500/15' },
+    hotkey:       { icon: '🔑', label: '組合鍵', color: 'border-blue-400/50 bg-blue-500/15' },
     // ⏳ 等待 — 琥珀色系
     wait:         { icon: '⏱️', label: '等待', color: 'border-amber-400/50 bg-amber-500/15' },
     wait_stable:  { icon: '👁️', label: '等待穩定', color: 'border-amber-400/50 bg-amber-500/15' },
@@ -46,6 +48,8 @@ export const NEW_BLOCK_TEMPLATES = [
     { type: 'capture_frame', params: {} },
     { type: 'recognize_grid', params: {} },
     { type: 'key_press', params: { key: 'space' } },
+    { type: 'type_text', params: { text: '$orderId' } },
+    { type: 'hotkey', params: { keys: 'ctrl+a' } },
     { type: 'stop', params: { reason: '手動終止' } },
     { type: 'break_loop', params: {} },
 ];

@@ -150,6 +150,22 @@ const BlockParams = ({ block, onUpdate, allFlows }) => {
         case 'break_loop':
             return null; // 不需要參數
 
+        case 'type_text':
+            return (
+                <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                    <input className={`${MINI} flex-1 min-w-0`} value={p.text || ''} placeholder="文字（支援 $var）"
+                        onChange={e => set('text', e.target.value)} />
+                </div>
+            );
+
+        case 'hotkey':
+            return (
+                <div className="flex items-center gap-1.5">
+                    <input className={`${MINI} w-28`} value={p.keys || ''} placeholder="ctrl+a"
+                        onChange={e => set('keys', e.target.value)} />
+                </div>
+            );
+
         case 'if_then':
             return (
                 <div className="flex items-center gap-1.5 flex-1 min-w-0">
