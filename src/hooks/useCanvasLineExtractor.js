@@ -7,7 +7,7 @@ import { toPx, toPct } from '../utils/helpers';
  * 處理：圖片上傳、Canvas 繪圖、控制點拖拽、色彩分析提取線獎
  */
 export function useCanvasLineExtractor({
-    gridRows, gridCols,
+    gridRows, gridCols, reelHeights,
     patternRows, patternCols,
     startIndex,
     isTemplateMinimized,
@@ -101,13 +101,18 @@ export function useCanvasLineExtractor({
 
                 const lineData = [];
                 for (let gc = 0; gc < gridCols; gc++) {
+                    // 該列的實際可見列數
+                    const colH = (reelHeights && reelHeights[gc]) ? reelHeights[gc] : gridRows;
+                    const cellW = patW / gridCols;
+                    const cellH = patH / gridRows;  // 單格高度仍按 gridRows 均分
+                    // 該列的上下置中 Y 偏移
+                    const colOffsetY = (patH - colH * cellH) / 2;
+
                     let maxScore = threshold;
                     let bestRow = 0;
-                    for (let gr = 0; gr < gridRows; gr++) {
-                        const cellW = patW / gridCols;
-                        const cellH = patH / gridRows;
+                    for (let gr = 0; gr < colH; gr++) {
                         const sampX = Math.floor(patX + gc * cellW + cellW / 2);
-                        const sampY = Math.floor(patY + gr * cellH + cellH / 2);
+                        const sampY = Math.floor(patY + colOffsetY + gr * cellH + cellH / 2);
                         if (sampX < 0 || sampX >= imageObj.width || sampY < 0 || sampY >= imageObj.height) continue;
 
                         const idx = (sampY * imageObj.width + sampX) * 4;
@@ -214,30 +219,46 @@ export function useCanvasLineExtractor({
         const handleSize = Math.max(12, Math.floor(imageObj.width / 60));
         const fontSize = Math.max(14, Math.floor(imageObj.width / 35));
 
-        const drawInnerGrid = (context, rect, gRows, gCols, color) => {
+        const drawInnerGrid = (context, rect, gRows, gCols, color, rHeights) => {
             if (gRows <= 1 && gCols <= 1) return;
             context.strokeStyle = color;
             context.lineWidth = baseThickness;
-            context.beginPath();
             const cellW = rect.w / gCols;
             const cellH = rect.h / gRows;
-            for (let c = 1; c < gCols; c++) {
-                const lx = rect.x + c * cellW;
-                context.moveTo(lx, rect.y);
-                context.lineTo(lx, rect.y + rect.h);
+
+            if (rHeights && rHeights.length === gCols) {
+                // 非方格盤面：逐列置中畫格線
+                for (let c = 0; c < gCols; c++) {
+                    const colH = rHeights[c] || gRows;
+                    const offsetY = (rect.h - colH * cellH) / 2;
+                    for (let r = 0; r < colH; r++) {
+                        context.strokeRect(
+                            rect.x + c * cellW,
+                            rect.y + offsetY + r * cellH,
+                            cellW, cellH
+                        );
+                    }
+                }
+            } else {
+                context.beginPath();
+                for (let c = 1; c < gCols; c++) {
+                    const lx = rect.x + c * cellW;
+                    context.moveTo(lx, rect.y);
+                    context.lineTo(lx, rect.y + rect.h);
+                }
+                for (let r = 1; r < gRows; r++) {
+                    const ly = rect.y + r * cellH;
+                    context.moveTo(rect.x, ly);
+                    context.lineTo(rect.x + rect.w, ly);
+                }
+                context.stroke();
             }
-            for (let r = 1; r < gRows; r++) {
-                const ly = rect.y + r * cellH;
-                context.moveTo(rect.x, ly);
-                context.lineTo(rect.x + rect.w, ly);
-            }
-            context.stroke();
         };
 
         ctx.lineWidth = baseThickness;
         ctx.strokeStyle = '#6366f1';
         ctx.strokeRect(r1.x, r1.y, r1.w, r1.h);
-        drawInnerGrid(ctx, r1, gridRows, gridCols, 'rgba(99, 102, 241, 0.6)');
+        drawInnerGrid(ctx, r1, gridRows, gridCols, 'rgba(99, 102, 241, 0.6)', reelHeights);
         ctx.fillStyle = '#6366f1';
         ctx.font = `bold ${fontSize}px sans-serif`;
         ctx.fillText(`${startIndex.toString().padStart(2, '0')} (Start)`, r1.x, r1.y - fontSize * 0.3);
@@ -245,7 +266,7 @@ export function useCanvasLineExtractor({
 
         ctx.strokeStyle = '#ef4444';
         ctx.strokeRect(rEnd.x, rEnd.y, rEnd.w, rEnd.h);
-        drawInnerGrid(ctx, rEnd, gridRows, gridCols, 'rgba(239, 68, 68, 0.6)');
+        drawInnerGrid(ctx, rEnd, gridRows, gridCols, 'rgba(239, 68, 68, 0.6)', reelHeights);
         ctx.fillStyle = '#ef4444';
         const endIndex = startIndex + patternRows * patternCols - 1;
         ctx.fillText(`${endIndex} (End)`, rEnd.x, rEnd.y - fontSize * 0.3);
@@ -275,10 +296,10 @@ export function useCanvasLineExtractor({
                 ctx.fillStyle = '#10b981';
                 ctx.font = `bold ${fontSize}px sans-serif`;
                 ctx.fillText(patternIndex.toString().padStart(2, '0'), curX, curY - fontSize * 0.3);
-                drawInnerGrid(ctx, { x: curX, y: curY, w: curW, h: curH }, gridRows, gridCols, 'rgba(16, 185, 129, 0.4)');
+                drawInnerGrid(ctx, { x: curX, y: curY, w: curW, h: curH }, gridRows, gridCols, 'rgba(16, 185, 129, 0.4)', reelHeights);
             }
         }
-    }, [imageObj, p1, pEnd, patternRows, patternCols, gridRows, gridCols, startIndex, linesTabMode]);
+    }, [imageObj, p1, pEnd, patternRows, patternCols, gridRows, gridCols, reelHeights, startIndex, linesTabMode]);
 
     // Auto-draw when visible
     useEffect(() => {

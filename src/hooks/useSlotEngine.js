@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import { isCashSymbol, isWildSymbol } from '../utils/symbolUtils';
 import { computeGridResults } from '../engine/computeGridResults';
+import { getGridMask } from '../utils/gridShapeUtils';
 
 export function useSlotEngine({ template, enableBidirectional = false }) {
     const defaultPanelGrid = Array.from({ length: 3 }, () => Array(5).fill(''));
@@ -145,17 +146,22 @@ export function useSlotEngine({ template, enableBidirectional = false }) {
         }
     }, [template, availableSymbols, activeBrush]);
 
-    const generateRandomPanelGrid = useCallback((rows, cols, symbols) => {
+    const generateRandomPanelGrid = useCallback((tpl, symbols) => {
         if (!symbols || symbols.length === 0) return [];
+        const mask = getGridMask(tpl);
         const grid = [];
-        for (let r = 0; r < rows; r++) {
+        for (let r = 0; r < tpl.rows; r++) {
             const rowArr = [];
-            for (let c = 0; c < cols; c++) {
-                let sym = symbols[Math.floor(Math.random() * symbols.length)];
-                if (sym === 'CASH') {
-                    sym = `CASH_${[0.5, 1, 2, 5, 10][Math.floor(Math.random() * 5)]}`;
+            for (let c = 0; c < tpl.cols; c++) {
+                if (mask[r] && mask[r][c] === false) {
+                    rowArr.push('');
+                } else {
+                    let sym = symbols[Math.floor(Math.random() * symbols.length)];
+                    if (sym === 'CASH') {
+                        sym = `CASH_${[0.5, 1, 2, 5, 10][Math.floor(Math.random() * 5)]}`;
+                    }
+                    rowArr.push(sym);
                 }
-                rowArr.push(sym);
             }
             grid.push(rowArr);
         }
@@ -165,7 +171,7 @@ export function useSlotEngine({ template, enableBidirectional = false }) {
     const handleRandomizePanel = useCallback(() => {
         if (!template) return;
         const allSymbols = Object.keys(template.paytable);
-        setPanelGrid(generateRandomPanelGrid(template.rows, template.cols, allSymbols));
+        setPanelGrid(generateRandomPanelGrid(template, allSymbols));
     }, [template, generateRandomPanelGrid]);
 
     const handleClearPanel = useCallback(() => {
@@ -176,11 +182,17 @@ export function useSlotEngine({ template, enableBidirectional = false }) {
     const getSafeGrid = useCallback((sourceGrid) => {
         if (!template || (!sourceGrid && !panelGrid)) return [];
         const gridData = sourceGrid || panelGrid;
+        const mask = getGridMask(template);
         const grid = [];
         for (let r = 0; r < template.rows; r++) {
             const rowArr = [];
             for (let c = 0; c < template.cols; c++) {
-                rowArr.push(gridData[r]?.[c] || '');
+                // 遮罩外格子強制為空
+                if (mask[r] && mask[r][c] === false) {
+                    rowArr.push('');
+                } else {
+                    rowArr.push(gridData[r]?.[c] || '');
+                }
             }
             grid.push(rowArr);
         }

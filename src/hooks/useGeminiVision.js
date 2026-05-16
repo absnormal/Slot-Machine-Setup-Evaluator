@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { toPx, toPct } from '../utils/helpers';
 import { useVisionImageManager } from './useVisionImageManager';
 import { useVisionBatchProcessor } from './useVisionBatchProcessor';
+import { isIrregularGrid, getGridMask } from '../utils/gridShapeUtils';
 
 const CACHE_KEYS = {
     MAIN: 'SLOT_P3_CACHE_MAIN',
@@ -120,27 +121,54 @@ export function useGeminiVision({
                 const relativeRy = ry - cropY;
 
                 if (template && template.rows > 0 && template.cols > 0) {
-                    ctx.beginPath();
                     ctx.strokeStyle = 'rgba(16, 185, 129, 0.5)';
                     const displayCols = template.cols;
                     const cellW = rw / displayCols;
                     const cellH = rh / template.rows;
 
-                    for (let c = 1; c < displayCols; c++) {
-                        const lx = relativeRx + c * cellW;
-                        ctx.moveTo(lx, relativeRy);
-                        ctx.lineTo(lx, relativeRy + rh);
+                    if (isIrregularGrid(template)) {
+                        // 非方格盤面：每列獨立上下置中
+                        ctx.lineWidth = 1;
+                        for (let c = 0; c < displayCols; c++) {
+                            const h = template.reelHeights[c] || template.rows;
+                            const colCellH = rh / template.rows;  // 單格高度仍用整體均分
+                            const offsetY = (rh - h * colCellH) / 2;
+                            for (let r = 0; r < h; r++) {
+                                ctx.strokeRect(
+                                    relativeRx + c * cellW,
+                                    relativeRy + offsetY + r * colCellH,
+                                    cellW, colCellH
+                                );
+                            }
+                        }
+                    } else {
+                        ctx.beginPath();
+                        for (let c = 1; c < displayCols; c++) {
+                            const lx = relativeRx + c * cellW;
+                            ctx.moveTo(lx, relativeRy);
+                            ctx.lineTo(lx, relativeRy + rh);
+                        }
+                        for (let r = 1; r < template.rows; r++) {
+                            const ly = relativeRy + r * cellH;
+                            ctx.moveTo(relativeRx, ly);
+                            ctx.lineTo(relativeRx + rw, ly);
+                        }
+                        ctx.stroke();
                     }
-                    for (let r = 1; r < template.rows; r++) {
-                        const ly = relativeRy + r * cellH;
-                        ctx.moveTo(relativeRx, ly);
-                        ctx.lineTo(relativeRx + rw, ly);
-                    }
-                    ctx.stroke();
 
                     ctx.strokeStyle = '#10b981';
                     ctx.lineWidth = 2;
-                    ctx.strokeRect(relativeRx, relativeRy, rw, rh);
+                    if (isIrregularGrid(template)) {
+                        // 不畫全矩形外框，只畫各列的總外框
+                        for (let c = 0; c < displayCols; c++) {
+                            const h = template.reelHeights[c] || template.rows;
+                            const colCellH = rh / template.rows;
+                            const offsetY = (rh - h * colCellH) / 2;
+                            ctx.strokeRect(relativeRx + c * cellW, relativeRy + offsetY, cellW, h * colCellH);
+                        }
+                    } else {
+                        ctx.strokeRect(relativeRx, relativeRy, rw, rh);
+                    }
                 }
 
                 if (template?.hasMultiplierReel) {
@@ -204,24 +232,41 @@ export function useGeminiVision({
                 ctx.fillRect(rect.x + rect.w - handleSize, rect.y + rect.h - handleSize, handleSize, handleSize);
 
                 if (template && template.rows > 0 && template.cols > 0) {
-                    ctx.beginPath();
                     ctx.strokeStyle = 'rgba(16, 185, 129, 0.5)';
 
                     const displayCols = template.cols;
                     const cellW = rect.w / displayCols;
                     const cellH = rect.h / template.rows;
 
-                    for (let c = 1; c < displayCols; c++) {
-                        const lx = rect.x + c * cellW;
-                        ctx.moveTo(lx, rect.y);
-                        ctx.lineTo(lx, rect.y + rect.h);
+                    if (isIrregularGrid(template)) {
+                        // 非方格盤面：每列獨立上下置中
+                        ctx.lineWidth = 1;
+                        for (let c = 0; c < displayCols; c++) {
+                            const h = template.reelHeights[c] || template.rows;
+                            const colCellH = rect.h / template.rows;
+                            const offsetY = (rect.h - h * colCellH) / 2;
+                            for (let r = 0; r < h; r++) {
+                                ctx.strokeRect(
+                                    rect.x + c * cellW,
+                                    rect.y + offsetY + r * colCellH,
+                                    cellW, colCellH
+                                );
+                            }
+                        }
+                    } else {
+                        ctx.beginPath();
+                        for (let c = 1; c < displayCols; c++) {
+                            const lx = rect.x + c * cellW;
+                            ctx.moveTo(lx, rect.y);
+                            ctx.lineTo(lx, rect.y + rect.h);
+                        }
+                        for (let r = 1; r < template.rows; r++) {
+                            const ly = rect.y + r * cellH;
+                            ctx.moveTo(rect.x, ly);
+                            ctx.lineTo(rect.x + rect.w, ly);
+                        }
+                        ctx.stroke();
                     }
-                    for (let r = 1; r < template.rows; r++) {
-                        const ly = rect.y + r * cellH;
-                        ctx.moveTo(rect.x, ly);
-                        ctx.lineTo(rect.x + rect.w, ly);
-                    }
-                    ctx.stroke();
                 }
 
                 if (template?.hasMultiplierReel) {

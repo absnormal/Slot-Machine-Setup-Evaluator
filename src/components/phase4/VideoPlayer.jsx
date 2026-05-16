@@ -51,6 +51,7 @@ const VideoPlayer = ({
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
     const [roiMode, setRoiMode] = useState('reel');
+    const [roiPanelOpen, setRoiPanelOpen] = useState(true);
     const containerRef = useRef(null);
 
     // ── ROI 拖曳 ──
@@ -156,8 +157,20 @@ const VideoPlayer = ({
         <div className="space-y-4">
             {/* 影片 + ROI */}
             <div className="relative rounded-2xl shadow-2xl bg-black flex flex-col items-center overflow-hidden no-invert">
-                {/* ROI 切換器 — 分群 */}
-                <div className="absolute top-4 right-4 z-40 bg-slate-900/80 backdrop-blur-md p-1.5 rounded-lg border border-white/20 shadow-xl flex flex-col gap-1">
+                {/* ROI 切換器 — 可收合 */}
+                <div className="absolute top-4 right-4 z-40 flex flex-col items-end gap-1">
+                    {/* 收合按鈕 */}
+                    <button onClick={() => setRoiPanelOpen(p => !p)}
+                        className="bg-slate-900/80 backdrop-blur-md px-2.5 py-1.5 rounded-lg border border-white/20 shadow-xl text-xs font-bold text-slate-300 hover:text-white transition-all flex items-center gap-1.5 active:scale-95 self-end"
+                    >
+                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: {
+                            reel: '#f59e0b', win: '#10b981', balance: '#38bdf8', bet: '#22d3ee',
+                            orderId: '#a855f7', multiplier: '#f43f5e', spinButton: '#16a34a'
+                        }[roiMode] || '#06b6d4' }} />
+                        {roiPanelOpen ? '▶ 收合' : '◀ ROI'}
+                    </button>
+                {roiPanelOpen && (
+                <div className="bg-slate-900/80 backdrop-blur-md p-1.5 rounded-lg border border-white/20 shadow-xl flex flex-col gap-1">
                     {/* ── 🔍 OCR / 偵測群 ── */}
                     <div className="flex gap-1 items-center flex-wrap">
                         <span className="text-[9px] text-slate-500 font-bold px-1 select-none shrink-0">👁️ 讀取</span>
@@ -290,6 +303,8 @@ const VideoPlayer = ({
                             ＋
                         </button>
                     </div>
+                    </div>
+                )}
                 </div>
 
 
@@ -341,8 +356,23 @@ const VideoPlayer = ({
                                 <div className="absolute -right-1.5 -bottom-1.5 w-4 h-4 rounded-full border-2 border-white pointer-events-auto cursor-nwse-resize shadow-lg"
                                     style={{ backgroundColor: r.hex }} />
                             )}
-                            <div className="absolute left-0 text-white text-[10px] px-1.5 py-0.5 rounded font-bold shadow-md"
-                                style={{ backgroundColor: r.hex, top: '-22px' }}>{r.label}</div>
+                            {/* ROI 標籤：選中完整顯示，非選中縮為色點 */}
+                            {(() => {
+                                const showOnTop = r.roi.y > 5; // ROI 太靠頂 → 標籤放下方
+                                const pos = showOnTop ? { bottom: '100%', marginBottom: '4px' } : { top: '100%', marginTop: '4px' };
+                                return isActive ? (
+                                    <div className="absolute left-0 text-white text-[10px] px-1.5 py-0.5 rounded font-bold shadow-md whitespace-nowrap pointer-events-none"
+                                        style={{ backgroundColor: r.hex, ...pos }}>{r.label}</div>
+                                ) : (
+                                    <div className="absolute left-0 flex items-center gap-1 group/label pointer-events-none"
+                                        style={pos}>
+                                        <div className="w-2.5 h-2.5 rounded-full border border-white/80 shadow-sm shrink-0"
+                                            style={{ backgroundColor: r.hex }} />
+                                        <div className="text-white text-[9px] px-1 py-px rounded font-bold shadow-sm opacity-0 group-hover/label:opacity-100 transition-opacity whitespace-nowrap"
+                                            style={{ backgroundColor: r.hex }}>{r.label}</div>
+                                    </div>
+                                );
+                            })()}
                         </div>
                         );
                     })}

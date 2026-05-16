@@ -53,74 +53,69 @@ export function computeGridResults(template, targetGrid, betAmount, options = {}
         const allPaySymbols = Object.keys(evalTemplate.paytable);
 
         if (evalTemplate.lineMode === 'allways') {
-            // === All Ways 計算 ===
+            // === All Ways 計算（每條路線獨立計算 xN 乘倍，按乘倍值分組顯示）===
+
             for (const targetSymbol of allPaySymbols) {
                 if (isScatterSymbol(targetSymbol)) continue;
                 if (isCashSymbol(targetSymbol, evalTemplate.jpConfig)) continue;
                 if (isCollectSymbol(targetSymbol) && !isWildSymbol(targetSymbol)) continue;
 
-                let consecutiveReels = 0;
-                let ways = 1;
+                // ── Phase 1: 收集每列匹配資料 ──
+                const colMatchData = []; // [{ allMults, wildOnlyMults, coords }]
                 const winCoords = [];
-                let lineMultiplierMultiplier = (template.multiplierCalcType === 'sum' ? 0 : 1);
-                const hasMultiplierAtAll = (template.multiplierCalcType === 'sum' ? (m => m > 0) : (m => m > 1));
+                let hasTargetSymbol = false;
+                let totalUnits = 0;
+                let reelsReached = 0;
 
                 for (let col = 0; col < evalTemplate.cols; col++) {
-                    let matchCount = 0;
+                    const allMults = [];
+                    const wildOnlyMults = [];
                     const colCoords = [];
+                    let maxUnitsInCol = 0;
+
                     for (let row = 0; row < evalTemplate.rows; row++) {
                         const sym = safeGrid[row][col];
                         if (!sym) continue;
                         const base = getBaseSymbol(sym, evalTemplate.jpConfig);
                         if (base === targetSymbol || isWildSymbol(sym)) {
-                            matchCount++;
+                            const m = getSymbolMultiplier(sym);
+                            allMults.push(m);
                             colCoords.push({ row, col });
+                            maxUnitsInCol = Math.max(maxUnitsInCol, getSymbolCount(sym));
+                            if (base === targetSymbol) hasTargetSymbol = true;
+                            if (isWildSymbol(sym) && base !== targetSymbol) wildOnlyMults.push(m);
                         }
                     }
-                    if (matchCount === 0) break;
-                    
-                    ways *= matchCount;
+                    if (allMults.length === 0) break;
+                    colMatchData.push({ allMults, wildOnlyMults, coords: colCoords });
                     winCoords.push(...colCoords);
-                    
-                    // xN Multiplier logic for All Ways
-                    colCoords.forEach(coord => {
-                        const sym = safeGrid[coord.row][coord.col];
-                        const m = getSymbolMultiplier(sym);
-                        if (m > 1) {
-                            if (template.multiplierCalcType === 'sum') lineMultiplierMultiplier = safeAdd(lineMultiplierMultiplier, m);
-                            else lineMultiplierMultiplier = safeMul(lineMultiplierMultiplier, m);
-                        }
-                    });
+                    reelsReached++;
+                    totalUnits += maxUnitsInCol;
                 }
 
-                // 扣除「純 WILD 路線」：計算每行中僅有 WILD 的數量之連乘積
-                // 若非 WILD 符號本身，需將純 WILD 路線從 ways 中扣除
+                if (reelsReached < 2 || (!isWildSymbol(targetSymbol) && !hasTargetSymbol)) continue;
+
+                // ── Phase 2: 結算（賠率查表）──
+                const payArray = evalTemplate.paytable[targetSymbol];
+                const payIndex = Math.min(totalUnits - 1, payArray.length - 1);
+                const payoutMult = payIndex >= 0 ? payArray[payIndex] : 0;
+                if (payoutMult <= 0) continue;
+
+                const calcType = template.multiplierCalcType;
+                const hasAnyMult = colMatchData.some(c => c.allMults.some(m => m > 1));
+
+                // ── Phase 3: 判斷是否需要純 WILD 扣除 ──
+                const isPureWildRoute = (routeCells) => {
+                    if (isWildSymbol(targetSymbol)) return false;
+                    return routeCells.every(cell => cell.isWild);
+                };
+
+                // ── Phase 4: 過濾 winCoords（純 WILD 扣除用）──
                 let pureWildDeducted = false;
                 if (!isWildSymbol(targetSymbol)) {
-                    let pureWildWays = 1;
-                    let pureWildPossible = true;
-                    for (let col = 0; col < evalTemplate.cols; col++) {
-                        let wildOnlyCount = 0;
-                        let colHasAnyMatch = false;
-                        for (let row = 0; row < evalTemplate.rows; row++) {
-                            const sym = safeGrid[row][col];
-                            if (!sym) continue;
-                            const base = getBaseSymbol(sym, evalTemplate.jpConfig);
-                            if (base === targetSymbol || isWildSymbol(sym)) colHasAnyMatch = true;
-                            if (isWildSymbol(sym) && base !== targetSymbol) wildOnlyCount++;
-                        }
-                        if (!colHasAnyMatch) break; // 同步中斷點
-                        if (wildOnlyCount === 0) { pureWildPossible = false; break; }
-                        pureWildWays *= wildOnlyCount;
-                    }
-                    if (pureWildPossible) {
-                        ways -= pureWildWays;
-                        pureWildDeducted = true;
-                    }
+                    const pureWildPossible = colMatchData.every(c => c.wildOnlyMults.length > 0);
+                    if (pureWildPossible) pureWildDeducted = true;
                 }
-
-                // 過濾 winCoords：若有扣除純 WILD 路線，且 target 僅存在於 1 個行，
-                // 則從該行移除 WILD 座標（因為所有合法路線都必須經過那唯一一個 target）
                 let finalWinCoords = winCoords;
                 if (pureWildDeducted) {
                     const colsWithTarget = new Set();
@@ -129,8 +124,6 @@ export function computeGridResults(template, targetGrid, betAmount, options = {}
                         const base = getBaseSymbol(sym, evalTemplate.jpConfig);
                         if (base === targetSymbol && !isWildSymbol(sym)) colsWithTarget.add(coord.col);
                     }
-                    // 只有當 target 僅在 1 個行出現時，才從該行移除 WILD
-                    // 若 target 存在於 2+ 個行，WILD 仍可透過其他行的 target 形成合法路線
                     if (colsWithTarget.size === 1) {
                         finalWinCoords = winCoords.filter(coord => {
                             const sym = safeGrid[coord.row][coord.col];
@@ -139,69 +132,83 @@ export function computeGridResults(template, targetGrid, betAmount, options = {}
                     }
                 }
 
-                // Actually, the simpler way for All Ways is to sum up units for the 'count'
-                // and use 'matchCount' for the 'ways'.
-                // Recalculating consecutiveReels as cumulative units
-                let cumulativeUnits = 0;
-                let actualConsecutiveReels = 0;
-                for (let col = 0; col < evalTemplate.cols; col++) {
-                    let colHasMatch = false;
-                    let colMaxUnits = 0;
-                    for (let row = 0; row < evalTemplate.rows; row++) {
-                        const sym = safeGrid[row][col];
-                        if (getBaseSymbol(sym, evalTemplate.jpConfig) === targetSymbol || isWildSymbol(sym)) {
-                            colHasMatch = true;
-                            colMaxUnits = Math.max(colMaxUnits, getSymbolCount(sym));
-                        }
+                // ── Phase 5: 結算 — 無 xN 時聚合，有 xN 時按乘倍分組 ──
+                if (!hasAnyMult) {
+                    // 無 xN：原始聚合格式
+                    let ways = colMatchData.reduce((acc, c) => acc * c.allMults.length, 1);
+                    if (pureWildDeducted) {
+                        ways -= colMatchData.reduce((acc, c) => acc * c.wildOnlyMults.length, 1);
                     }
-                    if (!colHasMatch) break;
-                    actualConsecutiveReels++;
-                    cumulativeUnits += colMaxUnits; // This is a simplification, usually games either count reels or sum units. 
-                }
-                // Standard behavior for double symbols: they count as 2 towards the "N-of-a-kind"
-                // So if we have [Double, Single, Single], it's a 4-of-a-kind.
-                
-                let totalUnits = 0;
-                let reelsReached = 0;
-                let hasTargetSymbol = false;
-                for (let col = 0; col < evalTemplate.cols; col++) {
-                    let foundMatchInCol = false;
-                    let maxUnitsInCol = 0; 
-                    for (let row = 0; row < evalTemplate.rows; row++) {
-                        const sym = safeGrid[row][col];
-                        if (getBaseSymbol(sym, evalTemplate.jpConfig) === targetSymbol || isWildSymbol(sym)) {
-                            foundMatchInCol = true;
-                            maxUnitsInCol = Math.max(maxUnitsInCol, getSymbolCount(sym));
-                            if (getBaseSymbol(sym, evalTemplate.jpConfig) === targetSymbol) hasTargetSymbol = true;
+                    if (ways <= 0) continue;
+                    const payout = safeMul(payoutMult, lineBet, ways);
+                    calculatedResults.push({
+                        lineId: `WAYS_${targetSymbol}`,
+                        symbol: targetSymbol,
+                        count: reelsReached,
+                        ways,
+                        payoutMult,
+                        winAmount: payout,
+                        multiplier: null,
+                        symbolsOnLine: [],
+                        positions: [`${reelsReached} 連 × ${ways} Ways`],
+                        winCoords: finalWinCoords
+                    });
+                    totalWin = safeAdd(totalWin, payout);
+                } else {
+                    // 有 xN：枚舉所有路線，按乘倍值分組
+                    // 建立每列的格子資訊 [{ mult, isWild, coord }]
+                    const colCells = colMatchData.map((col, colIdx) =>
+                        col.allMults.map((m, cellIdx) => {
+                            const coord = col.coords[cellIdx];
+                            const sym = safeGrid[coord.row][coord.col];
+                            const base = getBaseSymbol(sym, evalTemplate.jpConfig);
+                            return { mult: m, isWild: isWildSymbol(sym) && base !== targetSymbol, coord };
+                        })
+                    );
+
+                    // 笛卡爾積枚舉，按乘倍分組 { multKey: { ways, routeMult, coords: Set } }
+                    const multGroups = {};
+                    const enumerateRoutes = (colIdx, accMult, cells, allWild) => {
+                        if (colIdx >= colCells.length) {
+                            if (allWild && !isWildSymbol(targetSymbol)) return; // 純 WILD 路線排除
+                            const finalMult = calcType === 'sum' ? Math.max(1, accMult) : accMult;
+                            const key = finalMult;
+                            if (!multGroups[key]) multGroups[key] = { routeMult: finalMult, ways: 0, coordSet: new Set() };
+                            multGroups[key].ways++;
+                            cells.forEach(c => multGroups[key].coordSet.add(`${c.coord.row},${c.coord.col}`));
+                            return;
                         }
-                    }
-                    if (!foundMatchInCol) break;
-                    reelsReached++;
-                    totalUnits += maxUnitsInCol;
-                }
+                        for (const cell of colCells[colIdx]) {
+                            let newAcc;
+                            if (calcType === 'sum') {
+                                newAcc = cell.mult > 1 ? safeAdd(accMult, cell.mult) : accMult;
+                            } else {
+                                newAcc = cell.mult > 1 ? safeMul(accMult, cell.mult) : accMult;
+                            }
+                            enumerateRoutes(colIdx + 1, newAcc, [...cells, cell], allWild && cell.isWild);
+                        }
+                    };
+                    enumerateRoutes(0, calcType === 'sum' ? 0 : 1, [], true);
 
-                if (reelsReached >= 2 && (isWildSymbol(targetSymbol) || hasTargetSymbol)) {
-                    const payArray = evalTemplate.paytable[targetSymbol];
-                    // Map totalUnits to paytable index (e.g. 5 units -> index 4)
-                    const payIndex = Math.min(totalUnits - 1, payArray.length - 1);
-                    const payoutMult = payIndex >= 0 ? payArray[payIndex] : 0;
-
-                    if (payoutMult > 0) {
-                        const finalLineMult = (template.multiplierCalcType === 'sum' ? Math.max(1, lineMultiplierMultiplier) : lineMultiplierMultiplier);
-                        const payout = safeMul(payoutMult, lineBet, ways, finalLineMult);
+                    // 按乘倍值排序後輸出
+                    const sortedGroups = Object.values(multGroups).sort((a, b) => a.routeMult - b.routeMult);
+                    for (const group of sortedGroups) {
+                        const groupPayout = safeMul(payoutMult, lineBet, group.ways, group.routeMult);
+                        const groupCoords = [...group.coordSet].map(s => { const [r, c] = s.split(','); return { row: +r, col: +c }; });
+                        const multLabel = group.routeMult > 1 ? ` ×${group.routeMult}` : '';
                         calculatedResults.push({
-                            lineId: `WAYS_${targetSymbol}`,
+                            lineId: `WAYS_${targetSymbol}${group.routeMult > 1 ? `_x${group.routeMult}` : ''}`,
                             symbol: targetSymbol,
                             count: reelsReached,
-                            ways,
+                            ways: group.ways,
                             payoutMult,
-                            winAmount: payout,
-                            multiplier: finalLineMult > 1 ? finalLineMult : null,
+                            winAmount: groupPayout,
+                            multiplier: group.routeMult > 1 ? group.routeMult : null,
                             symbolsOnLine: [],
-                            positions: [`${reelsReached} 連 × ${ways} Ways`],
-                            winCoords: finalWinCoords
+                            positions: [`${reelsReached} 連 × ${group.ways} Ways${multLabel}`],
+                            winCoords: groupCoords
                         });
-                        totalWin = safeAdd(totalWin, payout);
+                        totalWin = safeAdd(totalWin, groupPayout);
                     }
                 }
             }

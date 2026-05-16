@@ -12,10 +12,11 @@
 import { clickROI } from './actions/clickAction';
 import { wait } from './actions/waitAction';
 import { ocrBatch, ocrRead } from './actions/ocrAction';
+import { cropAndOCR } from './ocrPipeline';
+import { resolveROI, getDecimalPlaces } from './roiResolver';
 import { captureFrame } from './actions/captureAction';
 import { waitStable } from './actions/waitStableAction';
 import { waitChange } from './actions/waitChangeAction';
-import { resolveROI } from './roiResolver';
 
 // ═══════════════════════════════════════
 // 執行狀態
@@ -51,6 +52,7 @@ export class FlowRunner extends EventTarget {
         this.variables = {};        // 變數空間 { $win: '500', $balance: '12345', ... }
         this._ws = null;            // WebSocket 連線
         this._videoEl = null;       // video 元素
+        this._ocrWorker = null;     // 前端 PaddleOCR Worker（DBNet 全套）
         this._getCandidates = null; // 取得候選幀列表
         this._onSmartDedup = null;  // smartDedup 回呼
         this._cancelRef = { current: false };
@@ -80,6 +82,9 @@ export class FlowRunner extends EventTarget {
         this._videoEl = context.videoEl;
         this._setCandidates = context.setCandidates;
         this._reelROI = context.reelROI;
+        this._ocrWorker = context.ocrWorker || null;
+        this._recognizeLocal = context.recognizeLocal || null;
+        this._subFlowResolver = context.subFlowResolver || null;
         this._cancelRef = { current: false };
         this._spinCount = 0;
         this.variables = {};
@@ -144,65 +149,122 @@ export class FlowRunner extends EventTarget {
     }
 
     async _executeBlock(block, depth) {
-        this._emit(FlowEvent.BLOCK_START, { block, depth });
+        const policy = block.errorPolicy || 'stop';
+        const maxRetry = policy === 'retry' ? Math.min(block.retryCount || 3, 10) : 1;
 
-        let result;
-        try {
-            switch (block.type) {
-                case 'click_roi':
-                    result = await this._execClick(block);
-                    break;
-                case 'wait':
-                    result = await this._execWait(block);
-                    break;
-                case 'wait_stable':
-                    result = await this._execWaitStable(block);
-                    break;
-                case 'wait_change':
-                    result = await this._execWaitChange(block);
-                    break;
-                case 'ocr_batch':
-                    result = await this._execOcrBatch(block);
-                    break;
-                case 'ocr_read':
-                    result = await this._execOcrRead(block);
-                    break;
-                case 'capture_frame':
-                    result = await this._execCapture(block);
-                    break;
-                case 'record_spin':
-                    result = await this._execRecord(block);
-                    break;
-                case 'loop':
-                    result = await this._execLoop(block, depth);
-                    break;
-                case 'if_then':
-                    result = await this._execIfThen(block, depth);
-                    break;
-                case 'set_var':
-                    result = this._execSetVar(block);
-                    break;
-                case 'log':
-                    result = this._execLog(block);
-                    break;
-                case 'key_press':
-                    result = await this._execKeyPress(block);
-                    break;
-                default:
-                    console.warn(`[FlowRunner] 未知積木類型: ${block.type}`);
+        for (let attempt = 0; attempt < maxRetry; attempt++) {
+            this._emit(FlowEvent.BLOCK_START, { block, depth, inSubFlow: this._inSubFlow || false });
+
+            let result;
+            try {
+                switch (block.type) {
+                    case 'click_roi':
+                        result = await this._execClick(block);
+                        break;
+                    case 'wait':
+                        result = await this._execWait(block);
+                        break;
+                    case 'wait_stable':
+                        result = await this._execWaitStable(block);
+                        break;
+                    case 'wait_change':
+                        result = await this._execWaitChange(block);
+                        break;
+                    case 'ocr_batch':
+                        result = await this._execOcrBatch(block);
+                        break;
+                    case 'ocr_read':
+                        result = await this._execOcrRead(block);
+                        break;
+                    case 'capture_frame':
+                        result = await this._execCapture(block);
+                        break;
+                    case 'record_spin':
+                        result = await this._execRecord(block);
+                        break;
+                    case 'recognize_grid':
+                        result = await this._execRecognizeGrid(block);
+                        break;
+                    case 'loop':
+                        result = await this._execLoop(block, depth);
+                        break;
+                    case 'if_then':
+                        result = await this._execIfThen(block, depth);
+                        break;
+                    case 'sub_flow':
+                        result = await this._execSubFlow(block, depth);
+                        break;
+                    case 'set_var':
+                        result = this._execSetVar(block);
+                        break;
+                    case 'log':
+                        result = this._execLog(block);
+                        break;
+                    case 'key_press':
+                        result = await this._execKeyPress(block);
+                        break;
+                    case 'type_text':
+                        result = await this._execTypeText(block);
+                        break;
+                    case 'hotkey':
+                        result = await this._execHotkey(block);
+                        break;
+                    case 'stop': {
+                        const reason = block.params?.reason || '流程終止';
+                        this._emit(FlowEvent.LOG, { message: `🛑 ${reason}` });
+                        throw new Error('stopped');
+                    }
+                    case 'break_loop':
+                        this._emit(FlowEvent.LOG, { message: '⏏️ 跳出迴圈' });
+                        throw new Error('break');
+                    default:
+                        console.warn(`[FlowRunner] 未知積木類型: ${block.type}`);
+                }
+
+                this._emit(FlowEvent.BLOCK_END, { block, depth, result });
+                return result;
+
+            } catch (e) {
+                // 控制信號：直接向上傳播，不受 errorPolicy 影響
+                if (e.message === 'cancelled' || e.message === 'stopped' || e.message === 'break') {
+                    throw e;
+                }
+
+                const isLastAttempt = attempt >= maxRetry - 1;
+
+                if (policy === 'retry' && !isLastAttempt) {
+                    this._emit(FlowEvent.LOG, {
+                        message: `🔄 ${block.type} 失敗，重試 ${attempt + 1}/${maxRetry}: ${e.message}`
+                    });
+                    this._sendPythonLog(`🔄 重試 ${attempt + 1}/${maxRetry}: ${e.message}`);
+                    await new Promise(r => setTimeout(r, 1000)); // 冷卻 1 秒
+                    continue;
+                }
+
+                if (policy === 'skip') {
+                    this._emit(FlowEvent.LOG, {
+                        message: `⏭️ ${block.type} 失敗已跳過: ${e.message}`
+                    });
+                    this._sendPythonLog(`⏭️ 跳過: ${e.message}`);
+                    this._emit(FlowEvent.BLOCK_END, { block, depth, result: null });
+                    return null;
+                }
+
+                // stop（預設）：發射錯誤事件 + 向上拋出
+                this._emit(FlowEvent.ERROR, { block, error: e });
+                throw e;
             }
-        } catch (e) {
-            if (e.message === 'cancelled' || e.message === 'stopped' || e.message === 'break') {
-                throw e; // 向上傳播控制信號
-            }
-            this._emit(FlowEvent.ERROR, { block, error: e });
         }
-
-        this._emit(FlowEvent.BLOCK_END, { block, depth, result });
-        return result;
     }
 
     // ── 控制積木 ──
+
+    /** 透過 WebSocket 發送 log 訊息到 Python terminal */
+    _sendPythonLog(message) {
+        if (this._ws && this._ws.readyState === WebSocket.OPEN) {
+            try { this._ws.send(JSON.stringify({ action: 'log', message })); } catch {}
+        }
+    }
 
     async _execClick(block) {
         const { roi, button } = block.params;
@@ -210,7 +272,10 @@ export class FlowRunner extends EventTarget {
     }
 
     async _execWait(block) {
-        const ms = this._evalExpr(block.params.ms);
+        // 優先用 seconds（新格式），fallback 到 ms（舊格式）
+        const ms = block.params.seconds !== undefined
+            ? this._evalExpr(block.params.seconds) * 1000
+            : this._evalExpr(block.params.ms);
         await wait(ms, { cancelRef: this._cancelRef });
     }
 
@@ -218,6 +283,25 @@ export class FlowRunner extends EventTarget {
         const { key } = block.params;
         const requestId = `key_${Date.now()}`;
         this._ws.send(JSON.stringify({ action: 'key', key, requestId }));
+    }
+
+    async _execTypeText(block) {
+        const { text } = block.params;
+        const resolved = this._interpolate(String(text || ''));
+        const requestId = `type_${Date.now()}`;
+        this._ws.send(JSON.stringify({ action: 'type_text', text: resolved, requestId }));
+        this._emit(FlowEvent.LOG, { message: `💬 輸入: "${resolved}"` });
+        // 給一點時間讓剪貼簿操作完成
+        await new Promise(r => setTimeout(r, 200));
+    }
+
+    async _execHotkey(block) {
+        const { keys } = block.params;
+        const keyList = String(keys || '').split('+').map(k => k.trim()).filter(Boolean);
+        if (keyList.length === 0) return;
+        const requestId = `hotkey_${Date.now()}`;
+        this._ws.send(JSON.stringify({ action: 'hotkey', keys: keyList, requestId }));
+        this._emit(FlowEvent.LOG, { message: `🔑 組合鍵: ${keyList.join('+')}` });
     }
 
     // ── 偵測積木 ──
@@ -234,26 +318,70 @@ export class FlowRunner extends EventTarget {
 
     async _execWaitChange(block) {
         const { roi, changeCount, interval, timeout } = block.params;
-        return await waitChange(this._videoEl, roi, {
+        // waitChange 超時會 throw Error（由外層 errorPolicy 攔截）
+        const result = await waitChange(this._ws, roi, {
             changeCount: changeCount ?? 2,
             interval: interval ?? 200,
-            timeout: timeout ?? 30000,
+            timeout: (timeout ?? 30) * 1000,
             cancelRef: this._cancelRef,
         });
+
+        const msg = `⚡ ${roi}: ${result.oldValue} → ${result.newValue} (穩定 ${changeCount ?? 2} 次, ${(result.elapsed / 1000).toFixed(1)}s)`;
+        this._emit(FlowEvent.LOG, { message: msg });
+        this._sendPythonLog(msg);
+        return result;
     }
 
     // ── 讀取積木 ──
 
     async _execOcrBatch(block) {
         const { rois } = block.params;
-        const results = await ocrBatch(this._ws, rois);
+        let results;
+
+        // 有截圖 + 前端 ocrWorker → 用前端 DBNet 全套（準確）
+        if (this._lastCapturedCanvas && this._ocrWorker) {
+            results = {};
+            for (const name of rois) {
+                const roi = resolveROI(name);
+                if (!roi) {
+                    throw new Error(`[ocr_batch] 無法解析 ROI: "${name}"（當前環境未設定此區域）`);
+                }
+                const upper = name.toUpperCase();
+                const key = upper === 'BAL' || upper === 'BALANCE' ? 'balance'
+                    : upper === 'ORDER_ID' || upper === 'ORDERID' ? 'orderId'
+                    : upper === 'MULT' || upper === 'MULTIPLIER' ? 'multiplier'
+                    : name.toLowerCase();
+                const dp = getDecimalPlaces(name);
+                results[key] = await cropAndOCR(this._lastCapturedCanvas, roi, this._ocrWorker, dp, upper);
+            }
+            const logMsg = `📊 前端 OCR: ${JSON.stringify(results)}`;
+            this._emit(FlowEvent.LOG, { message: logMsg });
+            this._sendPythonLog(logMsg);
+        } else {
+            // 沒截圖 → fallback Python rec-only
+            results = await ocrBatch(this._ws, rois);
+            this._sendPythonLog(`📊 Python OCR: ${JSON.stringify(results)}`);
+        }
 
         // 自動將結果寫入變數空間
-        for (const [key, value] of Object.entries(results)) {
+        for (const [key, rawValue] of Object.entries(results)) {
+            // orderId 直接正規化（去除 - 空格），統一格式
+            const value = key === 'orderId' && rawValue
+                ? String(rawValue).replace(/[-\s]/g, '')
+                : rawValue;
+            if (key === 'orderId' && rawValue !== value) results[key] = value; // 同步回 results
             const varName = `$${key}`;
+            // 空值不覆蓋現有變數（避免子流程清空主流程的值）
+            if (value === '' || value === null || value === undefined) {
+                if (this.variables[varName] !== undefined) {
+                    console.log(`[ocr_batch] 跳過空值覆蓋: ${varName} 保留="${this.variables[varName]}"`);
+                    continue;
+                }
+            }
             this.variables[varName] = value;
             this._emit(FlowEvent.VAR_UPDATE, { name: varName, value });
         }
+        console.log('[ocr_batch] variables 快照:', JSON.stringify(this.variables));
 
         return results;
     }
@@ -292,6 +420,7 @@ export class FlowRunner extends EventTarget {
             };
             this._setCandidates(prev => [...prev, candidate]);
             this._lastCaptureId = candidateId; // 供 record_spin 更新用
+            this._lastCapturedCanvas = frame.canvas; // 供 ocr_batch 使用截圖做 OCR
             this._emit(FlowEvent.LOG, { message: '📸 截圖已加入候選幀' });
         }
 
@@ -301,24 +430,57 @@ export class FlowRunner extends EventTarget {
     // ── 記錄積木（更新最後截圖的候選幀，或新建一張）──
 
     async _execRecord(block) {
-        const ocrData = {
-            win:     this.variables['$WIN']      || this.variables['$win']      || '0',
-            balance: this.variables['$BALANCE']  || this.variables['$BAL']      || this.variables['$balance'] || '',
-            bet:     this.variables['$BET']      || this.variables['$bet']      || '',
-            orderId: this.variables['$ORDER_ID'] || this.variables['$orderId']  || '',
+        // 勾選的欄位（預設全選）
+        const fields = block.params?.fields || ['WIN', 'BAL', 'BET', 'ORDER_ID'];
+        const has = (name) => fields.includes(name);
+
+        // 從變數空間搜尋 OCR 資料（支援標準名稱和自訂 ROI 名稱）
+        const findVar = (...keys) => {
+            for (const k of keys) {
+                if (this.variables[k] !== undefined && this.variables[k] !== '') return this.variables[k];
+            }
+            return undefined;
         };
+
+        const ocrData = {
+            win:        findVar('$WIN', '$win', '$道具卡贏分') || '-',
+            balance:    findVar('$BALANCE', '$BAL', '$balance') || '-',
+            bet:        findVar('$BET', '$bet') || '-',
+            orderId:    findVar('$ORDER_ID', '$orderId') || '',
+            ...(findVar('$MULT', '$multiplier') ? { multiplier: findVar('$MULT', '$multiplier') } : {}),
+        };
+
+        // 如果標準名稱都沒找到，掃描所有變數尋找可能的 win 值
+        if (!ocrData.win) {
+            for (const [k, v] of Object.entries(this.variables)) {
+                if (k.startsWith('$') && v && v !== '0' && !['$balance', '$bet', '$orderId', '$BALANCE', '$BAL', '$BET', '$ORDER_ID'].includes(k)) {
+                    // 非標準名稱且有值 → 可能是自訂 win ROI
+                    ocrData.win = v;
+                    break;
+                }
+            }
+        }
 
         const spinIndex = this._spinCount++;
 
         if (this._setCandidates) {
             if (this._lastCaptureId) {
                 // 更新 capture_frame 建立的候選幀（補上 OCR + 完成狀態）
-                this._setCandidates(prev => prev.map(c =>
-                    c.id === this._lastCaptureId
-                        ? { ...c, ocrData, status: 'completed', winPollStatus: 'completed' }
-                        : c
-                ));
+                const targetId = this._lastCaptureId;
+                console.log('[record_spin] 準備更新候選幀', targetId, 'ocrData=', JSON.stringify(ocrData));
+                this._setCandidates(prev => {
+                    const found = prev.find(c => c.id === targetId);
+                    console.log('[record_spin] prev 中找到目標?', !!found, 'prev.length=', prev.length);
+                    if (found) console.log('[record_spin] 更新前 ocrData=', JSON.stringify(found.ocrData));
+                    return prev.map(c =>
+                        c.id === targetId
+                            ? { ...c, ocrData, status: c.status === 'recognized' ? 'recognized' : 'completed', winPollStatus: 'completed' }
+                            : c
+                    );
+                });
+                this._sendPythonLog(`📸 更新候選幀 ${this._lastCaptureId}`);
                 this._lastCaptureId = null;
+                this._lastCapturedCanvas = null;
             } else if (this._videoEl) {
                 // 沒有先截圖 → 自行截圖建立候選幀
                 const frame = captureFrame(this._videoEl);
@@ -343,9 +505,9 @@ export class FlowRunner extends EventTarget {
             }
         }
 
-        this._emit(FlowEvent.LOG, {
-            message: `📝 #${spinIndex + 1} WIN=${ocrData.win} BAL=${ocrData.balance} BET=${ocrData.bet}`,
-        });
+        const recordMsg = `📝 #${spinIndex + 1} WIN=${ocrData.win} BAL=${ocrData.balance} BET=${ocrData.bet} ID=${ocrData.orderId}`;
+        this._emit(FlowEvent.LOG, { message: recordMsg });
+        this._sendPythonLog(recordMsg);
 
         this._emit(FlowEvent.SPIN_RECORDED, {
             spinIndex,
@@ -353,6 +515,20 @@ export class FlowRunner extends EventTarget {
         });
 
         return { success: true, spinIndex };
+    }
+
+    // ── 盤面辨識積木 ──
+
+    async _execRecognizeGrid() {
+        if (!this._recognizeLocal) {
+            throw new Error('盤面辨識未設定（recognizeLocal callback 不存在）');
+        }
+        if (!this._lastCaptureId) {
+            throw new Error('沒有截圖可辨識（請先執行「截圖」積木）');
+        }
+        this._emit(FlowEvent.LOG, { message: '🔍 盤面辨識中...' });
+        await this._recognizeLocal(this._lastCaptureId);
+        this._sendPythonLog(`🔍 盤面辨識完成 ${this._lastCaptureId}`);
     }
 
     // ── 流程積木 ──
@@ -411,12 +587,51 @@ export class FlowRunner extends EventTarget {
         }
     }
 
+    async _execSubFlow(block, depth) {
+        const MAX_DEPTH = 10;
+        if (depth >= MAX_DEPTH) {
+            throw new Error(`子流程巢狀深度超過上限 (${MAX_DEPTH})，可能存在循環引用`);
+        }
+
+        const { flowId, label } = block.params;
+        if (!flowId) {
+            throw new Error('子流程未選擇（flowId 為空）');
+        }
+        if (!this._subFlowResolver) {
+            throw new Error('子流程解析器未設定');
+        }
+
+        const subFlow = this._subFlowResolver(flowId);
+        if (!subFlow || !subFlow.blocks) {
+            throw new Error(`找不到子流程: ${label || flowId}`);
+        }
+
+        this._emit(FlowEvent.LOG, { message: `📦 進入子流程: ${subFlow.name || label || flowId}` });
+        this._sendPythonLog(`📦 子流程: ${subFlow.name || flowId}`);
+        this._inSubFlow = (this._inSubFlow || 0) + 1;
+        try {
+            await this._executeBlocks(subFlow.blocks, depth + 1);
+        } finally {
+            this._inSubFlow = Math.max(0, (this._inSubFlow || 1) - 1);
+        }
+        this._emit(FlowEvent.LOG, { message: `📦 離開子流程: ${subFlow.name || label || flowId}` });
+    }
+
     _execSetVar(block) {
-        const { name, value } = block.params;
+        const { name, value, op } = block.params;
         const resolved = this._evalExpr(value);
-        this.variables[name] = resolved;
-        this._emit(FlowEvent.VAR_UPDATE, { name, value: resolved });
-        return resolved;
+        const current = this.variables[name] ?? 0;
+        let final;
+        switch (op) {
+            case '+=': final = (parseFloat(current) || 0) + (parseFloat(resolved) || 0); break;
+            case '-=': final = (parseFloat(current) || 0) - (parseFloat(resolved) || 0); break;
+            case '*=': final = (parseFloat(current) || 0) * (parseFloat(resolved) || 0); break;
+            case '/=': final = (parseFloat(resolved) || 0) !== 0 ? (parseFloat(current) || 0) / parseFloat(resolved) : 0; break;
+            default:   final = resolved; break; // '=' 或舊資料沒有 op
+        }
+        this.variables[name] = final;
+        this._emit(FlowEvent.VAR_UPDATE, { name, value: final });
+        return final;
     }
 
     _execLog(block) {
@@ -447,7 +662,7 @@ export class FlowRunner extends EventTarget {
 
         // 簡單算術：替換變數後 eval
         try {
-            const substituted = expr.replace(/\$(\w+)/g, (_, name) => {
+            const substituted = expr.replace(/\$([\w\u4e00-\u9fff]+)/g, (_, name) => {
                 const val = this.variables[`$${name}`];
                 return typeof val === 'number' ? val : parseFloat(val) || 0;
             });
@@ -469,7 +684,7 @@ export class FlowRunner extends EventTarget {
         if (typeof condition !== 'string') return !!condition;
 
         try {
-            const substituted = condition.replace(/\$(\w+)/g, (_, name) => {
+            const substituted = condition.replace(/\$([\w\u4e00-\u9fff]+)/g, (_, name) => {
                 const val = this.variables[`$${name}`];
                 if (val === undefined) return '0';
                 return typeof val === 'number' ? val : `"${val}"`;
@@ -489,7 +704,7 @@ export class FlowRunner extends EventTarget {
      */
     _interpolate(template) {
         if (typeof template !== 'string') return String(template);
-        return template.replace(/\$(\w+)/g, (match, name) => {
+        return template.replace(/\$([\w\u4e00-\u9fff]+)/g, (match, name) => {
             return this.variables[`$${name}`] ?? match;
         });
     }
@@ -521,6 +736,13 @@ export class FlowRunner extends EventTarget {
 // ═══════════════════════════════════════
 
 export const PRESET_FLOWS = [
+    {
+        id: 'preset_empty',
+        name: '空白模板',
+        description: '空白流程，從零開始自行組合積木',
+        version: 1,
+        blocks: [],
+    },
     {
         id: 'preset_basic_spin',
         name: '基本自動 SPIN',

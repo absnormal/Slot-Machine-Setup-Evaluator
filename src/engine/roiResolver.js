@@ -80,7 +80,7 @@ export function getDecimalPlaces(name) {
     if (upper === 'BAL' || upper === 'BALANCE') {
         return store.balDecimalPlaces ?? store.ocrDecimalPlaces ?? 2;
     }
-    if (upper === 'BET' || upper === 'ORDER_ID' || upper === 'ORDERID') {
+    if (upper === 'ORDER_ID' || upper === 'ORDERID') {
         return 0;
     }
     return store.ocrDecimalPlaces ?? 2;

@@ -25,7 +25,7 @@ export default defineConfig({
     },
     server: {
         watch: {
-            ignored: ['**/.agent/**', '**/README.md', '**/*.md']
+            ignored: ['**/screen-capture-server/**', '**/.agent/**', '**/README.md', '**/*.md']
         }
     }
 })

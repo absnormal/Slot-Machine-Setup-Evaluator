@@ -102,6 +102,7 @@ export function useCloud() {
         hasBidirectionalPaylines, hasAdjustableLines,
         hasExBet, exBetOptions,
         hasLineBetDivisor, lineBetDivisor,
+        reelHeights,
         motionCoverageMin, vLineThreshold, ocrDecimalPlaces, balDecimalPlaces, enableWinTracker, enableEmptyBoardFilter,
         phase4ROIs,
         localUserId, actualForceId
@@ -192,6 +193,7 @@ export function useCloud() {
                 exBetOptions,
                 hasLineBetDivisor,
                 lineBetDivisor,
+                reelHeights,
                 motionCoverageMin,
                 vLineThreshold,
                 ocrDecimalPlaces,

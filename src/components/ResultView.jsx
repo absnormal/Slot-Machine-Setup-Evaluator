@@ -7,6 +7,23 @@ export default function ResultView({ template, calcData, calcErr, hoveredId, set
     const [balanceText, setBalanceText] = React.useState('');
     const [isEditingBet, setIsEditingBet] = React.useState(false);
     const [betText, setBetText] = React.useState('');
+    const [expandedWaysGroups, setExpandedWaysGroups] = React.useState(new Set());
+    const toggleWaysGroup = (sym) => setExpandedWaysGroups(prev => { const n = new Set(prev); n.has(sym) ? n.delete(sym) : n.add(sym); return n; });
+    const groupedDisplayItems = React.useMemo(() => {
+        if (!calcData?.details) return [];
+        const waysMap = {};
+        for (const d of calcData.details) { if (String(d.lineId).startsWith('WAYS_')) { if (!waysMap[d.symbol]) waysMap[d.symbol] = []; waysMap[d.symbol].push(d); } }
+        const result = []; const seen = new Set();
+        for (const d of calcData.details) {
+            if (String(d.lineId).startsWith('WAYS_')) {
+                if (seen.has(d.symbol)) continue; seen.add(d.symbol);
+                const entries = waysMap[d.symbol];
+                if (entries.length === 1) { result.push(entries[0]); continue; }
+                result.push({ _isWaysGroup: true, symbol: entries[0].symbol, count: entries[0].count, payoutMult: entries[0].payoutMult, winAmount: entries.reduce((s, e) => s + e.winAmount, 0), ways: entries.reduce((s, e) => s + e.ways, 0), children: entries, lineId: `WAYS_${entries[0].symbol}_GROUP`, winCoords: entries.flatMap(e => e.winCoords || []) });
+            } else { result.push(d); }
+        }
+        return result;
+    }, [calcData?.details]);
     const handleUpdateBalance = (e) => {
         if (e) {
             if (e.preventDefault) e.preventDefault();
@@ -277,112 +294,101 @@ export default function ResultView({ template, calcData, calcErr, hoveredId, set
                                 </div>
                             </div>
                             <div className="space-y-2 flex-1 overflow-y-auto pr-2 custom-scrollbar min-h-0 max-h-[440px]">
-                                {calcData.details.filter(d => showAll || d.winAmount > 0).length === 0 ? (
+                                {groupedDisplayItems.filter(d => showAll || d.winAmount > 0).length === 0 ? (
                                     <div className="text-center py-10 text-slate-500 bg-slate-50 rounded-lg border border-dashed border-slate-200 animate-in fade-in duration-300">
                                         <p className="text-lg">此盤面未達成任何連線中獎 😢</p>
                                     </div>
                                 ) : (
-                                    calcData.details.filter(d => showAll || d.winAmount > 0).map((result, idx) => {
-                                        const isWin = result.winAmount > 0;
-                                        const isScatterWin = String(result.lineId).startsWith('SCATTER');
-                                        const isCollectWin = String(result.lineId).startsWith('COLLECT');
-                                        const isWaysWin = String(result.lineId).startsWith('WAYS_');
-
-                                        let rowBgClass = 'opacity-60 grayscale bg-slate-50';
-                                        let idBgClass = 'bg-slate-200 border-slate-300';
-                                        let idTextClass = 'text-slate-500';
-                                        let idLabel = result.lineId;
-
-                                        if (isWin) {
-                                            if (isScatterWin) {
-                                                rowBgClass = 'bg-amber-50 border-amber-200 shadow-sm hover:border-amber-400 hover:shadow-md';
-                                                idBgClass = 'bg-[#291a1a] border-amber-500';
-                                                idTextClass = 'text-amber-400';
-                                                idLabel = 'SC';
-                                            } else if (isCollectWin) {
-                                                rowBgClass = 'bg-emerald-50 border-emerald-200 shadow-sm hover:border-emerald-400 hover:shadow-md';
-                                                idBgClass = 'bg-[#1a2923] border-emerald-500';
-                                                idTextClass = 'text-emerald-400';
-                                                idLabel = '💰';
-                                            } else if (isWaysWin) {
-                                                rowBgClass = 'bg-purple-50 border-purple-200 shadow-sm hover:border-purple-400 hover:shadow-md';
-                                                idBgClass = 'bg-[#231a29] border-purple-500';
-                                                idTextClass = 'text-purple-400';
-                                                idLabel = result.ways || '';
-                                            } else {
-                                                rowBgClass = 'bg-white border-indigo-100 shadow-sm hover:border-indigo-300 hover:shadow-md';
-                                                idBgClass = 'bg-[#1a1c29] border-slate-500';
-                                                idTextClass = 'text-white';
+                                    groupedDisplayItems.filter(d => showAll || d.winAmount > 0).map((item, idx) => {
+                                        // ── 共用卡片渲染 ──
+                                        const renderCard = (result, key, { isChild = false } = {}) => {
+                                            const isWin = result.winAmount > 0;
+                                            const isScatterWin = String(result.lineId).startsWith('SCATTER');
+                                            const isCollectWin = String(result.lineId).startsWith('COLLECT');
+                                            const isWaysWin = String(result.lineId).startsWith('WAYS_');
+                                            const isGroup = !!result._isWaysGroup;
+                                            const isExpanded = isGroup && expandedWaysGroups.has(result.symbol);
+                                            let rowBgClass = 'opacity-60 grayscale bg-slate-50';
+                                            let idBgClass = 'bg-slate-200 border-slate-300';
+                                            let idTextClass = 'text-slate-500';
+                                            let idLabel = result.lineId;
+                                            if (isWin) {
+                                                if (isScatterWin) { rowBgClass = 'bg-amber-50 border-amber-200 shadow-sm hover:border-amber-400 hover:shadow-md'; idBgClass = 'bg-[#291a1a] border-amber-500'; idTextClass = 'text-amber-400'; idLabel = 'SC'; }
+                                                else if (isCollectWin) { rowBgClass = 'bg-emerald-50 border-emerald-200 shadow-sm hover:border-emerald-400 hover:shadow-md'; idBgClass = 'bg-[#1a2923] border-emerald-500'; idTextClass = 'text-emerald-400'; idLabel = '💰'; }
+                                                else if (isWaysWin) { rowBgClass = isChild ? 'bg-purple-50/60 border-purple-100 hover:border-purple-300' : 'bg-purple-50 border-purple-200 shadow-sm hover:border-purple-400 hover:shadow-md'; idBgClass = 'bg-[#231a29] border-purple-500'; idTextClass = 'text-purple-400'; idLabel = result.ways || ''; }
+                                                else { rowBgClass = 'bg-white border-indigo-100 shadow-sm hover:border-indigo-300 hover:shadow-md'; idBgClass = 'bg-[#1a1c29] border-slate-500'; idTextClass = 'text-white'; }
                                             }
-                                        }
-
-                                        const collectedJps = isCollectWin && template?.jpConfig
-                                            ? [...new Set(result.symbolsOnLine.filter(sym => typeof sym === 'string' && isJpSymbol(sym, template.jpConfig)))]
-                                            : [];
-
-                                        return (
-                                            <div key={idx} className={`p-2 rounded-lg border flex items-center gap-3 transition-all duration-300 cursor-pointer animate-in fade-in slide-in-from-bottom-2 ${rowBgClass}`} onMouseEnter={() => setHoveredId(result.lineId)} onMouseLeave={() => setHoveredId(null)}>
-                                                <div className={`w-12 h-16 shrink-0 flex flex-col justify-between rounded-md border shadow-sm overflow-hidden ${idBgClass}`}>
-                                                    <div className="flex-1 min-h-0 flex items-center justify-center px-1 pt-1 relative">
-                                                        {template?.symbolImages?.[getBaseSymbol(result.symbol, template.jpConfig)] ? (
-                                                            <img src={template.symbolImages[getBaseSymbol(result.symbol, template.jpConfig)]} className="max-w-full max-h-full object-contain drop-shadow-md" alt={result.symbol} />
-                                                        ) : (
-                                                            <span className={`text-[10px] font-black leading-tight text-center ${isWin ? 'text-slate-300' : 'text-slate-500'}`}>{getBaseSymbol(result.symbol, template.jpConfig)}</span>
+                                            const collectedJps = isCollectWin && template?.jpConfig ? [...new Set((result.symbolsOnLine||[]).filter(sym => typeof sym === 'string' && isJpSymbol(sym, template.jpConfig)))] : [];
+                                            const waysTitle = isGroup
+                                                ? `${result.symbol} ${result.count} 連 × ${result.ways} Ways`
+                                                : `${result.symbol} ${result.count} 連 × ${result.ways} Ways${result.multiplier ? ` ×${result.multiplier}` : ''}`;
+                                            return (
+                                                <div key={key} className={`p-2 rounded-lg border flex items-center gap-3 transition-all duration-300 cursor-pointer animate-in fade-in slide-in-from-bottom-2 ${isChild ? 'ml-8 scale-[0.97] origin-left' : ''} ${rowBgClass}`}
+                                                    onMouseEnter={() => setHoveredId(result.lineId)} onMouseLeave={() => setHoveredId(null)}
+                                                    onClick={isGroup ? () => toggleWaysGroup(result.symbol) : undefined}
+                                                >
+                                                    <div className={`${isChild ? 'w-10 h-12' : 'w-12 h-16'} shrink-0 flex flex-col justify-between rounded-md border shadow-sm overflow-hidden ${idBgClass}`}>
+                                                        <div className="flex-1 min-h-0 flex items-center justify-center px-1 pt-1 relative">
+                                                            {template?.symbolImages?.[getBaseSymbol(result.symbol, template.jpConfig)] ? (
+                                                                <img src={template.symbolImages[getBaseSymbol(result.symbol, template.jpConfig)]} className="max-w-full max-h-full object-contain drop-shadow-md" alt={result.symbol} />
+                                                            ) : (
+                                                                <span className={`text-[10px] font-black leading-tight text-center ${isWin ? 'text-slate-300' : 'text-slate-500'}`}>{getBaseSymbol(result.symbol, template.jpConfig)}</span>
+                                                            )}
+                                                        </div>
+                                                        <div className={`shrink-0 pb-1 text-center ${isChild ? 'text-[10px]' : 'text-sm'} font-black tracking-wider ${idTextClass}`}>{idLabel}</div>
+                                                    </div>
+                                                    <div className="flex-1 min-w-0 flex flex-col justify-center">
+                                                        <div className="flex items-center justify-between mb-1">
+                                                            <div className="flex items-center gap-2 flex-wrap">
+                                                                <span className={`font-bold ${isChild ? 'text-xs' : 'text-sm'} truncate ${isScatterWin ? 'text-amber-700' : isCollectWin ? 'text-emerald-700' : isWaysWin ? 'text-purple-700' : 'text-slate-800'}`}>
+                                                                    {isCollectWin ? '金幣收集成功' : isWaysWin ? waysTitle : `${result.symbol} ${result.count} ${isScatterWin ? '個' : '連'}`}
+                                                                </span>
+                                                                {isGroup && <span className={`transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}><ChevronDown size={14} className="text-purple-400" /></span>}
+                                                                {isWin ? (
+                                                                    <div className="flex items-center gap-1">
+                                                                        {collectedJps.map((jp, i) => (<span key={i} className="text-[10px] px-2 py-0.5 font-black rounded-full bg-amber-500 text-white shadow-sm border border-amber-600 animate-pulse whitespace-nowrap">🏆 {jp.toUpperCase()} {template.jpConfig[jp.toUpperCase()]}x</span>))}
+                                                                        <span className={`text-[10px] px-2 py-0.5 font-bold rounded-full border whitespace-nowrap ${isScatterWin ? 'bg-amber-100 text-amber-700 border-amber-300' : isCollectWin ? 'bg-emerald-100 text-emerald-700 border-emerald-300' : isWaysWin ? 'bg-purple-100 text-purple-700 border-purple-300' : 'bg-indigo-50 text-indigo-700 border-indigo-200'}`}>
+                                                                            {isCollectWin ? `總面額 ${result.payoutMult}` : `倍率 ${result.payoutMult}x`}
+                                                                        </span>
+                                                                        {isWaysWin && result.multiplier && !isGroup && (
+                                                                            <span className="text-[10px] px-2 py-0.5 font-black rounded-full border whitespace-nowrap bg-fuchsia-100 text-fuchsia-700 border-fuchsia-300">乘倍 ×{result.multiplier}</span>
+                                                                        )}
+                                                                        {isGroup && <span className="text-[10px] px-1.5 py-0.5 font-bold rounded-full border whitespace-nowrap bg-fuchsia-50 text-fuchsia-600 border-fuchsia-200">{result.children.length} 組乘倍</span>}
+                                                                    </div>
+                                                                ) : (
+                                                                    <span className="text-[10px] px-2 py-0.5 bg-slate-200 text-slate-500 rounded-full font-medium whitespace-nowrap">未中獎</span>
+                                                                )}
+                                                            </div>
+                                                            <span className={`font-black ${isChild ? 'text-xs' : 'text-sm'} shrink-0 ml-2 ${isWin ? (isScatterWin ? 'text-amber-600' : isWaysWin ? 'text-purple-600' : 'text-emerald-600') : 'text-slate-400'}`}>
+                                                                {isWin ? `+${result.winAmount.toLocaleString()}` : '-'}
+                                                            </span>
+                                                        </div>
+                                                        {!isGroup && (
+                                                            <div className="flex items-center">
+                                                                <div className="text-[10px] text-slate-500 font-mono bg-slate-100/80 px-2 py-0.5 rounded border border-slate-200 flex items-center gap-1">
+                                                                    <span className="text-slate-400 font-bold">路線:</span>
+                                                                    {isScatterWin ? (<span className="text-amber-600 font-black px-1">全盤散佈 (Anywhere)</span>
+                                                                    ) : isCollectWin ? (<span className="text-emerald-600 font-black px-1">{result.positions[0]}</span>
+                                                                    ) : isWaysWin ? (<span className="text-purple-600 font-black px-1">{result.positions[0]}</span>
+                                                                    ) : (<React.Fragment>{result.positions.map((pos, i) => (<React.Fragment key={i}><span className={i < result.count && isWin ? 'text-indigo-600 font-black' : ''}>{pos}</span>{i < result.positions.length - 1 && <span className="text-slate-300 mx-0.5">-</span>}</React.Fragment>))}</React.Fragment>)}
+                                                                </div>
+                                                            </div>
                                                         )}
                                                     </div>
-                                                    <div className={`shrink-0 pb-1 text-center text-sm font-black tracking-wider ${idTextClass}`}>
-                                                        {idLabel}
-                                                    </div>
                                                 </div>
-                                                <div className="flex-1 min-w-0 flex flex-col justify-center">
-                                                    <div className="flex items-center justify-between mb-1">
-                                                        <div className="flex items-center gap-2 flex-wrap">
-                                                            <span className={`font-bold text-sm truncate ${isScatterWin ? 'text-amber-700' : isCollectWin ? 'text-emerald-700' : isWaysWin ? 'text-purple-700' : 'text-slate-800'}`}>
-                                                                {isCollectWin ? '金幣收集成功' : isWaysWin ? `${result.symbol} ${result.count} 連 × ${result.ways} Ways` : `${result.symbol} ${result.count} ${isScatterWin ? '個' : '連'}`}
-                                                            </span>
-                                                            {isWin ? (
-                                                                <div className="flex items-center gap-1">
-                                                                    {collectedJps.map((jp, i) => (
-                                                                        <span key={i} className="text-[10px] px-2 py-0.5 font-black rounded-full bg-amber-500 text-white shadow-sm border border-amber-600 animate-pulse whitespace-nowrap">
-                                                                            🏆 {jp.toUpperCase()} {template.jpConfig[jp.toUpperCase()]}x
-                                                                        </span>
-                                                                    ))}
-                                                                    <span className={`text-[10px] px-2 py-0.5 font-bold rounded-full border whitespace-nowrap ${isScatterWin ? 'bg-amber-100 text-amber-700 border-amber-300' : isCollectWin ? 'bg-emerald-100 text-emerald-700 border-emerald-300' : isWaysWin ? 'bg-purple-100 text-purple-700 border-purple-300' : 'bg-indigo-50 text-indigo-700 border-indigo-200'}`}>
-                                                                        {isCollectWin ? `總面額 ${result.payoutMult}` : `倍率 ${result.payoutMult}x`}
-                                                                    </span>
-                                                                </div>
-                                                            ) : (
-                                                                <span className="text-[10px] px-2 py-0.5 bg-slate-200 text-slate-500 rounded-full font-medium whitespace-nowrap">未中獎</span>
-                                                            )}
-                                                        </div>
-                                                        <span className={`font-black text-sm shrink-0 ml-2 ${isWin ? (isScatterWin ? 'text-amber-600' : isWaysWin ? 'text-purple-600' : 'text-emerald-600') : 'text-slate-400'}`}>
-                                                            {isWin ? `+${result.winAmount.toLocaleString()}` : '-'}
-                                                        </span>
-                                                    </div>
-                                                    <div className="flex items-center">
-                                                        <div className="text-[10px] text-slate-500 font-mono bg-slate-100/80 px-2 py-0.5 rounded border border-slate-200 flex items-center gap-1">
-                                                            <span className="text-slate-400 font-bold">路線:</span>
-                                                            {isScatterWin ? (
-                                                                <span className="text-amber-600 font-black px-1">全盤散佈 (Anywhere)</span>
-                                                            ) : isCollectWin ? (
-                                                                <span className="text-emerald-600 font-black px-1">{result.positions[0]}</span>
-                                                            ) : isWaysWin ? (
-                                                                <span className="text-purple-600 font-black px-1">{result.positions[0]}</span>
-                                                            ) : (
-                                                                <React.Fragment>
-                                                                    {result.positions.map((pos, i) => (
-                                                                        <React.Fragment key={i}>
-                                                                            <span className={i < result.count && isWin ? 'text-indigo-600 font-black' : ''}>{pos}</span>
-                                                                            {i < result.positions.length - 1 && <span className="text-slate-300 mx-0.5">-</span>}
-                                                                        </React.Fragment>
-                                                                    ))}
-                                                                </React.Fragment>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        );
+                                            );
+                                        };
+
+                                        if (item._isWaysGroup) {
+                                            const isExpanded = expandedWaysGroups.has(item.symbol);
+                                            return (
+                                                <React.Fragment key={`wg_${item.symbol}`}>
+                                                    {renderCard(item, `wg_${item.symbol}_parent`)}
+                                                    {isExpanded && item.children.map((child, ci) => renderCard(child, `wg_${item.symbol}_${ci}`, { isChild: true }))}
+                                                </React.Fragment>
+                                            );
+                                        }
+                                        return renderCard(item, idx);
                                     })
                                 )}
                             </div>

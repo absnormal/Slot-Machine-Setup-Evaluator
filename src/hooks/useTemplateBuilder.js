@@ -50,6 +50,7 @@ export function useTemplateBuilder({
     const [exBetOptions, setExBetOptions] = useState(D.exBetOptions);
     const [hasLineBetDivisor, setHasLineBetDivisor] = useState(D.hasLineBetDivisor);
     const [lineBetDivisor, setLineBetDivisor] = useState(D.lineBetDivisor);
+    const [reelHeights, setReelHeights] = useState(D.reelHeights);
     const prevHasDoubleSymbol = useRef(hasDoubleSymbol);
 
     // Grid dimensions
@@ -64,7 +65,7 @@ export function useTemplateBuilder({
 
     // === Sub-Hook: Canvas Line Extractor ===
     const canvasExtractor = useCanvasLineExtractor({
-        gridRows, gridCols, patternRows, patternCols, startIndex,
+        gridRows, gridCols, reelHeights, patternRows, patternCols, startIndex,
         isTemplateMinimized, linesTabMode,
         setExtractResults, setTemplateError, setTemplateMessage,
     });
@@ -171,6 +172,7 @@ export function useTemplateBuilder({
             hasBidirectionalPaylines: hasBDP, hasAdjustableLines: hasAL,
             hasExBet: hasEB, exBetOptions: ebOpts,
             hasLineBetDivisor: hasLBD, lineBetDivisor: lbdVal,
+            reelHeights: rh,
             validateStrict = false
         } = p;
 
@@ -277,12 +279,17 @@ export function useTemplateBuilder({
         });
 
         // ── 5. tpl 物件組裝 ──
+        // reelHeights：只有在確實非方格時才寫入，否則 null（向下相容）
+        const effectiveReelHeights = (rh && Array.isArray(rh) && rh.some(h => h !== rows)) ? rh : null;
+
         return {
             name: gameName || '',
             rows,
             cols,
             lineMode: lm,
-            linesCount: lm === 'allways' ? Math.pow(rows, cols) : (er?.length || 0),
+            linesCount: lm === 'allways'
+                ? (effectiveReelHeights ? effectiveReelHeights.reduce((acc, h) => acc * h, 1) : Math.pow(rows, cols))
+                : (er?.length || 0),
             lines,
             paytable,
             symbolImages,
@@ -301,6 +308,7 @@ export function useTemplateBuilder({
             exBetOptions: ebOpts || D.exBetOptions,
             hasLineBetDivisor: hasLBD,
             lineBetDivisor: lbdVal || D.lineBetDivisor,
+            reelHeights: effectiveReelHeights,
         };
     };
 
@@ -323,6 +331,7 @@ export function useTemplateBuilder({
                 exBetOptions: d.exBetOptions,
                 hasLineBetDivisor: d.hasLineBetDivisor,
                 lineBetDivisor: d.lineBetDivisor,
+                reelHeights: d.reelHeights || null,
                 lineMode: data.lineMode || 'paylines',
                 paytableInput: data.paytableInput || '',
                 extractResults: data.extractResults || [],
@@ -350,6 +359,11 @@ export function useTemplateBuilder({
             if (Array.isArray(d.exBetOptions)) setExBetOptions(d.exBetOptions);
             setHasLineBetDivisor(parseBool(d.hasLineBetDivisor));
             setLineBetDivisor(d.lineBetDivisor || D.lineBetDivisor);
+            setReelHeights(d.reelHeights || null);
+            // 如果有 reelHeights，自動同步 gridRows = max(reelHeights)
+            if (Array.isArray(d.reelHeights) && d.reelHeights.length > 0) {
+                setGridRows(Math.max(...d.reelHeights));
+            }
 
             if (setIsPhase2Minimized) setIsPhase2Minimized(false);
             if (setIsPhase3Minimized) setIsPhase3Minimized(true);
@@ -393,6 +407,7 @@ export function useTemplateBuilder({
                 exBetOptions,
                 hasLineBetDivisor,
                 lineBetDivisor,
+                reelHeights,
                 validateStrict: true
             });
 
@@ -454,6 +469,7 @@ export function useTemplateBuilder({
         setExBetOptions(D.exBetOptions);
         setHasLineBetDivisor(D.hasLineBetDivisor);
         setLineBetDivisor(D.lineBetDivisor);
+        setReelHeights(D.reelHeights);
         setPatternRows(6);
         setPatternCols(5);
         setGridRows(3);
@@ -511,6 +527,7 @@ export function useTemplateBuilder({
         exBetOptions, setExBetOptions,
         hasLineBetDivisor, setHasLineBetDivisor,
         lineBetDivisor, setLineBetDivisor,
+        reelHeights, setReelHeights,
 
         // Grid dimensions
         patternRows, setPatternRows,

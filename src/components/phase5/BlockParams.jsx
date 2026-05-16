@@ -14,7 +14,7 @@ const SEL  = 'bg-slate-900 border border-slate-600 rounded px-1.5 py-0.5 text-xs
 // OCR ROI 多選（勾選框式）
 const OCR_ROIS = AVAILABLE_ROIS.filter(r => r.category === 'ocr').map(r => r.name);
 
-const BlockParams = ({ block, onUpdate }) => {
+const BlockParams = ({ block, onUpdate, allFlows }) => {
     const p = block.params || {};
 
     const set = (key, val) => {
@@ -32,8 +32,8 @@ const BlockParams = ({ block, onUpdate }) => {
         case 'wait':
             return (
                 <div className="flex items-center gap-1.5">
-                    <NumInput value={p.ms} onChange={v => set('ms', v)} min={0} step={100} />
-                    <span className="text-slate-500 text-[10px]">ms</span>
+                    <NumInput value={p.seconds ?? 1} onChange={v => set('seconds', v)} min={0} step={0.5} />
+                    <span className="text-slate-500 text-[10px]">秒</span>
                 </div>
             );
 
@@ -52,12 +52,14 @@ const BlockParams = ({ block, onUpdate }) => {
         case 'wait_change':
             return (
                 <div className="flex items-center gap-1.5 flex-wrap">
-                    <RoiSelect value={p.roi} onChange={v => set('roi', v)} />
+                    <RoiSelect value={p.roi} onChange={v => set('roi', v)} filter="ocr" />
                     <span className="text-slate-500 text-[10px]">×</span>
                     <NumInput value={p.changeCount ?? 2} onChange={v => set('changeCount', v)} min={1} max={20} w="w-10" />
-                    <span className="text-slate-500 text-[10px]">間隔</span>
                     <NumInput value={p.interval ?? 200} onChange={v => set('interval', v)} min={50} step={50} w="w-14" />
                     <span className="text-slate-500 text-[10px]">ms</span>
+                    <span className="text-slate-500 text-[10px]">逾時</span>
+                    <NumInput value={p.timeout == null ? 30 : p.timeout} onChange={v => set('timeout', v)} min={0} step={1} w="w-12" />
+                    <span className="text-slate-500 text-[10px]">秒</span>
                 </div>
             );
 
@@ -108,7 +110,14 @@ const BlockParams = ({ block, onUpdate }) => {
                 <div className="flex items-center gap-1.5">
                     <input className={`${MINI} w-20`} value={p.name || ''} placeholder="$name"
                         onChange={e => set('name', e.target.value)} />
-                    <span className="text-slate-500 text-[10px]">=</span>
+                    <select className={`${SEL} w-12 text-center`} value={p.op || '='}
+                        onChange={e => set('op', e.target.value)}>
+                        <option value="=">=</option>
+                        <option value="+=">+=</option>
+                        <option value="-=">-=</option>
+                        <option value="*=">*=</option>
+                        <option value="/=">/=</option>
+                    </select>
                     <input className={`${MINI} w-20`} value={p.value ?? ''} placeholder="值"
                         onChange={e => set('value', e.target.value)} />
                 </div>
@@ -130,7 +139,98 @@ const BlockParams = ({ block, onUpdate }) => {
                 </div>
             );
 
-        case 'record_spin':
+        case 'stop':
+            return (
+                <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                    <input className={`${MINI} flex-1 min-w-0`} value={p.reason || ''} placeholder="終止原因"
+                        onChange={e => set('reason', e.target.value)} />
+                </div>
+            );
+
+        case 'break_loop':
+            return null; // 不需要參數
+
+        case 'type_text':
+            return (
+                <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                    <input className={`${MINI} flex-1 min-w-0`} value={p.text || ''} placeholder="文字（支援 $var）"
+                        onChange={e => set('text', e.target.value)} />
+                </div>
+            );
+
+        case 'hotkey':
+            return (
+                <div className="flex items-center gap-1.5">
+                    <input className={`${MINI} w-28`} value={p.keys || ''} placeholder="ctrl+a"
+                        onChange={e => set('keys', e.target.value)} />
+                </div>
+            );
+
+        case 'if_then':
+            return (
+                <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                    <span className="text-slate-500 text-[10px] shrink-0">如果</span>
+                    <input className={`${MINI} flex-1 min-w-0`} value={p.condition || ''} placeholder="$win > 0"
+                        onChange={e => set('condition', e.target.value)} />
+                </div>
+            );
+
+        case 'sub_flow': {
+            const sourceLabel = (f) => f._source === 'preset' ? '預設' : f._source === 'cloud' ? '雲端' : '本地';
+            // 雲端 listFlows 只有摘要（無 blocks），不能用 blocks.length 過濾
+            const available = (allFlows || []).filter(f =>
+                (f.blocks && f.blocks.length > 0) || f._source === 'cloud'
+            );
+            return (
+                <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                    <select className={`${SEL} flex-1 min-w-0`}
+                        value={p.flowId || ''}
+                        onChange={e => {
+                            const id = e.target.value;
+                            const found = available.find(f => f.id === id);
+                            onUpdate({ ...block, params: { ...p, flowId: id, label: found?.name || '' } });
+                        }}
+                    >
+                        <option value="">— 選擇子流程 —</option>
+                        {available.map(f => {
+                            const countBlocks = (bs) => (bs || []).reduce((n, b) => n + 1 + countBlocks(b.children) + countBlocks(b.elseChildren), 0);
+                            const total = countBlocks(f.blocks);
+                            return (
+                                <option key={f.id} value={f.id}>
+                                    [{sourceLabel(f)}] {f.name || f.id}{total ? ` (${total} 積木)` : ''}
+                                </option>
+                            );
+                        })}
+                    </select>
+                </div>
+            );
+        }
+
+        case 'record_spin': {
+            const RECORD_FIELDS = ['WIN', 'BAL', 'BET', 'ORDER_ID', 'MULT'];
+            return (
+                <div className="flex items-center gap-1 flex-wrap">
+                    {RECORD_FIELDS.map(name => {
+                        const checked = (p.fields || RECORD_FIELDS).includes(name);
+                        return (
+                            <label key={name} className={`flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded cursor-pointer transition-colors ${
+                                checked ? 'bg-rose-500/15 text-rose-300' : 'text-slate-500 hover:text-slate-300'
+                            }`}>
+                                <input type="checkbox" checked={checked}
+                                    className="w-3 h-3 accent-rose-500"
+                                    onChange={() => {
+                                        const fields = checked
+                                            ? (p.fields || RECORD_FIELDS).filter(f => f !== name)
+                                            : [...(p.fields || RECORD_FIELDS), name];
+                                        set('fields', fields);
+                                    }} />
+                                {name}
+                            </label>
+                        );
+                    })}
+                </div>
+            );
+        }
         case 'capture_frame':
             return null; // 無參數
 

@@ -1,5 +1,6 @@
 import React from 'react';
-import { ListChecks, LayoutGrid, FileText, ImagePlus, Upload, X, Trash2 } from 'lucide-react';
+import { ListChecks, LayoutGrid, FileText, ImagePlus, Upload, X, Trash2, Grid3X3 } from 'lucide-react';
+import { isIrregularGrid, getGridMask } from '../../utils/gridShapeUtils';
 import step1Img from '../../assets/guide/step1.jpg';
 import step2Img from '../../assets/guide/step2.jpg';
 import step3Img from '../../assets/guide/step3.jpg';
@@ -11,6 +12,7 @@ export default function LineModeConfig({
     lineMode, setLineMode,
     gridRows, setGridRows, gridCols, setGridCols,
     hasMultiplierReel, setHasMultiplierReel,
+    reelHeights, setReelHeights,
     linesMode, setLinesMode,
     linesTextInput, setLinesTextInput,
     extractResults, setExtractResults,
@@ -20,6 +22,82 @@ export default function LineModeConfig({
     patternRows, setPatternRows, patternCols, setPatternCols, linesTabMode, setLinesTabMode,
     activeLineImage, imageSrc, imageObj
 }) {
+    // 共用 reelHeights UI 渲染（text mode 和 image mode 都用）
+    const renderReelHeightsUI = (isDark = false) => {
+        const bgBox = isDark ? 'bg-slate-800 border-violet-500/40' : 'bg-white border-violet-200';
+        const labelColor = isDark ? 'text-slate-400' : 'text-slate-400';
+        const inputCls = isDark
+            ? 'bg-slate-700 border-violet-500/50 text-white focus:outline-none focus:ring-1 focus:ring-violet-400'
+            : 'border-violet-300 focus:outline-none focus:ring-2 focus:ring-violet-500';
+        const checkboxCls = isDark ? 'text-violet-400 border-violet-500 focus:ring-violet-400' : 'text-violet-600 border-violet-300 focus:ring-violet-500';
+        const previewActive = isDark ? 'bg-violet-400/80' : 'bg-violet-400/80';
+        const previewInactive = isDark ? 'bg-slate-700/50' : 'bg-slate-200/50';
+
+        return (
+            <div className={`mt-3 ${isDark ? 'border-t border-slate-700/50' : 'border-t border-slate-200'} pt-3`}>
+                <label className="flex items-center gap-2 cursor-pointer mb-2">
+                    <input
+                        type="checkbox"
+                        checked={!!reelHeights}
+                        onChange={e => {
+                            if (e.target.checked) {
+                                setReelHeights(Array(gridCols).fill(gridRows));
+                            } else {
+                                setReelHeights(null);
+                            }
+                        }}
+                        className={`w-4 h-4 rounded ${checkboxCls}`}
+                    />
+                    <Grid3X3 size={14} className="text-violet-500" />
+                    <span className={`text-sm font-bold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>非方格盤面</span>
+                    <span className={`text-[10px] ${isDark ? 'text-slate-500' : 'text-slate-500'} ml-1`}>（每轉軸列數不同）</span>
+                </label>
+                {reelHeights && (
+                    <div className={`border rounded-lg p-3 ${bgBox}`}>
+                        <div className="flex items-center gap-2 flex-wrap mb-3">
+                            {reelHeights.map((h, i) => (
+                                <div key={i} className="flex flex-col items-center gap-1">
+                                    <span className={`text-[10px] font-bold ${labelColor}`}>R{i + 1}</span>
+                                    <input
+                                        type="number"
+                                        value={h}
+                                        min="1"
+                                        max="10"
+                                        onChange={e => {
+                                            const val = Math.max(1, Math.min(10, Number(e.target.value) || 1));
+                                            const next = [...reelHeights];
+                                            next[i] = val;
+                                            setReelHeights(next);
+                                            const newMax = Math.max(...next);
+                                            if (newMax !== gridRows) setGridRows(newMax);
+                                        }}
+                                        className={`w-12 border rounded px-1 py-1 text-sm font-bold text-center ${inputCls}`}
+                                    />
+                                </div>
+                            ))}
+                        </div>
+                        <div className="flex gap-0.5 justify-center">
+                            {(() => {
+                                const maxH = Math.max(...reelHeights);
+                                const mask = getGridMask({ rows: maxH, cols: gridCols, reelHeights });
+                                return Array.from({ length: maxH }).map((_, r) => (
+                                    <div key={r} className="flex flex-col gap-0.5">
+                                        {mask.map((row, c) => (
+                                            <div key={c} className={`w-4 h-4 rounded-sm transition-colors ${row[r] ? previewActive : previewInactive}`} />
+                                        ))}
+                                    </div>
+                                ));
+                            })()}
+                        </div>
+                        <div className={`text-[10px] text-center mt-2 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                            盤面形狀預覽，最大列數自動設為 {Math.max(...reelHeights)}
+                        </div>
+                    </div>
+                )}
+            </div>
+        );
+    };
+
     return (
         <div className="bg-slate-50 p-5 rounded-xl border border-slate-200">
             {/* Line Mode Selector */}
@@ -67,16 +145,24 @@ export default function LineModeConfig({
                     <div className="mt-3 flex items-center gap-4 flex-wrap">
                         <div className="flex items-center gap-2">
                             <span className="text-xs text-slate-600 font-bold">Row</span>
-                            <input type="number" value={gridRows} onChange={e => setGridRows(Number(e.target.value))} className="w-16 border border-indigo-300 rounded px-2 py-1 text-sm font-bold text-center focus:outline-none focus:ring-2 focus:ring-indigo-500" min="1" />
+                            <input type="number" value={gridRows} onChange={e => setGridRows(Number(e.target.value))} className={`w-16 border border-indigo-300 rounded px-2 py-1 text-sm font-bold text-center focus:outline-none focus:ring-2 focus:ring-indigo-500 ${reelHeights ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : ''}`} min="1" disabled={!!reelHeights} title={reelHeights ? '啟用非方格盤面時，列數由各轉軸高度自動計算' : ''} />
                         </div>
                         <span className="text-slate-400 font-bold">×</span>
                         <div className="flex items-center gap-2">
                             <span className="text-xs text-slate-600 font-bold">Col</span>
-                            <input type="number" value={gridCols} onChange={e => setGridCols(Number(e.target.value))} className="w-16 border border-indigo-300 rounded px-2 py-1 text-sm font-bold text-center focus:outline-none focus:ring-2 focus:ring-indigo-500" min="1" />
+                            <input type="number" value={gridCols} onChange={e => {
+                                const newCols = Number(e.target.value);
+                                setGridCols(newCols);
+                                // 同步 reelHeights 陣列長度
+                                if (reelHeights) {
+                                    const next = Array.from({ length: newCols }, (_, i) => reelHeights[i] || gridRows);
+                                    setReelHeights(next);
+                                }
+                            }} className="w-16 border border-indigo-300 rounded px-2 py-1 text-sm font-bold text-center focus:outline-none focus:ring-2 focus:ring-indigo-500" min="1" />
                         </div>
                         <span className="text-slate-400 font-bold">=</span>
                         <div className="bg-white px-3 py-1.5 rounded-lg border border-indigo-300 shadow-sm flex items-center">
-                            <span className="text-lg font-black text-indigo-700">{Math.pow(gridRows, gridCols).toLocaleString()}</span>
+                            <span className="text-lg font-black text-indigo-700">{(reelHeights ? reelHeights.reduce((a, h) => a * h, 1) : Math.pow(gridRows, gridCols)).toLocaleString()}</span>
                             <span className="text-xs text-indigo-500 ml-1 font-bold">Ways</span>
                         </div>
                         <label className="flex items-center gap-2 ml-4 cursor-pointer">
@@ -84,6 +170,9 @@ export default function LineModeConfig({
                             <span className="text-sm font-bold text-slate-700">啟用全盤乘倍</span>
                         </label>
                     </div>
+
+                    {/* Irregular Grid Toggle */}
+                    {renderReelHeightsUI(false)}
                 </div>
             )}
 
@@ -138,17 +227,25 @@ export default function LineModeConfig({
                                     <div className="flex gap-2">
                                         <div className="flex-1">
                                             <span className="text-xs block mb-1 text-slate-700 font-bold">Row (列數)</span>
-                                            <input type="number" value={gridRows} onChange={e => setGridRows(Number(e.target.value))} className="w-full border border-slate-300 rounded px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-bold" min="1" />
+                                            <input type="number" value={gridRows} onChange={e => setGridRows(Number(e.target.value))} className={`w-full border border-slate-300 rounded px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-bold ${reelHeights ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : ''}`} min="1" disabled={!!reelHeights} />
                                         </div>
                                         <div className="flex-1">
                                             <span className="text-xs block mb-1 text-slate-700 font-bold">Col (欄數)</span>
-                                            <input type="number" value={gridCols} onChange={e => setGridCols(Number(e.target.value))} className="w-full border border-slate-300 rounded px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-bold" min="1" />
+                                            <input type="number" value={gridCols} onChange={e => {
+                                                const newCols = Number(e.target.value);
+                                                setGridCols(newCols);
+                                                if (reelHeights) {
+                                                    const next = Array.from({ length: newCols }, (_, i) => reelHeights[i] || gridRows);
+                                                    setReelHeights(next);
+                                                }
+                                            }} className="w-full border border-slate-300 rounded px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-bold" min="1" />
                                         </div>
                                     </div>
                                     <label className="flex items-center gap-2 mt-3 cursor-pointer">
                                         <input type="checkbox" checked={hasMultiplierReel} onChange={e => setHasMultiplierReel(e.target.checked)} className="w-4 h-4 text-indigo-600 border-indigo-300 rounded focus:ring-indigo-500" />
                                         <span className="text-sm font-bold text-slate-700">啟用全盤乘倍</span>
                                     </label>
+                                    {renderReelHeightsUI(false)}
                                 </div>
                                 <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
                                     <label className="text-xs text-slate-500 uppercase font-bold mb-2 block">已提取結果 ({extractResults.length} 條)</label>
@@ -258,9 +355,17 @@ export default function LineModeConfig({
                                         <div className="pt-3 border-t border-slate-700/50">
                                             <label className="text-xs text-slate-400 uppercase font-bold mb-2 block text-rose-400">遊戲盤面 (單一網格大小)</label>
                                             <div className="flex gap-2">
-                                                <div className="flex-1"><span className="text-xs block mb-1 text-slate-300">Row (列數)</span><input type="number" value={gridRows} onChange={e => setGridRows(Number(e.target.value))} className="w-full bg-slate-700 border border-slate-600 rounded px-2 py-1.5 text-white focus:outline-none focus:border-rose-500" min="1" /></div>
-                                                <div className="flex-1"><span className="text-xs block mb-1 text-slate-300">Col (欄數)</span><input type="number" value={gridCols} onChange={e => setGridCols(Number(e.target.value))} className="w-full bg-slate-700 border border-slate-600 rounded px-2 py-1.5 text-white focus:outline-none focus:border-rose-500" min="1" /></div>
+                                                <div className="flex-1"><span className="text-xs block mb-1 text-slate-300">Row (列數)</span><input type="number" value={gridRows} onChange={e => setGridRows(Number(e.target.value))} className={`w-full bg-slate-700 border border-slate-600 rounded px-2 py-1.5 text-white focus:outline-none focus:border-rose-500 ${reelHeights ? 'opacity-50 cursor-not-allowed' : ''}`} min="1" disabled={!!reelHeights} /></div>
+                                                <div className="flex-1"><span className="text-xs block mb-1 text-slate-300">Col (欄數)</span><input type="number" value={gridCols} onChange={e => {
+                                                    const newCols = Number(e.target.value);
+                                                    setGridCols(newCols);
+                                                    if (reelHeights) {
+                                                        const next = Array.from({ length: newCols }, (_, i) => reelHeights[i] || gridRows);
+                                                        setReelHeights(next);
+                                                    }
+                                                }} className="w-full bg-slate-700 border border-slate-600 rounded px-2 py-1.5 text-white focus:outline-none focus:border-rose-500" min="1" /></div>
                                             </div>
+                                            {renderReelHeightsUI(true)}
                                         </div>
                                         <button onClick={analyzeImage} disabled={!imageSrc} className={`w-full py-2.5 rounded font-bold transition flex items-center justify-center space-x-2 ${!imageSrc ? 'bg-slate-700 text-slate-500 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/20'}`}>
                                             <span>提取當前圖片連線</span>

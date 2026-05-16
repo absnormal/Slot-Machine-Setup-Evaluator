@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { BrainCircuit, ChevronDown, ChevronUp, X, Upload, ImageIcon, Trash2, ChevronLeft, ChevronRight, ListChecks, Loader2, StopCircle, AlertCircle, Trophy, Monitor, RotateCcw, ClipboardPaste } from 'lucide-react';
 import ResultView from './ResultView';
 import { getBaseSymbol, getCashValue, isCashSymbol, formatShorthandValue, isJpSymbol, getCollectValue, getSymbolDisplayImage, isDynamicMultiplierSymbol, getSymbolMultiplier } from '../utils/symbolUtils';
+import { getGridMask, isIrregularGrid } from '../utils/gridShapeUtils';
 
 export default function Phase3Vision({
     template,
@@ -28,6 +29,7 @@ export default function Phase3Vision({
     // 獨立管理 Phase 3 專屬的 ResultView 懸停與線條顯示狀態
     const [visionHoveredLineId, setVisionHoveredLineId] = useState(null);
     const [visionShowAllLines, setVisionShowAllLines] = useState(false);
+    const gridMask = useMemo(() => template ? getGridMask(template) : [], [template]);
 
     return (
         <div className={`bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden transition-all duration-300 ${!template ? 'opacity-60 pointer-events-none' : ''}`}>
@@ -260,73 +262,95 @@ export default function Phase3Vision({
                                                     </button>
                                                 </div>
                                             </div>
-                                            <div className="flex flex-col gap-1 w-max mx-auto pointer-events-none">
-                                                {getSafeGrid(visionGrid).map((row, rIndex) => (
-                                                    <div key={rIndex} className="flex gap-1">
-                                                        {row.map((symbol, cIndex) => {
-                                                            let isWinSymbol = false;
-                                                            let isOnLine = false;
-                                                            if (visionCalcResults) {
-                                                                if (visionHoveredLineId) {
-                                                                    const hoveredResult = visionCalcResults.details.find(d => d.lineId === visionHoveredLineId);
-                                                                    if (hoveredResult) {
-                                                                        const isFeatureWin = String(hoveredResult.lineId).startsWith('SCATTER') || String(hoveredResult.lineId).startsWith('COLLECT');
-                                                                        if (!isFeatureWin) {
-                                                                            isOnLine = template.lines[visionHoveredLineId]?.[cIndex] - 1 === rIndex;
-                                                                        }
-                                                                        isWinSymbol = hoveredResult.winCoords.some(c => c.row === rIndex && c.col === cIndex);
-                                                                    }
-                                                                } else {
-                                                                    isWinSymbol = visionCalcResults.details.some(d => d.winAmount > 0 && d.winCoords.some(c => c.row === rIndex && c.col === cIndex));
+                                            {(() => {
+                                                const safeGrid = getSafeGrid(visionGrid);
+                                                const irregular = isIrregularGrid(template);
+
+                                                const renderP3Cell = (symbol, rIndex, cIndex) => {
+                                                    let isWinSymbol = false;
+                                                    let isOnLine = false;
+                                                    if (visionCalcResults) {
+                                                        if (visionHoveredLineId) {
+                                                            const hoveredResult = visionCalcResults.details.find(d => d.lineId === visionHoveredLineId);
+                                                            if (hoveredResult) {
+                                                                const isFeatureWin = String(hoveredResult.lineId).startsWith('SCATTER') || String(hoveredResult.lineId).startsWith('COLLECT');
+                                                                if (!isFeatureWin) {
+                                                                    isOnLine = template.lines[visionHoveredLineId]?.[cIndex] - 1 === rIndex;
                                                                 }
+                                                                isWinSymbol = hoveredResult.winCoords.some(c => c.row === rIndex && c.col === cIndex);
                                                             }
+                                                        } else {
+                                                            isWinSymbol = visionCalcResults.details.some(d => d.winAmount > 0 && d.winCoords.some(c => c.row === rIndex && c.col === cIndex));
+                                                        }
+                                                    }
 
-                                                            let cellClass = "relative w-10 h-10 flex items-center justify-center rounded border transition-all duration-300 text-[10px] font-bold text-center overflow-hidden ";
-                                                            if (visionHoveredLineId) {
-                                                                if (isWinSymbol) cellClass += "bg-indigo-600 border-indigo-400 shadow-[0_0_10px_rgba(99,102,241,0.5)] z-10 scale-105 text-white";
-                                                                else if (isOnLine) cellClass += "bg-slate-700 border-slate-500 text-slate-300 opacity-60";
-                                                                else cellClass += "bg-slate-900 border-slate-800 text-slate-600 opacity-30";
-                                                            } else {
-                                                                if (isWinSymbol) cellClass += "bg-indigo-500 border-indigo-400 shadow-[0_0_8px_rgba(99,102,241,0.4)] z-10 scale-105 text-white";
-                                                                else cellClass += "bg-slate-800 border-slate-700 text-slate-300";
-                                                            }
+                                                    let cellClass = "relative w-10 h-10 flex items-center justify-center rounded border transition-all duration-300 text-[10px] font-bold text-center overflow-hidden ";
+                                                    if (visionHoveredLineId) {
+                                                        if (isWinSymbol) cellClass += "bg-indigo-600 border-indigo-400 shadow-[0_0_10px_rgba(99,102,241,0.5)] z-10 scale-105 text-white";
+                                                        else if (isOnLine) cellClass += "bg-slate-700 border-slate-500 text-slate-300 opacity-60";
+                                                        else cellClass += "bg-slate-900 border-slate-800 text-slate-600 opacity-30";
+                                                    } else {
+                                                        if (isWinSymbol) cellClass += "bg-indigo-500 border-indigo-400 shadow-[0_0_8px_rgba(99,102,241,0.4)] z-10 scale-105 text-white";
+                                                        else cellClass += "bg-slate-800 border-slate-700 text-slate-300";
+                                                    }
 
-                                                            const baseSym = getBaseSymbol(symbol, template?.jpConfig);
-                                                            const isGridSymCash = isCashSymbol(symbol, template?.jpConfig);
-                                                            const isGridSymCollect = symbol && symbol.toUpperCase().includes('COLLECT');
-                                                            const cashVal = isGridSymCash ? getCashValue(symbol, template?.jpConfig) : (isGridSymCollect ? getCollectValue(symbol) : 0);
+                                                    const baseSym = getBaseSymbol(symbol, template?.jpConfig);
+                                                    const isGridSymCash = isCashSymbol(symbol, template?.jpConfig);
+                                                    const isGridSymCollect = symbol && symbol.toUpperCase().includes('COLLECT');
+                                                    const cashVal = isGridSymCash ? getCashValue(symbol, template?.jpConfig) : (isGridSymCollect ? getCollectValue(symbol) : 0);
+                                                    const displayImg = getSymbolDisplayImage(symbol, template?.symbolImages, template?.jpConfig);
+                                                    const isCellDynamic = template?.hasDynamicMultiplier && isDynamicMultiplierSymbol(symbol);
+                                                    const multVal = isCellDynamic ? getSymbolMultiplier(symbol) : 1;
 
-                                                            const displayImg = getSymbolDisplayImage(symbol, template?.symbolImages, template?.jpConfig);
-                                                            const isCellDynamic = template?.hasDynamicMultiplier && isDynamicMultiplierSymbol(symbol);
-                                                            const multVal = isCellDynamic ? getSymbolMultiplier(symbol) : 1;
+                                                    return (
+                                                        <div key={`${rIndex}-${cIndex}`} className={cellClass}>
+                                                            {symbol ? (
+                                                                displayImg ? (
+                                                                    <React.Fragment>
+                                                                        <img src={displayImg} className={`max-w-full max-h-full object-contain p-1 drop-shadow-md ${(isGridSymCash || isGridSymCollect || isCellDynamic) ? 'opacity-80' : ''}`} alt={symbol} />
+                                                                        {cashVal > 0 && <div className="absolute inset-0 flex items-center justify-center font-black text-white drop-shadow-[0_1px_2px_rgba(0,0,0,1)] text-[10px] z-20 pointer-events-none">{isJpSymbol(symbol, template?.jpConfig) ? cashVal + 'x' : formatShorthandValue(cashVal)}</div>}
+                                                                        {isCellDynamic && <div className="absolute inset-0 flex items-center justify-center font-black text-white drop-shadow-[0_1px_2px_rgba(0,0,0,1)] text-[10px] z-20 pointer-events-none">{multVal > 1 ? `x${multVal}` : 'xN'}</div>}
+                                                                        {symbol.toLowerCase().endsWith('_double') && (
+                                                                            <div className="absolute top-0 right-0 bg-indigo-600 text-white text-[6px] font-black px-0.5 rounded-bl shadow-sm border-l border-b border-indigo-400 z-30">2X</div>
+                                                                        )}
+                                                                    </React.Fragment>
+                                                                ) : (
+                                                                    <div className="flex flex-col items-center">
+                                                                        <span>{(isGridSymCash || isGridSymCollect) && cashVal > 0 ? `\ud83d\udcb0${isJpSymbol(symbol, template?.jpConfig) ? cashVal + 'x' : formatShorthandValue(cashVal)}` : (isCellDynamic ? (multVal > 1 ? `x${multVal}` : 'xN') : baseSym)}</span>
+                                                                        {symbol.toLowerCase().endsWith('_double') && <span className="text-[6px] text-indigo-400 font-bold -mt-1">DBL</span>}
+                                                                    </div>
+                                                                )
+                                                            ) : null}
+                                                        </div>
+                                                    );
+                                                };
 
-                                                            return (
-                                                                <div key={cIndex} className={cellClass}>
-                                                                    {symbol ? (
-                                                                        displayImg ? (
-                                                                            <React.Fragment>
-                                                                                <img src={displayImg} className={`max-w-full max-h-full object-contain p-1 drop-shadow-md ${(isGridSymCash || isGridSymCollect || isCellDynamic) ? 'opacity-80' : ''}`} alt={symbol} />
-                                                                                {cashVal > 0 && <div className="absolute inset-0 flex items-center justify-center font-black text-white drop-shadow-[0_1px_2px_rgba(0,0,0,1)] text-[10px] z-20 pointer-events-none">{isJpSymbol(symbol, template?.jpConfig) ? cashVal + 'x' : formatShorthandValue(cashVal)}</div>}
-                                                                                {isCellDynamic && <div className="absolute inset-0 flex items-center justify-center font-black text-white drop-shadow-[0_1px_2px_rgba(0,0,0,1)] text-[10px] z-20 pointer-events-none">{multVal > 1 ? `x${multVal}` : 'xN'}</div>}
-                                                                                {symbol.toLowerCase().endsWith('_double') && (
-                                                                                    <div className="absolute top-0 right-0 bg-indigo-600 text-white text-[6px] font-black px-0.5 rounded-bl shadow-sm border-l border-b border-indigo-400 z-30">
-                                                                                        2X
-                                                                                    </div>
-                                                                                )}
-                                                                            </React.Fragment>
-                                                                        ) : (
-                                                                            <div className="flex flex-col items-center">
-                                                                                <span>{(isGridSymCash || isGridSymCollect) && cashVal > 0 ? `💰${isJpSymbol(symbol, template?.jpConfig) ? cashVal + 'x' : formatShorthandValue(cashVal)}` : (isCellDynamic ? (multVal > 1 ? `x${multVal}` : 'xN') : baseSym)}</span>
-                                                                                {symbol.toLowerCase().endsWith('_double') && <span className="text-[6px] text-indigo-400 font-bold -mt-1">DBL</span>}
-                                                                            </div>
-                                                                        )
-                                                                    ) : null}
+                                                if (irregular) {
+                                                    const cols = template?.cols || 0;
+                                                    return (
+                                                        <div className="flex gap-1 w-max mx-auto pointer-events-none">
+                                                            {Array.from({ length: cols }).map((_, cIndex) => (
+                                                                <div key={cIndex} className="flex flex-col gap-1 items-center justify-center">
+                                                                    {safeGrid.map((row, rIndex) => {
+                                                                        if (gridMask[rIndex] && gridMask[rIndex][cIndex] === false) return null;
+                                                                        return renderP3Cell(row[cIndex], rIndex, cIndex);
+                                                                    })}
                                                                 </div>
-                                                            );
-                                                        })}
+                                                            ))}
+                                                        </div>
+                                                    );
+                                                }
+
+                                                return (
+                                                    <div className="flex flex-col gap-1 w-max mx-auto pointer-events-none">
+                                                        {safeGrid.map((row, rIndex) => (
+                                                            <div key={rIndex} className="flex gap-1">
+                                                                {row.map((symbol, cIndex) => renderP3Cell(symbol, rIndex, cIndex))}
+                                                            </div>
+                                                        ))}
                                                     </div>
-                                                ))}
-                                            </div>
+                                                );
+                                            })()}
                                             <div className="text-center mt-3">
                                                 <span className="text-[10px] text-slate-500">若發現 AI 辨識有誤，可先傳送至 Phase 2 再進行手動微調</span>
                                             </div>

@@ -1,4 +1,5 @@
 import { isCashSymbol, isCollectSymbol, isDynamicMultiplierSymbol } from './symbolUtils';
+import { getGridMask, isIrregularGrid } from './gridShapeUtils';
 
 /**
  * 驗證並清洗 AI 回傳的盤面與押注資料
@@ -75,6 +76,36 @@ export function validateVisionResponse(responseData, template, availableSymbols)
 
     if (unknownSymbolsCount > MAX_UNKNOWN_ALLOWED) {
         throw new Error(`過多未知符號 (共 ${unknownSymbolsCount} 個)，疑似 AI 幻覺，已拒絕。`);
+    }
+
+    // 2.5 非方格盤面：提取每列非空符號 → 對齊到 mask 可見位置
+    //     AI 回傳的行位置不穩定（有時 rows 0,1,2 有時 1,2,3），
+    //     因此不依賴行位置，改用「收集 → 重新填入」策略。
+    if (isIrregularGrid(template)) {
+        const mask = getGridMask(template);
+        for (let c = 0; c < template.cols; c++) {
+            // 收集該列所有非空符號（忽略 AI 的行位置）
+            const symbols = [];
+            for (let r = 0; r < safeGrid.length; r++) {
+                if (safeGrid[r][c] && safeGrid[r][c] !== '') {
+                    symbols.push(safeGrid[r][c]);
+                }
+            }
+            // 找出該列的可見行索引
+            const visibleRows = [];
+            for (let r = 0; r < safeGrid.length; r++) {
+                if (mask[r]?.[c]) visibleRows.push(r);
+            }
+            // 重新填入：符號對齊到可見行，其餘清空
+            for (let r = 0; r < safeGrid.length; r++) {
+                const visIdx = visibleRows.indexOf(r);
+                if (visIdx >= 0 && visIdx < symbols.length) {
+                    safeGrid[r][c] = symbols[visIdx];
+                } else {
+                    safeGrid[r][c] = '';
+                }
+            }
+        }
     }
 
     // 3. BET 數值校驗

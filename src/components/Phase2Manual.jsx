@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { LayoutGrid, ChevronDown, ChevronUp, MousePointer2, Zap, Trophy } from 'lucide-react';
 import ResultView from './ResultView';
 import { BrushToolbar, BrushPalette } from './phase2/BrushToolbar';
 import CashValueModal from './modals/CashValueModal';
 import { getBaseSymbol, getCashValue, isCashSymbol, isJpSymbol, formatShorthandValue, isDoubleSymbol, getSymbolMultiplier, getCollectValue, getSymbolDisplayImage, isDynamicMultiplierSymbol } from '../utils/symbolUtils';
+import { getGridMask, isIrregularGrid } from '../utils/gridShapeUtils';
 
 const Phase2Manual = ({
     template,
@@ -32,6 +33,9 @@ const Phase2Manual = ({
     const [showCashModal, setShowCashModal] = React.useState(false);
     const [modalCell, setModalCell] = React.useState({ row: 0, col: 0 });
     const [cashValueInput, setCashValueInput] = React.useState('');
+
+    // 遮罩矩陣：非方格盤面中哪些格子是可見的
+    const gridMask = useMemo(() => template ? getGridMask(template) : [], [template]);
 
     const handleConfirmCashValue = () => {
         if (cashValueInput && activeBrush) {
@@ -190,11 +194,19 @@ const Phase2Manual = ({
                                                 <div className="flex items-center gap-2 text-indigo-300 text-sm font-bold bg-indigo-500/20 px-3 py-1.5 rounded-lg border border-indigo-500/30 animate-in fade-in slide-in-from-left-2 duration-200 shadow-sm">
                                                     <Zap size={14} className="fill-indigo-400" />
                                                     <span>正在查看第 <span className="text-white text-base mx-0.5">{hoveredLineId}</span> 條連線軌跡</span>
-                                                    {calcResults?.details?.find(d => d.lineId === hoveredLineId) && calcResults.details.find(d => d.lineId === hoveredLineId).winAmount > 0 && (
+                                                    {(() => {
+                                                        let hoverInfo = calcResults?.details?.find(d => d.lineId === hoveredLineId);
+                                                        if (!hoverInfo && String(hoveredLineId).endsWith('_GROUP')) {
+                                                            const groupSym = hoveredLineId.replace(/^WAYS_/, '').replace(/_GROUP$/, '');
+                                                            const ch = calcResults?.details?.filter(d => String(d.lineId).startsWith('WAYS_') && d.symbol === groupSym) || [];
+                                                            if (ch.length) hoverInfo = { winAmount: ch.reduce((s, c) => s + c.winAmount, 0) };
+                                                        }
+                                                        return hoverInfo && hoverInfo.winAmount > 0 ? (
                                                         <span className="text-emerald-400 bg-emerald-500/20 border border-emerald-500/30 px-2 py-0.5 rounded ml-1 flex items-center gap-1">
-                                                            <Trophy size={12} /> +{calcResults.details.find(d => d.lineId === hoveredLineId).winAmount.toLocaleString()}
+                                                            <Trophy size={12} /> +{hoverInfo.winAmount.toLocaleString()}
                                                         </span>
-                                                    )}
+                                                    ) : null;
+                                                    })()}
                                                 </div>
                                             ) : (
                                                 <div className="text-slate-500 text-xs flex items-center gap-1.5 opacity-80">
@@ -206,95 +218,126 @@ const Phase2Manual = ({
 
                                         {/* Grid */}
                                         <div className="p-3 sm:p-5 bg-black/40 border border-slate-800/80 rounded-xl overflow-x-auto shadow-inner select-none custom-scrollbar">
-                                            <div className="flex flex-col gap-1.5 sm:gap-2 w-max mx-auto" onMouseLeave={() => setHoveredLineId(null)}>
-                                                {getSafeGrid(panelGrid).map((row, rIndex) => (
-                                                    <div key={rIndex} className="flex gap-1.5 sm:gap-2">
-                                                        {row.map((symbol, cIndex) => {
-                                                            let isWinSymbol = false;
-                                                            let isOnLine = false;
-                                                            if (calcResults) {
-                                                                if (hoveredLineId) {
-                                                                    const hoveredResult = calcResults.details.find(d => d.lineId === hoveredLineId);
-                                                                    if (hoveredResult) {
-                                                                        const isFeatureWin = String(hoveredResult.lineId).startsWith('SCATTER') || String(hoveredResult.lineId).startsWith('COLLECT');
-                                                                        if (!isFeatureWin) isOnLine = template.lines[hoveredResult.lineId]?.[cIndex] - 1 === rIndex;
-                                                                        isWinSymbol = hoveredResult.winCoords.some(c => c.row === rIndex && c.col === cIndex);
-                                                                    }
-                                                                } else {
-                                                                    isWinSymbol = calcResults.details.some(d => d.winAmount > 0 && d.winCoords.some(c => c.row === rIndex && c.col === cIndex));
+                                            {(() => {
+                                                const safeGrid = getSafeGrid(panelGrid);
+                                                const irregular = isIrregularGrid(template);
+
+                                                const renderCell = (symbol, rIndex, cIndex) => {
+                                                    let isWinSymbol = false;
+                                                    let isOnLine = false;
+                                                    if (calcResults) {
+                                                        if (hoveredLineId) {
+                                                            let hoveredResult = calcResults.details.find(d => d.lineId === hoveredLineId);
+                                                            if (!hoveredResult && String(hoveredLineId).endsWith('_GROUP')) {
+                                                                const groupSym = hoveredLineId.replace(/^WAYS_/, '').replace(/_GROUP$/, '');
+                                                                const children = calcResults.details.filter(d => String(d.lineId).startsWith('WAYS_') && d.symbol === groupSym);
+                                                                if (children.length) {
+                                                                    hoveredResult = { lineId: hoveredLineId, winCoords: children.flatMap(c => c.winCoords || []), winAmount: children.reduce((s, c) => s + c.winAmount, 0) };
                                                                 }
                                                             }
-
-                                                            let cellClasses = "relative w-16 h-16 sm:w-[88px] sm:h-[72px] flex items-center justify-center rounded-lg overflow-hidden transition-all duration-300 font-black text-xl ";
-                                                            if (hoveredLineId) {
-                                                                if (isWinSymbol) cellClasses += "opacity-100 bg-gradient-to-br from-indigo-500 to-indigo-700 shadow-[0_0_20px_rgba(99,102,241,0.6)] z-10 scale-105 border-2 border-indigo-300 text-white";
-                                                                else if (isOnLine) cellClasses += "opacity-40 grayscale scale-95 bg-slate-800 border border-slate-600 text-slate-300";
-                                                                else cellClasses += "opacity-10 grayscale scale-90 bg-slate-900 border border-slate-800 text-slate-500";
-                                                            } else {
-                                                                if (isWinSymbol) cellClasses += "opacity-100 bg-gradient-to-br from-indigo-400 to-indigo-600 shadow-[0_0_15px_rgba(99,102,241,0.4)] z-10 scale-[1.02] border-2 border-indigo-300 text-white";
-                                                                else cellClasses += "opacity-100 bg-slate-800 border border-slate-700 hover:bg-slate-700 hover:border-slate-500 text-white shadow-inner";
+                                                            if (hoveredResult) {
+                                                                const isFeatureWin = String(hoveredResult.lineId).startsWith('SCATTER') || String(hoveredResult.lineId).startsWith('COLLECT');
+                                                                if (!isFeatureWin) isOnLine = template.lines[hoveredResult.lineId]?.[cIndex] - 1 === rIndex;
+                                                                isWinSymbol = hoveredResult.winCoords.some(c => c.row === rIndex && c.col === cIndex);
                                                             }
+                                                        } else {
+                                                            isWinSymbol = calcResults.details.some(d => d.winAmount > 0 && d.winCoords.some(c => c.row === rIndex && c.col === cIndex));
+                                                        }
+                                                    }
 
-                                                            const baseSym = getBaseSymbol(symbol, template?.jpConfig);
-                                                            const isGridSymCash = isCashSymbol(symbol, template?.jpConfig);
-                                                            const isGridSymCollect = symbol && symbol.toUpperCase().includes('COLLECT');
-                                                            const cashVal = isGridSymCash ? getCashValue(symbol, template?.jpConfig) : (isGridSymCollect ? getCollectValue(symbol) : 0);
-                                                            const isMultiplierReelCol = template?.hasMultiplierReel && cIndex === template.cols - 1;
-                                                            const isDisabledMultiplierCell = false;
+                                                    let cellClasses = "relative w-16 h-16 sm:w-[88px] sm:h-[72px] flex items-center justify-center rounded-lg overflow-hidden transition-all duration-300 font-black text-xl ";
+                                                    if (hoveredLineId) {
+                                                        if (isWinSymbol) cellClasses += "opacity-100 bg-gradient-to-br from-indigo-500 to-indigo-700 shadow-[0_0_20px_rgba(99,102,241,0.6)] z-10 scale-105 border-2 border-indigo-300 text-white";
+                                                        else if (isOnLine) cellClasses += "opacity-40 grayscale scale-95 bg-slate-800 border border-slate-600 text-slate-300";
+                                                        else cellClasses += "opacity-10 grayscale scale-90 bg-slate-900 border border-slate-800 text-slate-500";
+                                                    } else {
+                                                        if (isWinSymbol) cellClasses += "opacity-100 bg-gradient-to-br from-indigo-400 to-indigo-600 shadow-[0_0_15px_rgba(99,102,241,0.4)] z-10 scale-[1.02] border-2 border-indigo-300 text-white";
+                                                        else cellClasses += "opacity-100 bg-slate-800 border border-slate-700 hover:bg-slate-700 hover:border-slate-500 text-white shadow-inner";
+                                                    }
 
-                                                            return (
-                                                                <div
-                                                                    key={cIndex}
-                                                                    className={`${cellClasses} ${panelInputMode === 'paint' && !isDisabledMultiplierCell ? 'cursor-pointer' : ''}`}
-                                                                    onMouseDown={(e) => { if (panelInputMode === 'paint' && !isDisabledMultiplierCell) { e.preventDefault(); handleGridCellClick(rIndex, cIndex); } }}
-                                                                    onMouseEnter={(e) => { if (panelInputMode === 'paint' && e.buttons === 1 && !isDisabledMultiplierCell) handleGridCellClick(rIndex, cIndex); }}
-                                                                >
-                                                                    {panelInputMode === 'text' && !isDisabledMultiplierCell ? (
-                                                                        <input
-                                                                            id={`cell-${rIndex}-${cIndex}`}
-                                                                            value={symbol}
-                                                                            placeholder="空"
-                                                                            onFocus={(e) => e.target.select()}
-                                                                            onChange={(e) => handleCellChange(rIndex, cIndex, e.target.value)}
-                                                                            onKeyDown={(e) => {
-                                                                                if (e.key === 'ArrowUp') { e.preventDefault(); document.getElementById(`cell-${rIndex - 1}-${cIndex}`)?.focus(); }
-                                                                                else if (e.key === 'ArrowDown' || e.key === 'Enter') { e.preventDefault(); document.getElementById(`cell-${rIndex + 1}-${cIndex}`)?.focus(); }
-                                                                                else if (e.key === 'ArrowRight' && e.target.selectionStart === e.target.value.length) document.getElementById(`cell-${rIndex}-${cIndex + 1}`)?.focus();
-                                                                                else if (e.key === 'ArrowLeft' && e.target.selectionStart === 0) document.getElementById(`cell-${rIndex}-${cIndex - 1}`)?.focus();
-                                                                            }}
-                                                                            onPaste={(e) => handleGridPaste(e, rIndex, cIndex)}
-                                                                            className={`w-full h-full text-center font-black text-base sm:text-lg bg-transparent outline-none placeholder:text-slate-600 placeholder:font-normal ${isWinSymbol ? 'text-white' : 'text-slate-100'}`}
-                                                                        />
-                                                                    ) : (
-                                                                        symbol ? (
-                                                                            (() => {
-                                                                                const displayImg = getSymbolDisplayImage(symbol, template?.symbolImages, template?.jpConfig);
-                                                                                const isCellDynamic = (template?.hasDynamicMultiplier || template?.hasMultiplierReel) && isDynamicMultiplierSymbol(symbol);
-                                                                                const multVal = isCellDynamic ? getSymbolMultiplier(symbol) : 1;
+                                                    const baseSym = getBaseSymbol(symbol, template?.jpConfig);
+                                                    const isGridSymCash = isCashSymbol(symbol, template?.jpConfig);
+                                                    const isGridSymCollect = symbol && symbol.toUpperCase().includes('COLLECT');
+                                                    const cashVal = isGridSymCash ? getCashValue(symbol, template?.jpConfig) : (isGridSymCollect ? getCollectValue(symbol) : 0);
+                                                    const isDisabledMultiplierCell = false;
 
-                                                                                return displayImg ? (
-                                                                                    <React.Fragment>
-                                                                                        <img src={displayImg} className={`max-w-full max-h-full object-contain p-1.5 drop-shadow-md pointer-events-none select-none ${(isGridSymCash || isGridSymCollect || isCellDynamic) ? 'opacity-80' : ''}`} draggable={false} alt={symbol} />
-                                                                                        {cashVal > 0 && <div className="absolute inset-0 flex items-center justify-center font-black text-white drop-shadow-[0_2px_3px_rgba(0,0,0,1)] text-sm sm:text-base z-20 pointer-events-none">{isJpSymbol(symbol, template?.jpConfig) ? cashVal + 'x' : formatShorthandValue(cashVal)}</div>}
-                                                                                        {isCellDynamic && <div className="absolute bottom-0.5 left-1 font-black text-white drop-shadow-[0_2px_3px_rgba(0,0,0,1)] text-xs sm:text-sm z-20 pointer-events-none">{multVal > 1 ? `x${multVal}` : 'xN'}</div>}
-                                                                                    </React.Fragment>
-                                                                                ) : (
-                                                                                    <span className="z-10 pointer-events-none select-none drop-shadow-md text-sm sm:text-xl flex flex-col items-center">
-                                                                                        {(isGridSymCash || isGridSymCollect) && cashVal > 0 ? `💰${isJpSymbol(symbol, template?.jpConfig) ? cashVal + 'x' : formatShorthandValue(cashVal)}` : (isCellDynamic ? (multVal > 1 ? (baseSym === 'xN' ? <span className="text-white">x{multVal}</span> : <>{baseSym} <span className="text-white">x{multVal}</span></>) : (baseSym === 'xN' ? <span className="text-white">xN</span> : <>{baseSym} <span className="text-white">xN</span></>)) : baseSym)}
-                                                                                        {symbol.toLowerCase().endsWith('_double') && <span className="text-[8px] sm:text-[10px] text-indigo-300 font-black mt-1">DOUBLE</span>}
-                                                                                    </span>
-                                                                                );
-                                                                            })()
+                                                    return (
+                                                        <div
+                                                            key={`${rIndex}-${cIndex}`}
+                                                            className={`${cellClasses} ${panelInputMode === 'paint' && !isDisabledMultiplierCell ? 'cursor-pointer' : ''}`}
+                                                            onMouseDown={(e) => { if (panelInputMode === 'paint' && !isDisabledMultiplierCell) { e.preventDefault(); handleGridCellClick(rIndex, cIndex); } }}
+                                                            onMouseEnter={(e) => { if (panelInputMode === 'paint' && e.buttons === 1 && !isDisabledMultiplierCell) handleGridCellClick(rIndex, cIndex); }}
+                                                        >
+                                                            {panelInputMode === 'text' && !isDisabledMultiplierCell ? (
+                                                                <input
+                                                                    id={`cell-${rIndex}-${cIndex}`}
+                                                                    value={symbol}
+                                                                    placeholder={'\u7a7a'}
+                                                                    onFocus={(e) => e.target.select()}
+                                                                    onChange={(e) => handleCellChange(rIndex, cIndex, e.target.value)}
+                                                                    onKeyDown={(e) => {
+                                                                        if (e.key === 'ArrowUp') { e.preventDefault(); document.getElementById(`cell-${rIndex - 1}-${cIndex}`)?.focus(); }
+                                                                        else if (e.key === 'ArrowDown' || e.key === 'Enter') { e.preventDefault(); document.getElementById(`cell-${rIndex + 1}-${cIndex}`)?.focus(); }
+                                                                        else if (e.key === 'ArrowRight' && e.target.selectionStart === e.target.value.length) document.getElementById(`cell-${rIndex}-${cIndex + 1}`)?.focus();
+                                                                        else if (e.key === 'ArrowLeft' && e.target.selectionStart === 0) document.getElementById(`cell-${rIndex}-${cIndex - 1}`)?.focus();
+                                                                    }}
+                                                                    onPaste={(e) => handleGridPaste(e, rIndex, cIndex)}
+                                                                    className={`w-full h-full text-center font-black text-base sm:text-lg bg-transparent outline-none placeholder:text-slate-600 placeholder:font-normal ${isWinSymbol ? 'text-white' : 'text-slate-100'}`}
+                                                                />
+                                                            ) : (
+                                                                symbol ? (
+                                                                    (() => {
+                                                                        const displayImg = getSymbolDisplayImage(symbol, template?.symbolImages, template?.jpConfig);
+                                                                        const isCellDynamic = (template?.hasDynamicMultiplier || template?.hasMultiplierReel) && isDynamicMultiplierSymbol(symbol);
+                                                                        const multVal = isCellDynamic ? getSymbolMultiplier(symbol) : 1;
+
+                                                                        return displayImg ? (
+                                                                            <React.Fragment>
+                                                                                <img src={displayImg} className={`max-w-full max-h-full object-contain p-1.5 drop-shadow-md pointer-events-none select-none ${(isGridSymCash || isGridSymCollect || isCellDynamic) ? 'opacity-80' : ''}`} draggable={false} alt={symbol} />
+                                                                                {cashVal > 0 && <div className="absolute inset-0 flex items-center justify-center font-black text-white drop-shadow-[0_2px_3px_rgba(0,0,0,1)] text-sm sm:text-base z-20 pointer-events-none">{isJpSymbol(symbol, template?.jpConfig) ? cashVal + 'x' : formatShorthandValue(cashVal)}</div>}
+                                                                                {isCellDynamic && <div className="absolute bottom-0.5 left-1 font-black text-white drop-shadow-[0_2px_3px_rgba(0,0,0,1)] text-xs sm:text-sm z-20 pointer-events-none">{multVal > 1 ? `x${multVal}` : 'xN'}</div>}
+                                                                            </React.Fragment>
                                                                         ) : (
-                                                                            <div className="w-2 h-2 rounded-full bg-slate-600/50 pointer-events-none"></div>
-                                                                        )
-                                                                    )}
+                                                                            <span className="z-10 pointer-events-none select-none drop-shadow-md text-sm sm:text-xl flex flex-col items-center">
+                                                                                {(isGridSymCash || isGridSymCollect) && cashVal > 0 ? `\ud83d\udcb0${isJpSymbol(symbol, template?.jpConfig) ? cashVal + 'x' : formatShorthandValue(cashVal)}` : (isCellDynamic ? (multVal > 1 ? (baseSym === 'xN' ? <span className="text-white">x{multVal}</span> : <>{baseSym} <span className="text-white">x{multVal}</span></>) : (baseSym === 'xN' ? <span className="text-white">xN</span> : <>{baseSym} <span className="text-white">xN</span></>)) : baseSym)}
+                                                                                {symbol.toLowerCase().endsWith('_double') && <span className="text-[8px] sm:text-[10px] text-indigo-300 font-black mt-1">DOUBLE</span>}
+                                                                            </span>
+                                                                        );
+                                                                    })()
+                                                                ) : (
+                                                                    <div className="w-2 h-2 rounded-full bg-slate-600/50 pointer-events-none"></div>
+                                                                )
+                                                            )}
+                                                        </div>
+                                                    );
+                                                };
+
+                                                if (irregular) {
+                                                    const cols = template?.cols || 0;
+                                                    return (
+                                                        <div className="flex gap-1.5 sm:gap-2 w-max mx-auto" onMouseLeave={() => setHoveredLineId(null)}>
+                                                            {Array.from({ length: cols }).map((_, cIndex) => (
+                                                                <div key={cIndex} className="flex flex-col gap-1.5 sm:gap-2 items-center justify-center">
+                                                                    {safeGrid.map((row, rIndex) => {
+                                                                        if (gridMask[rIndex] && gridMask[rIndex][cIndex] === false) return null;
+                                                                        return renderCell(row[cIndex], rIndex, cIndex);
+                                                                    })}
                                                                 </div>
-                                                            );
-                                                        })}
+                                                            ))}
+                                                        </div>
+                                                    );
+                                                }
+
+                                                return (
+                                                    <div className="flex flex-col gap-1.5 sm:gap-2 w-max mx-auto" onMouseLeave={() => setHoveredLineId(null)}>
+                                                        {safeGrid.map((row, rIndex) => (
+                                                            <div key={rIndex} className="flex gap-1.5 sm:gap-2">
+                                                                {row.map((symbol, cIndex) => renderCell(symbol, rIndex, cIndex))}
+                                                            </div>
+                                                        ))}
                                                     </div>
-                                                ))}
-                                            </div>
+                                                );
+                                            })()}
                                         </div>
                                     </div>
                                 </div>

@@ -61,10 +61,8 @@ export async function waitStable(videoEl, roiOrName, options = {}) {
         await new Promise(r => setTimeout(r, interval));
     }
 
-    // 超時
-    console.warn(`[waitStable] 超時 ${timeout}ms，未達穩定`);
-    return {
-        stable: false,
-        elapsed: Date.now() - startTime,
-    };
+    // 超時 → 拋出錯誤（讓 errorPolicy 機制攔截）
+    const err = new Error(`[waitStable] 超時 ${timeout}ms，${JSON.stringify(roiOrName)} 未達穩定`);
+    err.waitStableResult = { stable: false, elapsed: Date.now() - startTime };
+    throw err;
 }

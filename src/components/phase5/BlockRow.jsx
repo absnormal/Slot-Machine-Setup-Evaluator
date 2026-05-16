@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Trash2, ChevronRight, ChevronDown, GripVertical } from 'lucide-react';
 import { BLOCK_META } from './blockDefs';
 import AddBlockButton from './AddBlockButton';
@@ -10,7 +10,7 @@ import BlockParams from './BlockParams';
  * 拖放原理：每個積木偵測滑鼠在上半或下半，
  * 上半 = 插入在此積木之前，下半 = 插入在此積木之後。
  */
-const BlockRow = ({ block, depth, onDelete, onUpdate, onDragOps, currentBlockId, isRunning }) => {
+const BlockRow = ({ block, depth, onDelete, onUpdate, onDragOps, currentBlockId, isRunning, allFlows }) => {
     const [expanded, setExpanded] = useState(true);
     const [dropPosition, setDropPosition] = useState(null); // 'before' | 'after' | null
     const rowRef = useRef(null);
@@ -18,6 +18,13 @@ const BlockRow = ({ block, depth, onDelete, onUpdate, onDragOps, currentBlockId,
     const meta = BLOCK_META[block.type] || { icon: '❔', label: block.type, color: 'border-slate-600 bg-slate-800' };
     const isActive = currentBlockId === block.id;
     const isContainer = block.type === 'loop' || block.type === 'if_then';
+
+    // 執行中的積木自動滾入可視範圍
+    useEffect(() => {
+        if (isActive && rowRef.current) {
+            rowRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+    }, [isActive]);
 
     const paramSummary = () => {
         const p = block.params || {};
@@ -27,16 +34,28 @@ const BlockRow = ({ block, depth, onDelete, onUpdate, onDragOps, currentBlockId,
             case 'wait_stable': return `${p.roi || 'REEL'} ×${p.stableCount || 3}`;
             case 'ocr_batch': return (p.rois || []).join(', ');
             case 'loop': return p.count ? `${p.count} 次` : p.condition || '';
-            case 'set_var': return `${p.name} = ${p.value}`;
+            case 'set_var': return `${p.name} ${p.op || '='} ${p.value}`;
             case 'log': return p.message?.substring(0, 20) || '';
             case 'key_press': return p.key || '';
+            case 'type_text': return p.text?.substring(0, 20) || '';
+            case 'hotkey': return p.keys || '';
+            case 'stop': return p.reason?.substring(0, 15) || '';
+            case 'if_then': return p.condition || '';
+            case 'sub_flow': return p.label || p.flowId || '(未選擇)';
             default: return '';
         }
     };
 
     // 子積木操作
-    const addChild = (newBlock) => {
-        onUpdate({ ...block, children: [...(block.children || []), newBlock] });
+    const insertChild = (newBlock, index) => {
+        const children = block.children || [];
+        if (index === undefined || index === null || index >= children.length) {
+            onUpdate({ ...block, children: [...children, newBlock] });
+        } else {
+            const next = [...children];
+            next.splice(index, 0, newBlock);
+            onUpdate({ ...block, children: next });
+        }
     };
     const deleteChild = (childId) => {
         onUpdate({ ...block, children: (block.children || []).filter(c => c.id !== childId) });
@@ -44,6 +63,27 @@ const BlockRow = ({ block, depth, onDelete, onUpdate, onDragOps, currentBlockId,
     const updateChild = (updated) => {
         onUpdate({ ...block, children: (block.children || []).map(c => c.id === updated.id ? updated : c) });
     };
+
+    // else 子積木操作
+    const insertElseChild = (newBlock, index) => {
+        const elseChildren = block.elseChildren || [];
+        if (index === undefined || index === null || index >= elseChildren.length) {
+            onUpdate({ ...block, elseChildren: [...elseChildren, newBlock] });
+        } else {
+            const next = [...elseChildren];
+            next.splice(index, 0, newBlock);
+            onUpdate({ ...block, elseChildren: next });
+        }
+    };
+    const deleteElseChild = (childId) => {
+        onUpdate({ ...block, elseChildren: (block.elseChildren || []).filter(c => c.id !== childId) });
+    };
+    const updateElseChild = (updated) => {
+        onUpdate({ ...block, elseChildren: (block.elseChildren || []).map(c => c.id === updated.id ? updated : c) });
+    };
+    const elseChildDragOps = useListDrag(block.elseChildren || [], (newChildren) => {
+        onUpdate({ ...block, elseChildren: newChildren });
+    });
     const childDragOps = useListDrag(block.children || [], (newChildren) => {
         onUpdate({ ...block, children: newChildren });
     });
@@ -112,11 +152,32 @@ const BlockRow = ({ block, depth, onDelete, onUpdate, onDragOps, currentBlockId,
                 )}
                 <span className="text-base shrink-0">{meta.icon}</span>
                 <span className="text-slate-300 font-semibold shrink-0">{meta.label}</span>
-                {isRunning ? (
-                    <span className="text-slate-500 text-xs truncate flex-1">{paramSummary()}</span>
-                ) : (
-                    <div className="flex-1 min-w-0" onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
-                        <BlockParams block={block} onUpdate={onUpdate} />
+                <div className={`flex-1 min-w-0 ${isRunning ? 'pointer-events-none opacity-75' : ''}`}
+                    onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
+                    <BlockParams block={block} onUpdate={onUpdate} allFlows={allFlows} />
+                </div>
+                {/* 錯誤策略（僅對可能失敗的積木顯示）*/}
+                {!isRunning && !['loop', 'if_then', 'set_var', 'log', 'wait'].includes(block.type) && (
+                    <div className="flex items-center gap-0.5 shrink-0" onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
+                        <select
+                            value={block.errorPolicy || 'stop'}
+                            onChange={e => onUpdate({ ...block, errorPolicy: e.target.value })}
+                            className="bg-slate-900 border border-slate-700 rounded text-[9px] text-slate-400 px-1 py-0.5 outline-none cursor-pointer hover:border-slate-500"
+                            title="失敗時策略"
+                        >
+                            <option value="stop">⛔ 停止</option>
+                            <option value="skip">⏭️ 跳過</option>
+                            <option value="retry">🔄 重試</option>
+                        </select>
+                        {block.errorPolicy === 'retry' && (
+                            <input
+                                type="number" min={1} max={10}
+                                value={block.retryCount || 3}
+                                onChange={e => onUpdate({ ...block, retryCount: parseInt(e.target.value) || 3 })}
+                                className="bg-slate-900 border border-slate-700 rounded text-[9px] text-slate-400 w-8 px-1 py-0.5 outline-none text-center"
+                                title="重試次數"
+                            />
+                        )}
                     </div>
                 )}
                 {!isRunning && (
@@ -132,13 +193,39 @@ const BlockRow = ({ block, depth, onDelete, onUpdate, onDragOps, currentBlockId,
             )}
 
             {isContainer && expanded && (
-                <div className="mt-1 space-y-1">
-                    {(block.children || []).map((child) => (
-                        <BlockRow key={child.id} block={child} depth={depth + 1}
-                            onDelete={deleteChild} onUpdate={updateChild} onDragOps={childDragOps}
-                            currentBlockId={currentBlockId} isRunning={isRunning} />
+                <div className="mt-1 space-y-0">
+                    {(block.children || []).map((child, i) => (
+                        <React.Fragment key={child.id}>
+                            {!isRunning && (
+                                <AddBlockButton depth={depth + 1} inline onAdd={(b) => insertChild(b, i)} />
+                            )}
+                            <BlockRow block={child} depth={depth + 1}
+                                onDelete={deleteChild} onUpdate={updateChild} onDragOps={childDragOps}
+                                currentBlockId={currentBlockId} isRunning={isRunning} allFlows={allFlows} />
+                        </React.Fragment>
                     ))}
-                    {!isRunning && <AddBlockButton depth={depth + 1} onAdd={addChild} />}
+                    {!isRunning && <AddBlockButton depth={depth + 1} onAdd={(b) => insertChild(b)} />}
+                </div>
+            )}
+
+            {/* else 子積木區 */}
+            {block.type === 'if_then' && expanded && (
+                <div className="mt-1 space-y-0">
+                    <div style={{ marginLeft: (depth + 1) * 20 }}
+                        className="text-[10px] text-violet-400 font-bold px-2 py-1 border-l-2 border-violet-500/30 bg-violet-500/5 rounded-r">
+                        否則 (else)
+                    </div>
+                    {(block.elseChildren || []).map((child, i) => (
+                        <React.Fragment key={child.id}>
+                            {!isRunning && (
+                                <AddBlockButton depth={depth + 1} inline onAdd={(b) => insertElseChild(b, i)} />
+                            )}
+                            <BlockRow block={child} depth={depth + 1}
+                                onDelete={deleteElseChild} onUpdate={updateElseChild} onDragOps={elseChildDragOps}
+                                currentBlockId={currentBlockId} isRunning={isRunning} allFlows={allFlows} />
+                        </React.Fragment>
+                    ))}
+                    {!isRunning && <AddBlockButton depth={depth + 1} onAdd={(b) => insertElseChild(b)} />}
                 </div>
             )}
         </div>
