@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo, Suspense } from 'react';
 import { apiKey } from './utils/constants';
 import { computeGridResults } from './engine/computeGridResults';
 import { Cpu, X } from 'lucide-react';
@@ -9,10 +9,11 @@ import SettingsModal from './components/SettingsModal';
 import CloudModal from './components/CloudModal';
 import ErrorBoundary from './components/ErrorBoundary';
 import Phase1Setup from './components/Phase1Setup';
+import TemplateQuickBar from './components/TemplateQuickBar';
 import Phase2Manual from './components/Phase2Manual';
 import Phase3Vision from './components/Phase3Vision';
-import Phase4Video from './components/Phase4Video';
-import Phase5Automation from './components/Phase5Automation';
+const Phase4Video = React.lazy(() => import('./components/Phase4Video'));
+const Phase5Automation = React.lazy(() => import('./components/Phase5Automation'));
 
 // Modals (從 App.jsx 抽離)
 import PtConfirmModal from './components/modals/PtConfirmModal';
@@ -36,6 +37,10 @@ import usePhase4Store from './stores/usePhase4Store';
 
 function App() {
     // --- Zustand Store ---
+    const uiMode = useAppStore(s => s.uiMode);
+    const setUiMode = useAppStore(s => s.setUiMode);
+    const isFullMode = uiMode === 'full';
+
     const customApiKey = useAppStore(s => s.customApiKey);
     const setCustomApiKey = useAppStore(s => s.setCustomApiKey);
     const showSettingsModal = useAppStore(s => s.showSettingsModal);
@@ -185,7 +190,7 @@ function App() {
     const {
         platformName, setPlatformName, gameName, setGameName,
         templateName, setTemplateName, defaultSaveName, localUserId,
-        loadCloudTemplate,
+        loadCloudTemplate, handleImportLocalJSON,
         handleClearTemplate, handleSaveToCloud,
         showOverwriteConfirm, setShowOverwriteConfirm,
         pendingOverwriteData, activeSaveAction,
@@ -690,7 +695,9 @@ function App() {
 
     // --- 快捷鍵 (方向鍵切換 Phase) ---
     useEffect(() => {
-        const phases = ['phase1', 'phase2', 'phase3', 'phase4'];
+        const phases = isFullMode
+            ? ['phase1', 'phase2', 'phase3', 'phase4']
+            : ['phase2', 'phase3'];
         const handleKeyDown = (e) => {
             if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return;
             if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
@@ -714,7 +721,7 @@ function App() {
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [isTemplateMinimized, isPhase2Minimized, isPhase3Minimized, isPhase4Minimized, handlePhaseToggle, handleTransferVisionToManual, handleReturnToVision]);
+    }, [isFullMode, isTemplateMinimized, isPhase2Minimized, isPhase3Minimized, isPhase4Minimized, handlePhaseToggle, handleTransferVisionToManual, handleReturnToVision]);
 
     // --- 雲端 Modal 開啟自動載入 ---
     useEffect(() => {
@@ -742,6 +749,19 @@ function App() {
 
                 <AppHeader onOpenSettings={() => setShowSettingsModal(true)} />
 
+                {/* 簡易模式：TemplateQuickBar 取代 P1 */}
+                {!isFullMode && (
+                    <TemplateQuickBar
+                        template={template}
+                        gameName={gameName}
+                        platformName={platformName}
+                        onOpenCloud={() => setShowCloudModal(true)}
+                        onEditTemplate={() => { setUiMode('full'); handlePhaseToggle('phase1'); }}
+                    />
+                )}
+
+                {/* 完整模式：完整 P1 */}
+                {isFullMode && (
                 <ErrorBoundary label="Phase 1: 模板設定">
                     <Phase1Setup
                         handleClearTemplate={handleClearTemplate}
@@ -789,6 +809,7 @@ function App() {
                         hasApiKey={hasApiKey}
                     />
                 </ErrorBoundary>
+                )}
 
                 <ErrorBoundary label="Phase 2: 手動結算">
                     <Phase2Manual
@@ -844,6 +865,8 @@ function App() {
                     />
                 </ErrorBoundary>
 
+                {isFullMode && (
+                <Suspense fallback={<div className="p-8 text-center text-slate-400 bg-white rounded-xl border border-slate-200">⏳ 載入 Phase 4...</div>}>
                 <ErrorBoundary label="Phase 4: 影片智慧分析">
                     <Phase4Video
                         isPhase4Minimized={isPhase4Minimized}
@@ -898,6 +921,8 @@ function App() {
                         hasRollingWin={hasRollingWin} setHasRollingWin={setHasRollingWin}
                     />
                 </ErrorBoundary>
+                </Suspense>
+                )}
 
             </div>
 
@@ -1028,6 +1053,8 @@ function App() {
             <SessionProgressModal progress={sessionProgress} />
 
             {/* === Phase 5: 固定底部列 (不參與手風琴，透過 Portal 渲染在 body) === */}
+            {isFullMode && (
+            <Suspense fallback={null}>
             <ErrorBoundary label="Phase 5: 自動化控制">
                 <Phase5Automation
                     videoRef={videoRef}
@@ -1054,6 +1081,8 @@ function App() {
                     recognizeLocal={recognizeLocalSingle}
                 />
             </ErrorBoundary>
+            </Suspense>
+            )}
         </div>
     );
 }

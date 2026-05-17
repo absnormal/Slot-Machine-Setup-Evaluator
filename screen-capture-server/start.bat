@@ -25,5 +25,7 @@ if %errorlevel% neq 0 (
 
 echo [2/2] 正在啟動伺服器...
 echo.
-python "%~dp0server.py"
+set PYTHONIOENCODING=utf-8
+set PYTHONUNBUFFERED=1
+python -u "%~dp0server.py"
 pause

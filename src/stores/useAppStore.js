@@ -9,8 +9,19 @@ import { create } from 'zustand';
  * 3. 資產餘額
  * 4. API Key 設定
  * 5. Modal 開關
+ * 6. UI 模式 (簡易/完整)
  */
 const useAppStore = create((set, get) => ({
+    // === UI 模式 (簡易/完整) ===
+    uiMode: typeof window !== 'undefined'
+        ? (localStorage.getItem('slot_ui_mode') || 'simple')
+        : 'simple',
+
+    setUiMode: (mode) => {
+        set({ uiMode: mode });
+        if (typeof window !== 'undefined') localStorage.setItem('slot_ui_mode', mode);
+    },
+
     // === Phase 展開/收合 ===
     isTemplateMinimized: false,
     isPhase2Minimized: true,

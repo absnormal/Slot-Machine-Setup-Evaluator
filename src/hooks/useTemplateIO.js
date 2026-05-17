@@ -231,6 +231,16 @@ export function useTemplateIO({
 
     const defaultSaveName = [platformNameState, gameNameState].filter(Boolean).join('-') || `模板 ${gridRows}x${gridCols}`;
 
+    /**
+     * 從本地 JSON 匯入模板（TemplateQuickBar 用）
+     */
+    const handleImportLocalJSON = useCallback((data) => {
+        applyTemplateData(data, { source: 'local' });
+        setTemplateMessage('📂 已成功匯入本地 JSON 模板！');
+        setTimeout(() => setTemplateMessage(''), 4000);
+        performAutoBuild(data);
+    }, [applyTemplateData, setTemplateMessage, performAutoBuild]);
+
     return {
         // Platform/Game name
         platformName: platformNameState, setPlatformName,
@@ -241,6 +251,7 @@ export function useTemplateIO({
 
         // Template IO actions
         loadCloudTemplate,
+        handleImportLocalJSON,
         handleClearTemplate,
         handleSaveToCloud,
 
