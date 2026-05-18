@@ -43,14 +43,25 @@ function sendWSCommand(ws, command, timeoutMs = 15000) {
     });
 }
 
+/** ROI 名稱 → Python 回傳的 key 名稱（集中管理，ocrBatch 和 ocrRead 共用）*/
+function roiToKey(roiName) {
+    const upper = roiName.toUpperCase();
+    if (upper === 'BAL' || upper === 'BALANCE') return 'balance';
+    if (upper === 'ORDER_ID' || upper === 'ORDERID') return 'orderId';
+    if (upper === 'MULT' || upper === 'MULTIPLIER') return 'multiplier';
+    if (upper === 'WIN') return 'win';
+    if (upper === 'BET') return 'bet';
+    return roiName.toLowerCase();
+}
+
 /**
  * 批次讀取多個 ROI 的 OCR 值
  * @param {WebSocket} ws
  * @param {string[]} roiNames - ROI 名稱陣列（如 ['WIN', 'BAL', 'BET', 'ORDER_ID']）
  * @param {string|null} [imageBase64] - 可選，提供截圖的 base64 JPEG（有值時 Python 不再自行截圖）
- * @returns {Promise<Object>} { WIN: '500.00', BAL: '12345.67', ... }
+ * @returns {Promise<Object>} { win: '500.00', balance: '12345.67', ... }
  */
-export async function ocrBatch(ws, roiNames, imageBase64 = null) {
+export async function ocrBatch(ws, roiNames, imageBase64 = null, mode = 'number') {
     const rois = [];
 
     for (const name of roiNames) {
@@ -60,15 +71,12 @@ export async function ocrBatch(ws, roiNames, imageBase64 = null) {
             continue;
         }
 
-        const upper = name.toUpperCase();
         rois.push({
-            name: upper === 'BAL' || upper === 'BALANCE' ? 'balance'
-                : upper === 'ORDER_ID' || upper === 'ORDERID' ? 'orderId'
-                : upper === 'MULT' || upper === 'MULTIPLIER' ? 'multiplier'
-                : name.toLowerCase(),
+            name: roiToKey(name),
             roi,
             decimalPlaces: getDecimalPlaces(name),
-            label: upper,
+            label: name.toUpperCase(),
+            mode,
         });
     }
 
@@ -91,8 +99,7 @@ export async function ocrBatch(ws, roiNames, imageBase64 = null) {
  * @param {string} roiName - ROI 名稱
  * @returns {Promise<string>} OCR 結果字串
  */
-export async function ocrRead(ws, roiName) {
-    const results = await ocrBatch(ws, [roiName]);
-    const key = roiName.toLowerCase();
-    return results[key] || '';
+export async function ocrRead(ws, roiName, mode = 'number') {
+    const results = await ocrBatch(ws, [roiName], null, mode);
+    return results[roiToKey(roiName)] ?? '';
 }
