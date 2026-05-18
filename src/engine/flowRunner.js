@@ -17,6 +17,7 @@ import { resolveROI, getDecimalPlaces } from './roiResolver';
 import { captureFrame } from './actions/captureAction';
 import { waitStable } from './actions/waitStableAction';
 import { waitChange } from './actions/waitChangeAction';
+import { exportExcel } from './spreadsheetIO';
 
 // ═══════════════════════════════════════
 // 執行狀態
@@ -85,6 +86,7 @@ export class FlowRunner extends EventTarget {
         this._ocrWorker = context.ocrWorker || null;
         this._recognizeLocal = context.recognizeLocal || null;
         this._subFlowResolver = context.subFlowResolver || null;
+        this._appStore = context.appStore || null;
         this._cancelRef = { current: false };
         this._spinCount = 0;
         this.variables = {};
@@ -217,6 +219,15 @@ export class FlowRunner extends EventTarget {
                     case 'break_loop':
                         this._emit(FlowEvent.LOG, { message: '⏏️ 跳出迴圈' });
                         throw new Error('break');
+                    case 'for_each_row':
+                        result = await this._execForEachRow(block, depth);
+                        break;
+                    case 'append_result':
+                        result = this._execAppendResult(block);
+                        break;
+                    case 'export_results':
+                        result = this._execExportResults(block);
+                        break;
                     default:
                         console.warn(`[FlowRunner] 未知積木類型: ${block.type}`);
                 }
@@ -281,27 +292,43 @@ export class FlowRunner extends EventTarget {
 
     async _execKeyPress(block) {
         const { key } = block.params;
+        const resolvedKey = this._interpolate(String(key || ''));
         const requestId = `key_${Date.now()}`;
-        this._ws.send(JSON.stringify({ action: 'key', key, requestId }));
+        this._emit(FlowEvent.LOG, { message: `⌨️ 按鍵: ${resolvedKey}` });
+
+        const result = await this._sendControl({ action: 'key', key: resolvedKey, requestId });
+        if (!result?.success) {
+            throw new Error(`按鍵失敗: ${result?.message || 'unknown'}`);
+        }
+        // 給目標視窗處理時間
+        await new Promise(r => setTimeout(r, 100));
     }
 
     async _execTypeText(block) {
         const { text } = block.params;
         const resolved = this._interpolate(String(text || ''));
-        const requestId = `type_${Date.now()}`;
-        this._ws.send(JSON.stringify({ action: 'type_text', text: resolved, requestId }));
         this._emit(FlowEvent.LOG, { message: `💬 輸入: "${resolved}"` });
-        // 給一點時間讓剪貼簿操作完成
-        await new Promise(r => setTimeout(r, 200));
+
+        const result = await this._sendControl({ action: 'type_text', text: resolved });
+        if (!result?.success) {
+            throw new Error(`輸入失敗: ${result?.message || 'unknown'}`);
+        }
+        // 剪貼簿+貼上需要較長處理時間
+        await new Promise(r => setTimeout(r, 300));
     }
 
     async _execHotkey(block) {
         const { keys } = block.params;
-        const keyList = String(keys || '').split('+').map(k => k.trim()).filter(Boolean);
+        const resolvedKeys = this._interpolate(String(keys || ''));
+        const keyList = resolvedKeys.split('+').map(k => k.trim()).filter(Boolean);
         if (keyList.length === 0) return;
-        const requestId = `hotkey_${Date.now()}`;
-        this._ws.send(JSON.stringify({ action: 'hotkey', keys: keyList, requestId }));
         this._emit(FlowEvent.LOG, { message: `🔑 組合鍵: ${keyList.join('+')}` });
+
+        const result = await this._sendControl({ action: 'hotkey', keys: keyList });
+        if (!result?.success) {
+            throw new Error(`組合鍵失敗: ${result?.message || 'unknown'}`);
+        }
+        await new Promise(r => setTimeout(r, 200));
     }
 
     // ── 偵測積木 ──
@@ -639,13 +666,148 @@ export class FlowRunner extends EventTarget {
         this._emit(FlowEvent.LOG, { message: msg });
     }
 
+    // ── 表格積木 ──
+
+    async _execForEachRow(block, depth) {
+        const { table, rowVar = '$row' } = block.params;
+        const children = block.children || [];
+
+        if (!this._appStore) {
+            throw new Error('[for_each_row] appStore 未設定');
+        }
+
+        const tableData = this._appStore.getState().dataTables[table];
+        if (!tableData || !tableData.rows) {
+            throw new Error(`[for_each_row] 找不到資料表「${table}」（已上傳 ${Object.keys(this._appStore.getState().dataTables).join(', ') || '無'}）`);
+        }
+
+        const rows = tableData.rows;
+        const total = rows.length;
+        const prefix = rowVar.startsWith('$') ? rowVar : `$${rowVar}`;
+
+        this._emit(FlowEvent.LOG, { message: `📊 開始迭代「${table}」(${total} 列)` });
+        this._sendPythonLog(`📊 迭代 ${table}: ${total} 列`);
+
+        for (let i = 0; i < total; i++) {
+            await this._checkPauseAndCancel();
+
+            const row = rows[i];
+
+            // 綁定行變數：$row.account, $row.currency, ...
+            for (const [col, val] of Object.entries(row)) {
+                const varName = `${prefix}.${col}`;
+                this.variables[varName] = val;
+                this._emit(FlowEvent.VAR_UPDATE, { name: varName, value: val });
+            }
+            this.variables['$rowIndex'] = i;
+            this.variables['$rowTotal'] = total;
+            this._emit(FlowEvent.VAR_UPDATE, { name: '$rowIndex', value: i });
+            this._emit(FlowEvent.VAR_UPDATE, { name: '$rowTotal', value: total });
+
+            this._emit(FlowEvent.LOOP_PROGRESS, {
+                blockId: block.id,
+                current: i + 1,
+                total,
+            });
+
+            try {
+                await this._executeBlocks(children, depth + 1);
+            } catch (e) {
+                if (e.message === 'break') break;
+                throw e;
+            }
+        }
+
+        this._emit(FlowEvent.LOG, { message: `📊 「${table}」迭代完成 (${total} 列)` });
+    }
+
+    _execAppendResult(block) {
+        const { table = 'results', columns } = block.params;
+
+        if (!this._appStore) {
+            throw new Error('[append_result] appStore 未設定');
+        }
+
+        // 解析欄位映射：{ 帳號: "$row.account", 贏分: "$win" }
+        const row = {};
+        if (columns && typeof columns === 'object') {
+            for (const [colName, varExpr] of Object.entries(columns)) {
+                row[colName] = this._interpolate(String(varExpr));
+            }
+        }
+
+        this._appStore.getState().appendResult(table, row);
+
+        const count = (this._appStore.getState().resultTables[table] || []).length;
+        this._emit(FlowEvent.LOG, { message: `📝 結果已寫入「${table}」(第 ${count} 筆)` });
+        this._sendPythonLog(`📝 結果 #${count}: ${JSON.stringify(row)}`);
+
+        return row;
+    }
+
+    _execExportResults(block) {
+        const { table = 'results', filename = '報告' } = block.params;
+
+        if (!this._appStore) {
+            throw new Error('[export_results] appStore 未設定');
+        }
+
+        const rows = this._appStore.getState().resultTables[table] || [];
+        if (rows.length === 0) {
+            this._emit(FlowEvent.LOG, { message: `⚠️ 結果表「${table}」沒有資料，跳過匯出` });
+            return;
+        }
+
+        const resolvedFilename = this._interpolate(filename);
+        exportExcel(rows, resolvedFilename, table);
+
+        this._emit(FlowEvent.LOG, { message: `📥 已匯出「${resolvedFilename}」(${rows.length} 筆)` });
+        this._sendPythonLog(`📥 匯出 ${resolvedFilename}: ${rows.length} 筆`);
+    }
+
     // ═══════════════════════════════════════
     // 內部工具
     // ═══════════════════════════════════════
 
     /**
+     * 通用控制指令發送（等待 Python 回應）
+     * 與 clickAction.js 相同的 requestId 模式
+     */
+    _sendControl(cmd) {
+        const ws = this._ws;
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+            return Promise.resolve({ success: false, message: 'WebSocket 未連線' });
+        }
+
+        const requestId = cmd.requestId || `ctrl_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+        cmd.requestId = requestId;
+
+        return new Promise((resolve) => {
+            const onMessage = (event) => {
+                if (typeof event.data === 'string') {
+                    try {
+                        const msg = JSON.parse(event.data);
+                        if (msg.type === 'control_result' && msg.requestId === requestId) {
+                            ws.removeEventListener('message', onMessage);
+                            resolve(msg);
+                        }
+                    } catch { /* 非 JSON (binary frame) */ }
+                }
+            };
+            ws.addEventListener('message', onMessage);
+            ws.send(JSON.stringify(cmd));
+
+            // 超時保護（5 秒）
+            setTimeout(() => {
+                ws.removeEventListener('message', onMessage);
+                resolve({ success: true, message: 'control timeout - assumed ok' });
+            }, 5000);
+        });
+    }
+
+    /**
      * 簡易表達式求值
-     * 支援：數字、字串、變數引用（$var）、簡單算術（+, -, *, /）
+     * 支援：數字、字串、變數引用（$var, $row.col）、簡單算術（+, -, *, /）
      */
     _evalExpr(expr) {
         if (typeof expr === 'number') return expr;
@@ -655,14 +817,14 @@ export class FlowRunner extends EventTarget {
         const num = Number(expr);
         if (!isNaN(num) && expr.trim() !== '') return num;
 
-        // 變數引用
+        // 變數引用（支援 $var 和 $row.col）
         if (expr.startsWith('$')) {
             return this.variables[expr] ?? 0;
         }
 
         // 簡單算術：替換變數後 eval
         try {
-            const substituted = expr.replace(/\$([\w\u4e00-\u9fff]+)/g, (_, name) => {
+            const substituted = expr.replace(/\$([\w\u4e00-\u9fff]+(?:\.[\w\u4e00-\u9fff]+)*)/g, (_, name) => {
                 const val = this.variables[`$${name}`];
                 return typeof val === 'number' ? val : parseFloat(val) || 0;
             });
@@ -684,7 +846,7 @@ export class FlowRunner extends EventTarget {
         if (typeof condition !== 'string') return !!condition;
 
         try {
-            const substituted = condition.replace(/\$([\w\u4e00-\u9fff]+)/g, (_, name) => {
+            const substituted = condition.replace(/\$([\w\u4e00-\u9fff]+(?:\.[\w\u4e00-\u9fff]+)*)/g, (_, name) => {
                 const val = this.variables[`$${name}`];
                 if (val === undefined) return '0';
                 return typeof val === 'number' ? val : `"${val}"`;
@@ -704,7 +866,7 @@ export class FlowRunner extends EventTarget {
      */
     _interpolate(template) {
         if (typeof template !== 'string') return String(template);
-        return template.replace(/\$([\w\u4e00-\u9fff]+)/g, (match, name) => {
+        return template.replace(/\$([\w\u4e00-\u9fff]+(?:\.[\w\u4e00-\u9fff]+)*)/g, (match, name) => {
             return this.variables[`$${name}`] ?? match;
         });
     }

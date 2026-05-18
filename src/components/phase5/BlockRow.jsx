@@ -17,7 +17,7 @@ const BlockRow = ({ block, depth, onDelete, onUpdate, onDragOps, currentBlockId,
 
     const meta = BLOCK_META[block.type] || { icon: '❔', label: block.type, color: 'border-slate-600 bg-slate-800' };
     const isActive = currentBlockId === block.id;
-    const isContainer = block.type === 'loop' || block.type === 'if_then';
+    const isContainer = block.type === 'loop' || block.type === 'if_then' || block.type === 'for_each_row';
 
     // 執行中的積木自動滾入可視範圍
     useEffect(() => {
@@ -42,6 +42,9 @@ const BlockRow = ({ block, depth, onDelete, onUpdate, onDragOps, currentBlockId,
             case 'stop': return p.reason?.substring(0, 15) || '';
             case 'if_then': return p.condition || '';
             case 'sub_flow': return p.label || p.flowId || '(未選擇)';
+            case 'for_each_row': return `${p.table || '?'} → ${p.rowVar || '$row'}`;
+            case 'append_result': return `→ ${p.table || 'results'}`;
+            case 'export_results': return `📥 ${p.filename || '報告'}`;
             default: return '';
         }
     };
@@ -157,7 +160,7 @@ const BlockRow = ({ block, depth, onDelete, onUpdate, onDragOps, currentBlockId,
                     <BlockParams block={block} onUpdate={onUpdate} allFlows={allFlows} />
                 </div>
                 {/* 錯誤策略（僅對可能失敗的積木顯示）*/}
-                {!isRunning && !['loop', 'if_then', 'set_var', 'log', 'wait'].includes(block.type) && (
+                {!isRunning && !['loop', 'if_then', 'set_var', 'log', 'wait', 'for_each_row', 'append_result', 'export_results'].includes(block.type) && (
                     <div className="flex items-center gap-0.5 shrink-0" onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
                         <select
                             value={block.errorPolicy || 'stop'}

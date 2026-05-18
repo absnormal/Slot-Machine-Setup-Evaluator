@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import useSpinGroupAnalysis from '../hooks/useSpinGroupAnalysis';
 import FlowComposer from './phase5/FlowComposer';
+import DataTablePanel from './phase5/DataTablePanel';
 import StatusBar from './phase5/StatusBar';
 
 /**
@@ -48,7 +49,8 @@ const Phase5Automation = ({
                 className="ml-4 max-w-lg mb-0 bg-slate-900/95 backdrop-blur-xl rounded-t-2xl border border-b-0 border-slate-700/50 shadow-2xl"
                 style={{ pointerEvents: isExpanded ? 'auto' : 'none', display: isExpanded ? 'block' : 'none' }}
             >
-                <div className="p-5 flex flex-col gap-4 h-[75vh]">
+                <div className="p-5 flex flex-col gap-4 h-[90vh]">
+                    <DataTablePanel />
                     <div className="flex-1 min-h-0">
                         <FlowComposer
                             ws={wsRef?.current}

@@ -7,6 +7,7 @@ import { resolveROI } from '../../engine/roiResolver';
 import { genId } from './blockDefs';
 import BlockRow, { useListDrag } from './BlockRow';
 import AddBlockButton from './AddBlockButton';
+import useAppStore from '../../stores/useAppStore';
 
 /**
  * FlowComposer — 排程器主元件
@@ -185,7 +186,7 @@ const FlowComposer = ({ ws, videoEl, setCandidates, reelROI, recognizeLocal }) =
         const flowDef = { name: flowName, version: 1, blocks };
         // 子流程解析器：優先從快取查找
         const subFlowResolver = (flowId) => subFlowCache.get(flowId) || storage.allFlows.find(f => f.id === flowId);
-        await runFlow(flowDef, { ws, videoEl, setCandidates, reelROI, ocrWorker: ocrWorkerRef.current, recognizeLocal, subFlowResolver });
+        await runFlow(flowDef, { ws, videoEl, setCandidates, reelROI, ocrWorker: ocrWorkerRef.current, recognizeLocal, subFlowResolver, appStore: useAppStore });
     };
 
     // 儲存雲端（含衝突偵測，參考遊戲模板模式）

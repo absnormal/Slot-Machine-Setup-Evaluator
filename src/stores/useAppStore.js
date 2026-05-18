@@ -107,6 +107,43 @@ const useAppStore = create((set, get) => ({
     showCloudModal: false,
     setShowCloudModal: (v) => set({ showCloudModal: v }),
 
+    // === 資料表（P5 表格驅動自動化）===
+    // dataTables: { tableName: { name, fileName, headers, rows } }
+    dataTables: {},
+    // resultTables: { tableName: [{ col1: val1, col2: val2 }, ...] }
+    resultTables: {},
+
+    addDataTable: (tableName, data) => set(state => ({
+        dataTables: { ...state.dataTables, [tableName]: data }
+    })),
+    removeDataTable: (tableName) => set(state => {
+        const next = { ...state.dataTables };
+        delete next[tableName];
+        return { dataTables: next };
+    }),
+    renameDataTable: (oldName, newName) => set(state => {
+        if (oldName === newName || !state.dataTables[oldName]) return {};
+        const next = { ...state.dataTables };
+        next[newName] = { ...next[oldName], name: newName };
+        delete next[oldName];
+        return { dataTables: next };
+    }),
+    clearAllDataTables: () => set({ dataTables: {} }),
+
+    appendResult: (tableName, row) => set(state => ({
+        resultTables: {
+            ...state.resultTables,
+            [tableName]: [...(state.resultTables[tableName] || []), row],
+        }
+    })),
+    clearResults: (tableName) => set(state => {
+        if (tableName) {
+            return { resultTables: { ...state.resultTables, [tableName]: [] } };
+        }
+        return { resultTables: {} };
+    }),
+    getResultRows: (tableName) => get().resultTables[tableName] || [],
+
 }));
 
 export default useAppStore;

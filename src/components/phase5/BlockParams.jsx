@@ -1,6 +1,7 @@
 import React from 'react';
 import { AVAILABLE_ROIS } from '../../engine/roiResolver';
 import usePhase4Store from '../../stores/usePhase4Store';
+import useAppStore from '../../stores/useAppStore';
 
 /**
  * BlockParams — 積木參數行內編輯
@@ -233,6 +234,88 @@ const BlockParams = ({ block, onUpdate, allFlows }) => {
         }
         case 'capture_frame':
             return null; // 無參數
+
+        case 'for_each_row': {
+            const tables = useAppStore(s => s.dataTables);
+            const tableNames = Object.keys(tables);
+            return (
+                <div className="flex items-center gap-1.5 flex-wrap">
+                    <select className={`${SEL} min-w-[80px]`} value={p.table || ''}
+                        onChange={e => set('table', e.target.value)}
+                        onClick={e => e.stopPropagation()}>
+                        <option value="">— 選擇資料表 —</option>
+                        {tableNames.map(n => (
+                            <option key={n} value={n}>{n} ({tables[n].rows.length}列)</option>
+                        ))}
+                    </select>
+                    <span className="text-slate-500 text-[10px]">→</span>
+                    <input className={`${MINI} w-16`} value={p.rowVar || '$row'} placeholder="$row"
+                        onChange={e => set('rowVar', e.target.value)}
+                        onClick={e => e.stopPropagation()} />
+                    {p.table && tables[p.table] && (
+                        <span className="text-[10px] text-slate-600">
+                            欄位: {tables[p.table].headers.slice(0, 4).join(', ')}{tables[p.table].headers.length > 4 ? '...' : ''}
+                        </span>
+                    )}
+                </div>
+            );
+        }
+
+        case 'append_result': {
+            const cols = p.columns || {};
+            const colEntries = Object.entries(cols);
+            return (
+                <div className="flex flex-col gap-1">
+                    <div className="flex items-center gap-1.5">
+                        <span className="text-slate-500 text-[10px]">結果表:</span>
+                        <input className={`${MINI} w-20`} value={p.table || 'results'} placeholder="results"
+                            onChange={e => set('table', e.target.value)}
+                            onClick={e => e.stopPropagation()} />
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                        {colEntries.map(([colName, varExpr], i) => (
+                            <div key={i} className="flex items-center gap-0.5 bg-slate-800/50 rounded px-1 py-0.5">
+                                <input className="bg-transparent text-[10px] text-emerald-400 w-12 outline-none" value={colName}
+                                    placeholder="欄名"
+                                    onChange={e => {
+                                        const newCols = { ...cols };
+                                        const val = newCols[colName];
+                                        delete newCols[colName];
+                                        newCols[e.target.value] = val;
+                                        set('columns', newCols);
+                                    }}
+                                    onClick={e => e.stopPropagation()} />
+                                <span className="text-slate-600 text-[10px]">=</span>
+                                <input className="bg-transparent text-[10px] text-cyan-400 w-20 outline-none" value={varExpr}
+                                    placeholder="$row.col"
+                                    onChange={e => set('columns', { ...cols, [colName]: e.target.value })}
+                                    onClick={e => e.stopPropagation()} />
+                                <button className="text-slate-600 hover:text-rose-400 text-[10px]"
+                                    onClick={e => { e.stopPropagation(); const c = { ...cols }; delete c[colName]; set('columns', c); }}>×</button>
+                            </div>
+                        ))}
+                        <button className="text-[10px] text-slate-500 hover:text-emerald-400 px-1.5 py-0.5 rounded border border-dashed border-slate-700 hover:border-emerald-500/50 transition-colors"
+                            onClick={e => { e.stopPropagation(); set('columns', { ...cols, [`欄${colEntries.length + 1}`]: '' }); }}>
+                            + 欄位
+                        </button>
+                    </div>
+                </div>
+            );
+        }
+
+        case 'export_results':
+            return (
+                <div className="flex items-center gap-1.5">
+                    <span className="text-slate-500 text-[10px]">結果表:</span>
+                    <input className={`${MINI} w-20`} value={p.table || 'results'} placeholder="results"
+                        onChange={e => set('table', e.target.value)}
+                        onClick={e => e.stopPropagation()} />
+                    <span className="text-slate-500 text-[10px]">檔名:</span>
+                    <input className={`${MINI} w-24`} value={p.filename || ''} placeholder="報告"
+                        onChange={e => set('filename', e.target.value)}
+                        onClick={e => e.stopPropagation()} />
+                </div>
+            );
 
         default:
             return null;

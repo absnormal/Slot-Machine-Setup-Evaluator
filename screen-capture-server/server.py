@@ -360,16 +360,237 @@ def click_background(hwnd, client_x, client_y, button="left"):
         user32.PostMessageW(hwnd, WM_LBUTTONUP, 0, lparam)
 
 
+# ═══════════════════════════════════════════════
+#  背景鍵盤操作
+#  策略：
+#    1. PostMessage — 對原生 Win32 視窗有效，完全不搶焦點
+#    2. focus+SendInput fallback — 對瀏覽器等現代視窗，
+#       短暫搶焦點 (~50ms) 然後還原，實務上使用者幾乎無感
+# ═══════════════════════════════════════════════
+
+WM_KEYDOWN = 0x0100
+WM_KEYUP   = 0x0101
+WM_CHAR    = 0x0102
+
+# pyautogui 鍵名 → Windows Virtual Key Code
+VK_MAP = {
+    'backspace': 0x08, 'tab': 0x09, 'clear': 0x0C,
+    'enter': 0x0D, 'return': 0x0D,
+    'shift': 0x10, 'shiftleft': 0x10, 'shiftright': 0xA1,
+    'ctrl': 0x11, 'control': 0x11, 'ctrlleft': 0x11, 'ctrlright': 0xA3,
+    'alt': 0x12, 'altleft': 0x12, 'altright': 0xA5,
+    'pause': 0x13, 'capslock': 0x14,
+    'escape': 0x1B, 'esc': 0x1B,
+    'space': 0x20,
+    'pageup': 0x21, 'pgup': 0x21,
+    'pagedown': 0x22, 'pgdn': 0x22,
+    'end': 0x23, 'home': 0x24,
+    'left': 0x25, 'up': 0x26, 'right': 0x27, 'down': 0x28,
+    'printscreen': 0x2C, 'prtsc': 0x2C,
+    'insert': 0x2D, 'delete': 0x2E, 'del': 0x2E,
+    'win': 0x5B, 'winleft': 0x5B, 'winright': 0x5C,
+    'num0': 0x60, 'num1': 0x61, 'num2': 0x62, 'num3': 0x63,
+    'num4': 0x64, 'num5': 0x65, 'num6': 0x66, 'num7': 0x67,
+    'num8': 0x68, 'num9': 0x69,
+    'multiply': 0x6A, 'add': 0x6B, 'subtract': 0x6D,
+    'decimal': 0x6E, 'divide': 0x6F,
+    'f1': 0x70, 'f2': 0x71, 'f3': 0x72, 'f4': 0x73,
+    'f5': 0x74, 'f6': 0x75, 'f7': 0x76, 'f8': 0x77,
+    'f9': 0x78, 'f10': 0x79, 'f11': 0x7A, 'f12': 0x7B,
+    'numlock': 0x90, 'scrolllock': 0x91,
+    ';': 0xBA, '=': 0xBB, ',': 0xBC, '-': 0xBD,
+    '.': 0xBE, '/': 0xBF, '`': 0xC0,
+    '[': 0xDB, '\\': 0xDC, ']': 0xDD, "'": 0xDE,
+}
+
+# 需要 Extended key flag 的虛擬鍵
+EXTENDED_KEYS = {
+    0x21, 0x22, 0x23, 0x24,  # PageUp/Down, End, Home
+    0x25, 0x26, 0x27, 0x28,  # Arrow keys
+    0x2D, 0x2E,              # Insert, Delete
+    0x5B, 0x5C,              # Win keys
+    0xA3, 0xA5,              # Right Ctrl, Right Alt
+}
+
+# 修飾鍵 VK 碼集合
+MODIFIER_VKS = {0x10, 0x11, 0x12, 0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5}
+
+# 不接受 PostMessage 鍵盤的視窗類別（瀏覽器等）
+BROWSER_CLASSES = {'Chrome_WidgetWin_1', 'MozillaWindowClass', 'Chrome_WidgetWin_0'}
+
+
+def get_vk_code(key_name):
+    """將按鍵名稱轉為 Windows Virtual Key Code"""
+    key = key_name.lower().strip()
+    if key in VK_MAP:
+        return VK_MAP[key]
+    # 單字母 A-Z / 單數字 0-9
+    if len(key) == 1:
+        ch = key.upper()
+        if 'A' <= ch <= 'Z' or '0' <= ch <= '9':
+            return ord(ch)
+    return None
+
+
+def _make_key_lparam(vk, is_up=False):
+    """組裝 WM_KEYDOWN / WM_KEYUP 的 lParam"""
+    scan_code = user32.MapVirtualKeyW(vk, 0) & 0xFF
+    lparam = 1  # repeat count
+    lparam |= scan_code << 16
+    if vk in EXTENDED_KEYS:
+        lparam |= (1 << 24)
+    if is_up:
+        lparam |= (1 << 30) | (1 << 31)
+    return ctypes.c_long(lparam).value  # 確保 32-bit 正確傳遞
+
+
+def _is_browser_window(hwnd):
+    """偵測目標視窗是否為瀏覽器（PostMessage 鍵盤無效）"""
+    try:
+        buf = ctypes.create_unicode_buffer(256)
+        user32.GetClassNameW(hwnd, buf, 256)
+        return buf.value in BROWSER_CLASSES
+    except:
+        return False
+
+
+# ── SendInput 低階鍵盤（用於瀏覽器等不接受 PostMessage 的視窗）──
+
+INPUT_KEYBOARD = 1
+KEYEVENTF_KEYUP = 0x0002
+KEYEVENTF_EXTENDEDKEY = 0x0001
+KEYEVENTF_SCANCODE = 0x0008
+
+
+class KEYBDINPUT(ctypes.Structure):
+    _fields_ = [
+        ("wVk", ctypes.c_ushort),
+        ("wScan", ctypes.c_ushort),
+        ("dwFlags", ctypes.c_ulong),
+        ("time", ctypes.c_ulong),
+        ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong)),
+    ]
+
+
+class INPUT(ctypes.Structure):
+    class _INPUT(ctypes.Union):
+        _fields_ = [("ki", KEYBDINPUT), ("_pad", ctypes.c_byte * 64)]
+    _anonymous_ = ("_input",)
+    _fields_ = [("type", ctypes.c_ulong), ("_input", _INPUT)]
+
+
+def _send_input_key(vk, is_up=False):
+    """發送一個 SendInput 鍵盤事件"""
+    flags = 0
+    if is_up:
+        flags |= KEYEVENTF_KEYUP
+    if vk in EXTENDED_KEYS:
+        flags |= KEYEVENTF_EXTENDEDKEY
+
+    inp = INPUT()
+    inp.type = INPUT_KEYBOARD
+    inp.ki = KEYBDINPUT(
+        wVk=vk,
+        wScan=user32.MapVirtualKeyW(vk, 0) & 0xFF,
+        dwFlags=flags,
+        time=0,
+        dwExtraInfo=None,
+    )
+    user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(INPUT))
+
+
+def _focus_send_restore(hwnd, send_fn):
+    """
+    短暫搶焦點 → 執行鍵盤操作 → 還原原視窗。
+    對瀏覽器視窗，這是唯一可靠的鍵盤方式。
+    """
+    prev_hwnd = user32.GetForegroundWindow()
+    user32.SetForegroundWindow(hwnd)
+    time.sleep(0.03)  # 等視窗取得焦點
+
+    send_fn()
+
+    time.sleep(0.03)
+    # 還原原本的前景視窗
+    if prev_hwnd and prev_hwnd != hwnd:
+        user32.SetForegroundWindow(prev_hwnd)
+
+
+def bg_key_press(hwnd, key_name):
+    """背景單鍵按壓"""
+    vk = get_vk_code(key_name)
+    if vk is None:
+        return False
+
+    if _is_browser_window(hwnd):
+        # 瀏覽器：短暫搶焦點 + SendInput
+        def send():
+            _send_input_key(vk, False)
+            time.sleep(0.03)
+            _send_input_key(vk, True)
+        _focus_send_restore(hwnd, send)
+    else:
+        # 原生視窗：PostMessage（完全背景）
+        user32.PostMessageW(hwnd, WM_KEYDOWN, vk, _make_key_lparam(vk, False))
+        time.sleep(0.03)
+        user32.PostMessageW(hwnd, WM_KEYUP, vk, _make_key_lparam(vk, True))
+    return True
+
+
+def bg_hotkey(hwnd, key_names):
+    """背景組合鍵"""
+    vks = []
+    for k in key_names:
+        vk = get_vk_code(k)
+        if vk is None:
+            return False
+        vks.append(vk)
+
+    modifiers = [vk for vk in vks if vk in MODIFIER_VKS]
+    main_keys = [vk for vk in vks if vk not in MODIFIER_VKS]
+
+    if _is_browser_window(hwnd):
+        # 瀏覽器：短暫搶焦點 + SendInput
+        def send():
+            for vk in modifiers:
+                _send_input_key(vk, False)
+                time.sleep(0.02)
+            for vk in main_keys:
+                _send_input_key(vk, False)
+                time.sleep(0.02)
+                _send_input_key(vk, True)
+                time.sleep(0.02)
+            for vk in reversed(modifiers):
+                _send_input_key(vk, True)
+                time.sleep(0.02)
+        _focus_send_restore(hwnd, send)
+    else:
+        # 原生視窗：PostMessage（完全背景）
+        for vk in modifiers:
+            user32.PostMessageW(hwnd, WM_KEYDOWN, vk, _make_key_lparam(vk, False))
+            time.sleep(0.02)
+        for vk in main_keys:
+            user32.PostMessageW(hwnd, WM_KEYDOWN, vk, _make_key_lparam(vk, False))
+            time.sleep(0.02)
+            user32.PostMessageW(hwnd, WM_KEYUP, vk, _make_key_lparam(vk, True))
+            time.sleep(0.02)
+        for vk in reversed(modifiers):
+            user32.PostMessageW(hwnd, WM_KEYUP, vk, _make_key_lparam(vk, True))
+            time.sleep(0.02)
+
+    return True
+
+
 def handle_control_command(cmd, active_source=None):
     """
     Process control commands from frontend.
 
-    For window mode, uses PostMessage (background click) by default,
-    so the user's physical mouse is never touched.
+    For window mode, uses PostMessage for both click and keyboard,
+    so the user's physical mouse AND keyboard are never touched.
     Falls back to pyautogui only for monitor/screen mode.
 
     Supported actions:
-      click, click_pct, click_roi, key, hotkey, move, drag, focus
+      click, click_pct, click_roi, key, hotkey, type_text, move, drag, focus
     """
     action = cmd.get("action")
 
@@ -434,28 +655,46 @@ def handle_control_command(cmd, active_source=None):
                 return {"success": True, "message": f"click_roi -> ({screen_x},{screen_y})"}
 
         elif action == "key":
-            if not HAS_PYAUTOGUI:
-                return {"success": False, "message": "pyautogui not installed (needed for key)"}
             key = cmd["key"]
-            pyautogui.press(key)
-            return {"success": True, "message": f"key '{key}'"}
+            if hwnd:
+                ok = bg_key_press(hwnd, key)
+                if ok:
+                    return {"success": True, "message": f"bg_key '{key}'"}
+                return {"success": False, "message": f"Unknown key: '{key}'"}
+            elif HAS_PYAUTOGUI:
+                pyautogui.press(key)
+                return {"success": True, "message": f"key '{key}'"}
+            else:
+                return {"success": False, "message": "No hwnd and pyautogui not installed"}
 
         elif action == "type_text":
-            if not HAS_PYAUTOGUI:
-                return {"success": False, "message": "pyautogui not installed (needed for type_text)"}
             text = str(cmd.get("text", ""))
-            # 用剪貼簿 + Ctrl+V 貼上（支援中英文）
             import pyperclip
             pyperclip.copy(text)
-            pyautogui.hotkey('ctrl', 'v')
-            return {"success": True, "message": f"typed '{text}'"}
+            if hwnd:
+                # 背景輸入：剪貼簿 + 背景 Ctrl+V
+                time.sleep(0.05)
+                bg_hotkey(hwnd, ['ctrl', 'v'])
+                return {"success": True, "message": f"bg_typed '{text}'"}
+            elif HAS_PYAUTOGUI:
+                pyautogui.hotkey('ctrl', 'v')
+                return {"success": True, "message": f"typed '{text}'"}
+            else:
+                return {"success": False, "message": "No hwnd and pyautogui not installed"}
 
         elif action == "hotkey":
-            if not HAS_PYAUTOGUI:
-                return {"success": False, "message": "pyautogui not installed (needed for hotkey)"}
             keys = cmd["keys"]
-            pyautogui.hotkey(*keys)
-            return {"success": True, "message": f"hotkey {'+'.join(keys)}"}
+            if hwnd:
+                ok = bg_hotkey(hwnd, keys)
+                if ok:
+                    return {"success": True, "message": f"bg_hotkey {'+'.join(keys)}"}
+                unknown = [k for k in keys if get_vk_code(k) is None]
+                return {"success": False, "message": f"Unknown keys: {unknown}"}
+            elif HAS_PYAUTOGUI:
+                pyautogui.hotkey(*keys)
+                return {"success": True, "message": f"hotkey {'+'.join(keys)}"}
+            else:
+                return {"success": False, "message": "No hwnd and pyautogui not installed"}
 
         elif action == "move":
             if not HAS_PYAUTOGUI:
