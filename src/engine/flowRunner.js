@@ -420,11 +420,7 @@ export class FlowRunner extends EventTarget {
 
         // 自動將結果寫入變數空間
         for (const [key, rawValue] of Object.entries(results)) {
-            // orderId 直接正規化（去除 - 空格），統一格式
-            const value = key === 'orderId' && rawValue
-                ? String(rawValue).replace(/[-\s]/g, '')
-                : rawValue;
-            if (key === 'orderId' && rawValue !== value) results[key] = value; // 同步回 results
+            const value = rawValue;
             const varName = `$${key}`;
             // 空值不覆蓋現有變數（避免子流程清空主流程的值）
             if (value === '' || value === null || value === undefined) {
