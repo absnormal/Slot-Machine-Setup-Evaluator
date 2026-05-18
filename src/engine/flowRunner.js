@@ -17,7 +17,19 @@ import { resolveROI, getDecimalPlaces } from './roiResolver';
 import { captureFrame } from './actions/captureAction';
 import { waitStable } from './actions/waitStableAction';
 import { waitChange } from './actions/waitChangeAction';
-import { exportExcel } from './spreadsheetIO';
+import {
+    execForEachRow, execAppendResult, execExportResults,
+    execReadRow, execClearResults,
+} from './actions/tableAction';
+
+// ═══════════════════════════════════════
+// 全形→半形 正規化工具
+// 使用 Unicode NFKC 相容分解，將全形 ASCII（Ａ-Ｚ、（）、０-９ 等）
+// 自動轉為對應的半形字元，消除中文輸入法或 OCR 帶來的全/半形差異。
+// 不影響中文字、日文假名、韓文等本體字元。
+// ═══════════════════════════════════════
+const normalizeStr = (str) =>
+    typeof str === 'string' ? str.normalize('NFKC') : str;
 
 // ═══════════════════════════════════════
 // 執行狀態
@@ -90,6 +102,15 @@ export class FlowRunner extends EventTarget {
         this._cancelRef = { current: false };
         this._spinCount = 0;
         this.variables = {};
+
+        // 預注入所有已上傳表格的行數，供表達式直接引用
+        if (this._appStore) {
+            const tables = this._appStore.getState().dataTables;
+            for (const [name, data] of Object.entries(tables)) {
+                this.variables[`$${name}._count`] = data.rows.length;
+                this._emit(FlowEvent.VAR_UPDATE, { name: `$${name}._count`, value: data.rows.length });
+            }
+        }
 
         this._setState(RunState.RUNNING);
 
@@ -227,6 +248,12 @@ export class FlowRunner extends EventTarget {
                         break;
                     case 'export_results':
                         result = this._execExportResults(block);
+                        break;
+                    case 'read_row':
+                        result = this._execReadRow(block);
+                        break;
+                    case 'clear_results':
+                        result = this._execClearResults(block);
                         break;
                     default:
                         console.warn(`[FlowRunner] 未知積木類型: ${block.type}`);
@@ -414,9 +441,22 @@ export class FlowRunner extends EventTarget {
     }
 
     async _execOcrRead(block) {
-        const { roi, varName } = block.params;
-        const value = await ocrRead(this._ws, roi);
+        const { roi, varName, mode = 'number' } = block.params;
         const vName = varName || `$${roi.toLowerCase()}`;
+        let value;
+
+        // 有截圖 + 前端 ocrWorker → 用前端 DBNet（優先）
+        if (this._lastCapturedCanvas && this._ocrWorker) {
+            const roiPct = resolveROI(roi);
+            if (!roiPct) throw new Error(`[ocr_read] 無法解析 ROI: "${roi}"`);
+            const dp = mode === 'text' ? 0 : getDecimalPlaces(roi);
+            value = await cropAndOCR(this._lastCapturedCanvas, roiPct, this._ocrWorker, dp, roi.toUpperCase(), mode);
+            this._emit(FlowEvent.LOG, { message: `📖 ${roi}→${vName}: "${value}" (${mode === 'text' ? '文字' : '數字'})` });
+        } else {
+            // fallback → Python OCR
+            value = await ocrRead(this._ws, roi, mode);
+        }
+
         this.variables[vName] = value;
         this._emit(FlowEvent.VAR_UPDATE, { name: vName, value });
         return value;
@@ -654,6 +694,7 @@ export class FlowRunner extends EventTarget {
             case '-=': final = (parseFloat(current) || 0) - (parseFloat(resolved) || 0); break;
             case '*=': final = (parseFloat(current) || 0) * (parseFloat(resolved) || 0); break;
             case '/=': final = (parseFloat(resolved) || 0) !== 0 ? (parseFloat(current) || 0) / parseFloat(resolved) : 0; break;
+            case '%=': final = (parseFloat(resolved) || 0) !== 0 ? (parseFloat(current) || 0) % parseFloat(resolved) : 0; break;
             default:   final = resolved; break; // '=' 或舊資料沒有 op
         }
         this.variables[name] = final;
@@ -666,108 +707,14 @@ export class FlowRunner extends EventTarget {
         this._emit(FlowEvent.LOG, { message: msg });
     }
 
-    // ── 表格積木 ──
+    // ── 表格積木（委派至 actions/tableAction.js）──
 
-    async _execForEachRow(block, depth) {
-        const { table, rowVar = '$row' } = block.params;
-        const children = block.children || [];
+    async _execForEachRow(block, depth) { return execForEachRow(block, depth, this); }
+    _execAppendResult(block)            { return execAppendResult(block, this); }
+    _execExportResults(block)           { return execExportResults(block, this); }
+    _execReadRow(block)                 { return execReadRow(block, this); }
+    _execClearResults(block)            { return execClearResults(block, this); }
 
-        if (!this._appStore) {
-            throw new Error('[for_each_row] appStore 未設定');
-        }
-
-        const tableData = this._appStore.getState().dataTables[table];
-        if (!tableData || !tableData.rows) {
-            throw new Error(`[for_each_row] 找不到資料表「${table}」（已上傳 ${Object.keys(this._appStore.getState().dataTables).join(', ') || '無'}）`);
-        }
-
-        const rows = tableData.rows;
-        const total = rows.length;
-        const prefix = rowVar.startsWith('$') ? rowVar : `$${rowVar}`;
-
-        this._emit(FlowEvent.LOG, { message: `📊 開始迭代「${table}」(${total} 列)` });
-        this._sendPythonLog(`📊 迭代 ${table}: ${total} 列`);
-
-        for (let i = 0; i < total; i++) {
-            await this._checkPauseAndCancel();
-
-            const row = rows[i];
-
-            // 綁定行變數：$row.account, $row.currency, ...
-            for (const [col, val] of Object.entries(row)) {
-                const varName = `${prefix}.${col}`;
-                this.variables[varName] = val;
-                this._emit(FlowEvent.VAR_UPDATE, { name: varName, value: val });
-            }
-            this.variables['$rowIndex'] = i;
-            this.variables['$rowTotal'] = total;
-            this._emit(FlowEvent.VAR_UPDATE, { name: '$rowIndex', value: i });
-            this._emit(FlowEvent.VAR_UPDATE, { name: '$rowTotal', value: total });
-
-            this._emit(FlowEvent.LOOP_PROGRESS, {
-                blockId: block.id,
-                current: i + 1,
-                total,
-            });
-
-            try {
-                await this._executeBlocks(children, depth + 1);
-            } catch (e) {
-                if (e.message === 'break') break;
-                throw e;
-            }
-        }
-
-        this._emit(FlowEvent.LOG, { message: `📊 「${table}」迭代完成 (${total} 列)` });
-    }
-
-    _execAppendResult(block) {
-        const { table = 'results', columns } = block.params;
-
-        if (!this._appStore) {
-            throw new Error('[append_result] appStore 未設定');
-        }
-
-        // 解析欄位映射：{ 帳號: "$row.account", 贏分: "$win" }
-        const row = {};
-        if (columns && typeof columns === 'object') {
-            for (const [colName, varExpr] of Object.entries(columns)) {
-                row[colName] = this._interpolate(String(varExpr));
-            }
-        }
-
-        this._appStore.getState().appendResult(table, row);
-
-        const count = (this._appStore.getState().resultTables[table] || []).length;
-        this._emit(FlowEvent.LOG, { message: `📝 結果已寫入「${table}」(第 ${count} 筆)` });
-        this._sendPythonLog(`📝 結果 #${count}: ${JSON.stringify(row)}`);
-
-        return row;
-    }
-
-    _execExportResults(block) {
-        const { table = 'results', filename = '報告' } = block.params;
-
-        if (!this._appStore) {
-            throw new Error('[export_results] appStore 未設定');
-        }
-
-        const rows = this._appStore.getState().resultTables[table] || [];
-        if (rows.length === 0) {
-            this._emit(FlowEvent.LOG, { message: `⚠️ 結果表「${table}」沒有資料，跳過匯出` });
-            return;
-        }
-
-        const resolvedFilename = this._interpolate(filename);
-        exportExcel(rows, resolvedFilename, table);
-
-        this._emit(FlowEvent.LOG, { message: `📥 已匯出「${resolvedFilename}」(${rows.length} 筆)` });
-        this._sendPythonLog(`📥 匯出 ${resolvedFilename}: ${rows.length} 筆`);
-    }
-
-    // ═══════════════════════════════════════
-    // 內部工具
-    // ═══════════════════════════════════════
 
     /**
      * 通用控制指令發送（等待 Python 回應）
@@ -797,17 +744,17 @@ export class FlowRunner extends EventTarget {
             ws.addEventListener('message', onMessage);
             ws.send(JSON.stringify(cmd));
 
-            // 超時保護（5 秒）
+            // 超時保護（5 秒）— 超時視為失敗，讓呼叫方能正確顯示錯誤
             setTimeout(() => {
                 ws.removeEventListener('message', onMessage);
-                resolve({ success: true, message: 'control timeout - assumed ok' });
+                resolve({ success: false, message: 'control timeout (5s) — Python 未回應，請確認伺服器狀態' });
             }, 5000);
         });
     }
 
     /**
      * 簡易表達式求值
-     * 支援：數字、字串、變數引用（$var, $row.col）、簡單算術（+, -, *, /）
+     * 支援：數字、字串、變數引用（$var, $row.col）、簡單算術（+, -, *, /, %）
      */
     _evalExpr(expr) {
         if (typeof expr === 'number') return expr;
@@ -819,17 +766,30 @@ export class FlowRunner extends EventTarget {
 
         // 變數引用（支援 $var 和 $row.col）
         if (expr.startsWith('$')) {
+            // 特殊：$tableName._count → 動態查詢 appStore 的表格列數
+            // 讓 set_var $帳號數 = $遊戲_設定._count 在 for_each_row 之前也能正確取值
+            if (expr.endsWith('._count') && this._appStore) {
+                const tableName = expr.slice(1, -7); // 去掉 $ 和 ._count
+                const td = this._appStore.getState().dataTables[tableName];
+                if (td?.rows) return td.rows.length;
+            }
             return this.variables[expr] ?? 0;
         }
 
         // 簡單算術：替換變數後 eval
         try {
             const substituted = expr.replace(/\$([\w\u4e00-\u9fff]+(?:\.[\w\u4e00-\u9fff]+)*)/g, (_, name) => {
+                // 特殊：tableName._count → 動態查詢表格列數
+                if (name.endsWith('._count') && this._appStore) {
+                    const tableName = name.slice(0, -7); // 去掉 ._count
+                    const td = this._appStore.getState().dataTables[tableName];
+                    if (td?.rows) return td.rows.length;
+                }
                 const val = this.variables[`$${name}`];
                 return typeof val === 'number' ? val : parseFloat(val) || 0;
             });
-            // 安全計算：只允許數字和基本運算符
-            if (/^[\d\s+\-*/().]+$/.test(substituted)) {
+            // 安全計算：只允許數字和基本運算符（含 %）
+            if (/^[\d\s+\-*/().%]+$/.test(substituted)) {
                 return Function(`"use strict"; return (${substituted})`)();
             }
         } catch { /* fall through */ }
@@ -846,10 +806,14 @@ export class FlowRunner extends EventTarget {
         if (typeof condition !== 'string') return !!condition;
 
         try {
-            const substituted = condition.replace(/\$([\w\u4e00-\u9fff]+(?:\.[\w\u4e00-\u9fff]+)*)/g, (_, name) => {
+            // 先正規化條件字串本身（條件積木中的全形括號/符號→半形）
+            const normalized = normalizeStr(condition);
+            const substituted = normalized.replace(/\$([\w\u4e00-\u9fff]+(?:\.[\w\u4e00-\u9fff]+)*)/g, (_, name) => {
                 const val = this.variables[`$${name}`];
                 if (val === undefined) return '0';
-                return typeof val === 'number' ? val : `"${val}"`;
+                // 變數值也正規化（消除 OCR / Excel 帶入的全形字元差異）
+                const normVal = normalizeStr(String(val));
+                return typeof val === 'number' ? val : `"${normVal}"`;
             });
 
             // 安全：只允許比較運算
@@ -866,9 +830,11 @@ export class FlowRunner extends EventTarget {
      */
     _interpolate(template) {
         if (typeof template !== 'string') return String(template);
-        return template.replace(/\$([\w\u4e00-\u9fff]+(?:\.[\w\u4e00-\u9fff]+)*)/g, (match, name) => {
+        const result = template.replace(/\$([\w\u4e00-\u9fff]+(?:\.[\w\u4e00-\u9fff]+)*)/g, (match, name) => {
             return this.variables[`$${name}`] ?? match;
         });
+        // 插值後做全形→半形正規化（消除 OCR / Excel 帶入的全形字元差異）
+        return normalizeStr(result);
     }
 
     /**

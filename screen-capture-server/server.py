@@ -93,11 +93,11 @@ def get_ocr_engine():
 
 import re
 
-def ocr_crop_and_clean(pil_img, roi, decimal_places=2, label=""):
+def ocr_crop_and_clean(pil_img, roi, decimal_places=2, label="", mode="number"):
     """
     從 PIL Image 裁切 ROI 區域並執行 OCR。
     roi: {x, y, w, h} -- 百分比 (0-100)
-    回傳辨識出的數字字串。
+    mode: 'number'（只取數字）或 'text'（回傳原始辨識文字）
     """
     engine = get_ocr_engine()
     if engine is None:
@@ -151,6 +151,11 @@ def ocr_crop_and_clean(pil_img, roi, decimal_places=2, label=""):
     raw_text = " ".join(texts).strip()
     
     # 後處理（與前端 ocrPipeline.js 對齊）
+    # ── 文字模式：直接回傳原始辨識結果 ──
+    if mode == "text":
+        return raw_text
+
+    # ── 數字模式（預設） ──
     if label == "ORDER_ID":
         return re.sub(r'[^0-9\-]', '', raw_text)
     
@@ -499,21 +504,59 @@ def _send_input_key(vk, is_up=False):
     user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(INPUT))
 
 
+def _force_foreground(hwnd):
+    """
+    強制將指定視窗帶到前景（不改變視窗大小/狀態）。
+    Windows 10/11 限制非前景程序呼叫 SetForegroundWindow，
+    使用 AttachThreadInput 繞過此限制。
+    回傳：焦點轉移是否成功 (bool)
+    """
+    if user32.GetForegroundWindow() == hwnd:
+        return True  # 已是前景，不需操作
+
+    foreground_hwnd = user32.GetForegroundWindow()
+    fg_tid = user32.GetWindowThreadProcessId(foreground_hwnd, None)
+    our_tid = ctypes.windll.kernel32.GetCurrentThreadId()
+
+    # 附接到目前前景視窗的執行緒，讓我們取得 SetForegroundWindow 權限
+    if fg_tid and fg_tid != our_tid:
+        user32.AttachThreadInput(our_tid, fg_tid, True)
+
+    user32.BringWindowToTop(hwnd)
+    user32.SetForegroundWindow(hwnd)
+
+    if fg_tid and fg_tid != our_tid:
+        user32.AttachThreadInput(our_tid, fg_tid, False)
+
+    # 等待焦點確實轉移（最多 300ms，每 30ms 查一次）
+    for _ in range(10):
+        if user32.GetForegroundWindow() == hwnd:
+            return True
+        time.sleep(0.03)
+
+    print(f"[警告] 焦點轉移未成功：當前前景={user32.GetForegroundWindow()} 目標={hwnd}")
+    return False
+
+
 def _focus_send_restore(hwnd, send_fn):
     """
     短暫搶焦點 → 執行鍵盤操作 → 還原原視窗。
-    對瀏覽器視窗，這是唯一可靠的鍵盤方式。
+    對瀏覽器視窗，使用 AttachThreadInput 可靠搶焦點。
     """
     prev_hwnd = user32.GetForegroundWindow()
-    user32.SetForegroundWindow(hwnd)
-    time.sleep(0.03)  # 等視窗取得焦點
+    ok = _force_foreground(hwnd)
+    if ok:
+        time.sleep(0.05)  # 讓瀏覽器有時間處理焦點事件（重要！）
+        send_fn()
+        time.sleep(0.03)
+    else:
+        # 焦點轉移失敗 → 仍嘗試發送（有時 GetForegroundWindow 的判斷不完全準確）
+        time.sleep(0.08)
+        send_fn()
 
-    send_fn()
-
-    time.sleep(0.03)
     # 還原原本的前景視窗
     if prev_hwnd and prev_hwnd != hwnd:
-        user32.SetForegroundWindow(prev_hwnd)
+        _force_foreground(prev_hwnd)
 
 
 def bg_key_press(hwnd, key_name):
@@ -523,11 +566,15 @@ def bg_key_press(hwnd, key_name):
         return False
 
     if _is_browser_window(hwnd):
-        # 瀏覽器：短暫搶焦點 + SendInput
+        # 瀏覽器：搶焦點後用 pyautogui（最可靠）
         def send():
-            _send_input_key(vk, False)
-            time.sleep(0.03)
-            _send_input_key(vk, True)
+            if HAS_PYAUTOGUI:
+                pyautogui.press(key_name)
+                print(f"[鍵盤] pyautogui.press('{key_name}') done")
+            else:
+                _send_input_key(vk, False)
+                time.sleep(0.03)
+                _send_input_key(vk, True)
         _focus_send_restore(hwnd, send)
     else:
         # 原生視窗：PostMessage（完全背景）
@@ -539,33 +586,35 @@ def bg_key_press(hwnd, key_name):
 
 def bg_hotkey(hwnd, key_names):
     """背景組合鍵"""
+    # 先驗證所有鍵名是否可解析（僅非瀏覽器模式需要）
     vks = []
     for k in key_names:
         vk = get_vk_code(k)
-        if vk is None:
-            return False
-        vks.append(vk)
-
-    modifiers = [vk for vk in vks if vk in MODIFIER_VKS]
-    main_keys = [vk for vk in vks if vk not in MODIFIER_VKS]
+        vks.append(vk)  # 瀏覽器模式下 vk=None 也允許，pyautogui 用鍵名
 
     if _is_browser_window(hwnd):
-        # 瀏覽器：短暫搶焦點 + SendInput
+        # 瀏覽器：搶焦點後用 pyautogui.hotkey（最可靠）
         def send():
-            for vk in modifiers:
-                _send_input_key(vk, False)
-                time.sleep(0.02)
-            for vk in main_keys:
-                _send_input_key(vk, False)
-                time.sleep(0.02)
-                _send_input_key(vk, True)
-                time.sleep(0.02)
-            for vk in reversed(modifiers):
-                _send_input_key(vk, True)
-                time.sleep(0.02)
+            if HAS_PYAUTOGUI:
+                pyautogui.hotkey(*key_names)
+                print(f"[鍵盤] pyautogui.hotkey({key_names}) done")
+            else:
+                modifiers = [vk for vk in vks if vk and vk in MODIFIER_VKS]
+                main_keys = [vk for vk in vks if vk and vk not in MODIFIER_VKS]
+                for vk in modifiers:
+                    _send_input_key(vk, False); time.sleep(0.02)
+                for vk in main_keys:
+                    _send_input_key(vk, False); time.sleep(0.02)
+                    _send_input_key(vk, True); time.sleep(0.02)
+                for vk in reversed(modifiers):
+                    _send_input_key(vk, True); time.sleep(0.02)
         _focus_send_restore(hwnd, send)
     else:
-        # 原生視窗：PostMessage（完全背景）
+        # 非瀏覽器視窗：驗證 VK code，PostMessage（完全背景）
+        if any(vk is None for vk in vks):
+            return False
+        modifiers = [vk for vk in vks if vk in MODIFIER_VKS]
+        main_keys = [vk for vk in vks if vk not in MODIFIER_VKS]
         for vk in modifiers:
             user32.PostMessageW(hwnd, WM_KEYDOWN, vk, _make_key_lparam(vk, False))
             time.sleep(0.02)
@@ -656,6 +705,7 @@ def handle_control_command(cmd, active_source=None):
 
         elif action == "key":
             key = cmd["key"]
+            print(f"[鍵盤] key='{key}' hwnd={hwnd} is_browser={_is_browser_window(hwnd) if hwnd else 'N/A'}")
             if hwnd:
                 ok = bg_key_press(hwnd, key)
                 if ok:
@@ -669,13 +719,18 @@ def handle_control_command(cmd, active_source=None):
 
         elif action == "type_text":
             text = str(cmd.get("text", ""))
-            import pyperclip
-            pyperclip.copy(text)
+            print(f"[鍵盤] type_text='{text[:30]}' hwnd={hwnd} is_browser={_is_browser_window(hwnd) if hwnd else 'N/A'}")
+            try:
+                import pyperclip
+                pyperclip.copy(text)
+            except Exception as clip_err:
+                return {"success": False, "message": f"pyperclip 錯誤: {clip_err}"}
             if hwnd:
-                # 背景輸入：剪貼簿 + 背景 Ctrl+V
+                # 背景輸入：剪貼簿 + Ctrl+V
                 time.sleep(0.05)
-                bg_hotkey(hwnd, ['ctrl', 'v'])
-                return {"success": True, "message": f"bg_typed '{text}'"}
+                ok = bg_hotkey(hwnd, ['ctrl', 'v'])
+                return {"success": True if ok else False,
+                        "message": f"bg_typed '{text}'" if ok else "bg_hotkey ctrl+v 失敗"}
             elif HAS_PYAUTOGUI:
                 pyautogui.hotkey('ctrl', 'v')
                 return {"success": True, "message": f"typed '{text}'"}
@@ -684,6 +739,7 @@ def handle_control_command(cmd, active_source=None):
 
         elif action == "hotkey":
             keys = cmd["keys"]
+            print(f"[鍵盤] hotkey='{'+'.join(keys)}' hwnd={hwnd} is_browser={_is_browser_window(hwnd) if hwnd else 'N/A'}")
             if hwnd:
                 ok = bg_hotkey(hwnd, keys)
                 if ok:
@@ -783,7 +839,8 @@ def handle_control_command(cmd, active_source=None):
                 lbl = roi_def.get("label", name)
                 if roi:
                     try:
-                        val = ocr_crop_and_clean(pil_img, roi, dp, lbl)
+                        ocr_mode = roi_def.get("mode", "number")
+                        val = ocr_crop_and_clean(pil_img, roi, dp, lbl, ocr_mode)
                         results[name] = val
                     except Exception as e:
                         results[name] = ""
