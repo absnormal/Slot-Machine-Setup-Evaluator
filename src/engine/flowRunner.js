@@ -12,6 +12,7 @@
 import { clickROI } from './actions/clickAction';
 import { wait } from './actions/waitAction';
 import { ocrBatch, ocrRead } from './actions/ocrAction';
+import { evalConditionStr, evalArithStr } from './exprEvaluator';
 import { cropAndOCR } from './ocrPipeline';
 import { resolveROI, getDecimalPlaces } from './roiResolver';
 import { captureFrame } from './actions/captureAction';
@@ -776,22 +777,20 @@ export class FlowRunner extends EventTarget {
             return this.variables[expr] ?? 0;
         }
 
-        // 簡單算術：替換變數後 eval
+        // 簡單算術：替換變數後用安全 evaluator（不使用 Function/eval）
         try {
             const substituted = expr.replace(/\$([\w\u4e00-\u9fff]+(?:\.[\w\u4e00-\u9fff]+)*)/g, (_, name) => {
                 // 特殊：tableName._count → 動態查詢表格列數
                 if (name.endsWith('._count') && this._appStore) {
-                    const tableName = name.slice(0, -7); // 去掉 ._count
+                    const tableName = name.slice(0, -7);
                     const td = this._appStore.getState().dataTables[tableName];
                     if (td?.rows) return td.rows.length;
                 }
                 const val = this.variables[`$${name}`];
                 return typeof val === 'number' ? val : parseFloat(val) || 0;
             });
-            // 安全計算：只允許數字和基本運算符（含 %）
-            if (/^[\d\s+\-*/().%]+$/.test(substituted)) {
-                return Function(`"use strict"; return (${substituted})`)();
-            }
+            const result = evalArithStr(substituted);
+            if (typeof result === 'number' && !isNaN(result)) return result;
         } catch { /* fall through */ }
 
         return expr;
@@ -813,13 +812,11 @@ export class FlowRunner extends EventTarget {
                 if (val === undefined) return '0';
                 // 變數值也正規化（消除 OCR / Excel 帶入的全形字元差異）
                 const normVal = normalizeStr(String(val));
-                return typeof val === 'number' ? val : `"${normVal}"`;
+                return typeof val === 'number' ? normVal : `"${normVal}"`;
             });
 
-            // 安全：只允許比較運算
-            if (/^[\d\s+\-*/().><=!&|"']+$/.test(substituted)) {
-                return !!Function(`"use strict"; return (${substituted})`)();
-            }
+            // 使用安全的 token-based evaluator（不使用 Function/eval）
+            return evalConditionStr(substituted);
         } catch { /* fall through */ }
 
         return false;
