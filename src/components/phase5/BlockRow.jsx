@@ -10,7 +10,7 @@ import BlockParams from './BlockParams';
  * 拖放原理：每個積木偵測滑鼠在上半或下半，
  * 上半 = 插入在此積木之前，下半 = 插入在此積木之後。
  */
-const BlockRow = ({ block, depth, onDelete, onUpdate, onDragOps, currentBlockId, isRunning, allFlows }) => {
+const BlockRow = ({ block, depth, onDelete, onUpdate, onDragOps, rootMover, currentBlockId, isRunning, allFlows }) => {
     const [expanded, setExpanded] = useState(true);
     const [dropPosition, setDropPosition] = useState(null); // 'before' | 'after' | null
     const rowRef = useRef(null);
@@ -43,8 +43,10 @@ const BlockRow = ({ block, depth, onDelete, onUpdate, onDragOps, currentBlockId,
             case 'if_then': return p.condition || '';
             case 'sub_flow': return p.label || p.flowId || '(未選擇)';
             case 'for_each_row': return `${p.table || '?'} → ${p.rowVar || '$row'}`;
+            case 'read_row': return `${p.table || '?'}[${p.indexExpr || '0'}] → ${p.rowVar || '$item'}`;
             case 'append_result': return `→ ${p.table || 'results'}`;
             case 'export_results': return `📥 ${p.filename || '報告'}`;
+            case 'clear_results': return `🧹 ${p.table || 'results'}`;
             default: return '';
         }
     };
@@ -84,12 +86,13 @@ const BlockRow = ({ block, depth, onDelete, onUpdate, onDragOps, currentBlockId,
     const updateElseChild = (updated) => {
         onUpdate({ ...block, elseChildren: (block.elseChildren || []).map(c => c.id === updated.id ? updated : c) });
     };
+    // 子容器拖放：同層用 useListDrag，跨容器直接轉發給 rootMover
     const elseChildDragOps = useListDrag(block.elseChildren || [], (newChildren) => {
         onUpdate({ ...block, elseChildren: newChildren });
-    });
+    }, rootMover);
     const childDragOps = useListDrag(block.children || [], (newChildren) => {
         onUpdate({ ...block, children: newChildren });
-    });
+    }, rootMover);
 
     // 拖放事件
     const handleDragStart = (e) => {
@@ -160,7 +163,7 @@ const BlockRow = ({ block, depth, onDelete, onUpdate, onDragOps, currentBlockId,
                     <BlockParams block={block} onUpdate={onUpdate} allFlows={allFlows} />
                 </div>
                 {/* 錯誤策略（僅對可能失敗的積木顯示）*/}
-                {!isRunning && !['loop', 'if_then', 'set_var', 'log', 'wait', 'for_each_row', 'append_result', 'export_results'].includes(block.type) && (
+                {!isRunning && !['loop', 'if_then', 'set_var', 'log', 'wait', 'for_each_row', 'append_result', 'export_results', 'read_row', 'clear_results'].includes(block.type) && (
                     <div className="flex items-center gap-0.5 shrink-0" onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
                         <select
                             value={block.errorPolicy || 'stop'}
@@ -204,6 +207,7 @@ const BlockRow = ({ block, depth, onDelete, onUpdate, onDragOps, currentBlockId,
                             )}
                             <BlockRow block={child} depth={depth + 1}
                                 onDelete={deleteChild} onUpdate={updateChild} onDragOps={childDragOps}
+                                rootMover={rootMover}
                                 currentBlockId={currentBlockId} isRunning={isRunning} allFlows={allFlows} />
                         </React.Fragment>
                     ))}
@@ -225,6 +229,7 @@ const BlockRow = ({ block, depth, onDelete, onUpdate, onDragOps, currentBlockId,
                             )}
                             <BlockRow block={child} depth={depth + 1}
                                 onDelete={deleteElseChild} onUpdate={updateElseChild} onDragOps={elseChildDragOps}
+                                rootMover={rootMover}
                                 currentBlockId={currentBlockId} isRunning={isRunning} allFlows={allFlows} />
                         </React.Fragment>
                     ))}
@@ -235,36 +240,65 @@ const BlockRow = ({ block, depth, onDelete, onUpdate, onDragOps, currentBlockId,
     );
 };
 
+// 模組層級共享拖曳狀態（跨容器必須共享）
+const _globalDraggedId = { current: null };
+
 /**
- * useListDrag — 通用列表拖放 hook
- * 管理一組 blocks 的拖曳排序。
+ * useListDrag — 通用列表拖放 hook（支援跨容器原子移動）
  * @param {Array} items - 當前項目陣列
  * @param {Function} setItems - 更新項目的函式
+ * @param {Function} [rootMover] - rootMover(draggedId, targetId, position)：在整棵樹做原子移除+插入
  */
-export function useListDrag(items, setItems) {
-    const draggedIdRef = useRef(null);
-
+export function useListDrag(items, setItems, rootMover) {
     return {
-        onStart: (id) => { draggedIdRef.current = id; },
-        onEnd: () => { draggedIdRef.current = null; },
+        onStart: (id) => { _globalDraggedId.current = id; },
+        onEnd: () => { _globalDraggedId.current = null; },
         onDrop: (targetId, position) => {
-            const draggedId = draggedIdRef.current;
+            const draggedId = _globalDraggedId.current;
             if (!draggedId || draggedId === targetId) return;
 
-            const arr = [...items];
-            const fromIdx = arr.findIndex(b => b.id === draggedId);
-            if (fromIdx === -1) return;
+            const fromIdx = items.findIndex(b => b.id === draggedId);
+            const toIdxRaw = items.findIndex(b => b.id === targetId);
 
-            const [moved] = arr.splice(fromIdx, 1);
-            let toIdx = arr.findIndex(b => b.id === targetId);
-            if (toIdx === -1) toIdx = arr.length;
-            if (position === 'after') toIdx++;
+            if (fromIdx !== -1 && toIdxRaw !== -1) {
+                // 兩者都在同一個直接父容器 → 直接排序
+                const arr = [...items];
+                const [moved] = arr.splice(fromIdx, 1);
+                let toIdx = arr.findIndex(b => b.id === targetId);
+                if (toIdx === -1) toIdx = arr.length;
+                if (position === 'after') toIdx += 1;
+                arr.splice(toIdx, 0, moved);
+                setItems(arr);
+            } else if (rootMover) {
+                // 跨容器（或其中一個找不到）→ rootMover 整棵樹原子操作
+                rootMover(draggedId, targetId, position);
+            }
 
-            arr.splice(toIdx, 0, moved);
-            setItems(arr);
-            draggedIdRef.current = null;
+            _globalDraggedId.current = null;
         },
     };
+}
+
+/**
+ * removeBlockFromTree — 遞迴搜尋整棵 block 樹，移除指定 id 的 block 並回傳
+ */
+export function removeBlockFromTree(blocks, id) {
+    for (let i = 0; i < blocks.length; i++) {
+        if (blocks[i].id === id) {
+            return blocks.splice(i, 1)[0];
+        }
+        // 搜尋 children
+        if (blocks[i].children) {
+            const found = removeBlockFromTree(blocks[i].children, id);
+            if (found) return found;
+        }
+        // 搜尋 elseChildren
+        if (blocks[i].elseChildren) {
+            const found = removeBlockFromTree(blocks[i].elseChildren, id);
+            if (found) return found;
+        }
+    }
+    return null;
 }
 
 export default BlockRow;

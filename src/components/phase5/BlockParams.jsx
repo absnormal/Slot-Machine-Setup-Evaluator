@@ -90,11 +90,24 @@ const BlockParams = ({ block, onUpdate, allFlows }) => {
 
         case 'ocr_read':
             return (
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5 flex-wrap">
                     <RoiSelect value={p.roi} onChange={v => set('roi', v)} filter="ocr" />
                     <span className="text-slate-500 text-[10px]">→</span>
-                    <input className={`${MINI} w-20`} value={p.varName || ''} placeholder="$var"
+                    <input className={`${MINI} min-w-[80px] flex-1`} value={p.varName || ''} placeholder="$var"
                         onChange={e => set('varName', e.target.value)} />
+                    {/* 模式切換：數字 / 文字 */}
+                    {['number', 'text'].map(m => (
+                        <button key={m}
+                            className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
+                                (p.mode || 'number') === m
+                                    ? m === 'text' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                                                   : 'bg-teal-500/20 text-teal-300 border border-teal-500/40'
+                                    : 'text-slate-500 hover:text-slate-300 border border-transparent'
+                            }`}
+                            onClick={e => { e.stopPropagation(); set('mode', m); }}>
+                            {m === 'number' ? '123' : 'ABC'}
+                        </button>
+                    ))}
                 </div>
             );
 
@@ -109,7 +122,7 @@ const BlockParams = ({ block, onUpdate, allFlows }) => {
         case 'set_var':
             return (
                 <div className="flex items-center gap-1.5">
-                    <input className={`${MINI} w-20`} value={p.name || ''} placeholder="$name"
+                    <input className={`${MINI} min-w-[80px] flex-1`} value={p.name || ''} placeholder="$name"
                         onChange={e => set('name', e.target.value)} />
                     <select className={`${SEL} w-12 text-center`} value={p.op || '='}
                         onChange={e => set('op', e.target.value)}>
@@ -118,8 +131,9 @@ const BlockParams = ({ block, onUpdate, allFlows }) => {
                         <option value="-=">-=</option>
                         <option value="*=">*=</option>
                         <option value="/=">/=</option>
+                        <option value="%=">%=</option>
                     </select>
-                    <input className={`${MINI} w-20`} value={p.value ?? ''} placeholder="值"
+                    <input className={`${MINI} min-w-[80px] flex-1`} value={p.value ?? ''} placeholder="值"
                         onChange={e => set('value', e.target.value)} />
                 </div>
             );
@@ -238,24 +252,25 @@ const BlockParams = ({ block, onUpdate, allFlows }) => {
         case 'for_each_row': {
             const tables = useAppStore(s => s.dataTables);
             const tableNames = Object.keys(tables);
+            const isVar = (p.table || '').startsWith('$');
+            // 若是已知表格名稱，顯示欄位提示
+            const knownTable = !isVar ? tables[p.table] : null;
             return (
                 <div className="flex items-center gap-1.5 flex-wrap">
-                    <select className={`${SEL} min-w-[80px]`} value={p.table || ''}
-                        onChange={e => set('table', e.target.value)}
-                        onClick={e => e.stopPropagation()}>
-                        <option value="">— 選擇資料表 —</option>
-                        {tableNames.map(n => (
-                            <option key={n} value={n}>{n} ({tables[n].rows.length}列)</option>
-                        ))}
-                    </select>
+                    <TableInput id={`for_each_row_${block?.id}`}
+                        value={p.table || ''} tableNames={tableNames}
+                        onChange={v => set('table', v)} />
                     <span className="text-slate-500 text-[10px]">→</span>
                     <input className={`${MINI} w-16`} value={p.rowVar || '$row'} placeholder="$row"
                         onChange={e => set('rowVar', e.target.value)}
                         onClick={e => e.stopPropagation()} />
-                    {p.table && tables[p.table] && (
+                    {knownTable && (
                         <span className="text-[10px] text-slate-600">
-                            欄位: {tables[p.table].headers.slice(0, 4).join(', ')}{tables[p.table].headers.length > 4 ? '...' : ''}
+                            欄位: {knownTable.headers.slice(0, 4).join(', ')}{knownTable.headers.length > 4 ? '...' : ''}
                         </span>
+                    )}
+                    {isVar && (
+                        <span className="text-[10px] text-amber-500/70">⚡ 變數表格</span>
                     )}
                 </div>
             );
@@ -313,6 +328,41 @@ const BlockParams = ({ block, onUpdate, allFlows }) => {
                     <span className="text-slate-500 text-[10px]">檔名:</span>
                     <input className={`${MINI} w-24`} value={p.filename || ''} placeholder="報告"
                         onChange={e => set('filename', e.target.value)}
+                        onClick={e => e.stopPropagation()} />
+                </div>
+            );
+
+        case 'read_row': {
+            const tables = useAppStore(s => s.dataTables);
+            const tableNames = Object.keys(tables);
+            const isVar = (p.table || '').startsWith('$');
+            return (
+                <div className="flex items-center gap-1.5 flex-wrap">
+                    <TableInput id={`read_row_${block?.id}`}
+                        value={p.table || ''} tableNames={tableNames}
+                        onChange={v => set('table', v)} />
+                    {isVar && (
+                        <span className="text-[10px] text-amber-500/70">⚡ 變數表格</span>
+                    )}
+                    <span className="text-slate-500 text-[10px]">[</span>
+                    <input className={`${MINI} min-w-[100px] flex-1`} value={p.indexExpr || '0'} placeholder="索引表達式"
+                        onChange={e => set('indexExpr', e.target.value)}
+                        onClick={e => e.stopPropagation()} />
+                    <span className="text-slate-500 text-[10px]">]</span>
+                    <span className="text-slate-500 text-[10px]">→</span>
+                    <input className={`${MINI} w-16`} value={p.rowVar || '$item'} placeholder="$item"
+                        onChange={e => set('rowVar', e.target.value)}
+                        onClick={e => e.stopPropagation()} />
+                </div>
+            );
+        }
+
+        case 'clear_results':
+            return (
+                <div className="flex items-center gap-1.5">
+                    <span className="text-slate-500 text-[10px]">結果表:</span>
+                    <input className={`${MINI} w-20`} value={p.table || 'results'} placeholder="results"
+                        onChange={e => set('table', e.target.value)}
                         onClick={e => e.stopPropagation()} />
                 </div>
             );
@@ -381,6 +431,28 @@ const ClickTargetSelect = ({ value, onChange }) => {
                 <option key={name} value={name}>{name}</option>
             ))}
         </select>
+    );
+};
+// ── 表格名稱輸入（input + datalist：可直接輸入 $var 或從下拉選現有表格）──
+const TableInput = ({ id, value, tableNames, onChange }) => {
+    const listId = `tbl-list-${id}`;
+    const isVar = (value || '').startsWith('$');
+    return (
+        <div className="relative flex items-center">
+            <input
+                className={`${MINI} min-w-[100px] ${isVar ? 'text-amber-300' : ''}`}
+                list={listId}
+                value={value}
+                placeholder="表格名稱 或 $var"
+                onChange={e => onChange(e.target.value)}
+                onClick={e => e.stopPropagation()}
+            />
+            <datalist id={listId}>
+                {tableNames.map(n => (
+                    <option key={n} value={n}>{n}</option>
+                ))}
+            </datalist>
+        </div>
     );
 };
 

@@ -46,14 +46,15 @@ const Phase5Automation = ({
         <div className="fixed bottom-0 left-0 right-0 z-[9998]" style={{ pointerEvents: 'none' }}>
             {/* ══ 展開面板 ══ */}
             <div
-                className="ml-4 max-w-lg mb-0 bg-slate-900/95 backdrop-blur-xl rounded-t-2xl border border-b-0 border-slate-700/50 shadow-2xl"
+                className="ml-4 max-w-3xl mb-0 bg-slate-900/95 backdrop-blur-xl rounded-t-2xl border border-b-0 border-slate-700/50 shadow-2xl"
                 style={{ pointerEvents: isExpanded ? 'auto' : 'none', display: isExpanded ? 'block' : 'none' }}
             >
                 <div className="p-5 flex flex-col gap-4 h-[90vh]">
                     <DataTablePanel />
                     <div className="flex-1 min-h-0">
                         <FlowComposer
-                            ws={wsRef?.current}
+                            wsRef={wsRef}
+                            isConnected={isConnected}
                             videoEl={videoRef?.current}
                             setCandidates={setCandidates}
                             reelROI={reelROI}

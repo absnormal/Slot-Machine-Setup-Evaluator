@@ -44,7 +44,7 @@ let ocrGlobalQueue = Promise.resolve();
 /**
  * 裁切 ROI → 放大 → 原彩影像 → PaddleOCR (透過全域 Queue 保護)
  */
-export async function cropAndOCR(canvas, roi, ocrWorker, decimalPlaces, label = '未知') {
+export async function cropAndOCR(canvas, roi, ocrWorker, decimalPlaces, label = '未知', mode = 'number') {
     if (!roi || !ocrWorker || !canvas) return '';
 
     return new Promise((resolve) => {
@@ -88,6 +88,13 @@ export async function cropAndOCR(canvas, roi, ocrWorker, decimalPlaces, label = 
                 const rawText = (detectedLines || []).map(t => t.text).join(' ').trim();
                 console.log(`[OCR RAW - ${label}]`, rawText);
 
+                // ── 文字模式：直接回傳原始辨識結果（不過濃非數字）──
+                if (mode === 'text') {
+                    resolve(rawText);
+                    return;
+                }
+
+                // ── 數字模式（預設）──
                 let resultStr = "";
                 if (label === 'ORDER_ID') {
                     // 注單號：只保留數字與連字符 (-)

@@ -5,7 +5,7 @@ import { useFlowStorage } from '../../hooks/useFlowStorage';
 import { OcrWorkerBridge } from '../../engine/ocrWorkerBridge';
 import { resolveROI } from '../../engine/roiResolver';
 import { genId } from './blockDefs';
-import BlockRow, { useListDrag } from './BlockRow';
+import BlockRow, { useListDrag, removeBlockFromTree } from './BlockRow';
 import AddBlockButton from './AddBlockButton';
 import useAppStore from '../../stores/useAppStore';
 
@@ -13,7 +13,7 @@ import useAppStore from '../../stores/useAppStore';
  * FlowComposer — 排程器主元件
  * 整合執行引擎 + 本地/雲端存取
  */
-const FlowComposer = ({ ws, videoEl, setCandidates, reelROI, recognizeLocal }) => {
+const FlowComposer = ({ wsRef, isConnected, videoEl, setCandidates, reelROI, recognizeLocal }) => {
     const flow = useFlowRunner();
     const { isRunning, isPaused, isIdle, currentBlock, loopProgress, logs, spinCount, variables,
         runFlow, pause, resume, stop } = flow;
@@ -30,6 +30,7 @@ const FlowComposer = ({ ws, videoEl, setCandidates, reelROI, recognizeLocal }) =
     const [isLoadingFlow, setIsLoadingFlow] = useState(false);
     const [isPreparing, setIsPreparing] = useState(false); // pre-flight + 子流程預載
     const [logsExpanded, setLogsExpanded] = useState(false);
+    const [subVarsOpen, setSubVarsOpen] = useState(false);
 
     // 初始化載入雲端
     useEffect(() => { fetchCloudFlows(); }, [fetchCloudFlows]);
@@ -67,18 +68,50 @@ const FlowComposer = ({ ws, videoEl, setCandidates, reelROI, recognizeLocal }) =
         setCurrentSource(f._source);
     };
 
+    // ── 跨容器拖放：單一 setBlocks 完成「移除+插入」，避免两次 setState 競爭 ──
+    // 在整棵樹找到 targetId 後插入
+    const insertIntoTree = (nodes, targetId, position, blockToInsert) => {
+        for (let i = 0; i < nodes.length; i++) {
+            if (nodes[i].id === targetId) {
+                const idx = position === 'after' ? i + 1 : i;
+                nodes.splice(idx, 0, blockToInsert);
+                return true;
+            }
+            if (nodes[i].children && insertIntoTree(nodes[i].children, targetId, position, blockToInsert)) return true;
+            if (nodes[i].elseChildren && insertIntoTree(nodes[i].elseChildren, targetId, position, blockToInsert)) return true;
+        }
+        return false;
+    };
+
+    // rootMover：從整棵樹移動 block（給 BlockRow 的 crossContainerHandler 用）
+    const rootMover = (draggedId, targetId, position) => {
+        setBlocks(prev => {
+            const clone = JSON.parse(JSON.stringify(prev));
+            const removed = removeBlockFromTree(clone, draggedId);
+            if (!removed) return prev;
+            if (targetId === '__end__') {
+                clone.push(removed);
+            } else {
+                const inserted = insertIntoTree(clone, targetId, position, removed);
+                if (!inserted) clone.push(removed); // fallback
+            }
+            return clone;
+        });
+    };
+
+    // 根層同層移動（只限根層連段互換位置）
+    const rootDragOps = useListDrag(blocks, setBlocks, rootMover);
+
     // 積木操作
     const deleteBlock = (id) => setBlocks(prev => prev.filter(b => b.id !== id));
     const updateBlock = (updated) => setBlocks(prev => prev.map(b => b.id === updated.id ? updated : b));
     const insertBlock = (newBlock, index) => setBlocks(prev => {
-        if (index === undefined || index === null || index >= prev.length) {
-            return [...prev, newBlock];
-        }
+        if (index === undefined || index === null || index >= prev.length) return [...prev, newBlock];
         const next = [...prev];
         next.splice(index, 0, newBlock);
         return next;
     });
-    const rootDragOps = useListDrag(blocks, setBlocks);
+
 
     // 前端 PaddleOCR Worker（懶初始化，首次執行時才載入模型）
     const ocrWorkerRef = useRef(null);
@@ -130,6 +163,7 @@ const FlowComposer = ({ ws, videoEl, setCandidates, reelROI, recognizeLocal }) =
         checkBlocks(blocks);
 
         // 環境檢查
+        const ws = wsRef?.current;
         if (!ws || ws.readyState !== WebSocket.OPEN) warnings.push('❌ WebSocket 未連線');
         if (!videoEl) warnings.push('❌ 影像來源未設定');
         if (blocks.length === 0) warnings.push('❌ 流程是空的');
@@ -313,7 +347,7 @@ const FlowComposer = ({ ws, videoEl, setCandidates, reelROI, recognizeLocal }) =
 
                 {/* 執行控制 */}
                 {isIdle ? (
-                    <button onClick={handleRun} disabled={!ws || blocks.length === 0 || isPreparing}
+                    <button onClick={handleRun} disabled={!isConnected || blocks.length === 0 || isPreparing}
                         className="px-4 py-1.5 rounded-xl text-sm font-bold bg-gradient-to-r from-emerald-500 to-green-600 text-white hover:from-emerald-600 hover:to-green-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5 active:scale-95 transition-all">
                         {isPreparing ? (
                             <><RefreshCw size={14} className="animate-spin" /> 準備中...</>
@@ -366,6 +400,7 @@ const FlowComposer = ({ ws, videoEl, setCandidates, reelROI, recognizeLocal }) =
                             )}
                             <BlockRow block={block} depth={0}
                                 onDelete={deleteBlock} onUpdate={updateBlock} onDragOps={rootDragOps}
+                                rootMover={rootMover}
                                 currentBlockId={currentBlock?.id} isRunning={isRunning} allFlows={allFlows} />
                         </React.Fragment>
                     ))}
@@ -387,18 +422,43 @@ const FlowComposer = ({ ws, videoEl, setCandidates, reelROI, recognizeLocal }) =
                 {!isRunning && <AddBlockButton depth={0} onAdd={(b) => insertBlock(b)} />}
             </div>
 
-            {/* ── 變數空間 ── */}
-            {Object.keys(variables).length > 0 && (
-                <div className="flex flex-wrap gap-2 shrink-0">
-                    {Object.entries(variables).map(([k, v]) => (
-                        <span key={k} className="text-xs bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 font-mono">
-                            <span className="text-cyan-400">{k}</span>
-                            <span className="text-slate-500">=</span>
-                            <span className="text-slate-300">{String(v).substring(0, 15)}</span>
-                        </span>
-                    ))}
-                </div>
-            )}
+            {/* ── 變數空間（分層壓縮顯示）── */}
+            {Object.keys(variables).length > 0 && (() => {
+                const entries = Object.entries(variables);
+                const mainVars = entries.filter(([k]) => !k.includes('.'));
+                const subVars  = entries.filter(([k]) =>  k.includes('.'));
+                return (
+                    <div className="shrink-0 bg-slate-900/50 rounded-lg border border-slate-800 px-2 py-1.5">
+                        <div className="flex flex-wrap gap-1.5">
+                            {mainVars.map(([k, v]) => (
+                                <span key={k} className="text-[11px] bg-slate-800 border border-slate-700 rounded px-1.5 py-0.5 font-mono leading-tight">
+                                    <span className="text-cyan-400">{k}</span>
+                                    <span className="text-slate-500">=</span>
+                                    <span className="text-slate-300">{String(v).substring(0, 12)}</span>
+                                </span>
+                            ))}
+                            {subVars.length > 0 && (
+                                <button
+                                    className="text-[10px] px-1.5 py-0.5 rounded border border-dashed border-slate-700 text-slate-500 hover:text-slate-300 hover:border-slate-600 transition-colors font-mono"
+                                    onClick={() => setSubVarsOpen(o => !o)}>
+                                    {subVarsOpen ? '▾' : '▸'} {subVars.length} 列變數
+                                </button>
+                            )}
+                        </div>
+                        {subVarsOpen && subVars.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-1 pt-1 border-t border-slate-800 max-h-20 overflow-y-auto">
+                                {subVars.map(([k, v]) => (
+                                    <span key={k} className="text-[10px] bg-slate-800/60 rounded px-1 py-0.5 font-mono text-slate-400 leading-tight">
+                                        <span className="text-sky-400/80">{k}</span>
+                                        <span className="text-slate-600">=</span>
+                                        <span>{String(v).substring(0, 10)}</span>
+                                    </span>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                );
+            })()}
 
             {/* ── 執行紀錄（可收合）── */}
             {logs.length > 0 && (() => {

@@ -32,8 +32,10 @@ export const BLOCK_META = {
     break_loop:   { icon: '⏏️', label: '跳出迴圈', color: 'border-red-400/50 bg-red-500/15' },
     // 📊 表格 — 翠綠色系
     for_each_row: { icon: '📊', label: '逐行迭代', color: 'border-emerald-400/50 bg-emerald-500/15' },
+    read_row:     { icon: '📖', label: '讀取單行', color: 'border-emerald-400/50 bg-emerald-500/15' },
     append_result:{ icon: '📝', label: '寫入結果', color: 'border-emerald-400/50 bg-emerald-500/15' },
     export_results:{ icon: '📥', label: '匯出報告', color: 'border-emerald-400/50 bg-emerald-500/15' },
+    clear_results:{ icon: '🧹', label: '清空結果', color: 'border-emerald-400/50 bg-emerald-500/15' },
 };
 
 export const NEW_BLOCK_TEMPLATES = [
@@ -57,8 +59,10 @@ export const NEW_BLOCK_TEMPLATES = [
     { type: 'stop', params: { reason: '手動終止' } },
     { type: 'break_loop', params: {} },
     { type: 'for_each_row', params: { table: '', rowVar: '$row' }, children: [] },
+    { type: 'read_row', params: { table: '', indexExpr: '0', rowVar: '$item' } },
     { type: 'append_result', params: { table: 'results', columns: {} } },
     { type: 'export_results', params: { table: 'results', filename: '報告' } },
+    { type: 'clear_results', params: { table: 'results' } },
 ];
 
 let _blockIdCounter = 0;
