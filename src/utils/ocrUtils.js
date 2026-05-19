@@ -1,9 +1,9 @@
 /**
  * ocrUtils.js — 通用的數字 OCR 工具函式（基於 PaddleOCR）
+ *
+ * onnxruntime-web (~540KB) 和 @gutenye/ocr-browser 改為動態 import，
+ * 只在首次呼叫 createOcrWorker() 時才載入，不影響主 bundle 大小。
  */
-
-import Ocr from '@gutenye/ocr-browser';
-import * as ort from 'onnxruntime-web';
 
 /**
  * 初始化 OCR Worker
@@ -12,9 +12,13 @@ export const createOcrWorker = async () => {
     try {
         console.log("[OCR] 啟動 PaddleOCR 引擎中...");
         const baseUrl = import.meta.env.BASE_URL;
+
+        // 動態載入重型依賴（不進主 bundle）
+        const ort = await import('onnxruntime-web');
         ort.env.wasm.wasmPaths = baseUrl;
         ort.env.wasm.numThreads = 1;
 
+        const { default: Ocr } = await import('@gutenye/ocr-browser');
         const ocr = await Ocr.create({
             models: {
                 detectionPath: `${baseUrl}ocr-models/ch_PP-OCRv4_det_infer.onnx`,
