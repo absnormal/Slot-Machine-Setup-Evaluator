@@ -44,6 +44,8 @@ export function useFlowRunner() {
         });
 
         runner.addEventListener(FlowEvent.LOOP_PROGRESS, (e) => {
+            // 只顯示主流程的迴圈進度，子流程內的迴圈不覆蓋
+            if (e.detail.inSubFlow) return;
             setLoopProgress({
                 blockId: e.detail.blockId,
                 current: e.detail.current,

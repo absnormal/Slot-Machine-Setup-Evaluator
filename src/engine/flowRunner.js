@@ -444,14 +444,22 @@ export class FlowRunner extends EventTarget {
     }
 
     async _execOcrRead(block) {
-        const { roi, varName, mode = 'number' } = block.params;
+        const { roi, varName, mode = 'number', live = false } = block.params;
         const vName = varName || `$${roi.toLowerCase()}`;
         let value;
 
+        const roiPct = resolveROI(roi);
+        if (!roiPct) throw new Error(`[ocr_read] 無法解析 ROI: "${roi}"`);
+
+        // live 模式：直接從 video 即時截取（不存截圖，輕量）
+        if (live && this._videoEl && this._ocrWorker) {
+            const frame = captureFrame(this._videoEl);
+            const dp = mode === 'text' ? 0 : getDecimalPlaces(roi);
+            value = await cropAndOCR(frame.canvas, roiPct, this._ocrWorker, dp, roi.toUpperCase(), mode);
+            this._emit(FlowEvent.LOG, { message: `📖🔴 ${roi}→${vName}: "${value}" (即時${mode === 'text' ? '文字' : '數字'})` });
+        }
         // 有截圖 + 前端 ocrWorker → 用前端 DBNet（優先）
-        if (this._lastCapturedCanvas && this._ocrWorker) {
-            const roiPct = resolveROI(roi);
-            if (!roiPct) throw new Error(`[ocr_read] 無法解析 ROI: "${roi}"`);
+        else if (this._lastCapturedCanvas && this._ocrWorker) {
             const dp = mode === 'text' ? 0 : getDecimalPlaces(roi);
             value = await cropAndOCR(this._lastCapturedCanvas, roiPct, this._ocrWorker, dp, roi.toUpperCase(), mode);
             this._emit(FlowEvent.LOG, { message: `📖 ${roi}→${vName}: "${value}" (${mode === 'text' ? '文字' : '數字'})` });
@@ -617,6 +625,8 @@ export class FlowRunner extends EventTarget {
                     blockId: block.id,
                     current: i + 1,
                     total,
+                    depth,
+                    inSubFlow: !!this._inSubFlow,
                 });
 
                 try {
@@ -636,6 +646,8 @@ export class FlowRunner extends EventTarget {
                     blockId: block.id,
                     current: i,
                     total: -1, // 未知總數
+                    depth,
+                    inSubFlow: !!this._inSubFlow,
                 });
 
                 try {

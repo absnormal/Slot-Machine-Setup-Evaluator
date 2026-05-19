@@ -15,6 +15,14 @@ const SEL  = 'bg-slate-900 border border-slate-600 rounded px-1.5 py-0.5 text-xs
 // OCR ROI 多選（勾選框式）
 const OCR_ROIS = AVAILABLE_ROIS.filter(r => r.category === 'ocr').map(r => r.name);
 
+// ROI 名稱 → 實際變數名稱的映射（和 flowRunner._execOcrBatch 一致）
+const ROI_TO_VAR = {
+    'WIN': '$win', 'BAL': '$balance', 'BALANCE': '$balance',
+    'BET': '$bet', 'ORDER_ID': '$orderId', 'ORDERID': '$orderId',
+    'MULT': '$multiplier', 'MULTIPLIER': '$multiplier',
+};
+const roiVarLabel = (name) => ROI_TO_VAR[name.toUpperCase()] || `$${name.toLowerCase()}`;
+
 const BlockParams = ({ block, onUpdate, allFlows }) => {
     const p = block.params || {};
 
@@ -64,29 +72,39 @@ const BlockParams = ({ block, onUpdate, allFlows }) => {
                 </div>
             );
 
-        case 'ocr_batch':
+        case 'ocr_batch': {
+            const dynamicTargets = Object.entries(usePhase4Store(s => s.clickTargets) || {})
+                .filter(([, v]) => v.category === 'ocr')
+                .map(([name]) => name);
+            const allOcrNames = [...OCR_ROIS, ...dynamicTargets];
+            const selected = p.rois || [];
+            const available = allOcrNames.filter(n => !selected.includes(n));
             return (
                 <div className="flex items-center gap-1 flex-wrap">
-                    {OCR_ROIS.map(name => {
-                        const checked = (p.rois || []).includes(name);
-                        return (
-                            <label key={name} className={`flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded cursor-pointer transition-colors ${
-                                checked ? 'bg-cyan-500/15 text-cyan-300' : 'text-slate-500 hover:text-slate-300'
-                            }`}>
-                                <input type="checkbox" checked={checked}
-                                    className="w-3 h-3 accent-cyan-500"
-                                    onChange={() => {
-                                        const rois = checked
-                                            ? (p.rois || []).filter(r => r !== name)
-                                            : [...(p.rois || []), name];
-                                        set('rois', rois);
-                                    }} />
-                                {name}
-                            </label>
-                        );
-                    })}
+                    {selected.map(name => (
+                        <span key={name} className={`flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded ${
+                            OCR_ROIS.includes(name) ? 'bg-cyan-500/15 text-cyan-300' : 'bg-amber-500/15 text-amber-300'
+                        }`}>
+                            {OCR_ROIS.includes(name) ? roiVarLabel(name) : `📐 ${name}`}
+                            <button className="hover:text-rose-400 ml-0.5" onClick={e => {
+                                e.stopPropagation();
+                                set('rois', selected.filter(r => r !== name));
+                            }}>×</button>
+                        </span>
+                    ))}
+                    {available.length > 0 && (
+                        <select className={`${SEL} text-[10px] w-16`} value=""
+                            onChange={e => { if (e.target.value) set('rois', [...selected, e.target.value]); }}
+                            onClick={e => e.stopPropagation()}>
+                            <option value="">+</option>
+                            {available.map(name => (
+                                <option key={name} value={name}>{OCR_ROIS.includes(name) ? roiVarLabel(name) : `📐 ${name}`}</option>
+                            ))}
+                        </select>
+                    )}
                 </div>
             );
+        }
 
         case 'ocr_read':
             return (
@@ -108,6 +126,16 @@ const BlockParams = ({ block, onUpdate, allFlows }) => {
                             {m === 'number' ? '123' : 'ABC'}
                         </button>
                     ))}
+                    {/* 即時模式：直接從畫面讀，不需截圖 */}
+                    <button
+                        className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
+                            p.live ? 'bg-red-500/20 text-red-300 border border-red-500/40'
+                                   : 'text-slate-500 hover:text-slate-300 border border-transparent'
+                        }`}
+                        onClick={e => { e.stopPropagation(); set('live', !p.live); }}
+                        title="即時模式：直接從畫面讀取，不需要先截圖">
+                        🔴即時
+                    </button>
                 </div>
             );
 
@@ -266,7 +294,7 @@ const BlockParams = ({ block, onUpdate, allFlows }) => {
                                             : [...(p.fields || RECORD_FIELDS), name];
                                         set('fields', fields);
                                     }} />
-                                {name}
+                                {roiVarLabel(name)}
                             </label>
                         );
                     })}

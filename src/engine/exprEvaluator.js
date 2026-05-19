@@ -4,7 +4,7 @@
  * 支援：
  *   - 數字字面值：123, 0.5, -3
  *   - 字串字面值："text", 'text'
- *   - 比較：==  !=  ===  !==  <  >  <=  >=
+ *   - 比較：==  !=  ===  !==  <  >  <=  >=  contains
  *   - 邏輯：&&  ||  !
  *   - 算術：+  -  *  /  %
  *   - 分組：( expr )
@@ -62,7 +62,7 @@ function tokenize(src) {
         if (s[i] === ')') { tokens.push({ type: TK.RPAREN }); i++; continue; }
 
         // 多字元運算符（優先匹配長的）
-        const multi = ['===', '!==', '==', '!=', '<=', '>=', '&&', '||'];
+        const multi = ['===', '!==', '==', '!=', '<=', '>=', '&&', '||', 'contains'];
         let matched = false;
         for (const op of multi) {
             if (s.startsWith(op, i)) {
@@ -94,7 +94,7 @@ function tokenize(src) {
 
 const PREC = {
     '||': 1, '&&': 2,
-    '==': 3, '!=': 3, '===': 3, '!==': 3,
+    '==': 3, '!=': 3, '===': 3, '!==': 3, 'contains': 3,
     '<': 4, '>': 4, '<=': 4, '>=': 4,
     '+': 5, '-': 5,
     '*': 6, '/': 6, '%': 6,
@@ -171,6 +171,7 @@ function evalAST(node) {
         // 寬鬆比較：數字優先
         case '==':  return bothNum ? lNum === rNum : String(L) === String(R);
         case '!=':  return bothNum ? lNum !== rNum : String(L) !== String(R);
+        case 'contains': return String(L).includes(String(R));
         case '<':   return bothNum ? lNum < rNum   : String(L) < String(R);
         case '>':   return bothNum ? lNum > rNum   : String(L) > String(R);
         case '<=':  return bothNum ? lNum <= rNum  : String(L) <= String(R);
