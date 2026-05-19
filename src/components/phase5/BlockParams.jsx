@@ -138,6 +138,33 @@ const BlockParams = ({ block, onUpdate, allFlows }) => {
                 </div>
             );
 
+        case 'var_replace':
+            return (
+                <div className="flex items-center gap-1.5 flex-wrap">
+                    <input className={`${MINI} w-24`} value={p.varName || ''} placeholder="$var"
+                        onChange={e => set('varName', e.target.value)}
+                        onClick={e => e.stopPropagation()} />
+                    <span className="text-slate-500 text-[10px]">找</span>
+                    <input className={`${MINI} min-w-[60px] flex-1`} value={p.find || ''} placeholder="搜尋（支援 $var）"
+                        onChange={e => set('find', e.target.value)}
+                        onClick={e => e.stopPropagation()} />
+                    <span className="text-slate-500 text-[10px]">→</span>
+                    <input className={`${MINI} min-w-[40px] flex-1`} value={p.replace ?? ''} placeholder="取代"
+                        onChange={e => set('replace', e.target.value)}
+                        onClick={e => e.stopPropagation()} />
+                </div>
+            );
+
+        case 'var_extract_number':
+            return (
+                <div className="flex items-center gap-1.5">
+                    <input className={`${MINI} w-28`} value={p.varName || ''} placeholder="$var"
+                        onChange={e => set('varName', e.target.value)}
+                        onClick={e => e.stopPropagation()} />
+                    <span className="text-slate-500 text-[10px]">→ 純數字</span>
+                </div>
+            );
+
         case 'log':
             return (
                 <div className="flex items-center gap-1.5 flex-1 min-w-0">

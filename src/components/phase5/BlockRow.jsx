@@ -35,6 +35,8 @@ const BlockRow = ({ block, depth, onDelete, onUpdate, onDragOps, rootMover, curr
             case 'ocr_batch': return (p.rois || []).join(', ');
             case 'loop': return p.count ? `${p.count} 次` : p.condition || '';
             case 'set_var': return `${p.name} ${p.op || '='} ${p.value}`;
+            case 'var_replace': return `${p.varName} 剔"${p.find || ''}"`;
+            case 'var_extract_number': return `${p.varName} → 數字`;
             case 'log': return p.message?.substring(0, 20) || '';
             case 'key_press': return p.key || '';
             case 'type_text': return p.text?.substring(0, 20) || '';
@@ -163,7 +165,7 @@ const BlockRow = ({ block, depth, onDelete, onUpdate, onDragOps, rootMover, curr
                     <BlockParams block={block} onUpdate={onUpdate} allFlows={allFlows} />
                 </div>
                 {/* 錯誤策略（僅對可能失敗的積木顯示）*/}
-                {!isRunning && !['loop', 'if_then', 'set_var', 'log', 'wait', 'for_each_row', 'append_result', 'export_results', 'read_row', 'clear_results'].includes(block.type) && (
+                {!isRunning && !['loop', 'if_then', 'set_var', 'var_replace', 'var_extract_number', 'log', 'wait', 'for_each_row', 'append_result', 'export_results', 'read_row', 'clear_results'].includes(block.type) && (
                     <div className="flex items-center gap-0.5 shrink-0" onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
                         <select
                             value={block.errorPolicy || 'stop'}

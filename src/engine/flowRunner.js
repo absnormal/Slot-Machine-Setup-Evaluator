@@ -221,6 +221,12 @@ export class FlowRunner extends EventTarget {
                     case 'set_var':
                         result = this._execSetVar(block);
                         break;
+                    case 'var_replace':
+                        result = this._execVarReplace(block);
+                        break;
+                    case 'var_extract_number':
+                        result = this._execVarExtractNumber(block);
+                        break;
                     case 'log':
                         result = this._execLog(block);
                         break;
@@ -702,6 +708,50 @@ export class FlowRunner extends EventTarget {
     _execLog(block) {
         const msg = this._interpolate(block.params.message);
         this._emit(FlowEvent.LOG, { message: msg });
+    }
+
+    /**
+     * var_replace — 變數內容取代
+     * 將指定變數中的 find 字串取代為 replace 字串（全部取代）
+     * find/replace 都支援 $var 變數引用
+     */
+    _execVarReplace(block) {
+        const { varName, find, replace = '' } = block.params;
+        const findStr = String(this._interpolate(find));
+        const replStr = String(this._interpolate(replace));
+        const current = String(this.variables[varName] ?? '');
+        // 全部取代（不只第一個）
+        const result = current.split(findStr).join(replStr);
+        this.variables[varName] = result;
+        this._emit(FlowEvent.VAR_UPDATE, { name: varName, value: result });
+        this._emit(FlowEvent.LOG, { message: `🔤 ${varName}: "${current}" → "${result}" (剔除"${findStr}")` });
+        return result;
+    }
+
+    /**
+     * var_extract_number — 從變數中提取數字
+     * 移除所有非數字字元（保留 0-9 . , -），再清理千分位逗號與多餘小數點
+     */
+    _execVarExtractNumber(block) {
+        const { varName } = block.params;
+        const current = String(this.variables[varName] ?? '');
+        // ① 只保留數字、小數點、逗號、負號
+        let cleaned = current.replace(/[^0-9.,\-]/g, '');
+        // ② 移除千分位逗號
+        cleaned = cleaned.replace(/,/g, '');
+        // ③ 清掉頭尾孤立小數點
+        cleaned = cleaned.replace(/^\.+|\.+$/g, '');
+        // ④ 多個小數點：只認最後一個為小數點（其他是千分位誤判）
+        const dotParts = cleaned.split('.');
+        if (dotParts.length > 2) {
+            const decimals = dotParts.pop();
+            cleaned = dotParts.join('') + '.' + decimals;
+        }
+        const result = cleaned || '0';
+        this.variables[varName] = result;
+        this._emit(FlowEvent.VAR_UPDATE, { name: varName, value: result });
+        this._emit(FlowEvent.LOG, { message: `🔢 ${varName}: "${current}" → "${result}"` });
+        return result;
     }
 
     // ── 表格積木（委派至 actions/tableAction.js）──

@@ -26,6 +26,8 @@ export const BLOCK_META = {
     sub_flow:     { icon: '📦', label: '子流程', color: 'border-cyan-400/50 bg-cyan-500/15' },
     // 🔧 工具 — 灰色系
     set_var:      { icon: '📝', label: '設定變數', color: 'border-slate-400/40 bg-slate-500/10' },
+    var_replace:  { icon: '🔤', label: '變數取代', color: 'border-slate-400/40 bg-slate-500/10' },
+    var_extract_number: { icon: '🔢', label: '提取數字', color: 'border-slate-400/40 bg-slate-500/10' },
     log:          { icon: '📋', label: '記錄', color: 'border-slate-400/40 bg-slate-500/10' },
     // 🛑 控制 — 紅色系
     stop:         { icon: '🛑', label: '終止流程', color: 'border-red-400/50 bg-red-500/15' },
@@ -50,6 +52,8 @@ export const NEW_BLOCK_TEMPLATES = [
     { type: 'if_then', params: { condition: '$win > 0' }, children: [], elseChildren: [] },
     { type: 'sub_flow', params: { flowId: '', label: '' } },
     { type: 'set_var', params: { name: '$totalWin', value: 0 } },
+    { type: 'var_replace', params: { varName: '$win_raw', find: '$幣別符號', replace: '' } },
+    { type: 'var_extract_number', params: { varName: '$win_raw' } },
     { type: 'log', params: { message: '第 $loopIndex 局完成' } },
     { type: 'capture_frame', params: {} },
     { type: 'recognize_grid', params: {} },
