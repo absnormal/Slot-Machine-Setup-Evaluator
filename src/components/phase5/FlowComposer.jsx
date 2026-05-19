@@ -173,18 +173,7 @@ const FlowComposer = ({ wsRef, isConnected, videoEl, setCandidates, reelROI, rec
             const msg = `執行前檢查發現 ${warnings.length} 個問題：\n\n${warnings.join('\n')}\n\n是否仍要執行？`;
             if (!window.confirm(msg)) return;
         }
-        // 懶載入前端 OCR Worker
-        if (!ocrWorkerRef.current) {
-            try {
-                const bridge = new OcrWorkerBridge();
-                await bridge.init();
-                ocrWorkerRef.current = bridge;
-            } catch (e) {
-                console.warn('[FlowComposer] 前端 OCR Worker 初始化失敗，將使用 Python OCR:', e);
-            }
-        }
-
-        // ── 預先抓取所有子流程（遞迴掃描：子流程的子流程也要預載）──
+        // ── 平行初始化：OCR Worker + 子流程預載同時進行 ──
         const subFlowCache = new Map(); // flowId → { name, blocks, ... }
 
         // 收集 blocks 中所有引用的子流程 ID
@@ -199,42 +188,55 @@ const FlowComposer = ({ wsRef, isConnected, videoEl, setCandidates, reelROI, rec
             return collected;
         };
 
-        // 遞迴解析：解析一層後再掃描該層的 blocks 找出更深層的子流程
+        // 平行解析：同一層的子流程全部同時 fetch，解析完再掃下一層
         const resolveAllSubFlows = async (blockList) => {
-            const ids = collectSubFlowIds(blockList);
             const { GAS_URL } = await import('../../utils/constants');
 
-            for (const flowId of ids) {
-                if (subFlowCache.has(flowId)) continue; // 已載入，跳過
+            let pendingBlocks = blockList;
+            const MAX_DEPTH = 10; // 防止無限遞迴
+            for (let depth = 0; depth < MAX_DEPTH; depth++) {
+                const ids = [...collectSubFlowIds(pendingBlocks)].filter(id => !subFlowCache.has(id));
+                if (ids.length === 0) break; // 沒有新的子流程了
 
-                subFlowCache.set(flowId, null); // 佔位，防止循環引用
+                // 佔位，防止循環引用
+                ids.forEach(id => subFlowCache.set(id, null));
 
-                const local = storage.allFlows.find(f => f.id === flowId);
-                let resolved = null;
+                // 同一層全部平行 fetch
+                const results = await Promise.all(ids.map(async (flowId) => {
+                    const local = storage.allFlows.find(f => f.id === flowId);
+                    if (local?.blocks && local.blocks.length > 0) return { flowId, resolved: local };
 
-                if (local?.blocks && local.blocks.length > 0) {
-                    resolved = local;
-                } else if (GAS_URL && flowId) {
-                    try {
-                        const res = await fetch(`${GAS_URL}?action=getFlow&id=${encodeURIComponent(flowId)}&t=${Date.now()}`);
-                        const full = await res.json();
-                        resolved = { name: local?.name || flowId, ...full };
-                    } catch (err) {
-                        console.error(`[FlowComposer] 預載子流程失敗: ${flowId}`, err);
+                    if (GAS_URL && flowId) {
+                        try {
+                            const res = await fetch(`${GAS_URL}?action=getFlow&id=${encodeURIComponent(flowId)}&t=${Date.now()}`);
+                            const full = await res.json();
+                            return { flowId, resolved: { name: local?.name || flowId, ...full } };
+                        } catch (err) {
+                            console.error(`[FlowComposer] 預載子流程失敗: ${flowId}`, err);
+                        }
+                    }
+                    return { flowId, resolved: null };
+                }));
+
+                // 存入快取，收集下一層要掃描的 blocks
+                const nextBlocks = [];
+                for (const { flowId, resolved } of results) {
+                    if (resolved) {
+                        subFlowCache.set(flowId, resolved);
+                        if (resolved.blocks) nextBlocks.push(...resolved.blocks);
                     }
                 }
-
-                if (resolved) {
-                    subFlowCache.set(flowId, resolved);
-                    // 遞迴掃描這個子流程的 blocks，找出更深層的子流程
-                    if (resolved.blocks) {
-                        await resolveAllSubFlows(resolved.blocks);
-                    }
-                }
+                pendingBlocks = nextBlocks;
             }
         };
 
-        await resolveAllSubFlows(blocks);
+        // OCR Worker 初始化 & 子流程預載同時跑
+        const ocrInitPromise = !ocrWorkerRef.current
+            ? new OcrWorkerBridge().init().then(b => { ocrWorkerRef.current = b; })
+              .catch(e => console.warn('[FlowComposer] 前端 OCR Worker 初始化失敗，將使用 Python OCR:', e))
+            : Promise.resolve();
+
+        await Promise.all([ocrInitPromise, resolveAllSubFlows(blocks)]);
 
         const flowDef = { name: flowName, version: 1, blocks };
         // 子流程解析器：優先從快取查找
