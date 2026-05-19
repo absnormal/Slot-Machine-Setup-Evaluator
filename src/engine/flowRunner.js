@@ -761,8 +761,9 @@ export class FlowRunner extends EventTarget {
         const num = Number(expr);
         if (!isNaN(num) && expr.trim() !== '') return num;
 
-        // 變數引用（支援 $var 和 $row.col）
-        if (expr.startsWith('$')) {
+        // 純變數引用（$var 或 $row.col，不含運算符/空格）
+        const pureVarMatch = /^\$[\w\u4e00-\u9fff]+(?:\.[\w\u4e00-\u9fff]+)*$/.test(expr);
+        if (pureVarMatch) {
             // 特殊：$tableName._count → 動態查詢 appStore 的表格列數
             // 讓 set_var $帳號數 = $遊戲_設定._count 在 for_each_row 之前也能正確取值
             if (expr.endsWith('._count') && this._appStore) {
@@ -773,7 +774,7 @@ export class FlowRunner extends EventTarget {
             return this.variables[expr] ?? 0;
         }
 
-        // 簡單算術：替換變數後用安全 evaluator（不使用 Function/eval）
+        // 簡單算術/字串：替換變數後用安全 evaluator（不使用 Function/eval）
         try {
             const substituted = expr.replace(/\$([\w\u4e00-\u9fff]+(?:\.[\w\u4e00-\u9fff]+)*)/g, (_, name) => {
                 // 特殊：tableName._count → 動態查詢表格列數
@@ -786,7 +787,9 @@ export class FlowRunner extends EventTarget {
                 return typeof val === 'number' ? val : parseFloat(val) || 0;
             });
             const result = evalArithStr(substituted);
+            // 接受數字結果和字串結果（"..." 解析後去掉引號）
             if (typeof result === 'number' && !isNaN(result)) return result;
+            if (typeof result === 'string') return result;
         } catch { /* fall through */ }
 
         return expr;

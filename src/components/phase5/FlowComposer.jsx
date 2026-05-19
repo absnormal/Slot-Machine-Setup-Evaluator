@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Play, Pause, Square, Cloud, Trash2, RefreshCw, ChevronDown, ChevronUp, Copy } from 'lucide-react';
 import { useFlowRunner } from '../../hooks/useFlowRunner';
 import { useFlowStorage } from '../../hooks/useFlowStorage';
@@ -8,6 +8,7 @@ import { genId } from './blockDefs';
 import BlockRow, { useListDrag, removeBlockFromTree } from './BlockRow';
 import AddBlockButton from './AddBlockButton';
 import useAppStore from '../../stores/useAppStore';
+import { GAS_URL } from '../../utils/constants';
 
 /**
  * FlowComposer — 排程器主元件
@@ -183,39 +184,57 @@ const FlowComposer = ({ wsRef, isConnected, videoEl, setCandidates, reelROI, rec
             }
         }
 
-        // ── 預先抓取雲端子流程（選項 2：跑整個流程之前先把雲端資料抓下來）──
+        // ── 預先抓取所有子流程（遞迴掃描：子流程的子流程也要預載）──
         const subFlowCache = new Map(); // flowId → { name, blocks, ... }
-        const collectSubFlowIds = (blockList) => {
+
+        // 收集 blocks 中所有引用的子流程 ID
+        const collectSubFlowIds = (blockList, collected = new Set()) => {
             for (const b of (blockList || [])) {
                 if (b.type === 'sub_flow' && b.params?.flowId) {
-                    subFlowCache.set(b.params.flowId, null); // 先佔位
+                    collected.add(b.params.flowId);
                 }
-                if (b.children) collectSubFlowIds(b.children);
-                if (b.elseChildren) collectSubFlowIds(b.elseChildren);
+                if (b.children) collectSubFlowIds(b.children, collected);
+                if (b.elseChildren) collectSubFlowIds(b.elseChildren, collected);
             }
+            return collected;
         };
-        collectSubFlowIds(blocks);
 
-        // 對每個引用的 flowId，優先從 allFlows 取完整資料，雲端的額外 fetch
-        if (subFlowCache.size > 0) {
+        // 遞迴解析：解析一層後再掃描該層的 blocks 找出更深層的子流程
+        const resolveAllSubFlows = async (blockList) => {
+            const ids = collectSubFlowIds(blockList);
             const { GAS_URL } = await import('../../utils/constants');
-            for (const flowId of subFlowCache.keys()) {
+
+            for (const flowId of ids) {
+                if (subFlowCache.has(flowId)) continue; // 已載入，跳過
+
+                subFlowCache.set(flowId, null); // 佔位，防止循環引用
+
                 const local = storage.allFlows.find(f => f.id === flowId);
+                let resolved = null;
+
                 if (local?.blocks && local.blocks.length > 0) {
-                    // 預設或本地流程：已有完整 blocks
-                    subFlowCache.set(flowId, local);
+                    resolved = local;
                 } else if (GAS_URL && flowId) {
-                    // 雲端流程：需 fetch 完整資料
                     try {
                         const res = await fetch(`${GAS_URL}?action=getFlow&id=${encodeURIComponent(flowId)}&t=${Date.now()}`);
                         const full = await res.json();
-                        subFlowCache.set(flowId, { name: local?.name || flowId, ...full });
+                        resolved = { name: local?.name || flowId, ...full };
                     } catch (err) {
                         console.error(`[FlowComposer] 預載子流程失敗: ${flowId}`, err);
                     }
                 }
+
+                if (resolved) {
+                    subFlowCache.set(flowId, resolved);
+                    // 遞迴掃描這個子流程的 blocks，找出更深層的子流程
+                    if (resolved.blocks) {
+                        await resolveAllSubFlows(resolved.blocks);
+                    }
+                }
             }
-        }
+        };
+
+        await resolveAllSubFlows(blocks);
 
         const flowDef = { name: flowName, version: 1, blocks };
         // 子流程解析器：優先從快取查找
@@ -282,24 +301,115 @@ const FlowComposer = ({ wsRef, isConnected, videoEl, setCandidates, reelROI, rec
     // 來源標籤
     const sourceLabel = { preset: '📦 預設', local: '💾 本地', cloud: '☁️ 雲端' };
 
+    // ── 背景預載雲端流程的 blocks（用於樹狀分析）──
+    const [blocksCache, setBlocksCache] = useState(() => {
+        // 從 sessionStorage 恢復快取
+        try {
+            const saved = sessionStorage.getItem('slot_flow_blocks_cache');
+            return saved ? new Map(JSON.parse(saved)) : new Map();
+        } catch { return new Map(); }
+    });
+
+    useEffect(() => {
+        const fetchMissing = async () => {
+            const missing = allFlows.filter(f => f._source === 'cloud' && !f.blocks?.length && !blocksCache.has(f.id));
+            if (missing.length === 0) return;
+
+            // 並行抓取所有缺少 blocks 的流程
+            const results = await Promise.all(missing.map(async f => {
+                try {
+                    const res = await fetch(`${GAS_URL}?action=getFlow&id=${encodeURIComponent(f.id)}&t=${Date.now()}`);
+                    const full = await res.json();
+                    return full?.blocks ? [f.id, full.blocks] : null;
+                } catch { return null; }
+            }));
+
+            const cache = new Map(blocksCache);
+            for (const entry of results) {
+                if (entry) cache.set(entry[0], entry[1]);
+            }
+            setBlocksCache(cache);
+            // 持久化到 sessionStorage
+            try { sessionStorage.setItem('slot_flow_blocks_cache', JSON.stringify([...cache])); } catch { }
+        };
+        if (GAS_URL && allFlows.some(f => f._source === 'cloud' && !f.blocks?.length)) {
+            fetchMissing();
+        }
+    }, [allFlows.length]); // 只在流程數量變化時重新抓取
+
+    // ── 分析流程引用關係，建立樹狀結構 ──
+    const flowTreeOptions = useMemo(() => {
+        const allNonPreset = allFlows.filter(f => f._source !== 'preset');
+
+        // 取得 blocks：優先用 flow 自帶的，否則從快取取
+        const getBlocks = (f) => (f.blocks?.length > 0 ? f.blocks : blocksCache.get(f.id)) || [];
+
+        // 掃描每個流程引用了哪些子流程
+        const childrenOf = new Map(); // flowId → Set<childFlowId>
+        const parentOf = new Map();   // flowId → Set<parentFlowId>
+
+        const scanBlocks = (blocks, ownerId) => {
+            for (const b of (blocks || [])) {
+                if (b.type === 'sub_flow' && b.params?.flowId) {
+                    if (!childrenOf.has(ownerId)) childrenOf.set(ownerId, new Set());
+                    childrenOf.get(ownerId).add(b.params.flowId);
+                    if (!parentOf.has(b.params.flowId)) parentOf.set(b.params.flowId, new Set());
+                    parentOf.get(b.params.flowId).add(ownerId);
+                }
+                if (b.children) scanBlocks(b.children, ownerId);
+                if (b.elseChildren) scanBlocks(b.elseChildren, ownerId);
+            }
+        };
+        for (const f of allNonPreset) scanBlocks(getBlocks(f), f.id);
+
+        // 根流程 = 沒有被任何流程引用的
+        const roots = allNonPreset.filter(f => !parentOf.has(f.id) || parentOf.get(f.id).size === 0);
+
+        // 遞迴展開樹
+        const items = [];
+        const visited = new Set();
+        const buildTree = (flowId, depth) => {
+            if (visited.has(flowId)) return;
+            visited.add(flowId);
+            const f = allNonPreset.find(fl => fl.id === flowId);
+            if (!f) return;
+            const prefix = depth === 0 ? '' : '\u00A0\u00A0\u00A0'.repeat(depth) + '└─ ';
+            items.push({ key: `${f._source}_${f.id}`, value: `${f._source}_${f.id}`, label: `${prefix}${f.name}`, depth, flowId: f.id });
+            const children = childrenOf.get(flowId);
+            if (children) {
+                for (const cid of children) buildTree(cid, depth + 1);
+            }
+        };
+        for (const r of roots) buildTree(r.id, 0);
+
+        // 收集沒被 visit 到的流程
+        const unvisited = allNonPreset.filter(f => !visited.has(f.id));
+
+        return { items, unvisited };
+    }, [allFlows, blocksCache]);
+
     return (
         <div className="flex flex-col h-full gap-3">
             {/* ── 工具列 ── */}
             <div className="flex items-center gap-2 flex-wrap shrink-0">
-                {/* 載入選單：分組顯示 */}
+                {/* 載入選單：樹狀分組顯示 */}
                 <select value="" onChange={e => {
                     const f = allFlows.find(f => `${f._source}_${f.id}` === e.target.value);
                     if (f) loadFlow(f);
-                }} className="bg-slate-800 border border-slate-600 rounded-lg text-sm text-slate-300 px-3 py-1.5 outline-none shrink-0 max-w-[180px]">
+                }} className="bg-slate-800 border border-slate-600 rounded-lg text-sm text-slate-300 px-3 py-1.5 outline-none shrink-0 max-w-[260px]">
                     <option value="">📂 載入流程...</option>
                     {storage.presetFlows.length > 0 && <optgroup label="📦 預設">
                         {storage.presetFlows.map(f => <option key={`preset_${f.id}`} value={`preset_${f.id}`}>{f.name}</option>)}
                     </optgroup>}
-                    {storage.localFlows.length > 0 && <optgroup label="💾 本地">
-                        {storage.localFlows.map(f => <option key={`local_${f.id}`} value={`local_${f.id}`}>{f.name}</option>)}
+                    {flowTreeOptions.items.length > 0 && <optgroup label="🌳 流程樹">
+                        {flowTreeOptions.items.map(item => (
+                            <option key={item.key} value={item.value}>{item.label}</option>
+                        ))}
                     </optgroup>}
-                    {storage.cloudFlows.length > 0 && <optgroup label="☁️ 雲端">
-                        {storage.cloudFlows.map(f => <option key={`cloud_${f.id}`} value={`cloud_${f.id}`}>{f.name}</option>)}
+                    {flowTreeOptions.unvisited.length > 0 && <optgroup label="📋 其他（雲端未載入）">
+                        {flowTreeOptions.unvisited.map(f => (
+                            <option key={`${f._source}_${f.id}`} value={`${f._source}_${f.id}`}>{f.name}</option>
+                        ))}
                     </optgroup>}
                 </select>
 

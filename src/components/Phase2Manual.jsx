@@ -54,24 +54,39 @@ const Phase2Manual = ({
         setShowCashModal(false);
     };
 
-    const handleGridCellClick = (r, c) => {
+    // 拖曳模式鎖定：mouseDown 時記錄第一格的動作（'paint' 或 'erase'），整條拖曳一致
+    const dragModeRef = React.useRef(null); // 'paint' | 'erase' | null
+
+    const handleGridCellClick = (r, c, isDrag = false) => {
         if (panelInputMode !== 'paint') return;
         const isCash = isCashSymbol(activeBrush, template?.jpConfig);
         const isJP = isJpSymbol(activeBrush, template?.jpConfig);
         const isXnBrush = activeBrush.endsWith('_xN') || activeBrush === 'xN';
 
         if ((isCash && !isJP) || isXnBrush) {
-            setModalCell({ row: r, col: c });
-            if (isXnBrush) {
-                const currentVal = getSymbolMultiplier(panelGrid[r][c]);
-                setCashValueInput(currentVal > 1 ? String(currentVal) : '');
-            } else {
-                const currentVal = getCashValue(panelGrid[r][c], template?.jpConfig);
-                setCashValueInput(currentVal > 0 ? formatShorthandValue(currentVal) : '');
+            if (!isDrag) {
+                setModalCell({ row: r, col: c });
+                if (isXnBrush) {
+                    const currentVal = getSymbolMultiplier(panelGrid[r][c]);
+                    setCashValueInput(currentVal > 1 ? String(currentVal) : '');
+                } else {
+                    const currentVal = getCashValue(panelGrid[r][c], template?.jpConfig);
+                    setCashValueInput(currentVal > 0 ? formatShorthandValue(currentVal) : '');
+                }
+                setShowCashModal(true);
             }
-            setShowCashModal(true);
         } else {
-            handleCellChange(r, c, activeBrush);
+            const currentSymbol = panelGrid[r]?.[c] || '';
+            const shouldErase = activeBrush && currentSymbol === activeBrush;
+
+            if (isDrag && dragModeRef.current) {
+                // 拖曳中：沿用第一格的動作模式
+                handleCellChange(r, c, dragModeRef.current === 'erase' ? '' : activeBrush);
+            } else {
+                // 單擊或拖曳起始：決定模式
+                dragModeRef.current = shouldErase ? 'erase' : 'paint';
+                handleCellChange(r, c, shouldErase ? '' : activeBrush);
+            }
         }
     };
 
@@ -265,8 +280,9 @@ const Phase2Manual = ({
                                                         <div
                                                             key={`${rIndex}-${cIndex}`}
                                                             className={`${cellClasses} ${panelInputMode === 'paint' && !isDisabledMultiplierCell ? 'cursor-pointer' : ''}`}
-                                                            onMouseDown={(e) => { if (panelInputMode === 'paint' && !isDisabledMultiplierCell) { e.preventDefault(); handleGridCellClick(rIndex, cIndex); } }}
-                                                            onMouseEnter={(e) => { if (panelInputMode === 'paint' && e.buttons === 1 && !isDisabledMultiplierCell) handleGridCellClick(rIndex, cIndex); }}
+                                                            onMouseDown={(e) => { if (panelInputMode === 'paint' && !isDisabledMultiplierCell) { e.preventDefault(); dragModeRef.current = null; handleGridCellClick(rIndex, cIndex, false); } }}
+                                                            onMouseEnter={(e) => { if (panelInputMode === 'paint' && e.buttons === 1 && !isDisabledMultiplierCell) handleGridCellClick(rIndex, cIndex, true); }}
+                                                            onMouseUp={() => { dragModeRef.current = null; }}
                                                         >
                                                             {panelInputMode === 'text' && !isDisabledMultiplierCell ? (
                                                                 <input
