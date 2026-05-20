@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Video, Play, Pause, Clock, RefreshCw, Monitor, StopCircle, Cpu } from 'lucide-react';
+import { Video, Play, Pause, Clock, RefreshCw, Monitor, StopCircle, Cpu, Download, Upload } from 'lucide-react';
 import usePhase4Store from '../../stores/usePhase4Store';
 import SettingTooltip from './SettingTooltip';
 import useROIDrag from '../../hooks/useROIDrag';
@@ -45,6 +45,25 @@ const VideoPlayer = ({
     const setPlatformClickTarget = usePhase4Store(s => s.setPlatformClickTarget);
     const removePlatformClickTarget = usePhase4Store(s => s.removePlatformClickTarget);
     const getPlatformClickTargets = usePhase4Store(s => s.getPlatformClickTargets);
+    const exportAllROIs = usePhase4Store(s => s.exportAllROIs);
+    const importAllROIs = usePhase4Store(s => s.importAllROIs);
+    const importFileRef = useRef(null);
+
+    // ── ROI 匯入處理 ──
+    const handleImportROI = async (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        try {
+            const text = await file.text();
+            const data = JSON.parse(text);
+            importAllROIs(data);
+            alert(`✅ 已匯入 ROI 設定（${file.name}）`);
+        } catch (err) {
+            alert(`❌ 匯入失敗: ${err.message}`);
+        } finally {
+            if (importFileRef.current) importFileRef.current.value = '';
+        }
+    };
 
     // ── 本地狀態 ──
     const [isPlaying, setIsPlaying] = useState(false);
@@ -301,6 +320,25 @@ const VideoPlayer = ({
                             className="px-2 py-1 rounded-lg text-xs font-bold bg-slate-700 text-slate-400 hover:bg-slate-600 hover:text-white transition-all flex items-center gap-0.5"
                         >
                             ＋
+                        </button>
+                    </div>
+                    {/* ── 分隔線 ── */}
+                    <div className="h-px bg-slate-600/50" />
+                    {/* ── 📁 匯出 / 匯入 ── */}
+                    <div className="flex gap-1 items-center">
+                        <span className="text-[9px] text-slate-500 font-bold px-1 select-none shrink-0">📁 設定</span>
+                        <button onClick={exportAllROIs}
+                            className="px-2 py-1 rounded-lg text-[10px] font-bold bg-slate-700 text-slate-400 hover:bg-emerald-600 hover:text-white transition-all flex items-center gap-1 active:scale-95"
+                            title="匯出所有 ROI 區域設定為 JSON"
+                        >
+                            <Download size={10} /> 匯出 ROI
+                        </button>
+                        <input ref={importFileRef} type="file" accept=".json" onChange={handleImportROI} className="hidden" />
+                        <button onClick={() => importFileRef.current?.click()}
+                            className="px-2 py-1 rounded-lg text-[10px] font-bold bg-slate-700 text-slate-400 hover:bg-indigo-600 hover:text-white transition-all flex items-center gap-1 active:scale-95"
+                            title="從 JSON 檔匯入 ROI 區域設定"
+                        >
+                            <Upload size={10} /> 匯入 ROI
                         </button>
                     </div>
                     </div>

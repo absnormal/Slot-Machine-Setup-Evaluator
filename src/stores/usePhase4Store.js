@@ -157,6 +157,64 @@ const usePhase4Store = create((set, get) => ({
         const game = s.clickTargets || {};
         return { ...platform, ...game }; // 遊戲層覆蓋同名
     },
+
+    // ═══════════════════════════════════════
+    // ROI 匯出 / 匯入
+    // ═══════════════════════════════════════
+
+    /** 匯出所有 ROI 設定為 JSON 檔案下載 */
+    exportAllROIs: () => {
+        const s = get();
+        const data = {
+            _version: 2,
+            _exportedAt: new Date().toISOString(),
+            reel: s.reelROI,
+            win: s.winROI,
+            balance: s.balanceROI,
+            bet: s.betROI,
+            orderId: s.orderIdROI,
+            multiplier: s.multiplierROI,
+            spinButton: s.spinButtonROI,
+            clickTargets: s.clickTargets || {},
+        };
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `ROI_設定_${new Date().toISOString().slice(0, 10).replace(/-/g, '')}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+    },
+
+    /** 匯入 ROI 設定（從 JSON 檔案） */
+    importAllROIs: (jsonData) => {
+        if (!jsonData || typeof jsonData !== 'object') throw new Error('無效的 ROI 設定檔');
+
+        const roiMap = {
+            reel:       { setter: 'reelROI',       key: 'reel' },
+            win:        { setter: 'winROI',        key: 'win' },
+            balance:    { setter: 'balanceROI',    key: 'balance' },
+            bet:        { setter: 'betROI',        key: 'bet' },
+            orderId:    { setter: 'orderIdROI',    key: 'orderId' },
+            multiplier: { setter: 'multiplierROI', key: 'multiplier' },
+            spinButton: { setter: 'spinButtonROI', key: 'spinButton' },
+        };
+
+        const updates = {};
+        for (const [jsonKey, { setter, key }] of Object.entries(roiMap)) {
+            if (jsonData[jsonKey] && typeof jsonData[jsonKey] === 'object') {
+                updates[setter] = jsonData[jsonKey];
+                saveROI(key, jsonData[jsonKey]);
+            }
+        }
+
+        if (jsonData.clickTargets && typeof jsonData.clickTargets === 'object') {
+            updates.clickTargets = jsonData.clickTargets;
+            saveROI('clickTargets', jsonData.clickTargets);
+        }
+
+        set(updates);
+    },
 }));
 
 export default usePhase4Store;
