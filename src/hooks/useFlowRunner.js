@@ -5,7 +5,8 @@
  * 供 Phase5 UI 監聽與控制。
  */
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { FlowRunner, RunState, FlowEvent, PRESET_FLOWS } from '../engine/flowRunner';
+import { FlowRunner, RunState, FlowEvent } from '../engine/flowRunner';
+import { PRESET_FLOWS } from '../engine/presetFlows';
 
 export function useFlowRunner() {
     const runnerRef = useRef(null);

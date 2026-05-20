@@ -12,7 +12,7 @@
  */
 import { useState, useCallback, useEffect } from 'react';
 import { GAS_URL } from '../utils/constants';
-import { PRESET_FLOWS } from '../engine/flowRunner';
+import { PRESET_FLOWS } from '../engine/presetFlows';
 
 const LS_KEY = 'slot_flow_recipes';
 const CACHE_KEY = 'slot_flows_cloud_cache';
