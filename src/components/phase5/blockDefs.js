@@ -13,6 +13,8 @@ export const BLOCK_META = {
     wait:         { icon: '⏱️', label: '等待', color: 'border-amber-400/50 bg-amber-500/15' },
     wait_stable:  { icon: '👁️', label: '等待穩定', color: 'border-amber-400/50 bg-amber-500/15' },
     wait_change:  { icon: '⚡', label: '等待數字變化', color: 'border-orange-400/50 bg-orange-500/15' },
+    // 🔎 搜尋 — 琥珀色系
+    find_text:    { icon: '🔎', label: '找文字', color: 'border-amber-400/50 bg-amber-500/15' },
     // 📊 讀取 — 青色系
     ocr_batch:    { icon: '📊', label: '批次讀取', color: 'border-teal-400/50 bg-teal-500/15' },
     ocr_read:     { icon: '📖', label: '讀取', color: 'border-teal-400/50 bg-teal-500/15' },
@@ -38,6 +40,9 @@ export const BLOCK_META = {
     append_result:{ icon: '📝', label: '寫入結果', color: 'border-emerald-400/50 bg-emerald-500/15' },
     export_results:{ icon: '📥', label: '匯出報告', color: 'border-emerald-400/50 bg-emerald-500/15' },
     clear_results:{ icon: '🧹', label: '清空結果', color: 'border-emerald-400/50 bg-emerald-500/15' },
+    // 📤 P4 操作 — 橙色系
+    export_p4_report:{ icon: '📤', label: 'P4匯出報告', color: 'border-orange-400/50 bg-orange-500/15' },
+    clear_p4_data:   { icon: '🧹', label: 'P4清除資料', color: 'border-orange-400/50 bg-orange-500/15' },
 };
 
 export const NEW_BLOCK_TEMPLATES = [
@@ -45,6 +50,7 @@ export const NEW_BLOCK_TEMPLATES = [
     { type: 'wait', params: { seconds: 1 } },
     { type: 'wait_stable', params: { roi: 'REEL', stableCount: 3, interval: 200 } },
     { type: 'wait_change', params: { roi: 'WIN', changeCount: 2, interval: 200, timeout: 30 } },
+    { type: 'find_text', params: { text: '', matchMode: 'contains', timeout: 10, interval: 1000, targetName: '_FOUND', varName: '' } },
     { type: 'ocr_batch', params: { rois: ['WIN', 'BAL', 'BET', 'ORDER_ID'] } },
     { type: 'ocr_read', params: { roi: 'WIN', varName: '$win' } },
     { type: 'record_spin', params: { fields: ['WIN', 'BAL', 'BET', 'ORDER_ID', 'MULT'] } },
@@ -67,6 +73,8 @@ export const NEW_BLOCK_TEMPLATES = [
     { type: 'append_result', params: { table: 'results', columns: {} } },
     { type: 'export_results', params: { table: 'results', filename: '報告' } },
     { type: 'clear_results', params: { table: 'results' } },
+    { type: 'export_p4_report', params: { filename: '報告' } },
+    { type: 'clear_p4_data', params: {} },
 ];
 
 let _blockIdCounter = 0;

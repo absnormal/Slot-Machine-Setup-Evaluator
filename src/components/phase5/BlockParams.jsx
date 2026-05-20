@@ -422,6 +422,62 @@ const BlockParams = ({ block, onUpdate, allFlows }) => {
                 </div>
             );
 
+        case 'export_p4_report':
+            return (
+                <div className="flex items-center gap-1.5">
+                    <span className="text-slate-500 text-[10px]">檔名:</span>
+                    <input className={`${MINI} w-28`} value={p.filename || ''} placeholder="報告（支援 $var）"
+                        onChange={e => set('filename', e.target.value)}
+                        onClick={e => e.stopPropagation()} />
+                </div>
+            );
+
+        case 'clear_p4_data':
+            return <span className="text-slate-500 text-[10px]">清除所有 P4 截圖與偵測結果</span>;
+
+        case 'find_text':
+            return (
+                <div className="flex items-center gap-1.5 flex-wrap">
+                    <input className={`${MINI} min-w-[80px] flex-1`} value={p.text || ''} placeholder="搜尋文字（支援 $var）"
+                        onChange={e => set('text', e.target.value)}
+                        onClick={e => e.stopPropagation()} />
+                    {['contains', 'equals'].map(m => (
+                        <button key={m}
+                            className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
+                                (p.matchMode || 'contains') === m
+                                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                                    : 'text-slate-500 hover:text-slate-300 border border-transparent'
+                            }`}
+                            onClick={e => { e.stopPropagation(); set('matchMode', m); }}>
+                            {m === 'contains' ? '包含' : '完全符合'}
+                        </button>
+                    ))}
+                    <span className="text-slate-500 text-[10px]">逾時</span>
+                    <NumInput value={p.timeout == null ? 10 : p.timeout} onChange={v => set('timeout', v)} min={1} step={1} w="w-12" />
+                    <span className="text-slate-500 text-[10px]">秒</span>
+                    <span className="text-slate-500 text-[10px]">間隔</span>
+                    <NumInput value={p.interval == null ? 1000 : p.interval} onChange={v => set('interval', v)} min={100} step={100} w="w-14" />
+                    <span className="text-slate-500 text-[10px]">ms</span>
+                    <span className="text-slate-500 text-[10px]">→</span>
+                    <input className={`${MINI} w-20`} value={p.targetName || '_FOUND'} placeholder="_FOUND"
+                        onChange={e => set('targetName', e.target.value)}
+                        onClick={e => e.stopPropagation()}
+                        title="動態點擊目標名稱（供 click_roi 引用）" />
+                    {p.varName !== undefined && p.varName !== '' ? (
+                        <input className={`${MINI} w-20`} value={p.varName || ''} placeholder="$var（可選）"
+                            onChange={e => set('varName', e.target.value)}
+                            onClick={e => e.stopPropagation()}
+                            title="將找到的文字存入此變數" />
+                    ) : (
+                        <button className="text-[10px] text-slate-600 hover:text-amber-400 px-1 rounded border border-dashed border-slate-700 hover:border-amber-500/50 transition-colors"
+                            onClick={e => { e.stopPropagation(); set('varName', '$_found'); }}
+                            title="新增變數儲存">
+                            +$var
+                        </button>
+                    )}
+                </div>
+            );
+
         default:
             return null;
     }
@@ -476,16 +532,26 @@ const ClickTargetSelect = ({ value, onChange }) => {
     const controlNames = Object.entries(allTargets)
         .filter(([, v]) => v.category !== 'ocr')
         .map(([name]) => name);
+    const isDynamic = (value || '').startsWith('_');
 
     return (
-        <select className={SEL} value={value || ''} onChange={e => onChange(e.target.value)}
-            onClick={e => e.stopPropagation()}>
-            <option value="">選擇點擊目標</option>
-            <option value="SPIN">SPIN 按鈕</option>
-            {controlNames.map(name => (
-                <option key={name} value={name}>{name}</option>
-            ))}
-        </select>
+        <div className="relative flex items-center">
+            <input
+                className={`${MINI} min-w-[100px] ${isDynamic ? 'text-amber-300' : ''}`}
+                list="click-targets-list"
+                value={value || ''}
+                placeholder="點擊目標 或 _FOUND"
+                onChange={e => onChange(e.target.value)}
+                onClick={e => e.stopPropagation()}
+            />
+            <datalist id="click-targets-list">
+                <option value="SPIN">SPIN 按鈕</option>
+                <option value="_FOUND">🔎 找文字結果</option>
+                {controlNames.map(name => (
+                    <option key={name} value={name}>{name}</option>
+                ))}
+            </datalist>
+        </div>
     );
 };
 // ── 表格名稱輸入（input + datalist：可直接輸入 $var 或從下拉選現有表格）──

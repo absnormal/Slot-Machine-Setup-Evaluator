@@ -8,14 +8,17 @@ import { genId } from './blockDefs';
 import BlockRow, { useListDrag, removeBlockFromTree } from './BlockRow';
 import AddBlockButton from './AddBlockButton';
 import useAppStore from '../../stores/useAppStore';
+import usePhase4Store from '../../stores/usePhase4Store';
 import { GAS_URL } from '../../utils/constants';
+import { useReportGenerator } from '../../hooks/useReportGenerator';
 
 /**
  * FlowComposer — 排程器主元件
  * 整合執行引擎 + 本地/雲端存取
  */
-const FlowComposer = ({ wsRef, isConnected, videoEl, setCandidates, reelROI, recognizeLocal }) => {
+const FlowComposer = ({ wsRef, isConnected, videoEl, setCandidates, candidatesRef, reelROI, recognizeLocal, template, gameName }) => {
     const flow = useFlowRunner();
+    const { exportHTMLReport } = useReportGenerator();
     const { isRunning, isPaused, isIdle, currentBlock, loopProgress, logs, spinCount, variables,
         runFlow, pause, resume, stop } = flow;
 
@@ -130,8 +133,11 @@ const FlowComposer = ({ wsRef, isConnected, videoEl, setCandidates, reelROI, rec
                 const loc = path ? `${path} → ${b.type}` : b.type;
                 // ROI 檢查
                 if (b.type === 'click_roi' && b.params?.roi) {
-                    const roi = resolveROI(b.params.roi);
-                    if (!roi) warnings.push(`⚠️ [${loc}] ROI "${b.params.roi}" 未設定`);
+                    // _開頭為動態目標（find_text 執行時才建立），跳過靜態驗證
+                    if (!b.params.roi.startsWith('_')) {
+                        const roi = resolveROI(b.params.roi);
+                        if (!roi) warnings.push(`⚠️ [${loc}] ROI "${b.params.roi}" 未設定`);
+                    }
                 }
                 if (b.type === 'wait_stable' && b.params?.roi) {
                     const roi = resolveROI(b.params.roi);
@@ -241,7 +247,18 @@ const FlowComposer = ({ wsRef, isConnected, videoEl, setCandidates, reelROI, rec
         const flowDef = { name: flowName, version: 1, blocks };
         // 子流程解析器：優先從快取查找
         const subFlowResolver = (flowId) => subFlowCache.get(flowId) || storage.allFlows.find(f => f.id === flowId);
-        await runFlow(flowDef, { ws, videoEl, setCandidates, reelROI, ocrWorker: ocrWorkerRef.current, recognizeLocal, subFlowResolver, appStore: useAppStore });
+        // P4 操作 callback
+        const p4Export = async (filename) => {
+            const c = candidatesRef?.current || [];
+            if (c.length === 0) throw new Error('P4 無偵測資料可匯出');
+            const { winROI, balanceROI, betROI, orderIdROI } = usePhase4Store.getState();
+            await exportHTMLReport(c, filename || gameName || 'slot', null, template, {
+                reel: reelROI, win: winROI, balance: balanceROI, bet: betROI, orderId: orderIdROI
+            });
+        };
+        const p4Clear = () => setCandidates([]);
+
+        await runFlow(flowDef, { ws, videoEl, setCandidates, reelROI, ocrWorker: ocrWorkerRef.current, recognizeLocal, subFlowResolver, appStore: useAppStore, p4Export, p4Clear });
     };
 
     // 儲存雲端（含衝突偵測，參考遊戲模板模式）

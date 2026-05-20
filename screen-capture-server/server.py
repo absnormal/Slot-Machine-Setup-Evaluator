@@ -858,6 +858,115 @@ def handle_control_command(cmd, active_source=None):
                 print(f"[OCR] {results} ({elapsed_ms:.0f}ms)")
             return {"success": True, "message": f"ocr_rois done in {elapsed_ms:.0f}ms", "ocrResults": results}
 
+        elif action == "find_text":
+            # ── 全螢幕文字搜尋：截圖 → 完整 OCR (det+rec) → 回傳匹配文字的百分比座標 ──
+            import unicodedata
+
+            target = cmd.get("text", "")
+            match_mode = cmd.get("matchMode", "contains")  # contains | equals
+
+            if not target:
+                return {"success": False, "message": "未指定搜尋文字"}
+
+            # 1. 截取遊戲視窗
+            pil_img = None
+            hwnd_ft = active_source.get("hwnd") if active_source else None
+
+            if hwnd_ft:
+                pil_img = capture_window_printwindow(hwnd_ft)
+
+            if pil_img is None:
+                try:
+                    with mss.MSS() as sct:
+                        if hwnd_ft:
+                            r = ctypes.wintypes.RECT()
+                            user32.GetWindowRect(hwnd_ft, ctypes.byref(r))
+                            bbox = (r.left, r.top, r.right, r.bottom)
+                            raw_grab = sct.grab(bbox)
+                            pil_img = Image.frombytes("RGB", raw_grab.size, raw_grab.bgra, "raw", "BGRX")
+                        elif active_source:
+                            monitor = sct.monitors[active_source.get("index", 1)]
+                            raw_grab = sct.grab(monitor)
+                            pil_img = Image.frombytes("RGB", raw_grab.size, raw_grab.bgra, "raw", "BGRX")
+                except Exception as e:
+                    return {"success": False, "message": f"截圖失敗: {e}"}
+
+            if pil_img is None:
+                return {"success": False, "message": "無法截取畫面"}
+
+            # 2. 完整 OCR pipeline（det + cls + rec）— 偵測文字位置 + 辨識
+            engine = get_ocr_engine()
+            if engine is None:
+                return {"success": False, "message": "OCR 引擎未載入"}
+
+            import numpy as np
+            img_array = np.array(pil_img)
+            t0 = time.time()
+            result, _ = engine(img_array, use_det=True, use_cls=True, use_rec=True)
+            elapsed = (time.time() - t0) * 1000
+
+            if not result:
+                print(f"[找文字] 未偵測到任何文字 ({elapsed:.0f}ms)")
+                return {"success": True, "found": False, "message": f"畫面無文字 ({elapsed:.0f}ms)", "all": []}
+
+            # 3. 搜尋匹配文字（NFKC 正規化 + 大小寫不敏感）
+            target_norm = unicodedata.normalize('NFKC', target).lower()
+            img_w, img_h = pil_img.size
+            all_texts = []
+
+            for line in result:
+                # 完整 pipeline 回傳: [box, text, confidence]
+                box, text_val, conf = line[0], line[1], line[2]
+                text_norm = unicodedata.normalize('NFKC', str(text_val)).lower()
+
+                # box = [[x1,y1],[x2,y2],[x3,y3],[x4,y4]] 四角像素座標
+                xs = [p[0] for p in box]
+                ys = [p[1] for p in box]
+                bx = min(xs)
+                by = min(ys)
+                bw = max(xs) - bx
+                bh = max(ys) - by
+
+                # 轉百分比座標 (0-100)，與現有 ROI 系統一致
+                roi_pct = {
+                    "x": round(bx / img_w * 100, 2),
+                    "y": round(by / img_h * 100, 2),
+                    "w": round(bw / img_w * 100, 2),
+                    "h": round(bh / img_h * 100, 2),
+                }
+
+                all_texts.append({"text": str(text_val), "confidence": round(conf, 3), "roi": roi_pct})
+
+                # 比對
+                if match_mode == "contains":
+                    matched = target_norm in text_norm
+                elif match_mode == "equals":
+                    matched = target_norm == text_norm
+                else:
+                    matched = target_norm in text_norm
+
+                if matched:
+                    msg = f"找到 \"{text_val}\" conf={conf:.2f} roi={roi_pct} ({elapsed:.0f}ms)"
+                    print(f"[找文字] ✅ {msg}")
+                    return {
+                        "success": True,
+                        "found": True,
+                        "text": str(text_val),
+                        "confidence": round(conf, 3),
+                        "roi": roi_pct,
+                        "all": all_texts,
+                        "message": msg,
+                    }
+
+            msg = f"未找到 \"{target}\" (共 {len(all_texts)} 個文字, {elapsed:.0f}ms)"
+            print(f"[找文字] ❌ {msg}")
+            return {
+                "success": True,
+                "found": False,
+                "message": msg,
+                "all": all_texts,
+            }
+
         elif action == "log":
             msg = cmd.get("message", "")
             print(f"[流程] {msg}")
@@ -1029,7 +1138,7 @@ async def handle_client(websocket):
                         quality = cmd.get("quality", quality)
                         interval = 1.0 / fps
                         print(f"[設定] 更新 FPS={fps}, 品質={quality}")
-                    elif cmd_action in ("click", "click_pct", "click_roi", "key", "type_text", "hotkey", "move", "drag", "focus", "ocr_rois", "log"):
+                    elif cmd_action in ("click", "click_pct", "click_roi", "key", "type_text", "hotkey", "move", "drag", "focus", "ocr_rois", "log", "find_text"):
                         # ── 處理控制指令（串流中也能控制）──
                         result = handle_control_command(cmd, active_source=source)
                         try:
@@ -1040,9 +1149,9 @@ async def handle_client(websocket):
                         except:
                             pass
                         if result["success"] and cmd_action != "log":
-                            print(f"[控制] {result['message']}")
+                            print(f"[控制] {result.get('message', 'ok')}")
                         elif not result["success"]:
-                            print(f"[控制錯誤] {result['message']}")
+                            print(f"[控制錯誤] {result.get('message', 'unknown error')}")
                 except asyncio.TimeoutError:
                     pass
 

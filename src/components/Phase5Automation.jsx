@@ -57,8 +57,11 @@ const Phase5Automation = ({
                             isConnected={isConnected}
                             videoEl={videoRef?.current}
                             setCandidates={setCandidates}
+                            candidatesRef={candidatesRef}
                             reelROI={reelROI}
                             recognizeLocal={recognizeLocal}
+                            template={template}
+                            gameName={gameName}
                         />
                     </div>
                 </div>

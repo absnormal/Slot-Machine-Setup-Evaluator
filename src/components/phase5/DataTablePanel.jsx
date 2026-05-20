@@ -21,30 +21,31 @@ const DataTablePanel = () => {
     const tableEntries = Object.entries(dataTables);
     const tableCount = tableEntries.length;
 
-    // 上傳 Excel
+    // 上傳 Excel（支援多檔）
     const handleUpload = async (e) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
+        const files = Array.from(e.target.files || []);
+        if (files.length === 0) return;
 
         setIsUploading(true);
         try {
-            const parsed = await parseExcel(file);
+            for (const file of files) {
+                const parsed = await parseExcel(file);
 
-            // 自動命名：table + 序號（避免重名）
-            let baseName = parsed.name || 'table';
-            let name = baseName;
-            let counter = 1;
-            while (dataTables[name]) {
-                name = `${baseName}_${counter++}`;
+                // 自動命名：table + 序號（避免重名）
+                let baseName = parsed.name || 'table';
+                let name = baseName;
+                let counter = 1;
+                while (dataTables[name]) {
+                    name = `${baseName}_${counter++}`;
+                }
+
+                addDataTable(name, {
+                    name,
+                    fileName: file.name,
+                    headers: parsed.headers,
+                    rows: parsed.rows,
+                });
             }
-
-            addDataTable(name, {
-                name,
-                fileName: file.name,
-                headers: parsed.headers,
-                rows: parsed.rows,
-            });
-
             setIsExpanded(true);
         } catch (err) {
             console.error('[DataTablePanel] Excel 解析失敗:', err);
@@ -81,7 +82,7 @@ const DataTablePanel = () => {
         // 完全空白時只顯示上傳按鈕
         return (
             <div className="shrink-0">
-                <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleUpload} className="hidden" />
+                <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" multiple onChange={handleUpload} className="hidden" />
                 <button
                     onClick={() => fileInputRef.current?.click()}
                     disabled={isUploading}
@@ -106,7 +107,7 @@ const DataTablePanel = () => {
                 <span className="text-xs font-medium text-slate-300">資料表</span>
                 <span className="text-[10px] text-slate-500 bg-slate-800 px-1.5 rounded-full">{tableCount}</span>
                 <div className="flex-1" />
-                <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleUpload} className="hidden" />
+                <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" multiple onChange={handleUpload} className="hidden" />
                 <button
                     onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
                     disabled={isUploading}

@@ -637,12 +637,7 @@ document.getElementById('navCascadeCount').textContent = cc > 0 ? cc : '';
             ? `✅ 報告已下載：${fileName}\n📥 JSON 已下載：${jsonFileName}\n📂 請將兩個檔案移至存檔資料夾`
             : `📥 已下載報告：${fileName}`;
 
-        // 非外部圖片模式：可直接開啟 HTML 預覽
-        if (!useExternalImages) {
-            onProgress?.({ phase: '開啟報告', current: spins.length, total: spins.length, detail: '瀏覽器載入中...' });
-            await new Promise(r => setTimeout(r, 100));
-            window.open(htmlUrl, '_blank');
-        }
+        // 報告已透過 <a>.click() 下載，不再自動開新分頁以免干擾 P5 自動化
 
         return resultMsg;
     }, []);

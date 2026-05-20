@@ -18,6 +18,7 @@ import { resolveROI, getDecimalPlaces } from './roiResolver';
 import { captureFrame } from './actions/captureAction';
 import { waitStable } from './actions/waitStableAction';
 import { waitChange } from './actions/waitChangeAction';
+import { findText } from './actions/findTextAction';
 import {
     execForEachRow, execAppendResult, execExportResults,
     execReadRow, execClearResults,
@@ -100,6 +101,8 @@ export class FlowRunner extends EventTarget {
         this._recognizeLocal = context.recognizeLocal || null;
         this._subFlowResolver = context.subFlowResolver || null;
         this._appStore = context.appStore || null;
+        this._p4Export = context.p4Export || null;
+        this._p4Clear = context.p4Clear || null;
         this._cancelRef = { current: false };
         this._spinCount = 0;
         this.variables = {};
@@ -262,6 +265,15 @@ export class FlowRunner extends EventTarget {
                     case 'clear_results':
                         result = this._execClearResults(block);
                         break;
+                    case 'export_p4_report':
+                        result = await this._execExportP4Report(block);
+                        break;
+                    case 'clear_p4_data':
+                        result = this._execClearP4Data(block);
+                        break;
+                    case 'find_text':
+                        result = await this._execFindText(block);
+                        break;
                     default:
                         console.warn(`[FlowRunner] 未知積木類型: ${block.type}`);
                 }
@@ -313,6 +325,11 @@ export class FlowRunner extends EventTarget {
 
     async _execClick(block) {
         const { roi, button } = block.params;
+        // 動態目標優先（find_text 註冊的）
+        const dynROI = this._getDynamicTarget(roi);
+        if (dynROI) {
+            return await clickROI(this._ws, dynROI, { button });
+        }
         return await clickROI(this._ws, roi, { button });
     }
 
@@ -773,6 +790,80 @@ export class FlowRunner extends EventTarget {
     _execExportResults(block)           { return execExportResults(block, this); }
     _execReadRow(block)                 { return execReadRow(block, this); }
     _execClearResults(block)            { return execClearResults(block, this); }
+
+    // ── P4 報告匯出 / 資料清除 ──
+
+    async _execExportP4Report(block) {
+        if (!this._p4Export) throw new Error('P4 匯出功能未連接');
+        const filename = this._interpolate(block.params?.filename || 'report');
+        this._emit(FlowEvent.LOG, { message: `📤 匯出 P4 報告: ${filename} ...` });
+        await this._p4Export(filename);
+        this._emit(FlowEvent.LOG, { message: `✅ P4 報告已匯出: ${filename}` });
+    }
+
+    _execClearP4Data(block) {
+        if (!this._p4Clear) throw new Error('P4 清除功能未連接');
+        this._p4Clear();
+        this._emit(FlowEvent.LOG, { message: '🧹 P4 偵測資料已清除' });
+    }
+
+    // ── 全螢幕文字搜尋 ──
+
+    async _execFindText(block) {
+        const { text, matchMode, timeout, interval, targetName, varName } = block.params;
+        const resolvedText = this._interpolate(text || '');
+        if (!resolvedText) throw new Error('[find_text] 未設定搜尋文字');
+
+        const timeoutMs = (timeout ?? 10) * 1000;
+        const intervalMs = interval ?? 1000;
+        const name = targetName || '_FOUND';
+        const start = Date.now();
+
+        this._emit(FlowEvent.LOG, { message: `🔎 搜尋文字: "${resolvedText}" ...` });
+
+        // 輪詢直到找到或超時
+        while (Date.now() - start < timeoutMs) {
+            if (this._cancelRef.current) throw new Error('cancelled');
+
+            const result = await findText(this._ws, resolvedText, {
+                matchMode: matchMode ?? 'contains',
+            });
+
+            if (result.found) {
+                // 註冊為動態點擊目標 → click_roi 可直接使用
+                this._setDynamicTarget(name, result.roi);
+
+                // 存入變數空間
+                this.variables['$_found_text'] = result.text;
+                this._emit(FlowEvent.VAR_UPDATE, { name: '$_found_text', value: result.text });
+                if (varName) {
+                    this.variables[varName] = result.text;
+                    this._emit(FlowEvent.VAR_UPDATE, { name: varName, value: result.text });
+                }
+
+                const elapsed = ((Date.now() - start) / 1000).toFixed(1);
+                const msg = `✅ 找到 "${result.text}" → ${name} (信心 ${result.confidence}, ${elapsed}s)`;
+                this._emit(FlowEvent.LOG, { message: msg });
+                return result;
+            }
+
+            await new Promise(r => setTimeout(r, intervalMs));
+        }
+
+        const timeoutErr = new Error(`[find_text] 超時 ${timeout}s，未找到 "${resolvedText}"`);
+        throw timeoutErr;
+    }
+
+    /** 註冊動態點擊目標（供 find_text 使用，click_roi 可引用）*/
+    _setDynamicTarget(name, roi) {
+        if (!this._dynamicTargets) this._dynamicTargets = new Map();
+        this._dynamicTargets.set(name, roi);
+    }
+
+    /** 取得動態點擊目標 */
+    _getDynamicTarget(name) {
+        return this._dynamicTargets?.get(name) || null;
+    }
 
 
     /**

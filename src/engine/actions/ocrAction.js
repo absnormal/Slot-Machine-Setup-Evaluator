@@ -90,7 +90,12 @@ export async function ocrBatch(ws, roiNames, imageBase64 = null, mode = 'number'
     }
 
     const result = await sendWSCommand(ws, cmd);
-    return result.ocrResults || {};
+    const ocrResults = result.ocrResults || {};
+    // 注單號去除 "-"（後台查詢需要純數字格式）
+    if (ocrResults.orderId) {
+        ocrResults.orderId = ocrResults.orderId.replace(/-/g, '');
+    }
+    return ocrResults;
 }
 
 /**
