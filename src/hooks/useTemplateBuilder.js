@@ -138,10 +138,13 @@ export function useTemplateBuilder({
             changed = true;
         }
 
-        // 注入 COLLECT（賠率全 0），僅在需要 COLLECT 符號時
-        if (requiresCollectToWin && !/^COLLECT\b/im.test(newText)) {
-            newText += (newText.endsWith('\n') || newText === '' ? '' : '\n') + 'COLLECT 0 0 0 0 0';
-            changed = true;
+        // 注入 COLLECT（賠率全 0），僅在需要 COLLECT 符號且賠付表中尚無任何含 COLLECT 的符號時
+        if (requiresCollectToWin) {
+            const hasAnyCollect = newText.split('\n').some(line => /COLLECT/i.test(line.trim().split(/\s+/)[0] || ''));
+            if (!hasAnyCollect) {
+                newText += (newText.endsWith('\n') || newText === '' ? '' : '\n') + 'COLLECT 0 0 0 0 0';
+                changed = true;
+            }
         }
 
         if (changed) {
@@ -252,8 +255,12 @@ export function useTemplateBuilder({
             if (!paytable['CASH']) {
                 paytable['CASH'] = [...zeroPays];
             }
-            if (reqCollect && !paytable['COLLECT']) {
-                paytable['COLLECT'] = [...zeroPays];
+            // 僅在賠付表中尚無任何含 COLLECT 的符號時注入純 COLLECT
+            if (reqCollect) {
+                const hasAnyCollect = Object.keys(paytable).some(k => k.toUpperCase().includes('COLLECT'));
+                if (!hasAnyCollect) {
+                    paytable['COLLECT'] = [...zeroPays];
+                }
             }
         }
 

@@ -118,7 +118,11 @@ export function useSlotEngine({ template, enableBidirectional = false }) {
         if (template.hasCashCollectFeature) {
             addSymbol('CASH');
             if (template.requiresCollectToWin !== false) {
-                addSymbol('COLLECT');
+                // 僅在尚無任何含 COLLECT 的符號時才加入純 COLLECT
+                const hasAnyCollect = result.some(s => s.toUpperCase().includes('COLLECT'));
+                if (!hasAnyCollect) {
+                    addSymbol('COLLECT');
+                }
             }
         }
         
