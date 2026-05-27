@@ -171,7 +171,7 @@ export function usePaytableProcessor({
         }
 
         const effectiveApiKey = customApiKey.trim() || apiKey;
-        const modelName = customApiKey.trim() ? "gemini-2.5-flash" : "gemini-2.5-flash-preview-09-2025";
+        const modelName = "gemini-2.5-flash";
 
         setIsPtProcessing(true);
         setTemplateError("");

@@ -136,7 +136,7 @@ export function useAutoRecognition({
             { text: buildVisionSystemPrompt(template, availableSymbols || [], pickRule, cashRule, multiplierRule, dynamicMultiplierRule, betRule, confusableWarning) }
         ];
 
-        const modelName = 'gemini-3.1-flash-lite-preview';
+        const modelName = 'gemini-3.1-flash-lite';
 
         // 逐張辨識
         for (let i = 0; i < toProcess.length; i++) {

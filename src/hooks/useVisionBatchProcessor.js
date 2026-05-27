@@ -82,7 +82,7 @@ export function useVisionBatchProcessor({
         }
 
         const effectiveApiKey = customApiKey.trim() || apiKey;
-        const modelName = "gemini-3.1-flash-lite-preview";
+        const modelName = "gemini-3.1-flash-lite";
 
         let toProcess = visionImagesRef.current.filter(img => !img.grid);
         if (toProcess.length === 0) {
