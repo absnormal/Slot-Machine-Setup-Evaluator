@@ -62,9 +62,9 @@ export default function LineModeConfig({
                                         type="number"
                                         value={h}
                                         min="1"
-                                        max="10"
+                                        max={gridRows}
                                         onChange={e => {
-                                            const val = Math.max(1, Math.min(10, Number(e.target.value) || 1));
+                                            const val = Math.max(1, Math.min(gridRows, Number(e.target.value) || 1));
                                             const next = [...reelHeights];
                                             next[i] = val;
                                             setReelHeights(next);
@@ -76,14 +76,14 @@ export default function LineModeConfig({
                                 </div>
                             ))}
                         </div>
-                        <div className="flex gap-0.5 justify-center">
+                        <div className="flex flex-col gap-0.5 justify-center">
                             {(() => {
                                 const maxH = Math.max(...reelHeights);
                                 const mask = getGridMask({ rows: maxH, cols: gridCols, reelHeights });
                                 return Array.from({ length: maxH }).map((_, r) => (
-                                    <div key={r} className="flex flex-col gap-0.5">
-                                        {mask.map((row, c) => (
-                                            <div key={c} className={`w-4 h-4 rounded-sm transition-colors ${row[r] ? previewActive : previewInactive}`} />
+                                    <div key={r} className="flex gap-0.5">
+                                        {Array.from({ length: gridCols }).map((_, c) => (
+                                            <div key={c} className={`w-4 h-4 rounded-sm transition-colors ${mask[r][c] ? previewActive : previewInactive}`} />
                                         ))}
                                     </div>
                                 ));
