@@ -23,6 +23,7 @@ import { execRecord, execRecognizeGrid } from './blocks/recordBlocks';
 import { execLoop, execIfThen, execSubFlow } from './blocks/flowBlocks';
 import { execSetVar, execLog, execVarReplace, execVarExtractNumber } from './blocks/varBlocks';
 
+
 // ═══════════════════════════════════════
 // 全形→半形 正規化工具
 // 使用 Unicode NFKC 相容分解，將全形 ASCII（Ａ-Ｚ、（）、０-９ 等）
@@ -85,6 +86,7 @@ const BLOCK_HANDLERS = {
     export_results:     (runner, block) => execExportResults(block, runner),
     read_row:           (runner, block) => execReadRow(block, runner),
     clear_results:      (runner, block) => execClearResults(block, runner),
+
 };
 
 /**

@@ -43,6 +43,7 @@ export const BLOCK_META = {
     // 📤 P4 操作 — 橙色系
     export_p4_report:{ icon: '📤', label: 'P4匯出報告', color: 'border-orange-400/50 bg-orange-500/15' },
     clear_p4_data:   { icon: '🧹', label: 'P4清除資料', color: 'border-orange-400/50 bg-orange-500/15' },
+
 };
 
 export const NEW_BLOCK_TEMPLATES = [
@@ -75,6 +76,7 @@ export const NEW_BLOCK_TEMPLATES = [
     { type: 'clear_results', params: { table: 'results' } },
     { type: 'export_p4_report', params: { filename: '報告' } },
     { type: 'clear_p4_data', params: {} },
+
 ];
 
 let _blockIdCounter = 0;

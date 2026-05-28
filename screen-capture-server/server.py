@@ -21,6 +21,7 @@ import asyncio
 import json
 import base64
 import io
+import os
 import sys
 import time
 import random
@@ -31,16 +32,44 @@ from PIL import Image
 import ctypes
 import ctypes.wintypes
 
+
+# ═══════════════════════════════════════════════
+#  自動安裝缺失套件
+# ═══════════════════════════════════════════════
+import subprocess
+
+def _auto_install(package, pip_name=None):
+    """嘗試自動安裝缺失的 pip 套件"""
+    pip_name = pip_name or package
+    print(f"[安裝] {pip_name} 未找到，正在自動安裝...")
+    try:
+        subprocess.check_call(
+            [sys.executable, '-m', 'pip', 'install', pip_name, '-q'],
+            stdout=subprocess.DEVNULL
+        )
+        print(f"[安裝] {pip_name} 安裝成功 ✓")
+        return True
+    except subprocess.CalledProcessError:
+        print(f"[安裝] {pip_name} 安裝失敗 ✗（請手動執行: pip install {pip_name}）")
+        return False
+
 # ── 控制引擎 ──
 try:
     import pyautogui
+except ImportError:
+    if _auto_install('pyautogui'):
+        import pyautogui
+    else:
+        pyautogui = None
+
+if pyautogui:
     pyautogui.FAILSAFE = True
     pyautogui.PAUSE = 0.03
     HAS_PYAUTOGUI = True
     print("[模組] pyautogui 已載入 ✓")
-except ImportError:
+else:
     HAS_PYAUTOGUI = False
-    print("[警告] pyautogui 未安裝，控制功能將不可用。執行: pip install pyautogui")
+    print("[警告] pyautogui 不可用，控制功能將無法使用")
 
 # ── 高效能 JPEG 編碼器 (libjpeg-turbo) ──
 try:
@@ -52,6 +81,8 @@ try:
 except ImportError:
     HAS_TURBOJPEG = False
     print("[提示] turbojpeg 未安裝，使用 Pillow 編碼 (pip install PyTurboJPEG)")
+
+
 
 # ── 後端 OCR (RapidOCR + PaddleOCR ONNX) ──
 try:
@@ -291,6 +322,8 @@ def get_windows():
     
     user32.EnumWindows(WNDENUMPROC(enum_cb), 0)
     return windows
+
+
 
 
 # ═══════════════════════════════════════════════
@@ -1138,6 +1171,7 @@ async def handle_client(websocket):
                         quality = cmd.get("quality", quality)
                         interval = 1.0 / fps
                         print(f"[設定] 更新 FPS={fps}, 品質={quality}")
+
                     elif cmd_action in ("click", "click_pct", "click_roi", "key", "type_text", "hotkey", "move", "drag", "focus", "ocr_rois", "log", "find_text"):
                         # ── 處理控制指令（串流中也能控制）──
                         result = handle_control_command(cmd, active_source=source)
@@ -1246,6 +1280,7 @@ async def main():
     print("=" * 50)
     print()
     print(f"  控制引擎: {'✓ pyautogui 已就緒' if HAS_PYAUTOGUI else '✗ 未安裝 (pip install pyautogui)'}")
+
     print()
 
     # 列出可用螢幕

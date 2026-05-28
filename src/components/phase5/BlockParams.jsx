@@ -478,6 +478,8 @@ const BlockParams = ({ block, onUpdate, allFlows }) => {
                 </div>
             );
 
+
+
         default:
             return null;
     }
