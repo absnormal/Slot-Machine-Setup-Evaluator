@@ -369,8 +369,26 @@ function computeCenterCropHOG(imageData) {
  * 預處理符號參考圖：計算 HOG 特徵向量 + 中心裁切 HOG + 灰階陣列
  * @param {Object} symbolImagesAll - { symbolName: [dataUrl1, dataUrl2, ...], ... }
  * @returns {Promise<Map<string, { hog, centerHog, gray, eqGray, rgb }[]>>}
+ *
+ * 模組級快取：多個 hook 共享同一份索引，避免重複計算。
+ * 圖片並行載入：同一符號的多張參考圖用 Promise.all 並行載入。
  */
+let _cachedRefIndex = null;
+let _cachedRefKey = '';
+
+export function clearReferenceCache() {
+    _cachedRefIndex = null;
+    _cachedRefKey = '';
+}
+
 export async function buildReferenceIndex(symbolImagesAll) {
+    // 快取命中檢查
+    const cacheKey = Object.keys(symbolImagesAll).sort().join(',');
+    if (_cachedRefIndex && _cachedRefKey === cacheKey) {
+        console.log(`[LocalRecognizer] HOG 參考索引命中快取（${_cachedRefIndex.size} 個符號）`);
+        return _cachedRefIndex;
+    }
+
     const index = new Map();
 
     const loadImage = (url) => new Promise((resolve, reject) => {
@@ -383,23 +401,26 @@ export async function buildReferenceIndex(symbolImagesAll) {
 
     for (const [symbol, urls] of Object.entries(symbolImagesAll)) {
         const refList = [];
-        for (const url of urls) {
-            try {
-                const img = await loadImage(url);
-                const canvas = document.createElement('canvas');
-                canvas.width = MATCH_SIZE;
-                canvas.height = MATCH_SIZE;
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0, MATCH_SIZE, MATCH_SIZE);
-                const imageData = ctx.getImageData(0, 0, MATCH_SIZE, MATCH_SIZE);
-                const gray = toGray(imageData);
-                const eqGray = histogramEqualize(gray);
-                const hog = computeHOG(eqGray);
-                const centerHog = computeCenterCropHOG(imageData);
-                refList.push({ hog, centerHog, gray, eqGray, rgb: imageData });
-            } catch (e) {
+        // 並行載入同一符號的所有參考圖
+        const images = await Promise.all(
+            urls.map(url => loadImage(url).catch(e => {
                 console.warn(`[LocalRecognizer] 載入符號 ${symbol} 參考圖失敗`, e);
-            }
+                return null;
+            }))
+        );
+        for (const img of images) {
+            if (!img) continue;
+            const canvas = document.createElement('canvas');
+            canvas.width = MATCH_SIZE;
+            canvas.height = MATCH_SIZE;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, MATCH_SIZE, MATCH_SIZE);
+            const imageData = ctx.getImageData(0, 0, MATCH_SIZE, MATCH_SIZE);
+            const gray = toGray(imageData);
+            const eqGray = histogramEqualize(gray);
+            const hog = computeHOG(eqGray);
+            const centerHog = computeCenterCropHOG(imageData);
+            refList.push({ hog, centerHog, gray, eqGray, rgb: imageData });
         }
         if (refList.length > 0) {
             index.set(symbol, refList);
@@ -408,8 +429,14 @@ export async function buildReferenceIndex(symbolImagesAll) {
 
     const totalRefs = [...index.values()].reduce((s, v) => s + v.length, 0);
     console.log(`[LocalRecognizer] HOG 參考索引建立完成：${index.size} 個符號，共 ${totalRefs} 張參考圖（全圖HOG 55% + 中心裁切HOG 30% + Hue 15%）`);
+
+    // 儲存快取
+    _cachedRefIndex = index;
+    _cachedRefKey = cacheKey;
+
     return index;
 }
+
 
 // ═══════════════════════════════════════════
 // ── 格子擷取 ──

@@ -1,10 +1,12 @@
 import { useState, useRef, useEffect } from 'react';
-import { fetchWithRetry, resizeImageBase64 } from '../utils/helpers';
+import { resizeImageBase64 } from '../utils/helpers';
+import { callGeminiAPI } from '../utils/geminiApi';
 import { recognizeROIText, createOcrWorker } from '../utils/ocrUtils';
 import { buildReferenceIndex, recognizeBoard } from '../engine/localBoardRecognizer';
 import { validateVisionResponse } from '../utils/aiValidator';
 import { isCashSymbol, isCollectSymbol, isDynamicMultiplierSymbol } from '../utils/symbolUtils';
 import { getGridMask, isIrregularGrid } from '../utils/gridShapeUtils';
+import { drawGridOverlay } from '../utils/canvasUtils';
 import { apiKey } from '../utils/constants';
 import {
     buildCashRule, buildDynamicMultiplierRule, buildMultiplierReelRule,
@@ -13,6 +15,7 @@ import {
     buildMultiplierImagePrompt, buildBetImagePrompt
 } from '../config/promptTemplates';
 import { detectLitMultiplier } from '../utils/videoUtils';
+import { roiToPixels } from '../utils/roiUtils';
 
 const CACHE_KEYS = {
     MAIN: 'SLOT_P3_CACHE_MAIN',
@@ -148,49 +151,14 @@ export function useVisionBatchProcessor({
 
             try {
                 const offCanvas1 = document.createElement('canvas');
-                const rx1 = (visionP1.x / 100) * targetImg.obj.width;
-                const ry1 = (visionP1.y / 100) * targetImg.obj.height;
-                const rw1 = (visionP1.w / 100) * targetImg.obj.width;
-                const rh1 = (visionP1.h / 100) * targetImg.obj.height;
+                const { x: rx1, y: ry1, w: rw1, h: rh1 } = roiToPixels(targetImg.obj.width, targetImg.obj.height, visionP1);
                 offCanvas1.width = rw1;
                 offCanvas1.height = rh1;
                 const ctx1 = offCanvas1.getContext('2d');
                 ctx1.drawImage(targetImg.obj, rx1, ry1, rw1, rh1, 0, 0, rw1, rh1);
 
-                // 繪製紅色格線標記，幫助 AI 識別格子邊界
-                const displayCols = template.cols;
-                const cellW = rw1 / displayCols;
-                const cellH = rh1 / template.rows;
-                ctx1.strokeStyle = 'rgba(255, 0, 0, 0.6)';
-                ctx1.lineWidth = Math.max(2, Math.floor(Math.min(rw1, rh1) / 200));
-
-                if (isIrregularGrid(template)) {
-                    // 非方格盤面：逐列置中畫格線
-                    for (let c = 0; c < displayCols; c++) {
-                        const h = template.reelHeights[c] || template.rows;
-                        const offsetY = (rh1 - h * cellH) / 2;
-                        for (let r = 0; r < h; r++) {
-                            ctx1.strokeRect(
-                                c * cellW,
-                                offsetY + r * cellH,
-                                cellW, cellH
-                            );
-                        }
-                    }
-                } else {
-                    for (let c = 1; c < displayCols; c++) {
-                        ctx1.beginPath();
-                        ctx1.moveTo(c * cellW, 0);
-                        ctx1.lineTo(c * cellW, rh1);
-                        ctx1.stroke();
-                    }
-                    for (let r = 1; r < template.rows; r++) {
-                        ctx1.beginPath();
-                        ctx1.moveTo(0, r * cellH);
-                        ctx1.lineTo(rw1, r * cellH);
-                        ctx1.stroke();
-                    }
-                }
+                // 繪製紅色格線標記，幫助 AI 識別格子邊界（共用工具函數）
+                drawGridOverlay(ctx1, { x: 0, y: 0, w: rw1, h: rh1 }, template);
 
                 const raw1 = offCanvas1.toDataURL('image/jpeg', 0.75).split(',')[1];
                 const resized1 = await resizeImageBase64(`data:image/jpeg;base64,${raw1}`, 768, 0.75);
@@ -204,10 +172,7 @@ export function useVisionBatchProcessor({
 
                 if (template.hasMultiplierReel) {
                     const offCanvas2 = document.createElement('canvas');
-                    const rx2 = (visionP1Mult.x / 100) * targetImg.obj.width;
-                    const ry2 = (visionP1Mult.y / 100) * targetImg.obj.height;
-                    const rw2 = (visionP1Mult.w / 100) * targetImg.obj.width;
-                    const rh2 = (visionP1Mult.h / 100) * targetImg.obj.height;
+                    const { x: rx2, y: ry2, w: rw2, h: rh2 } = roiToPixels(targetImg.obj.width, targetImg.obj.height, visionP1Mult);
                     offCanvas2.width = rw2;
                     offCanvas2.height = rh2;
                     const ctx2 = offCanvas2.getContext('2d');
@@ -223,10 +188,7 @@ export function useVisionBatchProcessor({
 
                 if (hasBetBox) {
                     const offCanvas3 = document.createElement('canvas');
-                    const rx3 = (visionP1Bet.x / 100) * targetImg.obj.width;
-                    const ry3 = (visionP1Bet.y / 100) * targetImg.obj.height;
-                    const rw3 = (visionP1Bet.w / 100) * targetImg.obj.width;
-                    const rh3 = (visionP1Bet.h / 100) * targetImg.obj.height;
+                    const { x: rx3, y: ry3, w: rw3, h: rh3 } = roiToPixels(targetImg.obj.width, targetImg.obj.height, visionP1Bet);
                     offCanvas3.width = rw3;
                     offCanvas3.height = rh3;
                     const ctx3 = offCanvas3.getContext('2d');
@@ -240,24 +202,12 @@ export function useVisionBatchProcessor({
                     currentParts.push({ text: buildBetImagePrompt() });
                 }
 
-                const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${effectiveApiKey}`;
-
-                const payload = {
-                    contents: [{
-                        role: "user",
-                        parts: currentParts
-                    }],
-                    generationConfig: buildVisionGenerationConfig()
-                };
-
-                const result = await fetchWithRetry(url, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
+                const jsonText = await callGeminiAPI({
+                    apiKey: effectiveApiKey,
+                    model: modelName,
+                    parts: currentParts,
+                    generationConfig: buildVisionGenerationConfig(),
                 });
-
-                const jsonText = result.candidates?.[0]?.content?.parts?.[0]?.text;
-                if (!jsonText) throw new Error("無法從 AI 取得有效回應，請確認 API Key 是否正確。");
 
                 const responseData = JSON.parse(jsonText);
                 
@@ -352,12 +302,10 @@ export function useVisionBatchProcessor({
         const displayCols = template.cols;
 
         // 將百分比 ROI 轉成像素座標的輔助函式
-        const getPixelROI = (imgObj, pctROI) => ({
-            x: Math.floor(imgObj.width * (pctROI.x / 100)),
-            y: Math.floor(imgObj.height * (pctROI.y / 100)),
-            width: Math.floor(imgObj.width * (pctROI.w / 100)),
-            height: Math.floor(imgObj.height * (pctROI.h / 100)),
-        });
+        const getPixelROI = (imgObj, pctROI) => {
+            const { x, y, w, h } = roiToPixels(imgObj.width, imgObj.height, pctROI);
+            return { x, y, width: w, height: h };
+        };
 
         for (let i = 0; i < toProcess.length; i++) {
             if (isVisionCanceled.current) {

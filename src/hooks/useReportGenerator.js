@@ -633,6 +633,12 @@ document.getElementById('navCascadeCount').textContent = cc > 0 ? cc : '';
         a2.download = jsonFileName;
         a2.click();
 
+        // 釋放 blob URL，避免記憶體洩漏
+        setTimeout(() => {
+            URL.revokeObjectURL(htmlUrl);
+            URL.revokeObjectURL(jsonUrl);
+        }, 1000);
+
         resultMsg = saveDirHandle
             ? `✅ 報告已下載：${fileName}\n📥 JSON 已下載：${jsonFileName}\n📂 請將兩個檔案移至存檔資料夾`
             : `📥 已下載報告：${fileName}`;

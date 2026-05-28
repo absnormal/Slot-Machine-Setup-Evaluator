@@ -5,6 +5,8 @@
  * 無任何 React 依賴，可被任何模組 import 使用。
  */
 
+import { roiToPixels } from './roiUtils';
+
 // ── 常數 ──
 export const SAMPLE_SIZE = 128;               // ROI 降採尺寸 (128x128)
 export const DEDUP_THRESHOLD = 8;             // 去重 MAE 閾值（低於此值視為相同幀）
@@ -54,10 +56,7 @@ export function getCachedCanvas() {
  */
 export function extractROIGray(video, roi) {
     const { canvas, ctx } = getCachedCanvas();
-    const sx = (roi.x / 100) * video.videoWidth;
-    const sy = (roi.y / 100) * video.videoHeight;
-    const sw = (roi.w / 100) * video.videoWidth;
-    const sh = (roi.h / 100) * video.videoHeight;
+    const { x: sx, y: sy, w: sw, h: sh } = roiToPixels(video.videoWidth, video.videoHeight, roi);
 
     if (sw <= 1 || sh <= 1) return null;
 
@@ -111,10 +110,7 @@ export async function detectLitMultiplier(source, roi, ocrWorker) {
     if (!sourceW || !sourceH) return null;
 
     // ── Step 1: 裁切 ROI 區域 ──
-    const sx = Math.floor((roi.x / 100) * sourceW);
-    const sy = Math.floor((roi.y / 100) * sourceH);
-    const sw = Math.floor((roi.w / 100) * sourceW);
-    const sh = Math.floor((roi.h / 100) * sourceH);
+    const { x: sx, y: sy, w: sw, h: sh } = roiToPixels(sourceW, sourceH, roi);
     if (sw <= 0 || sh <= 0) return null;
 
     const roiCanvas = document.createElement('canvas');

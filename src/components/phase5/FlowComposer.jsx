@@ -9,7 +9,7 @@ import BlockRow, { useListDrag, removeBlockFromTree } from './BlockRow';
 import AddBlockButton from './AddBlockButton';
 import useAppStore from '../../stores/useAppStore';
 import usePhase4Store from '../../stores/usePhase4Store';
-import { GAS_URL } from '../../utils/constants';
+import { GAS_URL, gasUrl } from '../../utils/constants';
 import { useReportGenerator } from '../../hooks/useReportGenerator';
 
 /**
@@ -49,8 +49,8 @@ const FlowComposer = ({ wsRef, isConnected, videoEl, setCandidates, candidatesRe
             setBlocks([]);
             setFlowName(f.name);
             try {
-                const { GAS_URL } = await import('../../utils/constants');
-                const res = await fetch(`${GAS_URL}?action=getFlow&id=${encodeURIComponent(f.id)}&t=${Date.now()}`);
+                const { gasUrl } = await import('../../utils/constants');
+                const res = await fetch(gasUrl(`action=getFlow&id=${encodeURIComponent(f.id)}&t=${Date.now()}`));
                 const full = await res.json();
                 blocks = full.blocks;
             } catch (err) {
@@ -196,7 +196,7 @@ const FlowComposer = ({ wsRef, isConnected, videoEl, setCandidates, candidatesRe
 
         // 平行解析：同一層的子流程全部同時 fetch，解析完再掃下一層
         const resolveAllSubFlows = async (blockList) => {
-            const { GAS_URL } = await import('../../utils/constants');
+            const { GAS_URL, gasUrl } = await import('../../utils/constants');
 
             let pendingBlocks = blockList;
             const MAX_DEPTH = 10; // 防止無限遞迴
@@ -214,7 +214,7 @@ const FlowComposer = ({ wsRef, isConnected, videoEl, setCandidates, candidatesRe
 
                     if (GAS_URL && flowId) {
                         try {
-                            const res = await fetch(`${GAS_URL}?action=getFlow&id=${encodeURIComponent(flowId)}&t=${Date.now()}`);
+                            const res = await fetch(gasUrl(`action=getFlow&id=${encodeURIComponent(flowId)}&t=${Date.now()}`));
                             const full = await res.json();
                             return { flowId, resolved: { name: local?.name || flowId, ...full } };
                         } catch (err) {
@@ -337,7 +337,7 @@ const FlowComposer = ({ wsRef, isConnected, videoEl, setCandidates, candidatesRe
             // 並行抓取所有缺少 blocks 的流程
             const results = await Promise.all(missing.map(async f => {
                 try {
-                    const res = await fetch(`${GAS_URL}?action=getFlow&id=${encodeURIComponent(f.id)}&t=${Date.now()}`);
+                    const res = await fetch(gasUrl(`action=getFlow&id=${encodeURIComponent(f.id)}&t=${Date.now()}`));
                     const full = await res.json();
                     return full?.blocks ? [f.id, full.blocks] : null;
                 } catch { return null; }

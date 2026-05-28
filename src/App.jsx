@@ -1,7 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo, Suspense } from 'react';
 import { apiKey } from './utils/constants';
-import { computeGridResults } from './engine/computeGridResults';
-import { Cpu, X } from 'lucide-react';
 
 import AppHeader from './components/AppHeader';
 import ToastMessage from './components/ToastMessage';
@@ -21,6 +19,7 @@ import BuildErrorModal from './components/modals/BuildErrorModal';
 import PtCropModal from './components/modals/PtCropModal';
 import OverwriteConfirmModal from './components/modals/OverwriteConfirmModal';
 import SessionProgressModal from './components/phase4/SessionProgressModal';
+import NativeSourceModal from './components/modals/NativeSourceModal';
 
 // Hooks
 import { useCloud } from './hooks/useCloud';
@@ -31,7 +30,8 @@ import { useKeyframeExtractor } from './hooks/useKeyframeExtractor';
 import { useAutoRecognition } from './hooks/useAutoRecognition';
 import { useReportGenerator } from './hooks/useReportGenerator';
 import { useTemplateIO } from './hooks/useTemplateIO';
-import { useNativeCapture } from './hooks/useNativeCapture';
+import { useVideoSource } from './hooks/useVideoSource';
+import { usePhaseTransfer } from './hooks/usePhaseTransfer';
 import useAppStore from './stores/useAppStore';
 import usePhase4Store from './stores/usePhase4Store';
 
@@ -58,6 +58,7 @@ function App() {
 
     const templateMessage = useAppStore(s => s.templateMessage);
     const setTemplateMessage = useAppStore(s => s.setTemplateMessage);
+    const showToast = useAppStore(s => s.showToast);
 
     const totalBalance = useAppStore(s => s.totalBalance);
     const setTotalBalance = useAppStore(s => s.setTotalBalance);
@@ -89,7 +90,7 @@ function App() {
     } = cloudInstance;
 
     const [linesMode, setLinesMode] = useState('image');
-    const [sessionProgress, setSessionProgress] = useState(null);
+
 
     // --- Template Builder ---
     const templateBuilder = useTemplateBuilder({
@@ -228,142 +229,15 @@ function App() {
         visionCanvasRef, isPhase3Minimized
     });
 
-    // --- Phase 4 (影片智慧分析 — 新架構) ---
-    const videoRef = useRef(null);
-    const candidatesRef = useRef([]);
-    const [videoSrc, setVideoSrc] = useState(null);
-    const [isStreamMode, setIsStreamMode] = useState(false);
-    const [isNativeMode, setIsNativeMode] = useState(false);
-
-    // 視窗與螢幕選擇 Modal 狀態
-    const [showNativeSourceModal, setShowNativeSourceModal] = useState(false);
-    const [nativeSources, setNativeSources] = useState([]);
-
-    // --- 本地擷取 (Python 後端) ---
-    const nativeCapture = useNativeCapture(videoRef);
-    const handleVideoUpload = useCallback((e) => {
-        const file = e.target?.files?.[0];
-        if (!file) return;
-        // 如果目前是串流模式，先清掉串流
-        if (isStreamMode) {
-            const stream = videoRef.current?.srcObject;
-            if (stream) stream.getTracks().forEach(t => t.stop());
-            videoRef.current.srcObject = null;
-            setIsStreamMode(false);
-        }
-        if (videoSrc && videoSrc !== '__stream__') URL.revokeObjectURL(videoSrc);
-        const url = URL.createObjectURL(file);
-        setVideoSrc(url);
-        setTemplateMessage(`📽️ 已載入影片：${file.name}`);
-        setTimeout(() => setTemplateMessage(''), 3000);
-    }, [videoSrc, isStreamMode, setTemplateMessage]);
-
-    const pendingStreamRef = useRef(null);
-    const handleStopScreenCapture = useCallback((isTrackEnded = false) => {
-        const stream = videoRef.current?.srcObject;
-        if (stream) {
-            stream.getTracks().forEach(t => t.stop());
-            videoRef.current.srcObject = null;
-        }
-        pendingStreamRef.current = null;
-        setVideoSrc(null);
-        setIsStreamMode(false);
-        if (isTrackEnded) {
-            setTemplateMessage('⚠️ 串流被中斷！選擇「整個螢幕」而非單一視窗，可避免原生遊戲視窗擷取不穩定的問題');
-            setTimeout(() => setTemplateMessage(''), 8000);
-        } else {
-            setTemplateMessage('🖥️ 螢幕擷取已結束');
-            setTimeout(() => setTemplateMessage(''), 3000);
-        }
-    }, [setTemplateMessage]);
-
-    const handleStartScreenCapture = useCallback(async () => {
-        try {
-            const stream = await navigator.mediaDevices.getDisplayMedia({
-                video: { frameRate: { ideal: 30 } },
-                audio: false
-            });
-            const track = stream.getVideoTracks()[0];
-            // 使用者按瀏覽器原生「停止分享」或 Chrome 終止視窗擷取時自動清理
-            track.onended = () => {
-                handleStopScreenCapture(true);
-            };
-            // 如果目前有影片，先清掉
-            if (videoSrc && videoSrc !== '__stream__') URL.revokeObjectURL(videoSrc);
-            // 先暫存 stream，等 React 渲染出 <video> 後再用 useEffect 附加
-            pendingStreamRef.current = stream;
-            setVideoSrc('__stream__');
-            setIsStreamMode(true);
-            setTemplateMessage('🖥️ 螢幕擷取已開始');
-            setTimeout(() => setTemplateMessage(''), 3000);
-        } catch (err) {
-            console.log('螢幕擷取已取消', err);
-        }
-    }, [videoSrc, setTemplateMessage, handleStopScreenCapture]);
-
-    // 當 isStreamMode 切為 true 且 video 元素已掛載，附加 srcObject
-    useEffect(() => {
-        if (isStreamMode && pendingStreamRef.current && videoRef.current) {
-            const video = videoRef.current;
-            video.srcObject = pendingStreamRef.current;
-            // 等待影片元數據就緒後再播放（應用程式視窗需要額外時間協商解析度）
-            const onMeta = () => {
-                video.play().catch(() => { });
-                video.removeEventListener('loadedmetadata', onMeta);
-            };
-            if (video.readyState >= 1) {
-                // 已經有 metadata（例如瀏覽器分頁），直接播放
-                video.play().catch(() => { });
-            } else {
-                video.addEventListener('loadedmetadata', onMeta);
-            }
-            pendingStreamRef.current = null;
-        }
-    }, [isStreamMode]);
-
-    // --- 本地擷取啟停 ---
-    const handleStartNativeCapture = useCallback(async () => {
-        try {
-            // 如果目前有其他來源，先清掉
-            if (isStreamMode) handleStopScreenCapture();
-            if (videoSrc && videoSrc !== '__stream__' && videoSrc !== '__native__') URL.revokeObjectURL(videoSrc);
-
-            const sources = await nativeCapture.fetchMonitors();
-            if (!sources || sources.length === 0) {
-                setTemplateMessage('⚠️ 未偵測到螢幕或視窗');
-                return;
-            }
-            setNativeSources(sources);
-            setShowNativeSourceModal(true);
-        } catch (err) {
-            setTemplateMessage(`⚠️ ${err.message}`);
-            setTimeout(() => setTemplateMessage(''), 8000);
-        }
-    }, [videoSrc, isStreamMode, handleStopScreenCapture, nativeCapture, setTemplateMessage]);
-
-    const handleSelectNativeSource = useCallback((source) => {
-        setShowNativeSourceModal(false);
-        try {
-            nativeCapture.startCapture(source, 60, 60);
-            setVideoSrc('__native__');
-            setIsNativeMode(true);
-            setIsStreamMode(true);
-            setTemplateMessage(`🖥️ 本地擷取已啟動 (${source.label})`);
-            setTimeout(() => setTemplateMessage(''), 3000);
-        } catch (err) {
-            setTemplateMessage(`⚠️ ${err.message}`);
-            setTimeout(() => setTemplateMessage(''), 8000);
-        }
-    }, [nativeCapture, setTemplateMessage]);
-
-    const handleStopNativeCapture = useCallback(() => {
-        nativeCapture.stopCapture();
-        setVideoSrc(null);
-        setIsStreamMode(false);
-        setIsNativeMode(false);
-        setTemplateMessage('🖥️ 本地擷取已結束');
-        setTimeout(() => setTemplateMessage(''), 3000);
-    }, [nativeCapture, setTemplateMessage]);
+    // --- Video Source Management ---
+    const {
+        videoRef, videoSrc, setVideoSrc,
+        isStreamMode, isNativeMode,
+        showNativeSourceModal, setShowNativeSourceModal, nativeSources,
+        nativeCapture,
+        handleVideoUpload, handleStartScreenCapture, handleStopScreenCapture,
+        handleStartNativeCapture, handleSelectNativeSource, handleStopNativeCapture
+    } = useVideoSource({ showToast: setTemplateMessage });
 
     // ROI 狀態 (from Zustand Store — 自動持久化至 localStorage)
     const reelROI = usePhase4Store(s => s.reelROI);
@@ -375,7 +249,6 @@ function App() {
 
     // 新 Phase 4 Hooks
     const keyframeExtractor = useKeyframeExtractor({ setTemplateMessage });
-    candidatesRef.current = keyframeExtractor.candidates;
     const autoRecognition = useAutoRecognition({
         template, availableSymbols, customApiKey,
         setTemplateMessage, setTemplateError,
@@ -386,285 +259,38 @@ function App() {
     // 統計數據
     const phase4Stats = useMemo(() => reportGenerator.computeStats(keyframeExtractor.candidates), [keyframeExtractor.candidates, reportGenerator]);
 
-    // 辨識觸發器（封裝 updateCandidate + rois）
-    const handleRecognizeBatch = useCallback((decimalPlaces) => {
-        const rois = { reelROI, winROI, balanceROI, betROI, orderIdROI, multiplierROI };
-        autoRecognition.recognizeBatch(
-            keyframeExtractor.candidates,
-            keyframeExtractor.updateCandidate,
-            rois,
-            decimalPlaces ?? ocrDecimalPlaces
-        );
-    }, [autoRecognition, keyframeExtractor, reelROI, winROI, balanceROI, betROI, orderIdROI, multiplierROI, ocrDecimalPlaces]);
-
-    const handleRecognizeLocalBatch = useCallback((decimalPlaces, specificCandidates = null) => {
-        const rois = { reelROI, winROI, balanceROI, betROI, orderIdROI, multiplierROI };
-        autoRecognition.recognizeLocalBatch(
-            specificCandidates || keyframeExtractor.candidates,
-            keyframeExtractor.updateCandidate,
-            rois,
-            decimalPlaces ?? ocrDecimalPlaces
-        );
-    }, [autoRecognition, keyframeExtractor, reelROI, winROI, balanceROI, betROI, orderIdROI, multiplierROI, ocrDecimalPlaces]);
-
-    // P5 用：單張候選幀本機辨識（接收 candidateId，用 ref 取最新 candidates 避免閉包過期）
-    const recognizeLocalSingle = useCallback(async (candidateId) => {
-        const kf = candidatesRef.current.find(c => c.id === candidateId);
-        if (!kf) {
-            console.warn('[recognizeLocalSingle] 找不到候選幀', candidateId, 'candidates:', candidatesRef.current.length);
-            return;
-        }
-        const rois = { reelROI, winROI, balanceROI, betROI, orderIdROI, multiplierROI };
-        await autoRecognition.recognizeLocalBatch(
-            [kf],
-            keyframeExtractor.updateCandidate,
-            rois,
-            ocrDecimalPlaces
-        );
-    }, [autoRecognition, keyframeExtractor.updateCandidate, reelROI, winROI, balanceROI, betROI, orderIdROI, multiplierROI, ocrDecimalPlaces]);
-
-    // --- Phase 間數據傳遞 ---
-    const handleTransferPhase4ToPhase3 = useCallback(async (specificCandidates) => {
-        const kfCandidates = specificCandidates || keyframeExtractor.candidates;
-        if (kfCandidates.length === 0) return;
-
-        const transformed = await Promise.all(kfCandidates.map(kf => {
-            return new Promise((resolve) => {
-                // 盤面辨識一律用停輪幀（WIN 截圖有特效干擾）
-                const targetCanvas = kf.canvas;
-                const dataUrl = targetCanvas.toDataURL('image/jpeg', 0.8);
-                const img = new Image();
-                img.onload = () => {
-                    resolve({
-                        id: `${kf.id}_stop`,
-                        file: { name: `Spin-${kf.time.toFixed(1)}s-Stop` },
-                        previewUrl: dataUrl,
-                        obj: img,
-                        grid: kf.recognitionResult?.grid || null,
-                        bet: kf.recognitionResult?.betValue || null,
-                        multiplier: kf.recognitionResult?.multiplier || null,
-                        error: ''
-                    });
-                };
-                img.src = dataUrl;
-            });
-        }));
-
-        setVisionP1({ ...reelROI });
-        setVisionP1Bet({ ...betROI });
-        if (template?.hasMultiplierReel || hasMultiplierReel) setVisionP1Mult({ ...multiplierROI });
-        setHasBetBox(true);
-        setVisionImages(prev => [...prev, ...transformed]);
-        setIsPhase4Minimized(true);
-        setIsPhase3Minimized(false);
-        setTemplateMessage(`✅ 已從影片匯入 ${kfCandidates.length} 張關鍵幀至 Phase 3`);
-
-        if (transformed.length > 0) setActiveVisionId(transformed[0].id);
-    }, [keyframeExtractor.candidates, setVisionImages, setTemplateMessage, setActiveVisionId, reelROI, betROI, multiplierROI, template, hasMultiplierReel, setVisionP1, setVisionP1Mult, setVisionP1Bet, setHasBetBox]);
-
-    // --- 匯入歷史 Session ---
-    const handleImportSession = useCallback(async () => {
-        const startTime = Date.now();
-        setSessionProgress({ type: 'import', phase: '選擇資料夾...', current: 0, total: 0, detail: '', startTime });
-        const result = await reportGenerator.importSession((prog) => {
-            setSessionProgress(prev => ({ ...prev, ...prog }));
-        });
-        setSessionProgress(null);
-        if (result && result.candidates && result.candidates.length > 0) {
-            // 匯入 ROI 座標（若 JSON 中有記錄）
-            if (result.rois) {
-                const store = usePhase4Store.getState();
-                if (result.rois.reel) store.setReelROI(result.rois.reel);
-                if (result.rois.win) store.setWinROI(result.rois.win);
-                if (result.rois.balance) store.setBalanceROI(result.rois.balance);
-                if (result.rois.bet) store.setBetROI(result.rois.bet);
-                if (result.rois.orderId) store.setOrderIdROI(result.rois.orderId);
-                if (result.rois.multiplier) store.setMultiplierROI(result.rois.multiplier);
-            }
-            // 若遊戲無乘倍輪，清除匯入資料中殘留的 multiplier key
-            const showMult = template?.hasMultiplierReel || hasMultiplierReel;
-            const cleaned = showMult ? result.candidates : result.candidates.map(c => {
-                if (c.ocrData && 'multiplier' in c.ocrData) {
-                    const { multiplier, ...rest } = c.ocrData;
-                    return { ...c, ocrData: rest };
-                }
-                return c;
-            });
-            keyframeExtractor.setCandidates(prev => [...prev, ...cleaned]);
-            setTemplateMessage(`✅ 已匯入 ${cleaned.length} 張歷史關鍵幀${result.rois ? ' (含 ROI 座標)' : ''}`);
-
-            // ── 自動從資料夾名稱比對雲端模板並載入 ──
-            if (result.folderName) {
-                try {
-                    // 解析資料夾名稱：Session_YYYYMMDD_HHMMSS_{gameName}
-                    const folderMatch = result.folderName.match(/^Session_\d{8}_\d{6}_(.+)$/);
-
-                    if (folderMatch) {
-                        const extractedGameName = folderMatch[1].trim();
-
-                        // 若當前已有模板且遊戲名相同，跳過自動載入
-                        const currentGameName = (gameName || template?.name || '').trim();
-                        if (template && currentGameName.toUpperCase() === extractedGameName.toUpperCase()) {
-                            // 已有對應模板，不需重複載入
-                        } else {
-                            // 取得雲端模板列表：React state → sessionStorage → 遠端拉取
-                            let templates = cloudInstance.cloudTemplates;
-                            if (!templates || templates.length === 0) {
-                                try {
-                                    const cached = sessionStorage.getItem('slot_templates_cache');
-                                    if (cached) templates = JSON.parse(cached);
-                                } catch (e) {}
-                            }
-                            if (!templates || templates.length === 0) {
-                                // 快取也沒有，等待遠端拉取完成後從 sessionStorage 讀取
-                                await cloudInstance.fetchCloudTemplates();
-                                try {
-                                    const cached = sessionStorage.getItem('slot_templates_cache');
-                                    if (cached) templates = JSON.parse(cached);
-                                } catch (e) {}
-                            }
-
-
-
-                            if (templates && templates.length > 0) {
-                                const upperName = extractedGameName.toUpperCase();
-                                // 優先完全匹配 gameName
-                                let match = templates.find(t =>
-                                    (t.gameName || '').trim().toUpperCase() === upperName
-                                );
-                                // 次選：模板名或遊戲名包含目標字串
-                                if (!match) {
-                                    match = templates.find(t =>
-                                        (t.gameName || '').trim().toUpperCase().includes(upperName) ||
-                                        upperName.includes((t.gameName || '').trim().toUpperCase())
-                                    );
-                                }
-
-
-
-                                if (match) {
-                                    setTemplateMessage(`☁️ 正在自動載入雲端模板：${match.name || match.gameName}...`);
-                                    await templateIO.loadCloudTemplate(match);
-                                } else {
-                                    setTimeout(() => {
-                                        setTemplateMessage(`ℹ️ 未找到遊戲「${extractedGameName}」的雲端模板，請手動載入`);
-                                    }, 2000);
-                                }
-                            }
-                        }
-                    }
-                } catch (e) {
-                    console.warn('[AutoTemplate] 自動載入模板失敗（不影響匯入結果）', e);
-                }
-            }
-
-            return result.dirHandle;
-        }
-        return null;
-    }, [reportGenerator, keyframeExtractor, setTemplateMessage, template, hasMultiplierReel, gameName, cloudInstance, templateIO]);
-
-    // --- Vision 結算 ---
-    const [visionCalcResults, setVisionCalcResults] = useState(null);
-    const [visionCalculateError, setVisionCalculateError] = useState('');
-    const [visionBetInput, setVisionBetInput] = useState(100);
-
-    useEffect(() => {
-        if (activeVisionImg && typeof activeVisionImg.bet === 'number') {
-            setVisionBetInput(activeVisionImg.bet);
-        }
-    }, [activeVisionId, activeVisionImg]);
-
-    const handleVisionBetInputChange = (newBet) => {
-        setVisionBetInput(newBet);
-        if (activeVisionId) {
-            setVisionImages(prev => prev.map(img =>
-                img.id === activeVisionId ? { ...img, bet: newBet } : img
-            ));
-        }
-    };
-
-    useEffect(() => {
-        if (!visionGrid) {
-            setVisionCalcResults(null);
-            setVisionCalculateError('');
-            return;
-        }
-
-        let multVal = null;
-        if (template?.hasMultiplierReel && activeVisionImg?.multiplier) {
-            multVal = parseFloat(activeVisionImg.multiplier.replace(/[^0-9.]/g, '')) || 1;
-        }
-
-        const { results, error } = computeGridResultsCb(visionGrid, visionBetInput, multVal);
-        setVisionCalcResults(results);
-        setVisionCalculateError(error);
-    }, [visionGrid, visionBetInput, computeGridResultsCb, activeVisionImg, template]);
-
-    // --- 盤面傳遞 (Phase 3 ↔ Phase 2) ---
-    const handleTransferVisionToManual = useCallback(() => {
-        if (!activeVisionImg || !activeVisionImg.grid) {
-            setIsPhase3Minimized(true);
-            setIsPhase2Minimized(false);
-            return;
-        }
-        const newGrid = activeVisionImg.grid.map(row => [...row]);
-        setPanelGrid(newGrid);
-        setBetInput(visionBetInput);
-        setIsPhase3Minimized(true);
-        setIsPhase2Minimized(false);
-        setTemplateMessage('✅ 已將 AI 辨識盤面及押注狀態同步傳送至 Phase 2 手動區');
-        setTimeout(() => setTemplateMessage(''), 3000);
-    }, [activeVisionImg, visionBetInput, setPanelGrid, setBetInput, setIsPhase3Minimized, setIsPhase2Minimized, setTemplateMessage]);
-
-    const handleReturnToVision = useCallback(() => {
-        if (activeVisionId) {
-            const newGrid = panelGrid.map(row => [...row]);
-            setVisionImages(prev => prev.map(img =>
-                img.id === activeVisionId ? { ...img, grid: newGrid } : img
-            ));
-            setVisionBetInput(betInput);
-            setTemplateMessage('✅ 已將手動盤面存回目前 AI 截圖 (Phase 3)');
-            setTimeout(() => setTemplateMessage(''), 3000);
-        }
-        setIsPhase2Minimized(true);
-        setIsPhase3Minimized(false);
-    }, [activeVisionId, panelGrid, betInput, setVisionImages, setVisionBetInput, setIsPhase2Minimized, setIsPhase3Minimized, setTemplateMessage]);
-
-    const handleSaveVisionToPhase4 = useCallback(() => {
-        if (!activeVisionImg || !activeVisionImg.grid || !visionCalcResults) return;
-        const originalId = activeVisionId.replace(/_(win|stop)$/, '');
-
-        keyframeExtractor.setCandidates(prev => prev.map(c => {
-            if (c.id === originalId) {
-                const prevRR = c.recognitionResult || {};
-                const prevOverrides = c.manualOverrides || {};
-                const newTotalWin = visionCalcResults.totalWin;
-                return {
-                    ...c,
-                    recognitionResult: {
-                        ...prevRR,
-                        grid: activeVisionImg.grid,
-                        totalWin: newTotalWin,
-                        expectedWin: newTotalWin,           // 同步更新比對基準
-                        settlement: visionCalcResults,       // 同步更新結算明細
-                        details: visionCalcResults.details,
-                        rawText: activeVisionImg.rawText || (prevRR.rawText || '')
-                    },
-                    manualOverrides: {
-                        ...prevOverrides,
-                        grid: true
-                    },
-                    status: 'recognized'
-                };
-            }
-            return c;
-        }));
-
-        setTemplateMessage('✅ 已將人工修正盤面儲存回 Phase 4 原卡片！');
-        setTimeout(() => setTemplateMessage(''), 3000);
-        setIsPhase3Minimized(true);
-        setIsPhase4Minimized(false);
-    }, [activeVisionImg, activeVisionId, visionCalcResults, keyframeExtractor.setCandidates, setTemplateMessage]);
+    // --- 跨 Phase 傳遞 (usePhaseTransfer) ---
+    const {
+        handleRecognizeBatch, handleRecognizeLocalBatch, recognizeLocalSingle,
+        handleTransferPhase4ToPhase3, handleImportSession,
+        visionCalcResults, visionCalculateError, visionBetInput,
+        handleVisionBetInputChange,
+        handleTransferVisionToManual, handleReturnToVision, handleSaveVisionToPhase4,
+        sessionProgress, setSessionProgress,
+    } = usePhaseTransfer({
+        template,
+        autoRecognition,
+        keyframeExtractor,
+        reportGenerator,
+        cloudInstance,
+        templateIO,
+        showToast,
+        setTemplateMessage,
+        setTemplateError,
+        // Vision hooks
+        setVisionImages, setActiveVisionId,
+        setVisionP1, setVisionP1Mult, setVisionP1Bet,
+        setHasBetBox,
+        activeVisionImg, activeVisionId, visionGrid,
+        // Phase 2 hooks
+        setPanelGrid, setBetInput, betInput, panelGrid,
+        computeGridResultsCb,
+        // UI state
+        setIsPhase2Minimized, setIsPhase3Minimized, setIsPhase4Minimized,
+        // Template state
+        hasMultiplierReel, gameName,
+        ocrDecimalPlaces,
+    });
 
     // --- 快捷鍵 (Enter) ---
     useEffect(() => {
@@ -678,14 +304,12 @@ function App() {
                     e.preventDefault();
                     const winAmount = calcResults?.totalWin || 0;
                     setTotalBalance(prev => parseFloat((prev + winAmount).toFixed(4)));
-                    setTemplateMessage(`💰 已將贏分 ${winAmount.toLocaleString()} 加入總資產`);
-                    setTimeout(() => setTemplateMessage(''), 3000);
+                    showToast(`💰 已將贏分 ${winAmount.toLocaleString()} 加入總資產`);
                 } else if (!isPhase3Minimized) {
                     e.preventDefault();
                     const winAmount = visionCalcResults?.totalWin || 0;
                     setTotalBalance(prev => parseFloat((prev + winAmount).toFixed(4)));
-                    setTemplateMessage(`💰 已將 AI 辨識贏分 ${winAmount.toLocaleString()} 加入總資產`);
-                    setTimeout(() => setTemplateMessage(''), 3000);
+                    showToast(`💰 已將 AI 辨識贏分 ${winAmount.toLocaleString()} 加入總資產`);
                 }
             }
         };
@@ -987,67 +611,17 @@ function App() {
                 onSave={() => {
                     localStorage.setItem('gemini_api_key', customApiKey);
                     setShowSettingsModal(false);
-                    setTemplateMessage('✅ 設定已安全儲存至您的瀏覽器！');
-                    setTimeout(() => setTemplateMessage(''), 3000);
+                    showToast('✅ 設定已安全儲存至您的瀏覽器！');
                 }}
             />
 
             {/* 本地擷取來源選擇 Modal */}
             {showNativeSourceModal && (
-                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in">
-                    <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl overflow-hidden flex flex-col max-h-[80vh]">
-                        <div className="p-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center shrink-0">
-                            <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                                <Cpu size={20} className="text-teal-600" />
-                                選擇擷取來源 (本地伺服器)
-                            </h3>
-                            <button onClick={() => setShowNativeSourceModal(false)} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-full transition-colors">
-                                <X size={20} />
-                            </button>
-                        </div>
-                        <div className="p-4 overflow-y-auto flex-1">
-                            <div className="space-y-6">
-                                {/* 螢幕區塊 */}
-                                <div>
-                                    <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 px-2">🖥️ 實體螢幕</h4>
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                        {nativeSources.filter(s => s.type === 'monitor').map(source => (
-                                            <button
-                                                key={source.id}
-                                                onClick={() => handleSelectNativeSource(source)}
-                                                className="text-left px-4 py-3 rounded-xl border border-slate-200 bg-white hover:border-teal-500 hover:shadow-md transition-all group flex flex-col gap-1"
-                                            >
-                                                <span className="font-bold text-slate-700 group-hover:text-teal-700">{source.label}</span>
-                                                <span className="text-xs text-slate-400">{source.width} x {source.height} @ 60fps</span>
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                                {/* 視窗區塊 */}
-                                <div>
-                                    <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 px-2">🪟 應用程式視窗</h4>
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                        {nativeSources.filter(s => s.type === 'window').map(source => (
-                                            <button
-                                                key={source.id}
-                                                onClick={() => handleSelectNativeSource(source)}
-                                                className="text-left px-4 py-3 rounded-xl border border-slate-200 bg-white hover:border-indigo-500 hover:shadow-md transition-all group flex flex-col gap-1"
-                                            >
-                                                <span className="font-bold text-slate-700 group-hover:text-indigo-700 truncate w-full" title={source.label}>{source.label}</span>
-                                                <span className="text-xs text-slate-400">{source.rect.width} x {source.rect.height} @ 60fps</span>
-                                            </button>
-                                        ))}
-                                        {nativeSources.filter(s => s.type === 'window').length === 0 && (
-                                            <div className="col-span-full p-4 text-center text-sm text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
-                                                找不到足夠大的可見視窗
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                <NativeSourceModal
+                    sources={nativeSources}
+                    onSelect={handleSelectNativeSource}
+                    onClose={() => setShowNativeSourceModal(false)}
+                />
             )}
 
             <SessionProgressModal progress={sessionProgress} />

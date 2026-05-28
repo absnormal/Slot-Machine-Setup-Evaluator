@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
-import { fetchWithRetry, ptFileToBase64 } from '../utils/helpers';
+import { ptFileToBase64 } from '../utils/helpers';
+import { callGeminiAPI } from '../utils/geminiApi';
 import { isWildSymbol } from '../utils/symbolUtils';
 import { buildPaytablePrompt, buildPaytableGenerationConfig } from '../config/promptTemplates';
 
@@ -178,26 +179,18 @@ export function usePaytableProcessor({
         if (setTemplateMessage) setTemplateMessage("AI 正在分析賠率表中...");
 
         try {
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${effectiveApiKey}`;
             const imageParts = ptImages.map(img => ({
                 inlineData: { mimeType: img.file.type, data: img.base64 }
             }));
 
             const promptText = buildPaytablePrompt();
 
-            const payload = {
-                contents: [{ role: "user", parts: [{ text: promptText }, ...imageParts] }],
-                generationConfig: buildPaytableGenerationConfig()
-            };
-
-            const result = await fetchWithRetry(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
+            const jsonText = await callGeminiAPI({
+                apiKey: effectiveApiKey,
+                model: modelName,
+                parts: [{ text: promptText }, ...imageParts],
+                generationConfig: buildPaytableGenerationConfig(),
             });
-
-            const jsonText = result.candidates?.[0]?.content?.parts?.[0]?.text;
-            if (!jsonText) throw new Error("無法從 AI 取得有效回應，請確認 API Key 是否正確。");
 
             let parsedData = JSON.parse(jsonText);
 

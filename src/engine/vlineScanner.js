@@ -6,6 +6,7 @@
  */
 
 import { SAMPLE_SIZE } from '../utils/videoUtils';
+import { roiToPixels } from '../utils/roiUtils';
 
 // ── V-Line 專用 Canvas ──
 
@@ -30,10 +31,7 @@ export function getSliceCanvas() {
  */
 export function extractSliceGrays(video, roi, cols) {
     const { canvas, ctx } = getSliceCanvas();
-    const sx = (roi.x / 100) * video.videoWidth;
-    const sy = (roi.y / 100) * video.videoHeight;
-    const sw = (roi.w / 100) * video.videoWidth;
-    const sh = (roi.h / 100) * video.videoHeight;
+    const { x: sx, y: sy, w: sw, h: sh } = roiToPixels(video.videoWidth, video.videoHeight, roi);
 
     if (sw <= 1 || sh <= 1) return null;
 

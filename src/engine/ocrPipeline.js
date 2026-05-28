@@ -5,6 +5,8 @@
  * 透過全域 Queue 保護，確保單一 Worker 不會因高頻調用導致 WASM 記憶體問題。
  */
 
+import { roiToPixels } from '../utils/roiUtils';
+
 /**
  * 從 canvas 擷取全幀快照
  */
@@ -24,10 +26,7 @@ export function generateThumbUrl(canvas, roi) {
     if (!canvas) return '';
     try {
         const tc = document.createElement('canvas');
-        const cw = Math.floor(canvas.width * (roi.w / 100));
-        const ch = Math.floor(canvas.height * (roi.h / 100));
-        const cx = Math.floor(canvas.width * (roi.x / 100));
-        const cy = Math.floor(canvas.height * (roi.y / 100));
+        const { x: cx, y: cy, w: cw, h: ch } = roiToPixels(canvas.width, canvas.height, roi);
         tc.width = cw;
         tc.height = ch;
         const tCtx = tc.getContext('2d');
@@ -51,10 +50,7 @@ export async function cropAndOCR(canvas, roi, ocrWorker, decimalPlaces, label = 
         ocrGlobalQueue = ocrGlobalQueue.then(async () => {
             try {
                 const cropCanvas = document.createElement('canvas');
-                const cw = Math.floor(canvas.width * (roi.w / 100));
-                const ch = Math.floor(canvas.height * (roi.h / 100));
-                const cx = Math.floor(canvas.width * (roi.x / 100));
-                const cy = Math.floor(canvas.height * (roi.y / 100));
+                const { x: cx, y: cy, w: cw, h: ch } = roiToPixels(canvas.width, canvas.height, roi);
                 if (cw < 2 || ch < 2) return resolve('');
 
                 // 調整至神經網路最適合的文字高度（約 48px），避免不自然的壓縮

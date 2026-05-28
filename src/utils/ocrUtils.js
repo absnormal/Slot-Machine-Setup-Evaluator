@@ -5,6 +5,8 @@
  * 只在首次呼叫 createOcrWorker() 時才載入，不影響主 bundle 大小。
  */
 
+import { roiToPixels } from './roiUtils';
+
 /**
  * 初始化 OCR Worker
  */
@@ -48,10 +50,7 @@ export const recognizeROIText = async (fullCanvas, roi, ocrWorker, ocrDecimalPla
     if (!roi || !ocrWorker) return '';
     try {
         const cropCanvas = document.createElement('canvas');
-        const cw = Math.floor(fullCanvas.width * (roi.w / 100));
-        const ch = Math.floor(fullCanvas.height * (roi.h / 100));
-        const cx = Math.floor(fullCanvas.width * (roi.x / 100));
-        const cy = Math.floor(fullCanvas.height * (roi.y / 100));
+        const { x: cx, y: cy, w: cw, h: ch } = roiToPixels(fullCanvas.width, fullCanvas.height, roi);
 
         // PaddleOCR 容忍度高，降回 2x 即可保留清晰度且縮減運算成本
         let scale = 2;

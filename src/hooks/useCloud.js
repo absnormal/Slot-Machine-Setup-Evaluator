@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { GAS_URL } from '../utils/constants';
+import { GAS_URL, gasUrl, gasPost } from '../utils/constants';
 import { resizeImageBase64 } from '../utils/helpers';
 
 export function useCloud() {
@@ -26,7 +26,7 @@ export function useCloud() {
         }
 
         try {
-            const res = await fetch(`${GAS_URL}?action=list`);
+            const res = await fetch(gasUrl('action=list'));
             const data = await res.json();
             setCloudTemplates(data || []);
             sessionStorage.setItem('slot_templates_cache', JSON.stringify(data || []));
@@ -43,7 +43,7 @@ export function useCloud() {
         setIsLoadingCloud(true);
         sessionStorage.removeItem('slot_templates_cache');
         try {
-            const res = await fetch(`${GAS_URL}?action=list&nocache=true&t=${Date.now()}`);
+            const res = await fetch(gasUrl(`action=list&nocache=true&t=${Date.now()}`));
             const data = await res.json();
             setCloudTemplates(data || []);
             sessionStorage.setItem('slot_templates_cache', JSON.stringify(data || []));
@@ -61,9 +61,9 @@ export function useCloud() {
         if (!GAS_URL) return;
         try {
             setDeletingId(id);
-            await fetch(GAS_URL, {
+            await fetch(gasUrl(), {
                 method: 'POST',
-                body: JSON.stringify({ action: 'delete', id: id }),
+                body: gasPost({ action: 'delete', id: id }),
                 headers: { 'Content-Type': 'text/plain;charset=utf-8' }
             });
             setCloudTemplates(prev => prev.filter(t => t.id !== id));
@@ -81,7 +81,7 @@ export function useCloud() {
     const getTemplateData = async (id) => {
         setDownloadingId(id);
         try {
-            const res = await fetch(`${GAS_URL}?action=getTemplate&id=${id}&nocache=true&t=${Date.now()}`);
+            const res = await fetch(gasUrl(`action=getTemplate&id=${id}&nocache=true&t=${Date.now()}`));
             const data = await res.json();
             if (data.error) throw new Error(data.error);
             return data;
@@ -220,9 +220,9 @@ export function useCloud() {
                 throw new Error('模板資料過大 (超過 50KB)，請減少符號縮圖再試。');
             }
 
-            const response = await fetch(GAS_URL.trim(), {
+            const response = await fetch(gasUrl(), {
                 method: 'POST',
-                body: payload,
+                body: gasPost({ action, data: newTemplate }),
                 headers: { 'Content-Type': 'text/plain;charset=utf-8' }
             });
 

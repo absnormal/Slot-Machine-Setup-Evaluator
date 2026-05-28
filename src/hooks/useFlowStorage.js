@@ -11,7 +11,7 @@
  * 額外支援 localStorage 作為離線快取。
  */
 import { useState, useCallback, useEffect } from 'react';
-import { GAS_URL } from '../utils/constants';
+import { GAS_URL, gasUrl, gasPost } from '../utils/constants';
 import { PRESET_FLOWS } from '../engine/presetFlows';
 
 const LS_KEY = 'slot_flow_recipes';
@@ -54,7 +54,7 @@ export function useFlowStorage() {
 
         setIsLoading(true);
         try {
-            const res = await fetch(`${GAS_URL}?action=listFlows&nocache=true&t=${Date.now()}`);
+            const res = await fetch(gasUrl(`action=listFlows&nocache=true&t=${Date.now()}`));
             const data = await res.json();
             const flows = data || [];
             setCloudFlows(flows);
@@ -88,9 +88,9 @@ export function useFlowStorage() {
                 }
             };
 
-            const res = await fetch(GAS_URL, {
+            const res = await fetch(gasUrl(), {
                 method: 'POST',
-                body: JSON.stringify(payload),
+                body: gasPost(payload),
                 headers: { 'Content-Type': 'text/plain;charset=utf-8' }
             });
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -111,9 +111,9 @@ export function useFlowStorage() {
     const deleteFromCloud = useCallback(async (id) => {
         if (!GAS_URL) return;
         try {
-            await fetch(GAS_URL, {
+            await fetch(gasUrl(), {
                 method: 'POST',
-                body: JSON.stringify({ action: 'deleteFlow', id }),
+                body: gasPost({ action: 'deleteFlow', id }),
                 headers: { 'Content-Type': 'text/plain;charset=utf-8' }
             });
             setCloudFlows(prev => prev.filter(f => f.id !== id));

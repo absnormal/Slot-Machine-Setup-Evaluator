@@ -1,6 +1,14 @@
+var VALID_TOKEN = 'sme_2026_t1';
+
 function doGet(e) {
+  // ── Token 驗證 ──
+  if (e.parameter.token !== VALID_TOKEN) {
+    return ContentService.createTextOutput(JSON.stringify({ error: 'Unauthorized' }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
   var action = e.parameter.action || 'list';
-  var nocache = e.parameter.nocache === 'true'; // 新增：接收前端傳來的強制更新指令
+  var nocache = e.parameter.nocache === 'true';
   
   // 1. 單筆完整資料 API (按需載入) - 不快取
   if (action === 'getTemplate') {
@@ -155,9 +163,16 @@ function getFlowSheet() {
 }
 
 function doPost(e) {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
   var req = JSON.parse(e.postData.contents);
-  var cache = CacheService.getScriptCache(); // 準備清除快取
+
+  // ── Token 驗證 ──
+  if (req.token !== VALID_TOKEN) {
+    return ContentService.createTextOutput(JSON.stringify({ error: 'Unauthorized' }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
+  var cache = CacheService.getScriptCache();
 
   if (req.action === 'save') {
     if (sheet.getLastRow() === 0) {

@@ -1,9 +1,11 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { fetchWithRetry, resizeImageBase64 } from '../utils/helpers';
+import { resizeImageBase64 } from '../utils/helpers';
+import { callGeminiAPI } from '../utils/geminiApi';
 import { validateVisionResponse } from '../utils/aiValidator';
 import { isCashSymbol, isCollectSymbol, isDynamicMultiplierSymbol } from '../utils/symbolUtils';
 import { apiKey } from '../utils/constants';
 import { computeGridResults } from '../engine/computeGridResults';
+import { drawGridOverlay } from '../utils/canvasUtils';
 import { buildReferenceIndex, recognizeBoard } from '../engine/localBoardRecognizer';
 import {
     buildCashRule, buildDynamicMultiplierRule, buildMultiplierReelRule,
@@ -13,6 +15,7 @@ import {
 } from '../config/promptTemplates';
 import { recognizeROIText, createOcrWorker } from '../utils/ocrUtils';
 import { detectLitMultiplier } from '../utils/videoUtils';
+import { roiToPixels } from '../utils/roiUtils';
 
 /**
  * useAutoRecognition — 自動辨識 Pipeline
@@ -57,7 +60,15 @@ export function useAutoRecognition({
                 ocrWorkerRef.current = ocr;
             }
         })();
-        return () => { isMounted = false; };
+        return () => {
+            isMounted = false;
+            if (ocrWorkerRef.current?.destroy) {
+                ocrWorkerRef.current.destroy();
+            } else if (ocrWorkerRef.current?.terminate) {
+                ocrWorkerRef.current.terminate();
+            }
+            ocrWorkerRef.current = null;
+        };
     }, []);
 
     /**
@@ -288,12 +299,10 @@ export function useAutoRecognition({
         const displayCols = template.cols;
 
         // 將百分比 ROI 轉成像素座標的輔助函式
-        const toPixelROI = (canvas, pctROI) => ({
-            x: Math.floor(canvas.width * (pctROI.x / 100)),
-            y: Math.floor(canvas.height * (pctROI.y / 100)),
-            width: Math.floor(canvas.width * (pctROI.w / 100)),
-            height: Math.floor(canvas.height * (pctROI.h / 100)),
-        });
+        const toPixelROI = (canvas, pctROI) => {
+            const { x, y, w, h } = roiToPixels(canvas.width, canvas.height, pctROI);
+            return { x, y, width: w, height: h };
+        };
 
         for (let i = 0; i < toProcess.length; i++) {
             if (isCanceledRef.current) {
@@ -438,27 +447,14 @@ async function recognizeGrid(canvas, rois, template, availableSymbols, fixedPref
 
     // 裁切盤面 ROI + 繪製紅色格線
     const offCanvas = document.createElement('canvas');
-    const rx = Math.floor(canvas.width * (reelROI.x / 100));
-    const ry = Math.floor(canvas.height * (reelROI.y / 100));
-    const rw = Math.floor(canvas.width * (reelROI.w / 100));
-    const rh = Math.floor(canvas.height * (reelROI.h / 100));
+    const { x: rx, y: ry, w: rw, h: rh } = roiToPixels(canvas.width, canvas.height, reelROI);
     offCanvas.width = rw;
     offCanvas.height = rh;
     const ctx = offCanvas.getContext('2d');
     ctx.drawImage(canvas, rx, ry, rw, rh, 0, 0, rw, rh);
 
-    // 繪製紅色格線
-    const displayCols = template.cols;
-    const cellW = rw / displayCols;
-    const cellH = rh / template.rows;
-    ctx.strokeStyle = 'rgba(255, 0, 0, 0.6)';
-    ctx.lineWidth = Math.max(2, Math.floor(Math.min(rw, rh) / 200));
-    for (let c = 1; c < displayCols; c++) {
-        ctx.beginPath(); ctx.moveTo(c * cellW, 0); ctx.lineTo(c * cellW, rh); ctx.stroke();
-    }
-    for (let r = 1; r < template.rows; r++) {
-        ctx.beginPath(); ctx.moveTo(0, r * cellH); ctx.lineTo(rw, r * cellH); ctx.stroke();
-    }
+    // 繪製紅色格線（共用工具函數）
+    drawGridOverlay(ctx, { x: 0, y: 0, w: rw, h: rh }, template);
 
     const raw = offCanvas.toDataURL('image/jpeg', 0.75).split(',')[1];
     const resized = await resizeImageBase64(`data:image/jpeg;base64,${raw}`, 768, 0.75);
@@ -466,7 +462,7 @@ async function recognizeGrid(canvas, rois, template, availableSymbols, fixedPref
     const currentParts = [
         ...fixedPrefixParts,
         { text: 'ANALYZE NOW:\n' },
-        { text: `Image 1: Main Grid (Columns 1 to ${displayCols})\n` },
+        { text: `Image 1: Main Grid (Columns 1 to ${template.cols})\n` },
         { inlineData: { mimeType: resized.mimeType, data: resized.base64 } }
     ];
 
@@ -474,10 +470,7 @@ async function recognizeGrid(canvas, rois, template, availableSymbols, fixedPref
     if (template.hasMultiplierReel && rois.multiplierROI) {
         const mRoi = rois.multiplierROI;
         const mCanvas = document.createElement('canvas');
-        const mx = Math.floor(canvas.width * (mRoi.x / 100));
-        const my = Math.floor(canvas.height * (mRoi.y / 100));
-        const mw = Math.floor(canvas.width * (mRoi.w / 100));
-        const mh = Math.floor(canvas.height * (mRoi.h / 100));
+        const { x: mx, y: my, w: mw, h: mh } = roiToPixels(canvas.width, canvas.height, mRoi);
         mCanvas.width = mw; mCanvas.height = mh;
         mCanvas.getContext('2d').drawImage(canvas, mx, my, mw, mh, 0, 0, mw, mh);
 
@@ -492,10 +485,7 @@ async function recognizeGrid(canvas, rois, template, availableSymbols, fixedPref
     if (rois.betROI) {
         const bRoi = rois.betROI;
         const bCanvas = document.createElement('canvas');
-        const bx = Math.floor(canvas.width * (bRoi.x / 100));
-        const by = Math.floor(canvas.height * (bRoi.y / 100));
-        const bw = Math.floor(canvas.width * (bRoi.w / 100));
-        const bh = Math.floor(canvas.height * (bRoi.h / 100));
+        const { x: bx, y: by, w: bw, h: bh } = roiToPixels(canvas.width, canvas.height, bRoi);
         bCanvas.width = bw; bCanvas.height = bh;
         bCanvas.getContext('2d').drawImage(canvas, bx, by, bw, bh, 0, 0, bw, bh);
 
@@ -506,20 +496,12 @@ async function recognizeGrid(canvas, rois, template, availableSymbols, fixedPref
         currentParts.push({ text: buildBetImagePrompt() });
     }
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${effectiveApiKey}`;
-    const payload = {
-        contents: [{ role: 'user', parts: currentParts }],
-        generationConfig: buildVisionGenerationConfig()
-    };
-
-    const result = await fetchWithRetry(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+    const jsonText = await callGeminiAPI({
+        apiKey: effectiveApiKey,
+        model: modelName,
+        parts: currentParts,
+        generationConfig: buildVisionGenerationConfig(),
     });
-
-    const jsonText = result.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!jsonText) throw new Error('AI 無回應，請確認 API Key');
 
     const responseData = JSON.parse(jsonText);
     const { grid, bet, multiplier } = validateVisionResponse(responseData, template, availableSymbols || []);
