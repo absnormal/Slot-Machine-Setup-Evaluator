@@ -58,7 +58,7 @@ export default function Phase1Setup(props) {
         <>
             <div className="card transition-all duration-300">
                 {/* Header */}
-                <div className="flex items-center justify-between p-5 cursor-pointer hover:bg-slate-50 transition-colors" onClick={onToggle}>
+                <div className="phase-header" onClick={onToggle}>
                     <div className="flex items-center space-x-2">
                         <Settings className="text-indigo-500" size={20} />
                         <h2 className="text-xl font-semibold">Phase 1: 模板設定 (影像提取)</h2>

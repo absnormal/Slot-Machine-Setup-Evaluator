@@ -89,7 +89,7 @@ export default function PaytableConfig({
                                         {ptImages.map(img => (
                                             <div key={img.id} className="relative w-12 h-12 shrink-0 rounded border border-slate-200 bg-slate-900 overflow-hidden cursor-pointer shadow-sm hover:border-indigo-400 transition-colors" onClick={() => setPtEnlargedImg(img.previewUrl)}>
                                                 <img src={img.previewUrl} className="w-full h-full object-contain" />
-                                                <button onClick={(e) => { e.stopPropagation(); removePtImage(img.id); }} className="absolute top-0 right-0 bg-rose-500 text-white rounded-bl opacity-80 hover:opacity-100 p-0.5 transition-opacity"><X size={10} /></button>
+                                                <button onClick={(e) => { e.stopPropagation(); removePtImage(img.id); }} className="thumb-remove-corner opacity-80 hover:opacity-100"><X size={10} /></button>
                                             </div>
                                         ))}
                                     </div>
@@ -132,7 +132,7 @@ export default function PaytableConfig({
                                                                 {item.thumbUrls && item.thumbUrls.map((url, tIdx) => (
                                                                     <div key={tIdx} className="relative w-7 h-7 bg-slate-800 rounded border border-slate-300 shadow-sm group/thumb">
                                                                         <img src={url} className="w-full h-full object-contain" />
-                                                                        <button onClick={() => handleRemoveThumb(idx, tIdx)} className="absolute -top-1 -right-1 bg-rose-500 text-white rounded-full p-0.5 opacity-0 group-hover/thumb:opacity-100 transition-opacity"><X size={8} /></button>
+                                                                        <button onClick={() => handleRemoveThumb(idx, tIdx)} className="thumb-remove group-hover/thumb:opacity-100"><X size={8} /></button>
                                                                     </div>
                                                                 ))}
                                                                 <button onClick={() => setPtCropState({ active: true, itemIndex: idx, selectedImageId: ptImages[0]?.id, startX: 0, startY: 0, endX: 0, endY: 0, isDragging: false, isDouble: false })} className="w-7 h-7 bg-slate-100 hover:bg-indigo-50 hover:border-indigo-300 rounded flex items-center justify-center border border-slate-200 border-dashed text-slate-400 hover:text-indigo-500 transition-colors" title="新增此符號的另一張特徵圖"><Plus size={12} /></button>
@@ -144,7 +144,7 @@ export default function PaytableConfig({
                                                                     {item.doubleThumbUrls && item.doubleThumbUrls.map((url, tIdx) => (
                                                                         <div key={tIdx} className="relative w-7 h-7 bg-indigo-900 rounded border border-indigo-300 shadow-sm group/thumb-double">
                                                                             <img src={url} className="w-full h-full object-contain" />
-                                                                            <button onClick={() => handleRemoveThumb(idx, tIdx, true)} className="absolute -top-1 -right-1 bg-rose-500 text-white rounded-full p-0.5 opacity-0 group-hover/thumb-double:opacity-100 transition-opacity"><X size={8} /></button>
+                                                                            <button onClick={() => handleRemoveThumb(idx, tIdx, true)} className="thumb-remove group-hover/thumb-double:opacity-100"><X size={8} /></button>
                                                                         </div>
                                                                     ))}
                                                                     <button onClick={() => setPtCropState({ active: true, itemIndex: idx, selectedImageId: ptImages[0]?.id, startX: 0, startY: 0, endX: 0, endY: 0, isDragging: false, isDouble: true })} className="w-7 h-7 bg-indigo-100 hover:bg-indigo-200 hover:border-indigo-400 rounded flex items-center justify-center border border-indigo-300 border-dashed text-indigo-500 hover:text-indigo-700 transition-colors shadow-inner" title="擷取此符號的雙重特徵圖"><ImagePlus size={12} /></button>

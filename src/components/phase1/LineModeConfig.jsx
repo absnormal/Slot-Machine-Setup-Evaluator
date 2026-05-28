@@ -145,7 +145,7 @@ export default function LineModeConfig({
                     <div className="mt-3 flex items-center gap-4 flex-wrap">
                         <div className="flex items-center gap-2">
                             <span className="text-xs text-slate-600 font-bold">Row</span>
-                            <input type="number" value={gridRows} onChange={e => setGridRows(Number(e.target.value))} className={`w-16 border border-indigo-300 rounded px-2 py-1 text-sm font-bold text-center focus:outline-none focus:ring-2 focus:ring-indigo-500 ${reelHeights ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : ''}`} min="1" disabled={!!reelHeights} title={reelHeights ? '啟用非方格盤面時，列數由各轉軸高度自動計算' : ''} />
+                            <input type="number" value={gridRows} onChange={e => setGridRows(Number(e.target.value))} className={`input-sm w-16 border-indigo-300 ${reelHeights ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : ''}`} min="1" disabled={!!reelHeights} title={reelHeights ? '啟用非方格盤面時，列數由各轉軸高度自動計算' : ''} />
                         </div>
                         <span className="text-slate-400 font-bold">×</span>
                         <div className="flex items-center gap-2">
@@ -158,7 +158,7 @@ export default function LineModeConfig({
                                     const next = Array.from({ length: newCols }, (_, i) => reelHeights[i] || gridRows);
                                     setReelHeights(next);
                                 }
-                            }} className="w-16 border border-indigo-300 rounded px-2 py-1 text-sm font-bold text-center focus:outline-none focus:ring-2 focus:ring-indigo-500" min="1" />
+                            }} className="input-sm w-16 border-indigo-300" min="1" />
                         </div>
                         <span className="text-slate-400 font-bold">=</span>
                         <div className="bg-white px-3 py-1.5 rounded-lg border border-indigo-300 shadow-sm flex items-center">
@@ -281,7 +281,7 @@ export default function LineModeConfig({
                                         {lineImages.map(img => (
                                             <div key={img.id} onClick={() => setActiveLineImageId(img.id)} className={`relative w-16 h-16 shrink-0 rounded-lg overflow-hidden border-2 cursor-pointer transition-all ${activeLineImageId === img.id ? 'border-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.5)]' : 'border-transparent opacity-60 hover:opacity-100'}`}>
                                                 <img src={img.previewUrl} className="w-full h-full object-cover" />
-                                                <button onClick={(e) => { e.stopPropagation(); removeLineImage(img.id); }} className="absolute top-0 right-0 bg-rose-500 text-white p-0.5 rounded-bl-lg hover:bg-rose-600 transition-colors"><X size={12} /></button>
+                                                <button onClick={(e) => { e.stopPropagation(); removeLineImage(img.id); }} className="thumb-remove-corner"><X size={12} /></button>
                                             </div>
                                         ))}
                                         <label className="w-16 h-16 shrink-0 rounded-lg border-2 border-dashed border-slate-700 flex flex-col items-center justify-center cursor-pointer hover:bg-slate-800 hover:border-slate-500 text-slate-400 transition-colors" title="上傳更多圖片">

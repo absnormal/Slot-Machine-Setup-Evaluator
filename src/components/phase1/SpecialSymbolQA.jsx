@@ -36,7 +36,7 @@ function JpCard({ jpName, jpMult, onNameChange, onMultChange, onDelete, canDelet
             />
             <button
                 onClick={onDelete}
-                className="absolute -top-2 -right-2 bg-rose-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity shadow-md hover:bg-rose-600 focus:outline-none"
+                className="thumb-remove -top-2 -right-2 p-1 hover:bg-rose-600 focus:outline-none"
                 disabled={!canDelete}
             ><X size={12} /></button>
         </div>

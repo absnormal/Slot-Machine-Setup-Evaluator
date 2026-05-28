@@ -191,7 +191,7 @@ const Phase4Video = ({
     return (
         <div className="card mb-8 animate-in fade-in slide-in-from-top-4 duration-500">
             {/* Header */}
-            <div className="p-5 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors bg-white" onClick={onToggle}>
+            <div className="phase-header bg-white" onClick={onToggle}>
                 <div className="flex items-center gap-3">
                     <div className="w-10 h-10 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center shadow-sm">
                         {isPhase4Minimized ? <Video size={20} /> : <Scan size={20} />}

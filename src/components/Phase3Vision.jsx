@@ -34,7 +34,7 @@ export default function Phase3Vision({
     return (
         <div className={`card transition-all duration-300 ${!template ? 'opacity-60 pointer-events-none' : ''}`}>
             <div
-                className="flex items-center justify-between p-5 cursor-pointer hover:bg-slate-50 transition-colors"
+                className="phase-header"
                 onClick={() => { if(template) { if(!isPhase3Minimized) { onTransfer(); } else { onToggle(); } } }}
             >
                 <div className="flex items-center space-x-2">
@@ -67,7 +67,7 @@ export default function Phase3Vision({
                                             {/* 狀態標籤 */}
                                             {img.grid && <div className="absolute top-0 left-0 bg-emerald-500 text-white text-[8px] px-1 font-bold rounded-br z-10">已辨識</div>}
                                             {img.error && <div className="absolute top-0 left-0 bg-rose-500 text-white text-[8px] px-1 font-bold rounded-br z-10">失敗</div>}
-                                            <button onClick={(e) => { e.stopPropagation(); removeVisionImage(img.id); }} className="absolute top-0 right-0 bg-rose-500 text-white p-0.5 rounded-bl-lg hover:bg-rose-600 transition-colors z-10">
+                                            <button onClick={(e) => { e.stopPropagation(); removeVisionImage(img.id); }} className="thumb-remove-corner z-10">
                                                 <X size={12} />
                                             </button>
                                             {img.grid && (
@@ -91,7 +91,7 @@ export default function Phase3Vision({
                                     <div className="w-20 h-20 bg-slate-800 rounded-full flex items-center justify-center mb-6 border border-slate-700 shadow-inner">
                                         <ImageIcon size={32} className="text-indigo-400" />
                                     </div>
-                                    <label className="cursor-pointer bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-3 rounded-lg font-bold transition shadow-lg flex items-center gap-2">
+                                    <label className="cursor-pointer btn-primary px-6 py-3 flex items-center gap-2 shadow-lg">
                                         <Upload size={20} /> 從檔案上傳
                                         <input type="file" multiple accept="image/*" className="hidden" onChange={handleVisionImageUpload} />
                                     </label>
@@ -248,7 +248,7 @@ export default function Phase3Vision({
                                                 <div className="flex items-center gap-2">
                                                     <button
                                                         onClick={onSaveToPhase4}
-                                                        className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-bold transition-all shadow-lg shadow-indigo-900/20 active:scale-95 group"
+                                                        className="btn-primary flex items-center gap-2 text-sm shadow-lg shadow-indigo-900/20"
                                                         title="將此盤面與贏分回傳至 Phase 4 的截圖清單中"
                                                     >
                                                         💾 儲存盤面回 Phase 4 (↓)
