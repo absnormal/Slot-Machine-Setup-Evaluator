@@ -114,7 +114,7 @@ const Phase2Manual = ({
     };
 
     return (
-        <div className={`bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden transition-all duration-300 ${!template ? 'opacity-30 pointer-events-none' : ''}`}>
+        <div className={`card transition-all duration-300 ${!template ? 'opacity-30 pointer-events-none' : ''}`}>
             {/* Header */}
             <div className="flex items-center justify-between p-5">
                 <div className="flex items-center space-x-2 cursor-pointer group" onClick={() => template && onToggle()}>

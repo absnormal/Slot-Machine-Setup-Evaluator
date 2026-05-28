@@ -30,7 +30,7 @@ export default function TemplateQuickBar({
     }
 
     return (
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-300">
+        <div className="card animate-in fade-in slide-in-from-top-2 duration-300">
             <div className="p-5">
                 {hasTemplate ? (
                     /* ── 已載入模板 ── */

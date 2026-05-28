@@ -189,7 +189,7 @@ const Phase4Video = ({
     // RENDER
     // ══════════════════════════════════════
     return (
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden mb-8 animate-in fade-in slide-in-from-top-4 duration-500">
+        <div className="card mb-8 animate-in fade-in slide-in-from-top-4 duration-500">
             {/* Header */}
             <div className="p-5 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors bg-white" onClick={onToggle}>
                 <div className="flex items-center gap-3">

@@ -8,7 +8,7 @@ import { AlertCircle } from 'lucide-react';
 export default function BuildErrorModal({ message, onClose }) {
     if (!message) return null;
     return (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4" style={{ zIndex: 99999 }}>
+        <div className="modal-overlay">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in duration-200">
                 <div className="p-5 border-b flex items-center gap-2 bg-rose-50">
                     <AlertCircle className="text-rose-500" size={24} />
@@ -17,8 +17,8 @@ export default function BuildErrorModal({ message, onClose }) {
                 <div className="p-6 text-slate-700 leading-relaxed font-medium">
                     {message}
                 </div>
-                <div className="p-4 border-t bg-slate-50 flex justify-end">
-                    <button onClick={onClose} className="px-6 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-lg shadow-md transition-colors">
+                <div className="modal-footer">
+                    <button onClick={onClose} className="btn-primary px-6 bg-slate-800 hover:bg-slate-900 shadow-none">
                         我知道了
                     </button>
                 </div>

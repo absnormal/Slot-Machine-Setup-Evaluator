@@ -8,7 +8,7 @@ import { AlertCircle } from 'lucide-react';
 export default function PtConfirmModal({ show, onCancel, onConfirm }) {
     if (!show) return null;
     return (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4" style={{ zIndex: 99999 }}>
+        <div className="modal-overlay">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
                 <div className="p-5 border-b flex items-center gap-2 bg-slate-50">
                     <AlertCircle className="text-amber-500" />
@@ -21,9 +21,9 @@ export default function PtConfirmModal({ show, onCancel, onConfirm }) {
                         <li>(可選) 手動擷取縮圖供動畫預覽使用。</li>
                     </ol>
                 </div>
-                <div className="p-4 border-t bg-slate-50 flex justify-end gap-3">
-                    <button onClick={onCancel} className="px-4 py-2 text-slate-600">取消</button>
-                    <button onClick={onConfirm} className="px-6 py-2 bg-indigo-600 text-white font-bold rounded-lg shadow-md">確認並分析</button>
+                <div className="modal-footer">
+                    <button onClick={onCancel} className="btn-ghost">取消</button>
+                    <button onClick={onConfirm} className="btn-primary px-6">確認並分析</button>
                 </div>
             </div>
         </div>

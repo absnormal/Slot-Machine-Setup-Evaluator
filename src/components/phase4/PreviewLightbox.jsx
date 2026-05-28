@@ -9,7 +9,7 @@ const PreviewLightbox = ({ previewImage, onClose }) => {
     if (!previewImage) return null;
 
     return (
-        <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-center justify-center cursor-pointer animate-in fade-in duration-200"
+        <div className="modal-overlay"
             onClick={onClose}>
             <div className="relative flex gap-4 max-w-[95vw] max-h-[90vh]" onClick={e => e.stopPropagation()}>
                 <div className="relative">

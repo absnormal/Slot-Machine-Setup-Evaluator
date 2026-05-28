@@ -154,7 +154,7 @@ export default function SpecialSymbolQA({
 
             <div className="space-y-6">
                 {/* Q1: Double Symbol */}
-                <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm transition-all hover:border-indigo-300">
+                <div className="card p-4 rounded-lg transition-all hover:border-indigo-300">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                         <div>
                             <p className="text-sm font-bold text-slate-800">1. 此遊戲有無雙重符號?</p>
@@ -168,7 +168,7 @@ export default function SpecialSymbolQA({
                 </div>
 
                 {/* Q2: Full-Grid Multiplier */}
-                <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm transition-all hover:border-indigo-300">
+                <div className="card p-4 rounded-lg transition-all hover:border-indigo-300">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                         <div>
                             <p className="text-sm font-bold text-slate-800">2. 此遊戲有無全盤乘倍機制?</p>
@@ -182,7 +182,7 @@ export default function SpecialSymbolQA({
                 </div>
 
                 {/* Q3: Multiplier Config */}
-                <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm transition-all hover:border-indigo-300">
+                <div className="card p-4 rounded-lg transition-all hover:border-indigo-300">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                         <div>
                             <p className="text-sm font-bold text-slate-800">3. 此遊戲是否有乘倍機制 (如附加在符號上的倍率)？</p>
@@ -199,7 +199,7 @@ export default function SpecialSymbolQA({
 
 
                 {/* Q4: Cash Collect Feature */}
-                <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm transition-all hover:border-indigo-300">
+                <div className="card p-4 rounded-lg transition-all hover:border-indigo-300">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                         <div>
                             <p className="text-sm font-bold text-slate-800">4. 此遊戲有無收集現金獎設定?</p>
@@ -249,7 +249,7 @@ export default function SpecialSymbolQA({
 
                 {/* Q5: Bi-directional Paylines (only for paylines mode) */}
                 {lineMode === 'paylines' && (
-                    <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm transition-all hover:border-indigo-300">
+                    <div className="card p-4 rounded-lg transition-all hover:border-indigo-300">
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                             <div>
                                 <p className="text-sm font-bold text-slate-800">5. 此遊戲是否支援雙向連線機制?</p>
@@ -265,7 +265,7 @@ export default function SpecialSymbolQA({
 
                 {/* Q6: Adjustable Line Count (only for paylines mode) */}
                 {lineMode === 'paylines' && (
-                    <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm transition-all hover:border-indigo-300">
+                    <div className="card p-4 rounded-lg transition-all hover:border-indigo-300">
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                             <div>
                                 <p className="text-sm font-bold text-slate-800">6. 此遊戲是否支援調整押注線數？(開啟此設定後，所有常規贏分都會自動除以啟用的線數，轉換為單線押注來計算)</p>
@@ -280,7 +280,7 @@ export default function SpecialSymbolQA({
                 )}
 
                 {/* Q7: EXBET */}
-                <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm transition-all hover:border-indigo-300">
+                <div className="card p-4 rounded-lg transition-all hover:border-indigo-300">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                         <div>
                             <p className="text-sm font-bold text-slate-800">7. 此遊戲是否有 EXBET（額外押注）機制？</p>
@@ -322,7 +322,7 @@ export default function SpecialSymbolQA({
                 </div>
 
                 {/* Q8: LineBet Divisor (固定除數) */}
-                <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm transition-all hover:border-indigo-300">
+                <div className="card p-4 rounded-lg transition-all hover:border-indigo-300">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                         <div>
                             <p className="text-sm font-bold text-slate-800">8. 此遊戲是否使用固定除數計算 LineBet？</p>

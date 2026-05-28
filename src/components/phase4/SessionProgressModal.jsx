@@ -22,7 +22,7 @@ const SessionProgressModal = ({ progress }) => {
     const gradientTo = isImport ? '#06b6d4' : '#ec4899';
 
     return (
-        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center z-[9999] p-4 animate-in fade-in duration-200">
+        <div className="modal-overlay">
             <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden">
                 {/* Header */}
                 <div className="px-6 pt-6 pb-3 flex items-center gap-3">

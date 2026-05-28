@@ -150,7 +150,7 @@ export default function PtCropModal({
 
     return (
         <>
-            <div className="fixed inset-0 flex items-center justify-center bg-black/90 backdrop-blur-sm p-4" style={{ zIndex: 99999 }}>
+            <div className="modal-overlay">
                 <div className="bg-slate-900 rounded-xl shadow-2xl w-full max-w-4xl flex flex-col border border-slate-700 h-[80vh]">
                     <div className="flex flex-col border-b border-slate-700 shrink-0">
                         <div className="flex items-center justify-between p-4">
@@ -159,7 +159,7 @@ export default function PtCropModal({
                                 <span className="text-[10px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full border border-slate-700 ml-2 font-normal hidden sm:inline-block">💡 支援直接按下 Ctrl+V 貼上剪貼簿圖片</span>
                             </h3>
                             <div className="flex gap-2">
-                                <button onClick={handleCropConfirm} className="bg-indigo-600 hover:bg-indigo-500 transition-colors text-white px-4 py-1.5 rounded font-bold shadow-md flex items-center gap-1">
+                                <button onClick={handleCropConfirm} className="btn-primary py-1.5 rounded flex items-center gap-1">
                                     <Plus size={16} /> 增加特徵圖
                                 </button>
                                 <button onClick={() => setPtCropState(p => ({ ...p, active: false }))} className="text-slate-400 hover:text-white p-1 transition-colors ml-2"><X /></button>

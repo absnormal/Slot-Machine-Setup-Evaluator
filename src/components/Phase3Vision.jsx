@@ -32,7 +32,7 @@ export default function Phase3Vision({
     const gridMask = useMemo(() => template ? getGridMask(template) : [], [template]);
 
     return (
-        <div className={`bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden transition-all duration-300 ${!template ? 'opacity-60 pointer-events-none' : ''}`}>
+        <div className={`card transition-all duration-300 ${!template ? 'opacity-60 pointer-events-none' : ''}`}>
             <div
                 className="flex items-center justify-between p-5 cursor-pointer hover:bg-slate-50 transition-colors"
                 onClick={() => { if(template) { if(!isPhase3Minimized) { onTransfer(); } else { onToggle(); } } }}

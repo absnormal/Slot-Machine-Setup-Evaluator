@@ -12,7 +12,7 @@ export default function NativeSourceModal({ sources, onSelect, onClose }) {
     const windows = sources.filter(s => s.type === 'window');
 
     return (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in">
+        <div className="modal-overlay">
             <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl overflow-hidden flex flex-col max-h-[80vh]">
                 <div className="p-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center shrink-0">
                     <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">

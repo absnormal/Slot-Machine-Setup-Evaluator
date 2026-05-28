@@ -4,14 +4,14 @@ import { Settings, X, Key, Moon, Github } from 'lucide-react';
 export default function SettingsModal({ show, customApiKey, setCustomApiKey, isDarkMode, setIsDarkMode, onClose, onSave }) {
     if (!show) return null;
     return (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4" style={{ zIndex: 99999 }}>
+        <div className="modal-overlay">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden animate-in fade-in zoom-in duration-200">
                 <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
                     <h2 className="text-xl font-bold flex items-center space-x-2 text-slate-800"><Settings className="text-indigo-500" /><span>環境與金鑰設定</span></h2>
                     <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-full transition-colors"><X size={20} /></button>
                 </div>
                 <div className="p-6 space-y-6 max-h-[70vh] overflow-y-auto custom-scrollbar">
-                    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-4">
+                    <div className="card p-4 space-y-4">
                         <div>
                             <label className="block text-sm font-bold text-slate-800 mb-2 flex items-center gap-1.5"><Key size={16} className="text-amber-500" /> 1. Gemini API Key (AI 辨識必填)</label>
                             <p className="text-xs text-slate-500 mb-3 leading-relaxed">提供給 AI 解析賠率表與截圖使用，將安全儲存於您的瀏覽器本地端 (localStorage)。</p>
@@ -20,7 +20,7 @@ export default function SettingsModal({ show, customApiKey, setCustomApiKey, isD
                                 placeholder="請輸入 AIzaSy..."
                                 value={customApiKey}
                                 onChange={(e) => setCustomApiKey(e.target.value)}
-                                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-mono tracking-wider mb-2"
+                                className="input font-mono tracking-wider mb-2"
                             />
                         </div>
                         
@@ -39,7 +39,7 @@ export default function SettingsModal({ show, customApiKey, setCustomApiKey, isD
                     </div>
 
                     {/* 暗黑模式設定 */}
-                    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+                    <div className="card p-4 flex items-center justify-between">
                         <div>
                             <label className="text-sm font-bold text-slate-800 flex items-center gap-1.5 mb-1"><Moon size={16} className="text-indigo-500" /> 2. 暗黑模式 (Beta)</label>
                             <p className="text-xs text-slate-500">減輕長時間盯著螢幕的眼睛疲勞。切換後即時生效，無需重整頁面。</p>
@@ -77,8 +77,8 @@ export default function SettingsModal({ show, customApiKey, setCustomApiKey, isD
                         </a>
                     </div>
                 </div>
-                <div className="p-4 border-t bg-slate-50 flex justify-end gap-3">
-                    <button onClick={onSave} className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg shadow-md transition-colors">
+                <div className="modal-footer">
+                    <button onClick={onSave} className="btn-primary px-6">
                         儲存並關閉
                     </button>
                 </div>
