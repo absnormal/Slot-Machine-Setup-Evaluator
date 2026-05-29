@@ -138,18 +138,18 @@ const BlockRow = ({ block, depth, onDelete, onUpdate, onDragOps, rootMover, curr
             )}
 
             <div
-                draggable={!isRunning}
-                onDragStart={handleDragStart}
                 onDragEnd={handleDragEnd}
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
                 className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-all ${meta.color} ${
                     isActive ? 'ring-2 ring-purple-400 shadow-lg shadow-purple-500/10' : ''
-                } ${!isRunning ? 'cursor-grab active:cursor-grabbing' : ''}`}
+                }`}
             >
                 {!isRunning && (
-                    <span className="text-slate-600 hover:text-slate-400 shrink-0">
+                    <span className="text-slate-600 hover:text-slate-400 shrink-0 cursor-grab active:cursor-grabbing"
+                        draggable
+                        onDragStart={handleDragStart}>
                         <GripVertical size={14}/>
                     </span>
                 )}

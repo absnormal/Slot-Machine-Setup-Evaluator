@@ -498,43 +498,71 @@ const NumInput = ({ value, onChange, min, max, step, placeholder, w = 'w-16' }) 
     />
 );
 
-// ── ROI 下拉選單（包含動態 OCR 目標）──
+// ── ROI 下拉選單（依群組分組顯示）──
 const RoiSelect = ({ value, onChange, filter }) => {
+    const roiGroups = usePhase4Store(s => s.roiGroups);
+    const clickTargets = usePhase4Store(s => s.clickTargets) || {};
+    const getGroupLabel = usePhase4Store(s => s.getGroupLabel);
+
     const options = filter
         ? AVAILABLE_ROIS.filter(r => r.category === filter)
         : AVAILABLE_ROIS;
 
-    // 如果是 OCR filter，也加入動態 OCR 目標
+    // 動態 OCR 目標
     const dynamicOcr = filter === 'ocr'
-        ? Object.entries(usePhase4Store(s => s.clickTargets) || {})
+        ? Object.entries(clickTargets)
             .filter(([, v]) => v.category === 'ocr')
-            .map(([name]) => ({ name, label: `📐 ${name}` }))
+            .map(([name, v]) => ({ name, label: name, group: v.group || 'card' }))
         : [];
+
+    // 依群組分組
+    const grouped = {};
+    for (const r of options) {
+        const gLabel = getGroupLabel(r.name) || '其他';
+        if (!grouped[gLabel]) grouped[gLabel] = [];
+        grouped[gLabel].push({ value: r.name, label: `${gLabel}-${r.name}` });
+    }
+    for (const r of dynamicOcr) {
+        const gLabel = roiGroups.find(g => g.id === r.group)?.label || '自訂';
+        if (!grouped[gLabel]) grouped[gLabel] = [];
+        grouped[gLabel].push({ value: r.name, label: r.name });  // 已含前綴，直接用
+    }
 
     return (
         <select className={SEL} value={value || options[0]?.name || ''} onChange={e => onChange(e.target.value)}
             onClick={e => e.stopPropagation()}>
-            {options.map(r => (
-                <option key={r.name} value={r.name}>{r.label}</option>
-            ))}
-            {dynamicOcr.length > 0 && (
-                <optgroup label="自訂讀取區">
-                    {dynamicOcr.map(r => (
-                        <option key={r.name} value={r.name}>{r.label}</option>
+            {Object.entries(grouped).map(([gLabel, items]) => (
+                <optgroup key={gLabel} label={gLabel}>
+                    {items.map(r => (
+                        <option key={r.value} value={r.value}>{r.label}</option>
                     ))}
                 </optgroup>
-            )}
+            ))}
         </select>
     );
 };
 
-// ── 點擊目標下拉選單（SPIN + 動態 control 目標）──
+// ── 點擊目標下拉選單（依群組顯示 群組-名稱）──
 const ClickTargetSelect = ({ value, onChange }) => {
     const allTargets = usePhase4Store(s => s.clickTargets) || {};
-    const controlNames = Object.entries(allTargets)
-        .filter(([, v]) => v.category !== 'ocr')
-        .map(([name]) => name);
+    const roiGroups = usePhase4Store(s => s.roiGroups);
+    const getGroupLabel = usePhase4Store(s => s.getGroupLabel);
     const isDynamic = (value || '').startsWith('_');
+
+    // 建構按群組排序的選項
+    const groupedOptions = {};
+    // SPIN 固定項
+    const spinGroup = getGroupLabel('SPIN') || '遊戲';
+    if (!groupedOptions[spinGroup]) groupedOptions[spinGroup] = [];
+    groupedOptions[spinGroup].push({ value: 'SPIN', label: `${spinGroup}-SPIN` });
+
+    // 動態 control 目標（名稱已含群組前綴，直接用）
+    for (const [name, roi] of Object.entries(allTargets)) {
+        if (roi.category === 'ocr') continue;
+        const gLabel = roiGroups.find(g => g.id === roi.group)?.label || '其他';
+        if (!groupedOptions[gLabel]) groupedOptions[gLabel] = [];
+        groupedOptions[gLabel].push({ value: name, label: name });  // 已含前綴
+    }
 
     return (
         <div className="relative flex items-center">
@@ -547,11 +575,12 @@ const ClickTargetSelect = ({ value, onChange }) => {
                 onClick={e => e.stopPropagation()}
             />
             <datalist id="click-targets-list">
-                <option value="SPIN">SPIN 按鈕</option>
                 <option value="_FOUND">🔎 找文字結果</option>
-                {controlNames.map(name => (
-                    <option key={name} value={name}>{name}</option>
-                ))}
+                {Object.entries(groupedOptions).map(([gLabel, items]) =>
+                    items.map(r => (
+                        <option key={r.value} value={r.value}>{r.label}</option>
+                    ))
+                )}
             </datalist>
         </div>
     );

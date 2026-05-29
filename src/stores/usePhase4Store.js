@@ -4,10 +4,23 @@ import { create } from 'zustand';
  * usePhase4Store — Phase 4 專屬全域狀態
  *
  * 管理 ROI 框選位置與偵測參數，全部自動持久化至 localStorage。
- * 取代原本 App.jsx 中 ~30 行的 useState + useCallback + localStorage 邏輯。
  */
 
 const ROI_CACHE_KEY = 'SLOT_P4_ROI_V2';
+
+// ═══════════════════════════════════════
+// 預設 ROI 群組
+// ═══════════════════════════════════════
+const DEFAULT_ROI_GROUPS = [
+    { id: 'game',     label: '遊戲' },
+    { id: 'card',     label: '遊戲介面' },
+    { id: 'history',  label: '遊戲歷程' },
+    { id: 'admin',    label: '後台塞卡' },
+    { id: 'platform', label: '後台簽核' },
+];
+
+// 7 個固定 ROI 預設所屬群組
+const FIXED_ROI_DEFAULT_GROUP = 'game';
 
 /** 從 localStorage 讀取指定 ROI key 的快取值 */
 const loadCachedROI = (key, fallback) => {
@@ -28,9 +41,108 @@ const saveROI = (key, val) => {
     } catch { /* silent */ }
 };
 
+/**
+ * 確保 clickTargets 中的每個 target 都有 group 欄位（相容舊資料）
+ */
+const migrateClickTargets = (targets) => {
+    if (!targets || typeof targets !== 'object') return {};
+    const migrated = {};
+    for (const [name, roi] of Object.entries(targets)) {
+        if (!roi.group) {
+            migrated[name] = { ...roi, group: 'card' }; // 舊資料預設歸入「道具卡」
+        } else {
+            migrated[name] = roi;
+        }
+    }
+    return migrated;
+};
+
 const usePhase4Store = create((set, get) => ({
     // ═══════════════════════════════════════
-    // ROI 狀態（6 組）
+    // ROI 群組管理
+    // ═══════════════════════════════════════
+    roiGroups: loadCachedROI('roiGroups', DEFAULT_ROI_GROUPS),
+
+    /** 新增群組 */
+    addRoiGroup: (label) => {
+        const groups = get().roiGroups;
+        const id = label.toLowerCase().replace(/\s+/g, '_') + '_' + Date.now().toString(36);
+        const next = [...groups, { id, label }];
+        set({ roiGroups: next });
+        saveROI('roiGroups', next);
+        return id;
+    },
+
+    /** 重命名群組 */
+    renameRoiGroup: (groupId, newLabel) => {
+        const next = get().roiGroups.map(g => g.id === groupId ? { ...g, label: newLabel } : g);
+        set({ roiGroups: next });
+        saveROI('roiGroups', next);
+    },
+
+    /** 刪除群組（將其下 ROI 移至第一個群組） */
+    removeRoiGroup: (groupId) => {
+        const groups = get().roiGroups;
+        if (groups.length <= 1) return; // 至少保留一個
+        const fallbackGroup = groups.find(g => g.id !== groupId)?.id || 'game';
+        const next = groups.filter(g => g.id !== groupId);
+        set({ roiGroups: next });
+        saveROI('roiGroups', next);
+        // 將該群組的 clickTarget 移至 fallback
+        const targets = { ...get().clickTargets };
+        let changed = false;
+        for (const [name, roi] of Object.entries(targets)) {
+            if (roi.group === groupId) {
+                targets[name] = { ...roi, group: fallbackGroup };
+                changed = true;
+            }
+        }
+        if (changed) {
+            set({ clickTargets: targets });
+            saveROI('clickTargets', targets);
+        }
+    },
+
+    // ═══════════════════════════════════════
+    // 群組顯示/隱藏
+    // ═══════════════════════════════════════
+    visibleGroups: loadCachedROI('visibleGroups', ['game']),
+
+    toggleGroupVisibility: (groupId) => {
+        const current = get().visibleGroups;
+        const next = current.includes(groupId)
+            ? current.filter(g => g !== groupId)
+            : [...current, groupId];
+        set({ visibleGroups: next });
+        saveROI('visibleGroups', next);
+    },
+
+    setVisibleGroups: (groups) => {
+        set({ visibleGroups: groups });
+        saveROI('visibleGroups', groups);
+    },
+
+    // ═══════════════════════════════════════
+    // 固定 ROI 群組映射
+    // ═══════════════════════════════════════
+    fixedRoiGroups: loadCachedROI('fixedRoiGroups', {
+        reel: FIXED_ROI_DEFAULT_GROUP,
+        win: FIXED_ROI_DEFAULT_GROUP,
+        balance: FIXED_ROI_DEFAULT_GROUP,
+        bet: FIXED_ROI_DEFAULT_GROUP,
+        orderId: FIXED_ROI_DEFAULT_GROUP,
+        multiplier: FIXED_ROI_DEFAULT_GROUP,
+        spinButton: FIXED_ROI_DEFAULT_GROUP,
+    }),
+
+    setFixedRoiGroup: (roiKey, groupId) => {
+        const next = { ...get().fixedRoiGroups, [roiKey]: groupId };
+        set({ fixedRoiGroups: next });
+        saveROI('fixedRoiGroups', next);
+    },
+
+    // ═══════════════════════════════════════
+    // ROI 狀態（7 組）
     // ═══════════════════════════════════════
     reelROI: loadCachedROI('reel', { x: 10, y: 15, w: 80, h: 55 }),
     winROI: loadCachedROI('win', { x: 38, y: 72, w: 24, h: 8 }),
@@ -91,7 +203,7 @@ const usePhase4Store = create((set, get) => ({
     // ═══════════════════════════════════════
     // 動態點擊目標（遊戲層）
     // ═══════════════════════════════════════
-    clickTargets: loadCachedROI('clickTargets', {}),
+    clickTargets: migrateClickTargets(loadCachedROI('clickTargets', {})),
 
     setClickTarget: (name, roi) => {
         const targets = { ...get().clickTargets, [name]: roi };
@@ -158,6 +270,30 @@ const usePhase4Store = create((set, get) => ({
         return { ...platform, ...game }; // 遊戲層覆蓋同名
     },
 
+    /**
+     * 取得 ROI 名稱的群組標籤（供積木顯示用）
+     * @param {string} roiName - ROI 名稱（如 'SPIN', '背包'）
+     * @returns {string} 群組標籤（如 '遊戲'）
+     */
+    getGroupLabel: (roiName) => {
+        const s = get();
+        const groups = s.roiGroups;
+        // 固定 ROI
+        const fixedMap = { 'SPIN': 'spinButton', 'REEL': 'reel', 'WIN': 'win', 'BAL': 'balance', 'BALANCE': 'balance', 'BET': 'bet', 'ORDER_ID': 'orderId', 'ORDERID': 'orderId', 'MULT': 'multiplier', 'MULTIPLIER': 'multiplier' };
+        const fixedKey = fixedMap[roiName?.toUpperCase()];
+        if (fixedKey) {
+            const gid = s.fixedRoiGroups[fixedKey] || FIXED_ROI_DEFAULT_GROUP;
+            return groups.find(g => g.id === gid)?.label || gid;
+        }
+        // 動態 clickTarget
+        const all = s.getAllClickTargets();
+        const target = all[roiName];
+        if (target?.group) {
+            return groups.find(g => g.id === target.group)?.label || target.group;
+        }
+        return '';
+    },
+
     // ═══════════════════════════════════════
     // ROI 匯出 / 匯入
     // ═══════════════════════════════════════
@@ -166,7 +302,7 @@ const usePhase4Store = create((set, get) => ({
     exportAllROIs: () => {
         const s = get();
         const data = {
-            _version: 2,
+            _version: 3,
             _exportedAt: new Date().toISOString(),
             reel: s.reelROI,
             win: s.winROI,
@@ -176,6 +312,9 @@ const usePhase4Store = create((set, get) => ({
             multiplier: s.multiplierROI,
             spinButton: s.spinButtonROI,
             clickTargets: s.clickTargets || {},
+            roiGroups: s.roiGroups,
+            fixedRoiGroups: s.fixedRoiGroups,
+            visibleGroups: s.visibleGroups,
         };
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
@@ -209,8 +348,22 @@ const usePhase4Store = create((set, get) => ({
         }
 
         if (jsonData.clickTargets && typeof jsonData.clickTargets === 'object') {
-            updates.clickTargets = jsonData.clickTargets;
-            saveROI('clickTargets', jsonData.clickTargets);
+            updates.clickTargets = migrateClickTargets(jsonData.clickTargets);
+            saveROI('clickTargets', updates.clickTargets);
+        }
+
+        // v3: 匯入群組設定
+        if (jsonData.roiGroups && Array.isArray(jsonData.roiGroups)) {
+            updates.roiGroups = jsonData.roiGroups;
+            saveROI('roiGroups', jsonData.roiGroups);
+        }
+        if (jsonData.fixedRoiGroups && typeof jsonData.fixedRoiGroups === 'object') {
+            updates.fixedRoiGroups = jsonData.fixedRoiGroups;
+            saveROI('fixedRoiGroups', jsonData.fixedRoiGroups);
+        }
+        if (jsonData.visibleGroups && Array.isArray(jsonData.visibleGroups)) {
+            updates.visibleGroups = jsonData.visibleGroups;
+            saveROI('visibleGroups', jsonData.visibleGroups);
         }
 
         set(updates);
@@ -218,4 +371,4 @@ const usePhase4Store = create((set, get) => ({
 }));
 
 export default usePhase4Store;
-
+export { DEFAULT_ROI_GROUPS };

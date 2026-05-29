@@ -41,6 +41,53 @@ export function generateThumbUrl(canvas, roi) {
 let ocrGlobalQueue = Promise.resolve();
 
 /**
+ * 自動精確裁切 — 找亮色像素的 bounding box
+ * 使用者的 ROI 可能框得很大，文字只佔一小部分
+ * 這個函式找到實際有內容的區域，回傳 {x, y, w, h}
+ */
+function autoTightCrop(cropCanvas, brightnessThreshold = 60, paddingRatio = 0.15) {
+    const ctx = cropCanvas.getContext('2d');
+    const w = cropCanvas.width, h = cropCanvas.height;
+    if (w < 2 || h < 2) return { x: 0, y: 0, w, h };
+
+    const imgData = ctx.getImageData(0, 0, w, h);
+    const d = imgData.data;
+
+    let minX = w, minY = h, maxX = 0, maxY = 0;
+    let found = false;
+
+    for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+            const i = (y * w + x) * 4;
+            // 計算亮度（灰階）
+            const brightness = d[i] * 0.299 + d[i+1] * 0.587 + d[i+2] * 0.114;
+            if (brightness > brightnessThreshold) {
+                if (x < minX) minX = x;
+                if (x > maxX) maxX = x;
+                if (y < minY) minY = y;
+                if (y > maxY) maxY = y;
+                found = true;
+            }
+        }
+    }
+
+    if (!found) return { x: 0, y: 0, w, h };
+
+    // 加一點 padding（文字邊界的 15%），避免裁切太緊切到筆劃
+    const bw = maxX - minX + 1;
+    const bh = maxY - minY + 1;
+    const padX = Math.max(2, Math.floor(bw * paddingRatio));
+    const padY = Math.max(2, Math.floor(bh * paddingRatio));
+
+    return {
+        x: Math.max(0, minX - padX),
+        y: Math.max(0, minY - padY),
+        w: Math.min(w - Math.max(0, minX - padX), bw + padX * 2),
+        h: Math.min(h - Math.max(0, minY - padY), bh + padY * 2),
+    };
+}
+
+/**
  * 裁切 ROI → 放大 → 原彩影像 → PaddleOCR (透過全域 Queue 保護)
  */
 export async function cropAndOCR(canvas, roi, ocrWorker, decimalPlaces, label = '未知', mode = 'number') {
@@ -49,21 +96,38 @@ export async function cropAndOCR(canvas, roi, ocrWorker, decimalPlaces, label = 
     return new Promise((resolve) => {
         ocrGlobalQueue = ocrGlobalQueue.then(async () => {
             try {
-                const cropCanvas = document.createElement('canvas');
                 const { x: cx, y: cy, w: cw, h: ch } = roiToPixels(canvas.width, canvas.height, roi);
                 if (cw < 2 || ch < 2) return resolve('');
 
-                // 調整至神經網路最適合的文字高度（約 48px），避免不自然的壓縮
-                let scale = 48 / ch;
-                if (scale < 1) scale = 1; // 避免反向壓縮導致像素遺失
+                // ── Step 1: 初次裁切 ROI ──
+                const rawCrop = document.createElement('canvas');
+                rawCrop.width = cw; rawCrop.height = ch;
+                const rawCtx = rawCrop.getContext('2d');
+                rawCtx.drawImage(canvas, cx, cy, cw, ch, 0, 0, cw, ch);
 
-                // [對抗密集字漏字] 水平拉寬 1.25 倍：解決 CTC 神經網絡因為 '22' 太近而疊合成一個 '2' 的幻覺
-                const stretchX = 1.25;
-                const finalW = cw * scale * stretchX;
-                const finalH = ch * scale;
+                // ── Step 2: 自動精確裁切（找亮色像素邊界框）──
+                // 使用者框的 ROI 可能很大，文字只佔一小部分
+                // 找到實際文字的 bounding box，只對文字區域放大
+                const tightRect = autoTightCrop(rawCrop);
+                const tcx = tightRect.x, tcy = tightRect.y;
+                const tcw = tightRect.w, tch = tightRect.h;
 
-                // [關鍵修復] 加上 Padding: DBNet 如果文字太貼齊邊緣，會辨識不到
-                const PADDING = 30;
+                if (tcw < 2 || tch < 2) return resolve('');
+
+                // ── Step 3: 放大至神經網路最適高度 ──
+                const isSmallText = tch < 25;
+                const targetH = isSmallText ? 160 : 48;
+                let scale = targetH / tch;
+                if (scale < 1) scale = 1;
+
+                // 水平拉寬：CTC 神經網路容易把緊密數字疊合
+                const stretchX = isSmallText ? 1.8 : 1.25;
+                const finalW = tcw * scale * stretchX;
+                const finalH = tch * scale;
+
+                // Padding: DBNet 文字太貼邊會辨識不到
+                const PADDING = isSmallText ? 40 : 30;
+                const cropCanvas = document.createElement('canvas');
                 cropCanvas.width = Math.floor(finalW) + (PADDING * 2);
                 cropCanvas.height = Math.floor(finalH) + (PADDING * 2);
                 const ctx = cropCanvas.getContext('2d');
@@ -71,11 +135,15 @@ export async function cropAndOCR(canvas, roi, ocrWorker, decimalPlaces, label = 
                 ctx.fillStyle = '#000000';
                 ctx.fillRect(0, 0, cropCanvas.width, cropCanvas.height);
 
-                // 稍微提升對比，幫助邊緣更清晰
-                ctx.filter = 'contrast(1.2) brightness(1.1)';
-                ctx.imageSmoothingEnabled = true; // 拉伸後開啟平滑搭配高對比，避免鋸齒邊緣太破碎
+                // 小字用更強的對比，補償放大後的模糊
+                ctx.filter = isSmallText
+                    ? 'contrast(1.5) brightness(1.15) saturate(0)'
+                    : 'contrast(1.2) brightness(1.1)';
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'high';
 
-                ctx.drawImage(canvas, cx, cy, cw, ch, PADDING, PADDING, finalW, finalH);
+                // 從精確裁切區域繪製（不是整個 ROI）
+                ctx.drawImage(rawCrop, tcx, tcy, tcw, tch, PADDING, PADDING, finalW, finalH);
 
                 // ⚠️ 彩圖直出：我們不再手動運算灰階二值化，把這項工作全權託付給 Paddle 神經網路
                 const detectedLines = await ocrWorker.detect(cropCanvas.toDataURL('image/png'));

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Video, Play, Pause, Clock, RefreshCw, Monitor, StopCircle, Cpu, Download, Upload } from 'lucide-react';
+import { Video, Play, Pause, Clock, RefreshCw, Monitor, StopCircle, Cpu, Download, Upload, Eye, EyeOff, ChevronDown, ChevronRight, Plus, X } from 'lucide-react';
 import usePhase4Store from '../../stores/usePhase4Store';
 import SettingTooltip from './SettingTooltip';
 import useROIDrag from '../../hooks/useROIDrag';
@@ -49,6 +49,15 @@ const VideoPlayer = ({
     const importAllROIs = usePhase4Store(s => s.importAllROIs);
     const importFileRef = useRef(null);
 
+    // ── 群組相關 ──
+    const roiGroups = usePhase4Store(s => s.roiGroups);
+    const visibleGroups = usePhase4Store(s => s.visibleGroups);
+    const toggleGroupVisibility = usePhase4Store(s => s.toggleGroupVisibility);
+    const fixedRoiGroups = usePhase4Store(s => s.fixedRoiGroups);
+    const addRoiGroup = usePhase4Store(s => s.addRoiGroup);
+    const renameRoiGroup = usePhase4Store(s => s.renameRoiGroup);
+    const removeRoiGroup = usePhase4Store(s => s.removeRoiGroup);
+
     // ── ROI 匯入處理 ──
     const handleImportROI = async (e) => {
         const file = e.target.files?.[0];
@@ -71,6 +80,8 @@ const VideoPlayer = ({
     const [duration, setDuration] = useState(0);
     const [roiMode, setRoiMode] = useState('reel');
     const [roiPanelOpen, setRoiPanelOpen] = useState(true);
+    const [expandedGroups, setExpandedGroups] = useState(['game']); // 預設展開 game
+    const [addRoiTarget, setAddRoiTarget] = useState(null); // { groupId, category } or null
     const containerRef = useRef(null);
 
     // ── ROI 拖曳 ──
@@ -128,6 +139,7 @@ const VideoPlayer = ({
     const formatTime = (t) => `${Math.floor(t / 60)}:${Math.floor(t % 60).toString().padStart(2, '0')}`;
 
     const showMultiplier = template ? template.hasMultiplierReel : propHasMultiplierReel;
+
     // ── 格線繪製 ──
     const renderGridLines = () => {
         const rows = template?.rows || propGridRows || 3;
@@ -140,6 +152,53 @@ const VideoPlayer = ({
             lines.push(<div key={`h-${i}`} className="absolute w-full border-b-2 border-amber-400/60" style={{ top: `${(i / rows) * 100}%` }} />);
         }
         return lines;
+    };
+
+    // ── 群組展開切換 ──
+    const toggleExpand = (groupId) => {
+        setExpandedGroups(prev =>
+            prev.includes(groupId) ? prev.filter(g => g !== groupId) : [...prev, groupId]
+        );
+    };
+
+    // ── 建構所有 ROI 項目（含群組資訊）──
+    const fixedRoiDefs = [
+        { roi: reelROI, mode: 'reel', hex: '#f59e0b', label: 'REEL', showGrid: true, category: 'detection', fixedKey: 'reel' },
+        { roi: winROI, mode: 'win', hex: '#10b981', label: 'WIN', category: 'ocr', fixedKey: 'win' },
+        { roi: balanceROI, mode: 'balance', hex: '#38bdf8', label: 'BAL', category: 'ocr', fixedKey: 'balance' },
+        { roi: betROI, mode: 'bet', hex: '#22d3ee', label: 'BET', category: 'ocr', fixedKey: 'bet' },
+        { roi: orderIdROI, mode: 'orderId', hex: '#a855f7', label: 'ID', category: 'ocr', fixedKey: 'orderId' },
+        ...(showMultiplier ? [{ roi: multiplierROI, mode: 'multiplier', hex: '#f43f5e', label: 'MULT', category: 'ocr', fixedKey: 'multiplier' }] : []),
+        { roi: spinButtonROI, mode: 'spinButton', hex: '#16a34a', label: 'SPIN', category: 'control', fixedKey: 'spinButton' },
+    ].map(r => ({ ...r, group: fixedRoiGroups[r.fixedKey] || 'game', isFixed: true }));
+
+    const dynamicRoiDefs = Object.entries(clickTargets).map(([name, roi]) => {
+        // 面板內顯示短名（去掉群組前綴），例如 "遊戲介面-設定" → "設定"
+        const gLabel = roiGroups.find(g => g.id === (roi.group || 'card'))?.label || '';
+        const shortLabel = gLabel && name.startsWith(`${gLabel}-`) ? name.slice(gLabel.length + 1) : name;
+        return {
+            roi, mode: `custom:${name}`, name,
+            hex: roi.category === 'ocr' ? '#06b6d4' : '#ec4899',
+            label: shortLabel, fullName: name,
+            category: roi.category || 'control',
+            group: roi.group || 'card', isFixed: false,
+        };
+    });
+
+    const allRoiDefs = [...fixedRoiDefs, ...dynamicRoiDefs];
+
+    // ── 新增 ROI 的狀態 ──
+    const [addRoiName, setAddRoiName] = useState('');
+
+    const handleAddRoi = (shortName, groupId, category) => {
+        // 自動加群組前綴，確保不同群組的命名空間獨立
+        const gLabel = roiGroups.find(g => g.id === groupId)?.label || groupId;
+        const fullName = `${gLabel}-${shortName}`;
+        const scope = platformName ? confirm(`存為「${platformName}」平台通用？\n\n確定 = 🌐 平台通用\n取消 = 🎮 本遊戲`) : false;
+        const roi = { x: 45, y: 45, w: 10, h: 10, category, group: groupId };
+        if (scope) { setPlatformClickTarget(fullName, roi); }
+        setClickTarget(fullName, roi);
+        setRoiMode(`custom:${fullName}`);
     };
 
     // ══════════════════════════════════════
@@ -176,175 +235,150 @@ const VideoPlayer = ({
         <div className="space-y-4">
             {/* 影片 + ROI */}
             <div className="relative rounded-2xl shadow-2xl bg-black flex flex-col items-center overflow-hidden no-invert">
-                {/* ROI 切換器 — 可收合 */}
+                {/* ROI 切換器 — 可收合，分組 */}
                 <div className="absolute top-4 right-4 z-40 flex flex-col items-end gap-1">
                     {/* 收合按鈕 */}
                     <button onClick={() => setRoiPanelOpen(p => !p)}
                         className="bg-slate-900/80 backdrop-blur-md px-2.5 py-1.5 rounded-lg border border-white/20 shadow-xl text-xs font-bold text-slate-300 hover:text-white transition-all flex items-center gap-1.5 active:scale-95 self-end"
                     >
-                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: {
-                            reel: '#f59e0b', win: '#10b981', balance: '#38bdf8', bet: '#22d3ee',
-                            orderId: '#a855f7', multiplier: '#f43f5e', spinButton: '#16a34a'
-                        }[roiMode] || '#06b6d4' }} />
                         {roiPanelOpen ? '▶ 收合' : '◀ ROI'}
                     </button>
                 {roiPanelOpen && (
-                <div className="bg-slate-900/80 backdrop-blur-md p-1.5 rounded-lg border border-white/20 shadow-xl flex flex-col gap-1">
-                    {/* ── 🔍 OCR / 偵測群 ── */}
-                    <div className="flex gap-1 items-center flex-wrap">
-                        <span className="text-[9px] text-slate-500 font-bold px-1 select-none shrink-0">👁️ 讀取</span>
-                        {[
-                            { key: 'reel', label: 'REEL', hex: '#f59e0b' },
-                            { key: 'win', label: 'WIN', hex: '#10b981' },
-                            { key: 'balance', label: 'BAL', hex: '#38bdf8' },
-                            { key: 'bet', label: 'BET', hex: '#22d3ee' },
-                            { key: 'orderId', label: 'ID', hex: '#a855f7' },
-                            ...(showMultiplier ? [{ key: 'multiplier', label: 'MULT', hex: '#f43f5e' }] : []),
-                        ].map(r => (
-                            <button key={r.key} onClick={() => setRoiMode(r.key)}
-                                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 shadow-sm active:scale-95 ${roiMode === r.key
-                                    ? 'text-white ring-2 ring-offset-1'
-                                    : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
-                                    } ${r.key === 'orderId' && !enableOrderId ? 'opacity-50 grayscale' : ''}`}
-                                style={roiMode === r.key ? { backgroundColor: r.hex, ringColor: r.hex, boxShadow: `0 0 0 2px white, 0 0 0 4px ${r.hex}` } : {}}
-                            >
-                                {r.key === 'orderId' && (
-                                    <input
-                                        type="checkbox"
-                                        checked={enableOrderId}
-                                        onChange={(e) => { e.stopPropagation(); setEnableOrderId(e.target.checked); }}
-                                        className="cursor-pointer h-3 w-3 rounded accent-purple-500"
-                                        title="勾選以進行注單號擷取與 OCR"
-                                    />
+                <div className="bg-slate-900/80 backdrop-blur-md p-1.5 rounded-lg border border-white/20 shadow-xl flex flex-col gap-0.5 max-h-[70vh] overflow-y-auto min-w-[200px]"
+                    style={{ scrollbarWidth: 'thin', scrollbarColor: '#475569 transparent' }}>
+
+                    {/* ── 各群組 ── */}
+                    {roiGroups.map(group => {
+                        const isExpanded = expandedGroups.includes(group.id);
+                        const isVisible = visibleGroups.includes(group.id);
+                        const groupRois = allRoiDefs.filter(r => r.group === group.id);
+                        const count = groupRois.length;
+
+                        return (
+                            <div key={group.id} className="flex flex-col">
+                                {/* 群組 Header */}
+                                <div className="flex items-center gap-1 px-1 py-0.5 rounded hover:bg-slate-700/50 transition-colors">
+                                    <button onClick={() => toggleExpand(group.id)} className="flex items-center gap-1 flex-1 text-left">
+                                        {isExpanded
+                                            ? <ChevronDown size={10} className="text-slate-400 shrink-0" />
+                                            : <ChevronRight size={10} className="text-slate-400 shrink-0" />}
+                                        <span className="text-[10px] font-bold text-slate-300 select-none truncate">{group.label}</span>
+                                        <span className="text-[9px] text-slate-500 select-none">({count})</span>
+                                    </button>
+                                    {/* 👁️ 顯示/隱藏開關 */}
+                                    <button onClick={() => toggleGroupVisibility(group.id)}
+                                        className={`p-0.5 rounded transition-colors ${isVisible ? 'text-emerald-400 hover:text-emerald-300' : 'text-slate-600 hover:text-slate-400'}`}
+                                        title={isVisible ? '隱藏此群組的框' : '顯示此群組的框'}>
+                                        {isVisible ? <Eye size={12} /> : <EyeOff size={12} />}
+                                    </button>
+                                </div>
+
+                                {/* 群組內容（展開時） */}
+                                {isExpanded && (
+                                    <div className="flex gap-1 items-center flex-wrap pl-3 pb-1">
+                                        {groupRois.map(r => {
+                                            const isActive = roiMode === r.mode;
+                                            return (
+                                                <button key={r.mode} onClick={() => setRoiMode(r.mode)}
+                                                    className={`px-2 py-0.5 rounded-md text-[10px] font-bold transition-all flex items-center gap-1 shadow-sm active:scale-95 group/btn ${isActive
+                                                        ? 'text-white ring-1 ring-offset-1'
+                                                        : 'bg-white/90 text-slate-600 border border-slate-300 hover:bg-white'}`}
+                                                    style={isActive ? { backgroundColor: r.hex, boxShadow: `0 0 0 1px white, 0 0 0 3px ${r.hex}` } : {}}
+                                                >
+                                                    {/* 特殊控件 */}
+                                                    {r.fixedKey === 'orderId' && (
+                                                        <input type="checkbox" checked={enableOrderId}
+                                                            onChange={(e) => { e.stopPropagation(); setEnableOrderId(e.target.checked); }}
+                                                            className="cursor-pointer h-3 w-3 rounded accent-purple-500" title="勾選以進行注單號擷取與 OCR"
+                                                        />
+                                                    )}
+                                                    {r.fixedKey === 'balance' && (
+                                                        <SettingTooltip title="💰 總分小數位數" desc="設定 BALANCE (總分) OCR 結果保留的小數位數"
+                                                            usage="依遊戲幣值精度選擇，例如日幣選整數、美金選 2 位"
+                                                            tech="影響 BAL ROI 的 OCR 解析精度與數值格式化" position="bottom">
+                                                            <select value={balDecimalPlaces}
+                                                                onChange={(e) => { e.stopPropagation(); setBalDecimalPlaces(parseInt(e.target.value, 10)); }}
+                                                                className="cursor-pointer h-4 text-[9px] bg-transparent border border-white/30 rounded px-0.5 outline-none"
+                                                                title="總分小數位數" onClick={(e) => e.stopPropagation()}>
+                                                                <option value={0} className="bg-white text-slate-800">.0</option>
+                                                                <option value={1} className="bg-white text-slate-800">.1</option>
+                                                                <option value={2} className="bg-white text-slate-800">.2</option>
+                                                                <option value={3} className="bg-white text-slate-800">.3</option>
+                                                            </select>
+                                                        </SettingTooltip>
+                                                    )}
+                                                    <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: isActive ? 'white' : r.hex }} />
+                                                    {r.label}
+                                                    {/* 動態 ROI 刪除鈕 */}
+                                                    {!r.isFixed && (
+                                                        <span onClick={(e) => { e.stopPropagation(); if (confirm(`刪除「${r.name}」？`)) removeClickTarget(r.name); }}
+                                                            className="ml-0.5 text-[10px] opacity-0 group-hover/btn:opacity-100 hover:text-red-400 cursor-pointer">✕</span>
+                                                    )}
+                                                </button>
+                                            );
+                                        })}
+                                        {/* ＋ 新增讀取區 */}
+                                        <button onClick={() => setAddRoiTarget(prev => prev?.groupId === group.id && prev?.category === 'ocr' ? null : { groupId: group.id, category: 'ocr' })}
+                                            className="px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-cyan-800/50 text-cyan-300 hover:bg-cyan-700/50 hover:text-cyan-200 transition-all"
+                                            title="新增讀取區域 (OCR)">+👁️</button>
+                                        {/* ＋ 新增操作區 */}
+                                        <button onClick={() => setAddRoiTarget(prev => prev?.groupId === group.id && prev?.category === 'control' ? null : { groupId: group.id, category: 'control' })}
+                                            className="px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-pink-800/50 text-pink-300 hover:bg-pink-700/50 hover:text-pink-200 transition-all"
+                                            title="新增點擊目標 (Control)">+🎯</button>
+                                        {/* 新增表單（inline，避免巢狀元件 remount 問題） */}
+                                        {addRoiTarget?.groupId === group.id && (
+                                            <div className="flex items-center gap-1 mt-1" onClick={e => e.stopPropagation()}>
+                                                <input className="bg-slate-800 border border-slate-500 rounded px-1.5 py-0.5 text-[10px] text-white outline-none w-20"
+                                                    value={addRoiName} onChange={e => setAddRoiName(e.target.value)}
+                                                    placeholder="名稱" autoFocus
+                                                    onMouseDown={e => e.stopPropagation()}
+                                                    onKeyDown={e => {
+                                                        if (e.key === 'Enter' && addRoiName.trim()) { handleAddRoi(addRoiName.trim(), group.id, addRoiTarget.category); setAddRoiName(''); setAddRoiTarget(null); }
+                                                        if (e.key === 'Escape') { setAddRoiName(''); setAddRoiTarget(null); }
+                                                    }}
+                                                />
+                                                <button onClick={() => { if (addRoiName.trim()) { handleAddRoi(addRoiName.trim(), group.id, addRoiTarget.category); setAddRoiName(''); setAddRoiTarget(null); }}}
+                                                    className="px-1.5 py-0.5 rounded text-[10px] bg-emerald-600 text-white hover:bg-emerald-500 transition-colors"
+                                                >確定</button>
+                                                <button onClick={() => { setAddRoiName(''); setAddRoiTarget(null); }}
+                                                    className="px-1 py-0.5 rounded text-[10px] bg-slate-700 text-slate-400 hover:text-white transition-colors">✕</button>
+                                            </div>
+                                        )}
+                                    </div>
                                 )}
-                                {r.key === 'balance' && (
-                                    <SettingTooltip
-                                        title="💰 總分小數位數"
-                                        desc="設定 BALANCE (總分) OCR 結果保留的小數位數"
-                                        usage="依遊戲幣值精度選擇，例如日幣選整數、美金選 2 位"
-                                        tech="影響 BAL ROI 的 OCR 解析精度與數值格式化"
-                                        position="bottom">
-                                        <select
-                                            value={balDecimalPlaces}
-                                            onChange={(e) => { e.stopPropagation(); setBalDecimalPlaces(parseInt(e.target.value, 10)); }}
-                                            className="cursor-pointer h-4 text-[9px] bg-transparent border border-white/30 rounded px-0.5 outline-none"
-                                            title="總分小數位數"
-                                            onClick={(e) => e.stopPropagation()}
-                                        >
-                                            <option value={0} className="bg-white text-slate-800">.0</option>
-                                            <option value={1} className="bg-white text-slate-800">.1</option>
-                                            <option value={2} className="bg-white text-slate-800">.2</option>
-                                            <option value={3} className="bg-white text-slate-800">.3</option>
-                                        </select>
-                                    </SettingTooltip>
-                                )}
-                                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: roiMode === r.key ? 'white' : r.hex }} />
-                                {r.label}
-                            </button>
-                        ))}
-                        {/* 動態讀取目標 */}
-                        {Object.entries(clickTargets).filter(([, v]) => v.category === 'ocr').map(([name]) => {
-                            const mode = `custom:${name}`;
-                            const isActive = roiMode === mode;
-                            return (
-                                <button key={name} onClick={() => setRoiMode(mode)}
-                                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 shadow-sm active:scale-95 group ${isActive
-                                        ? 'text-white ring-2 ring-offset-1'
-                                        : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}`}
-                                    style={isActive ? { backgroundColor: '#06b6d4', boxShadow: '0 0 0 2px white, 0 0 0 4px #06b6d4' } : {}}
-                                >
-                                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: isActive ? 'white' : '#06b6d4' }} />
-                                    {name}
-                                    <span onClick={(e) => { e.stopPropagation(); if (confirm(`刪除「${name}」？`)) removeClickTarget(name); }}
-                                        className="ml-0.5 text-[10px] opacity-0 group-hover:opacity-100 hover:text-red-400 cursor-pointer">✕</span>
-                                </button>
-                            );
-                        })}
-                        {/* 新增讀取目標 */}
-                        <button onClick={() => {
-                            const name = prompt('輸入讀取區域名稱（例如：FREE次數、JP金額）');
-                            if (!name?.trim()) return;
-                            const roi = { x: 45, y: 45, w: 10, h: 10, category: 'ocr' };
-                            setClickTarget(name.trim(), roi);
-                            setRoiMode(`custom:${name.trim()}`);
-                        }}
-                            className="px-2 py-1 rounded-lg text-xs font-bold bg-slate-700 text-slate-400 hover:bg-slate-600 hover:text-white transition-all flex items-center gap-0.5"
-                        >
-                            ＋
-                        </button>
-                    </div>
+                            </div>
+                        );
+                    })}
+
                     {/* ── 分隔線 ── */}
-                    <div className="h-px bg-slate-600/50" />
-                    {/* ── 🎮 操作群 ── */}
-                    <div className="flex gap-1 items-center flex-wrap">
-                        <span className="text-[9px] text-slate-500 font-bold px-1 select-none shrink-0">🎮 操作</span>
-                        {/* SPIN 固定按鈕 */}
-                        <button onClick={() => setRoiMode('spinButton')}
-                            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 shadow-sm active:scale-95 ${roiMode === 'spinButton'
-                                ? 'text-white ring-2 ring-offset-1'
-                                : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
-                                }`}
-                            style={roiMode === 'spinButton' ? { backgroundColor: '#16a34a', boxShadow: '0 0 0 2px white, 0 0 0 4px #16a34a' } : {}}
-                        >
-                            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: roiMode === 'spinButton' ? 'white' : '#16a34a' }} />
-                            SPIN
-                        </button>
-                        {/* 動態點擊目標（只顯示 control 類）*/}
-                        {Object.entries(clickTargets).filter(([, v]) => v.category !== 'ocr').map(([name]) => {
-                            const mode = `custom:${name}`;
-                            const isActive = roiMode === mode;
-                            return (
-                                <button key={name} onClick={() => setRoiMode(mode)}
-                                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 shadow-sm active:scale-95 group ${isActive
-                                        ? 'text-white ring-2 ring-offset-1'
-                                        : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}`}
-                                    style={isActive ? { backgroundColor: '#ec4899', boxShadow: '0 0 0 2px white, 0 0 0 4px #ec4899' } : {}}
-                                >
-                                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: isActive ? 'white' : '#ec4899' }} />
-                                    {name}
-                                    <span onClick={(e) => { e.stopPropagation(); if (confirm(`刪除「${name}」？`)) removeClickTarget(name); }}
-                                        className="ml-0.5 text-[10px] opacity-0 group-hover:opacity-100 hover:text-red-400 cursor-pointer">✕</span>
-                                </button>
-                            );
-                        })}
-                        {/* 新增按鈕 */}
+                    <div className="h-px bg-slate-600/50 my-0.5" />
+
+                    {/* ── 群組管理 + 匯出匯入 ── */}
+                    <div className="flex gap-1 items-center flex-wrap px-1">
+                        {/* 新增群組 */}
                         <button onClick={() => {
-                            const name = prompt('輸入點擊目標名稱（例如：關閉X、設定齒輪）');
-                            if (!name?.trim()) return;
-                            const scope = platformName ? confirm(`存為「${platformName}」平台通用？\n\n確定 = 🌐 平台通用\n取消 = 🎮 本遊戲`) : false;
-                            const roi = { x: 45, y: 45, w: 10, h: 10, category: 'control' };
-                            if (scope) { setPlatformClickTarget(name.trim(), roi); }
-                            setClickTarget(name.trim(), roi);
-                            setRoiMode(`custom:${name.trim()}`);
+                            const name = prompt('輸入新群組名稱');
+                            if (name?.trim()) addRoiGroup(name.trim());
                         }}
-                            className="px-2 py-1 rounded-lg text-xs font-bold bg-slate-700 text-slate-400 hover:bg-slate-600 hover:text-white transition-all flex items-center gap-0.5"
-                        >
-                            ＋
+                            className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-700 text-slate-400 hover:bg-slate-600 hover:text-white transition-all flex items-center gap-0.5"
+                            title="新增 ROI 群組">
+                            <Plus size={10} /> 群組
                         </button>
-                    </div>
-                    {/* ── 分隔線 ── */}
-                    <div className="h-px bg-slate-600/50" />
-                    {/* ── 📁 匯出 / 匯入 ── */}
-                    <div className="flex gap-1 items-center">
-                        <span className="text-[9px] text-slate-500 font-bold px-1 select-none shrink-0">📁 設定</span>
                         <button onClick={exportAllROIs}
-                            className="px-2 py-1 rounded-lg text-[10px] font-bold bg-slate-700 text-slate-400 hover:bg-emerald-600 hover:text-white transition-all flex items-center gap-1 active:scale-95"
-                            title="匯出所有 ROI 區域設定為 JSON"
-                        >
-                            <Download size={10} /> 匯出 ROI
+                            className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-700 text-slate-400 hover:bg-emerald-600 hover:text-white transition-all flex items-center gap-1 active:scale-95"
+                            title="匯出所有 ROI 區域設定為 JSON">
+                            <Download size={10} /> 匯出
                         </button>
                         <input ref={importFileRef} type="file" accept=".json" onChange={handleImportROI} className="hidden" />
                         <button onClick={() => importFileRef.current?.click()}
-                            className="px-2 py-1 rounded-lg text-[10px] font-bold bg-slate-700 text-slate-400 hover:bg-indigo-600 hover:text-white transition-all flex items-center gap-1 active:scale-95"
-                            title="從 JSON 檔匯入 ROI 區域設定"
-                        >
-                            <Upload size={10} /> 匯入 ROI
+                            className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-700 text-slate-400 hover:bg-indigo-600 hover:text-white transition-all flex items-center gap-1 active:scale-95"
+                            title="從 JSON 檔匯入 ROI 區域設定">
+                            <Upload size={10} /> 匯入
                         </button>
                     </div>
                     </div>
                 )}
                 </div>
-
 
 
 
@@ -360,21 +394,15 @@ const VideoPlayer = ({
                     onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp} onMouseDown={handleMouseDown}>
                     <video ref={videoRef} src={isStreamMode ? undefined : videoSrc} autoPlay={isStreamMode} muted={isStreamMode} className="max-w-full max-h-[70vh] block" />
 
-                    {/* ROI 框 */}
-                    {[
-                        { roi: reelROI, mode: 'reel', hex: '#f59e0b', label: '盤面', showGrid: true },
-                        { roi: winROI, mode: 'win', hex: '#10b981', label: '贏分' },
-                        { roi: balanceROI, mode: 'balance', hex: '#38bdf8', label: '總分' },
-                        { roi: betROI, mode: 'bet', hex: '#22d3ee', label: '押分' },
-                        { roi: orderIdROI, mode: 'orderId', hex: '#a855f7', label: '單號' },
-                        ...(showMultiplier ? [{ roi: multiplierROI, mode: 'multiplier', hex: '#f43f5e', label: '乘倍' }] : []),
-                        { roi: spinButtonROI, mode: 'spinButton', hex: '#16a34a', label: 'SPIN 🎮' },
-                        ...Object.entries(clickTargets).map(([name, roi]) => ({
-                            roi, mode: `custom:${name}`,
-                            hex: roi.category === 'ocr' ? '#06b6d4' : '#ec4899',
-                            label: `${roi.category === 'ocr' ? '👁️' : '🎯'} ${name}`
-                        }))
-                    ].map(r => {
+                    {/* ROI 框（依群組過濾） */}
+                    {allRoiDefs
+                        .filter(r => {
+                            // 正在編輯的 ROI 永遠顯示
+                            if (roiMode === r.mode) return true;
+                            // 依群組過濾
+                            return visibleGroups.includes(r.group);
+                        })
+                        .map(r => {
                         const isActive = roiMode === r.mode;
                         return (
                         <div key={r.mode}
@@ -394,9 +422,9 @@ const VideoPlayer = ({
                                 <div className="absolute -right-1.5 -bottom-1.5 w-4 h-4 rounded-full border-2 border-white pointer-events-auto cursor-nwse-resize shadow-lg"
                                     style={{ backgroundColor: r.hex }} />
                             )}
-                            {/* ROI 標籤：選中完整顯示，非選中縮為色點 */}
+                            {/* ROI 標籤 */}
                             {(() => {
-                                const showOnTop = r.roi.y > 5; // ROI 太靠頂 → 標籤放下方
+                                const showOnTop = r.roi.y > 5;
                                 const pos = showOnTop ? { bottom: '100%', marginBottom: '4px' } : { top: '100%', marginTop: '4px' };
                                 return isActive ? (
                                     <div className="absolute left-0 text-white text-[10px] px-1.5 py-0.5 rounded font-bold shadow-md whitespace-nowrap pointer-events-none"

@@ -90,11 +90,11 @@ export function getDecimalPlaces(name) {
  * 列出所有可用的 ROI 名稱（供 UI 下拉選單使用）
  */
 export const AVAILABLE_ROIS = [
-    { name: 'SPIN',     label: 'SPIN 按鈕',   category: 'control' },
-    { name: 'REEL',     label: '盤面',         category: 'detection' },
-    { name: 'WIN',      label: '贏分',         category: 'ocr' },
-    { name: 'BAL',      label: '餘額',         category: 'ocr' },
-    { name: 'BET',      label: '押注',         category: 'ocr' },
-    { name: 'ORDER_ID', label: '注單號',       category: 'ocr' },
-    { name: 'MULT',     label: '倍率',         category: 'ocr' },
+    { name: 'SPIN',     label: 'SPIN 按鈕',   category: 'control',   group: 'game' },
+    { name: 'REEL',     label: '盤面',         category: 'detection', group: 'game' },
+    { name: 'WIN',      label: '贏分',         category: 'ocr',       group: 'game' },
+    { name: 'BAL',      label: '餘額',         category: 'ocr',       group: 'game' },
+    { name: 'BET',      label: '押注',         category: 'ocr',       group: 'game' },
+    { name: 'ORDER_ID', label: '注單號',       category: 'ocr',       group: 'game' },
+    { name: 'MULT',     label: '倍率',         category: 'ocr',       group: 'game' },
 ];
