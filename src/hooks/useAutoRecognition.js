@@ -4,6 +4,7 @@ import { callGeminiAPI } from '../utils/geminiApi';
 import { validateVisionResponse } from '../utils/aiValidator';
 import { isCashSymbol, isCollectSymbol, isDynamicMultiplierSymbol } from '../utils/symbolUtils';
 import { apiKey } from '../utils/constants';
+import useAppStore from '../stores/useAppStore';
 import { computeGridResults } from '../engine/computeGridResults';
 import { drawGridOverlay } from '../utils/canvasUtils';
 import { buildReferenceIndex, recognizeBoard } from '../engine/localBoardRecognizer';
@@ -44,6 +45,7 @@ export function useAutoRecognition({
     setTemplateError,
     enableBidirectional = false
 }) {
+    const { apiProvider, localEndpoint, localModel, localApiKey: localApiKeyStore } = useAppStore();
     const [isRecognizing, setIsRecognizing] = useState(false);
     const [recognitionProgress, setRecognitionProgress] = useState({ current: 0, total: 0 });
     const isCanceledRef = useRef(false);
@@ -95,8 +97,12 @@ export function useAutoRecognition({
         }
 
         const effectiveApiKey = (customApiKey || '').trim() || apiKey;
-        if (!effectiveApiKey) {
+        if (apiProvider !== 'local' && !effectiveApiKey) {
             setTemplateError?.('請先設定 Gemini API Key');
+            return;
+        }
+        if (apiProvider === 'local' && !localEndpoint?.trim()) {
+            setTemplateError?.('請先在設定中填入地端模型 Endpoint');
             return;
         }
 
@@ -165,7 +171,8 @@ export function useAutoRecognition({
                 // 盤面辨識一律用停輪幀（WIN 截圖有特效干擾）
                 const gridCanvas = kf.canvas;
                 const gridResult = await recognizeGrid(
-                    gridCanvas, rois, template, availableSymbols, fixedPrefixParts, modelName, effectiveApiKey
+                    gridCanvas, rois, template, availableSymbols, fixedPrefixParts, modelName, effectiveApiKey,
+                    { provider: apiProvider, localEndpoint, localModel, localApiKey: localApiKeyStore }
                 );
 
                 // ── B. OCR 數值決定 ──
@@ -442,7 +449,7 @@ export function useAutoRecognition({
 // Gemini Vision 辨識（複用 Phase 3 邏輯）
 // ══════════════════════════════════════════════
 
-async function recognizeGrid(canvas, rois, template, availableSymbols, fixedPrefixParts, modelName, effectiveApiKey) {
+async function recognizeGrid(canvas, rois, template, availableSymbols, fixedPrefixParts, modelName, effectiveApiKey, providerOpts = {}) {
     const { reelROI } = rois;
 
     // 裁切盤面 ROI + 繪製紅色格線
@@ -501,6 +508,10 @@ async function recognizeGrid(canvas, rois, template, availableSymbols, fixedPref
         model: modelName,
         parts: currentParts,
         generationConfig: buildVisionGenerationConfig(),
+        provider: providerOpts.provider || 'gemini',
+        localEndpoint: providerOpts.localEndpoint,
+        localModel: providerOpts.localModel,
+        localApiKey: providerOpts.localApiKey,
     });
 
     const responseData = JSON.parse(jsonText);

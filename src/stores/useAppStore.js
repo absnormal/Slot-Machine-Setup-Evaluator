@@ -96,12 +96,35 @@ const useAppStore = create((set, get) => ({
     showSettingsModal: false,
     isDarkMode: typeof window !== 'undefined' ? (localStorage.getItem('slot_dark_mode') === 'true') : false,
 
+    // === AI 模型來源 ===
+    apiProvider: typeof window !== 'undefined' ? (localStorage.getItem('slot_api_provider') || 'gemini') : 'gemini', // 'gemini' | 'local'
+    localEndpoint: typeof window !== 'undefined' ? (localStorage.getItem('slot_local_endpoint') || '') : '',
+    localModel: typeof window !== 'undefined' ? (localStorage.getItem('slot_local_model') || '') : '',
+    localApiKey: typeof window !== 'undefined' ? (localStorage.getItem('slot_local_api_key') || '') : '',
+
     setCustomApiKey: (v) => set({ customApiKey: v }),
     setShowSettingsModal: (v) => set({ showSettingsModal: v }),
     setIsDarkMode: (v) => {
         set({ isDarkMode: v });
         if (typeof window !== 'undefined') localStorage.setItem('slot_dark_mode', v.toString());
     },
+    setApiProvider: (v) => {
+        set({ apiProvider: v });
+        if (typeof window !== 'undefined') localStorage.setItem('slot_api_provider', v);
+    },
+    setLocalEndpoint: (v) => {
+        set({ localEndpoint: v });
+        if (typeof window !== 'undefined') localStorage.setItem('slot_local_endpoint', v);
+    },
+    setLocalModel: (v) => {
+        set({ localModel: v });
+        if (typeof window !== 'undefined') localStorage.setItem('slot_local_model', v);
+    },
+    setLocalApiKey: (v) => {
+        set({ localApiKey: v });
+        if (typeof window !== 'undefined') localStorage.setItem('slot_local_api_key', v);
+    },
+
 
     // === 雲端模板 Modal ===
     showCloudModal: false,

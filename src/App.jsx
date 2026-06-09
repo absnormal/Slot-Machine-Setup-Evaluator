@@ -71,6 +71,15 @@ function App() {
     const isDarkMode = useAppStore(s => s.isDarkMode);
     const setIsDarkMode = useAppStore(s => s.setIsDarkMode);
 
+    const apiProvider = useAppStore(s => s.apiProvider);
+    const setApiProvider = useAppStore(s => s.setApiProvider);
+    const localEndpoint = useAppStore(s => s.localEndpoint);
+    const setLocalEndpoint = useAppStore(s => s.setLocalEndpoint);
+    const localModel = useAppStore(s => s.localModel);
+    const setLocalModel = useAppStore(s => s.setLocalModel);
+    const localApiKey = useAppStore(s => s.localApiKey);
+    const setLocalApiKey = useAppStore(s => s.setLocalApiKey);
+
     useEffect(() => {
         if (isDarkMode) {
             document.documentElement.classList.add('dark-theme-active');
@@ -359,7 +368,9 @@ function App() {
         }
     }, [cloudError, setCloudError]);
 
-    const hasApiKey = !!(customApiKey.trim() || apiKey);
+    const hasApiKey = apiProvider === 'local'
+        ? !!(localEndpoint.trim())  // 地端：只要有填 Endpoint 就算 OK
+        : !!(customApiKey.trim() || apiKey);  // 雲端：需要 Gemini Key
 
     // ========== RENDER ==========
     return (
@@ -613,6 +624,14 @@ function App() {
                     setShowSettingsModal(false);
                     showToast('✅ 設定已安全儲存至您的瀏覽器！');
                 }}
+                apiProvider={apiProvider}
+                setApiProvider={setApiProvider}
+                localEndpoint={localEndpoint}
+                setLocalEndpoint={setLocalEndpoint}
+                localModel={localModel}
+                setLocalModel={setLocalModel}
+                localApiKey={localApiKey}
+                setLocalApiKey={setLocalApiKey}
             />
 
             {/* 本地擷取來源選擇 Modal */}

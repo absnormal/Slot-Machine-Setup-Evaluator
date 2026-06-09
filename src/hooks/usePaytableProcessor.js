@@ -3,6 +3,7 @@ import { ptFileToBase64 } from '../utils/helpers';
 import { callGeminiAPI } from '../utils/geminiApi';
 import { isWildSymbol } from '../utils/symbolUtils';
 import { buildPaytablePrompt, buildPaytableGenerationConfig } from '../config/promptTemplates';
+import useAppStore from '../stores/useAppStore';
 
 /**
  * 賠率表處理邏輯
@@ -17,6 +18,7 @@ export function usePaytableProcessor({
     setTemplateMessage,
     setTemplateError,
 }) {
+    const { apiProvider, localEndpoint, localModel, localApiKey: localApiKeyStore } = useAppStore();
     // --- Paytable State ---
     const [ptImages, setPtImages] = useState([]);
     const [isPtProcessing, setIsPtProcessing] = useState(false);
@@ -190,6 +192,10 @@ export function usePaytableProcessor({
                 model: modelName,
                 parts: [{ text: promptText }, ...imageParts],
                 generationConfig: buildPaytableGenerationConfig(),
+                provider: apiProvider,
+                localEndpoint,
+                localModel,
+                localApiKey: localApiKeyStore,
             });
 
             let parsedData = JSON.parse(jsonText);

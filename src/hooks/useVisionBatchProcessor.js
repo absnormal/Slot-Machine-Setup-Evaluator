@@ -8,6 +8,7 @@ import { isCashSymbol, isCollectSymbol, isDynamicMultiplierSymbol } from '../uti
 import { getGridMask, isIrregularGrid } from '../utils/gridShapeUtils';
 import { drawGridOverlay } from '../utils/canvasUtils';
 import { apiKey } from '../utils/constants';
+import useAppStore from '../stores/useAppStore';
 import {
     buildCashRule, buildDynamicMultiplierRule, buildMultiplierReelRule,
     buildBetRule, buildPickRule, buildConfusableWarning,
@@ -38,6 +39,7 @@ export function useVisionBatchProcessor({
     setTemplateMessage,
     setTemplateError
 }) {
+    const { apiProvider, localEndpoint, localModel, localApiKey: localApiKeyStore } = useAppStore();
     const [isVisionProcessing, setIsVisionProcessing] = useState(false);
     const isVisionCanceled = useRef(false);
     const [isVisionStopping, setIsVisionStopping] = useState(false);
@@ -207,6 +209,10 @@ export function useVisionBatchProcessor({
                     model: modelName,
                     parts: currentParts,
                     generationConfig: buildVisionGenerationConfig(),
+                    provider: apiProvider,
+                    localEndpoint,
+                    localModel,
+                    localApiKey: localApiKeyStore,
                 });
 
                 const responseData = JSON.parse(jsonText);
