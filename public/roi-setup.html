@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ROI 校準工具</title>
+<style>
+:root {
+  --bg: #0f172a; --bg2: #1e293b; --bg3: #334155;
+  --fg: #f1f5f9; --fg2: #94a3b8; --fg3: #64748b;
+  --primary: #6366f1; --primary-h: #818cf8;
+  --success: #22c55e; --warn: #f59e0b; --danger: #ef4444;
+  --border: #334155; --radius: 10px;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--fg); min-height: 100vh; }
+
+/* ── Header ── */
+.header { background: var(--bg2); border-bottom: 1px solid var(--border); padding: 10px 20px; display: flex; align-items: center; justify-content: space-between; }
+.header h1 { font-size: 16px; display: flex; align-items: center; gap: 6px; }
+.header-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* ── Layout ── */
+.layout { display: flex; height: calc(100vh - 45px); }
+
+/* ── Sidebar ── */
+.sidebar { width: 240px; background: var(--bg2); border-right: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; }
+.sidebar-head { padding: 10px 14px; border-bottom: 1px solid var(--border); font-size: 12px; font-weight: 600; color: var(--fg2); }
+.sidebar-list { flex: 1; overflow-y: auto; }
+.step-item { padding: 8px 14px; cursor: pointer; border-left: 3px solid transparent; transition: all 0.15s; font-size: 12px; display: flex; align-items: center; gap: 6px; }
+.step-item:hover { background: var(--bg3); }
+.step-item.active { background: rgba(99,102,241,0.15); border-left-color: var(--primary); }
+.step-item.done { color: var(--success); }
+.step-item .badge { background: var(--bg3); color: var(--fg2); font-size: 10px; padding: 1px 5px; border-radius: 99px; margin-left: auto; }
+.step-item.done .badge { background: rgba(34,197,94,0.2); color: var(--success); }
+
+/* ── Progress summary (sidebar bottom) ── */
+.sidebar-footer { padding: 10px 14px; border-top: 1px solid var(--border); font-size: 11px; }
+.progress-bar { height: 4px; background: var(--bg3); border-radius: 2px; overflow: hidden; margin-top: 6px; }
+.progress-fill { height: 100%; background: var(--primary); transition: width 0.3s; }
+
+/* ── Main ── */
+.main { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+
+/* ── Guide bar ── */
+.guide-bar { background: #0f1729; border-bottom: 1px solid var(--border); padding: 10px 20px; }
+.guide-title { font-size: 15px; font-weight: 700; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
+.guide-steps { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12px; color: var(--fg2); }
+.guide-step { display: flex; align-items: center; gap: 4px; }
+.guide-step .num { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; background: var(--bg3); font-size: 10px; font-weight: 700; color: var(--fg2); flex-shrink: 0; }
+.guide-notes { margin-top: 6px; }
+.guide-note { font-size: 11px; color: var(--warn); display: flex; align-items: center; gap: 4px; }
+
+/* ── Content ── */
+.content { flex: 1; display: flex; overflow: hidden; }
+
+/* ── Panels ── */
+.panel { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.panel + .panel { border-left: 1px solid var(--border); }
+.panel-head { padding: 8px 14px; background: var(--bg2); border-bottom: 1px solid var(--border); font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.panel-body { flex: 1; position: relative; overflow: hidden; background: #0a0f1a; display: flex; align-items: center; justify-content: center; }
+
+/* ── Canvas ── */
+.canvas-wrap { position: relative; display: inline-block; max-width: 100%; max-height: 100%; }
+.canvas-wrap canvas { display: block; max-width: 100%; max-height: calc(100vh - 250px); object-fit: contain; }
+
+/* ── Drop zone ── */
+.drop-zone { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; transition: background 0.2s; }
+.drop-zone:hover { background: rgba(99,102,241,0.05); }
+.drop-zone.drag-over { background: rgba(99,102,241,0.1); }
+.drop-zone svg { width: 40px; height: 40px; color: var(--fg3); margin-bottom: 8px; }
+.drop-zone p { color: var(--fg3); font-size: 13px; }
+
+/* ── ROI list ── */
+.roi-panel { width: 260px; background: var(--bg2); border-left: 1px solid var(--border); overflow-y: auto; flex-shrink: 0; }
+.roi-panel-head { padding: 10px 14px; border-bottom: 1px solid var(--border); font-weight: 600; font-size: 12px; }
+.roi-item { padding: 6px 14px; font-size: 12px; display: flex; align-items: center; gap: 6px; cursor: pointer; transition: background 0.15s; border-bottom: 1px solid rgba(51,65,85,0.4); }
+.roi-item:hover { background: var(--bg3); }
+.roi-item.active { background: rgba(99,102,241,0.15); }
+.roi-item .dot { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+.roi-item .name { flex: 1; font-size: 11px; }
+.roi-item .check { color: var(--success); font-weight: bold; font-size: 13px; }
+.roi-item .miss { color: var(--fg3); }
+.roi-item .del-btn { color: var(--danger); cursor: pointer; font-size: 14px; opacity: 0; transition: opacity 0.15s; padding: 0 2px; }
+.roi-item:hover .del-btn { opacity: 1; }
+.roi-item .type-tag { font-size: 9px; padding: 1px 4px; border-radius: 3px; }
+.roi-item .type-tag.ocr { background: rgba(59,130,246,0.2); color: #60a5fa; }
+.roi-item .type-tag.control { background: rgba(168,85,247,0.2); color: #c084fc; }
+.roi-desc { font-size: 10px; color: var(--fg3); padding: 2px 14px 6px 30px; border-bottom: 1px solid rgba(51,65,85,0.4); }
+
+/* ── Bottom bar ── */
+.bottom-bar { padding: 8px 20px; background: var(--bg2); border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+
+/* ── Buttons ── */
+.btn { padding: 6px 14px; border-radius: 6px; border: none; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.15s; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.btn:active { transform: scale(0.97); }
+.btn-primary { background: var(--primary); color: white; }
+.btn-primary:hover { background: var(--primary-h); }
+.btn-ghost { background: transparent; color: var(--fg2); border: 1px solid var(--border); }
+.btn-ghost:hover { background: var(--bg3); color: var(--fg); }
+.btn-success { background: var(--success); color: white; }
+.btn-danger { background: transparent; color: var(--danger); border: 1px solid rgba(239,68,68,0.3); }
+.btn-sm { padding: 3px 8px; font-size: 11px; }
+
+/* ── Draw hint ── */
+.draw-hint { position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.75); color: var(--fg2); padding: 4px 14px; border-radius: 16px; font-size: 11px; pointer-events: none; white-space: nowrap; z-index: 10; }
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--bg3); border-radius: 3px; }
+
+/* ── Toast ── */
+.toast { position: fixed; bottom: 20px; right: 20px; background: var(--bg2); border: 1px solid var(--border); padding: 10px 16px; border-radius: 8px; font-size: 12px; z-index: 9999; animation: slideIn 0.3s; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+.toast.success { border-color: var(--success); }
+.toast.error { border-color: var(--danger); }
+@keyframes slideIn { from { transform: translateY(16px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>🎯 ROI 校準工具</h1>
+  <div class="header-actions">
+    <button class="btn btn-ghost btn-sm" onclick="importRoiJson()">📥 匯入ROI</button>
+    <button class="btn btn-ghost btn-sm" onclick="importRoiAsRef()">📥 匯入ROI為參考</button>
+    <button class="btn btn-ghost btn-sm" onclick="importRefPack()">📦 匯入參考包</button>
+    <button class="btn btn-ghost btn-sm" onclick="exportRefPack()">💾 匯出參考包</button>
+    <button class="btn btn-success btn-sm" onclick="exportRoiJson()">📤 匯出 ROI JSON</button>
+    <button class="btn btn-danger btn-sm" onclick="if(confirm('確定清除所有資料？')){{localStorage.removeItem('roi_setup_state');location.reload()}}">🗑️ 重置</button>
+  </div>
+</div>
+
+<div class="layout">
+  <div class="sidebar">
+    <div class="sidebar-head">📋 校準步驟</div>
+    <div class="sidebar-list" id="sidebar"></div>
+    <div class="sidebar-footer" id="sidebarFooter"></div>
+  </div>
+
+  <div class="main">
+    <div class="guide-bar" id="guideBar"></div>
+    <div class="content">
+      <div class="panel" id="refPanel">
+        <div class="panel-head" id="refPanelHead"></div>
+        <div class="panel-body" id="refBody"></div>
+      </div>
+      <div class="panel" id="userPanel">
+        <div class="panel-head" id="userPanelHead"></div>
+        <div class="panel-body" id="userBody"></div>
+      </div>
+      <div class="roi-panel">
+        <div class="roi-panel-head" id="roiPanelHead"></div>
+        <div id="roiList"></div>
+      </div>
+    </div>
+    <div class="bottom-bar">
+      <button class="btn btn-ghost" id="btnPrev" onclick="navigate(-1)">← 上一步</button>
+      <span style="font-size:12px;color:var(--fg2)" id="navInfo"></span>
+      <button class="btn btn-primary" id="btnNext" onclick="navigate(1)">下一步 →</button>
+    </div>
+  </div>
+</div>
+
+<input type="file" id="fileInput" accept="image/*" style="display:none">
+
+<script>
+// ═══════════════════════════════════════════════
+//  Page Definitions (16 pages, 44 ROIs)
+// ═══════════════════════════════════════════════
+const PAGES = [
+  {
+    id: 'platform_lobby', label: '① 金銀島平台',
+    steps: [
+      '開啟金銀島大廳頁面',
+      '截圖包含平台/幣別/GameID 欄位的畫面',
+    ],
+    notes: [],
+    rois: [
+      { name: '遊戲介面-金銀島-平台', cat: 'click', type: 'control', group: 'card', desc: '平台選擇下拉（如 WinBet）' },
+      { name: '遊戲介面-金銀島-幣別', cat: 'click', type: 'control', group: 'card', desc: '幣別選擇下拉' },
+      { name: '遊戲介面-金銀島-GameID', cat: 'click', type: 'control', group: 'card', desc: '遊戲 ID 輸入框' },
+    ]
+  },
+  {
+    id: 'admin_card', label: '② 後台塞卡',
+    steps: [
+      '開啟後台道具卡發放頁面',
+      '截圖整個表單區域',
+    ],
+    notes: [],
+    rois: [
+      { name: '後台塞卡-AccountID', cat: 'click', type: 'ocr', group: 'admin', desc: 'AccountID 標籤（確認用）' },
+      { name: '後台塞卡-AccountId', cat: 'click', type: 'control', group: 'admin', desc: 'AccountID 輸入框' },
+      { name: '後台塞卡-道具卡ID', cat: 'click', type: 'control', group: 'admin', desc: '道具卡 ID 輸入框' },
+      { name: '後台塞卡-數量', cat: 'click', type: 'control', group: 'admin', desc: '數量輸入框' },
+      { name: '後台塞卡-確定', cat: 'click', type: 'control', group: 'admin', desc: '確定按鈕' },
+      { name: '後台塞卡-申請簽核', cat: 'click', type: 'control', group: 'admin', desc: '申請簽核按鈕' },
+    ]
+  },
+  {
+    id: 'admin_card_confirm', label: '③ 塞卡簽核確認',
+    steps: [
+      '在塞卡頁面按「申請簽核」',
+      '彈窗出現後截圖',
+    ],
+    notes: [],
+    rois: [
+      { name: '後台塞卡-簽核確認', cat: 'click', type: 'control', group: 'admin', desc: '確認按鈕' },
+    ]
+  },
+  {
+    id: 'admin_sign', label: '④ 後台簽核',
+    steps: [
+      '開啟簽核管理後台頁面',
+      '確認有待簽核項目',
+      '截圖整個頁面',
+    ],
+    notes: [],
+    rois: [
+      { name: '後台簽核-動作', cat: 'click', type: 'ocr', group: 'platform', desc: '「動作」欄位標題' },
+      { name: '後台簽核-第一筆簽核', cat: 'click', type: 'control', group: 'platform', desc: '第一筆的簽核按鈕位置' },
+    ]
+  },
+  {
+    id: 'admin_sign_confirm', label: '⑤ 簽核送出確認',
+    steps: [
+      '在簽核頁面按簽核按鈕',
+      '彈窗出現後截圖',
+    ],
+    notes: [],
+    rois: [
+      { name: '後台簽核-送出確認', cat: 'click', type: 'control', group: 'platform', desc: '確認按鈕' },
+    ]
+  },
+  {
+    id: 'game_jili', label: '⑥ JILI 展開',
+    steps: [
+      '在遊戲畫面中點擊左側 JILI',
+      'JILI 選單展開後截圖',
+      '確保網址列也在截圖範圍內',
+    ],
+    notes: ['< (收合按鈕) 用於自動化後收合 JILI 選單'],
+    rois: [
+      { name: '遊戲-JILI-背包', cat: 'click', type: 'control', group: 'game', desc: '背包按鈕' },
+      { name: '遊戲-<', cat: 'click', type: 'control', group: 'game', desc: '收合按鈕 <' },
+      { name: '遊戲-網址列', cat: 'click', type: 'control', group: 'game', desc: '瀏覽器網址列（用於切換遊戲）' },
+    ]
+  },
+  {
+    id: 'backpack', label: '⑦ 背包',
+    steps: [
+      '從 JILI 選單進入背包',
+      '確保有至少一張道具卡',
+      '截圖背包頁面',
+    ],
+    notes: [],
+    rois: [
+      { name: '遊戲介面-背包-道具卡第一張', cat: 'click', type: 'control', group: 'card', desc: '第一張道具卡位置' },
+      { name: '遊戲介面-背包-個人訊息', cat: 'click', type: 'control', group: 'card', desc: '個人訊息按鈕' },
+    ]
+  },
+  {
+    id: 'card_detail', label: '⑧ 道具卡詳情',
+    steps: [
+      '在背包中點開一張道具卡',
+      '截圖道具卡詳情頁',
+    ],
+    notes: [
+      '名稱框要預留空間（不同卡名長度不同）',
+      '押注框要包含「指定押注:」標籤和數字',
+    ],
+    rois: [
+      { name: '遊戲介面-道具卡-名稱', cat: 'click', type: 'ocr', group: 'card', desc: '道具卡名稱（如「免費遊戲卡(一星)」）' },
+      { name: '遊戲介面-道具卡-押注', cat: 'click', type: 'ocr', group: 'card', desc: '指定押注（如「指定押注:0.1」）' },
+      { name: '遊戲介面-道具卡-使用', cat: 'click', type: 'control', group: 'card', desc: '使用按鈕' },
+    ]
+  },
+  {
+    id: 'game_main', label: '⑨ 遊戲主畫面',
+    steps: [
+      '開啟任一款遊戲',
+      '按一次 SPIN 讓畫面出現注單號',
+      '等 SPIN 結束回到正常畫面',
+      '截圖整個瀏覽器視窗',
+      '上傳到右邊面板，依序框選 ROI',
+    ],
+    notes: [
+      '注單號通常在按 SPIN 後才出現（右下角小字）',
+      '贏分/押注/總分的框要比文字寬，預留數字變長的空間',
+    ],
+    rois: [
+      { name: 'reel', cat: 'fixed', type: 'ocr', desc: '盤面區域 — 包含所有遊戲符號的矩形' },
+      { name: 'win', cat: 'fixed', type: 'ocr', desc: '贏分數字 — 框要比文字寬（數字會變長）' },
+      { name: 'bet', cat: 'fixed', type: 'ocr', desc: '押注金額 — 底部偏左' },
+      { name: 'balance', cat: 'fixed', type: 'ocr', desc: '總分/餘額 — 底部' },
+      { name: 'spinButton', cat: 'fixed', type: 'control', desc: '旋轉按鈕 — 底部中央大圓形' },
+      { name: 'orderId', cat: 'fixed', type: 'ocr', desc: '注單號 — 右下角小字，框要夠長' },
+      { name: 'multiplier', cat: 'fixed', type: 'ocr', desc: '倍率顯示區域' },
+      { name: '遊戲-JILI', cat: 'click', type: 'control', group: 'game', desc: '左側 JILI 品牌按鈕' },
+      { name: '遊戲-設定', cat: 'click', type: 'control', group: 'game', desc: '齒輪設定按鈕（通常左下角）' },
+      { name: '遊戲-盤面', cat: 'click', type: 'control', group: 'game', desc: '盤面中央區域（用於點擊互動）' },
+    ]
+  },
+  {
+    id: 'game_card_reward', label: '⑩ 遊戲主畫面-道具卡贏分',
+    steps: [
+      '使用道具卡後等結算畫面出現',
+      '結算時下方會出現「使用卡片獲得 XX」',
+      '截圖包含該文字的完整畫面',
+    ],
+    notes: [
+      '這個畫面只在道具卡結算時出現',
+      '如果目前沒有道具卡可用，可以先跳過，之後再補',
+    ],
+    rois: [
+      { name: '遊戲-道具卡贏分', cat: 'click', type: 'ocr', group: 'game', desc: '「使用卡片获得 XX」文字區域' },
+    ]
+  },
+  {
+    id: 'personal_msg', label: '⑪ 個人訊息',
+    steps: [
+      '從背包進入個人訊息頁面',
+      '確認有道具卡使用紀錄',
+      '截圖個人訊息頁面',
+    ],
+    notes: ['獲得金額框要預留空間（數字長度會變化）'],
+    rois: [
+      { name: '遊戲介面-個人訊息-道具卡名稱', cat: 'click', type: 'ocr', group: 'card', desc: '道具卡名稱 OCR' },
+      { name: '遊戲介面-個人訊息-獲得', cat: 'click', type: 'ocr', group: 'card', desc: '獲得金額 OCR' },
+    ]
+  },
+  {
+    id: 'game_settings', label: '⑫ 設定展開',
+    steps: [
+      '在遊戲畫面中點擊齒輪(設定)',
+      '設定面板展開後截圖',
+    ],
+    notes: ['歷程按鈕通常在設定面板中間偏左（第三個圖示）'],
+    rois: [
+      { name: '遊戲-設定-歷程', cat: 'click', type: 'control', group: 'game', desc: '歷程按鈕位置' },
+    ]
+  },
+  {
+    id: 'history_games', label: '⑬ 歷程-遊戲列表',
+    steps: [
+      '從設定 → 歷程進入',
+      '點右下角報表 tab',
+      '截圖遊戲列表頁面',
+    ],
+    notes: [],
+    rois: [
+      { name: '遊戲歷程-右下報表', cat: 'click', type: 'control', group: 'history', desc: '右下角報表 tab 按鈕' },
+      { name: '遊戲歷程-第一款遊戲', cat: 'click', type: 'control', group: 'history', desc: '查詢遊戲下拉的第一款遊戲位置' },
+    ]
+  },
+  {
+    id: 'history_list', label: '⑭ 歷程-紀錄列表',
+    steps: [
+      '選擇一款遊戲後進入紀錄列表',
+      '截圖紀錄列表頁面',
+    ],
+    notes: [],
+    rois: [
+      { name: '遊戲歷程-第一筆歷程', cat: 'click', type: 'control', group: 'history', desc: '第一筆歷程紀錄位置' },
+    ]
+  },
+  {
+    id: 'history_detail_winbet', label: '⑮ 歷程詳情 (WinBet)',
+    steps: [
+      '使用 WinBet 平台帳號',
+      '進入歷程 → 選一款遊戲 → 點第一筆',
+      '⚠️ 畫面往下拉到時間不會換行的位置',
+      '截圖歷程詳情頁',
+    ],
+    notes: [
+      '⚠️ 重要：畫面要拉長，讓時間欄位不會換行',
+      'WinBet 的道具卡名稱在右側位置',
+      '押注/贏分/淨值 是所有平台共用的 ROI',
+    ],
+    rois: [
+      { name: '遊戲歷程-押注', cat: 'click', type: 'ocr', group: 'history', desc: '押注金額' },
+      { name: '遊戲歷程-贏分', cat: 'click', type: 'ocr', group: 'history', desc: '贏分金額' },
+      { name: '遊戲歷程-淨值', cat: 'click', type: 'ocr', group: 'history', desc: '淨值（含幣別符號，需比對）' },
+      { name: '遊戲歷程-左上返回', cat: 'click', type: 'control', group: 'history', desc: '左上角 ← 返回按鈕' },
+      { name: '遊戲歷程-WinBet道具卡名', cat: 'click', type: 'ocr', group: 'history', desc: 'WinBet 平台的道具卡名稱位置（右側）' },
+    ]
+  },
+  {
+    id: 'history_detail_single', label: '⑯ 歷程詳情 (Single)',
+    steps: [
+      '使用 Single/其他 平台帳號',
+      '進入歷程 → 選一款遊戲 → 點第一筆',
+      '⚠️ 畫面往下拉到時間不會換行的位置',
+      '截圖歷程詳情頁',
+    ],
+    notes: [
+      '⚠️ 重要：畫面要拉長，讓時間欄位不會換行',
+      'Single 的道具卡名稱在左側位置（與 WinBet 不同）',
+      '押注/贏分/淨值/返回 已在上一步設定，這頁只需框道具卡名稱',
+    ],
+    rois: [
+      { name: '遊戲歷程-Single道具卡名', cat: 'click', type: 'ocr', group: 'history', desc: 'Single 平台的道具卡名稱位置（左側）' },
+    ]
+  },
+];
+
+const ROI_COLORS = [
+  '#ef4444','#f97316','#eab308','#22c55e','#06b6d4',
+  '#3b82f6','#8b5cf6','#ec4899','#14b8a6','#f43f5e',
+  '#a855f7','#6366f1','#10b981','#f59e0b','#84cc16',
+];
+
+const REF_IMAGE_FILES = {};
+PAGES.forEach(p => { REF_IMAGE_FILES[p.id] = p.id + '.jpg'; });
+
+// ═══════════════════════════════════════════════
+//  State
+// ═══════════════════════════════════════════════
+let currentPage = 0;
+let pageData = {};
+let selectedRoi = null;
+let drawState = null;
+
+try { const s = localStorage.getItem('roi_setup_state'); if (s) pageData = JSON.parse(s); } catch(e) {}
+function saveState() { try { localStorage.setItem('roi_setup_state', JSON.stringify(pageData)); } catch(e) {} }
+function getPS(pid) { if (!pageData[pid]) pageData[pid] = { refImage:null, refRois:{}, userImage:null, userRois:{} }; return pageData[pid]; }
+
+// ═══════════════════════════════════════════════
+//  Render
+// ═══════════════════════════════════════════════
+function render() {
+  const pg = PAGES[currentPage], ps = getPS(pg.id);
+  renderSidebar();
+  renderGuide(pg);
+  renderRefPanel(pg, ps);
+  renderUserPanel(pg, ps);
+  renderRoiList(pg, ps);
+  document.getElementById('btnPrev').disabled = currentPage === 0;
+  document.getElementById('btnNext').textContent = currentPage === PAGES.length-1 ? '📤 匯出' : '下一步 →';
+  document.getElementById('navInfo').textContent = `${currentPage+1} / ${PAGES.length}`;
+}
+
+function renderSidebar() {
+  const totalAll = PAGES.reduce((s,p) => s+p.rois.length, 0);
+  const doneAll = PAGES.reduce((s,p) => { const ps=getPS(p.id); return s+p.rois.filter(r=>ps.userRois[r.name]).length; }, 0);
+
+  document.getElementById('sidebar').innerHTML = PAGES.map((p,i) => {
+    const ps = getPS(p.id), done = p.rois.filter(r=>ps.userRois[r.name]).length, total = p.rois.length;
+    return `<div class="step-item ${i===currentPage?'active':''} ${done===total&&total>0?'done':''}" onclick="goToPage(${i})">
+      <span>${done===total&&total>0?'✅':'📋'}</span><span>${p.label}</span>
+      <span class="badge">${done}/${total}</span></div>`;
+  }).join('');
+
+  document.getElementById('sidebarFooter').innerHTML = `
+    <div style="display:flex;justify-content:space-between"><span>總進度</span><span style="color:${doneAll===totalAll?'var(--success)':'var(--fg2)'}">${doneAll}/${totalAll}</span></div>
+    <div class="progress-bar"><div class="progress-fill" style="width:${totalAll?(doneAll/totalAll*100):0}%"></div></div>
+    ${doneAll===totalAll?'<div style="color:var(--success);margin-top:4px;text-align:center">🎉 全部完成！</div>':''}`;
+}
+
+function renderGuide(pg) {
+  document.getElementById('guideBar').innerHTML = `
+    <div class="guide-title"><span>📖</span> ${pg.label}</div>
+    <div class="guide-steps">
+      ${pg.steps.map((s,i) => `<div class="guide-step"><span class="num">${i+1}</span>${s}</div>`).join('')}
+    </div>
+    ${pg.notes.length ? `<div class="guide-notes">${pg.notes.map(n => `<div class="guide-note">⚠️ ${n}</div>`).join('')}</div>` : ''}`;
+}
+
+// ═══════════════════════════════════════════════
+//  Panels
+// ═══════════════════════════════════════════════
+function renderRefPanel(pg, ps) {
+  document.getElementById('refPanelHead').innerHTML = `📐 範例參考
+    <span><button class="btn btn-ghost btn-sm" onclick="uploadRef()">更換</button>
+    <button class="btn btn-ghost btn-sm" onclick="setAsRef()">⬅️ 設為參考</button></span>`;
+  const body = document.getElementById('refBody');
+  if (!ps.refImage) {
+    body.innerHTML = `<div class="drop-zone" onclick="uploadRef()">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" style="width:40px;height:40px;color:var(--fg3);margin-bottom:8px"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M6.75 3h10.5a2.25 2.25 0 012.25 2.25v13.5a2.25 2.25 0 01-2.25 2.25H6.75a2.25 2.25 0 01-2.25-2.25V5.25A2.25 2.25 0 016.75 3z"/></svg>
+      <p>上傳範例參考圖</p><p style="font-size:10px;margin-top:2px;color:var(--fg3)">或拖放 / 放到 roi-ref/${pg.id}.jpg</p></div>`;
+    setupDrop(body, 'ref');
+    return;
+  }
+  body.innerHTML = `<div class="canvas-wrap"><canvas id="refCanvas"></canvas></div>`;
+  const c = document.getElementById('refCanvas'), img = new Image();
+  img.onload = () => { c.width=img.naturalWidth; c.height=img.naturalHeight; c.getContext('2d').drawImage(img,0,0); drawBoxes(c.getContext('2d'),c.width,c.height,ps.refRois,pg.rois); };
+  img.src = ps.refImage;
+}
+
+function renderUserPanel(pg, ps) {
+  document.getElementById('userPanelHead').innerHTML = `✏️ 你的截圖 <button class="btn btn-ghost btn-sm" onclick="uploadUser()">上傳</button>`;
+  const body = document.getElementById('userBody');
+  if (!ps.userImage) {
+    body.innerHTML = `<div class="drop-zone" onclick="uploadUser()">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" style="width:40px;height:40px;color:var(--fg3);margin-bottom:8px"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>
+      <p>上傳新遊戲截圖</p></div>`;
+    setupDrop(body, 'user');
+    return;
+  }
+  body.innerHTML = `<div class="canvas-wrap"><canvas id="userCanvas" style="cursor:crosshair"></canvas></div>
+    <div class="draw-hint">拖曳框選 ROI → 自動指派下一個 | 右鍵刪除 | Delete 鍵刪除選中</div>`;
+  const c = document.getElementById('userCanvas'), img = new Image();
+  img.onload = () => { c.width=img.naturalWidth; c.height=img.naturalHeight; c._img=img; redraw(); bindCanvas(c); };
+  img.src = ps.userImage;
+}
+
+// ═══════════════════════════════════════════════
+//  Canvas drawing
+// ═══════════════════════════════════════════════
+function drawBoxes(ctx, W, H, rois, defs, hl) {
+  defs.forEach((d,i) => {
+    const r = rois[d.name]; if (!r) return;
+    const c = ROI_COLORS[i%ROI_COLORS.length];
+    const rx=r.x/100*W, ry=r.y/100*H, rw=r.w/100*W, rh=r.h/100*H, isH=hl===d.name;
+    ctx.fillStyle = c + (isH?'44':'22'); ctx.fillRect(rx,ry,rw,rh);
+    ctx.strokeStyle = c; ctx.lineWidth = isH?3:2; ctx.strokeRect(rx,ry,rw,rh);
+    const fs = Math.max(10,Math.min(14,W*0.016));
+    ctx.font = `bold ${fs}px sans-serif`;
+    const tw = ctx.measureText(d.name).width+6;
+    ctx.fillStyle = c+'DD'; ctx.fillRect(rx,ry-fs-4,tw,fs+4);
+    ctx.fillStyle = '#000'; ctx.fillText(d.name, rx+3, ry-4);
+  });
+}
+
+function redraw() {
+  const c = document.getElementById('userCanvas');
+  if (!c||!c._img) return;
+  const ctx=c.getContext('2d'), pg=PAGES[currentPage], ps=getPS(pg.id);
+  ctx.drawImage(c._img,0,0);
+  drawBoxes(ctx,c.width,c.height,ps.userRois,pg.rois,selectedRoi);
+  if (drawState&&drawState.ex!==undefined) {
+    ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.setLineDash([4,4]);
+    ctx.strokeRect(Math.min(drawState.sx,drawState.ex),Math.min(drawState.sy,drawState.ey),
+      Math.abs(drawState.ex-drawState.sx),Math.abs(drawState.ey-drawState.sy));
+    ctx.setLineDash([]);
+  }
+}
+
+function bindCanvas(canvas) {
+  const pg=PAGES[currentPage], ps=getPS(pg.id);
+  function xy(e) { const r=canvas.getBoundingClientRect(); return [(e.clientX-r.left)*canvas.width/r.width,(e.clientY-r.top)*canvas.height/r.height]; }
+
+  canvas.onmousedown = e => {
+    if (e.button===2) return;
+    const [x,y] = xy(e);
+    const hit = findAt(x,y,canvas.width,canvas.height,ps.userRois,pg.rois);
+    if (hit) { selectedRoi=hit; renderRoiList(pg,ps); redraw(); return; }
+    selectedRoi=null; drawState={sx:x,sy:y}; renderRoiList(pg,ps);
+  };
+  canvas.onmousemove = e => { if(!drawState) return; const [x,y]=xy(e); drawState.ex=x; drawState.ey=y; redraw(); };
+  canvas.onmouseup = e => {
+    if (!drawState||drawState.ex===undefined) { drawState=null; return; }
+    const x=Math.min(drawState.sx,drawState.ex), y=Math.min(drawState.sy,drawState.ey);
+    const w=Math.abs(drawState.ex-drawState.sx), h=Math.abs(drawState.ey-drawState.sy);
+    drawState=null;
+    if (w<5||h<5) { redraw(); return; }
+    const roi = {x:x/canvas.width*100, y:y/canvas.height*100, w:w/canvas.width*100, h:h/canvas.height*100};
+    const next = pg.rois.find(r=>!ps.userRois[r.name]);
+    if (!next) { toast('此頁 ROI 已全部設定','error'); redraw(); return; }
+    ps.userRois[next.name] = roi; selectedRoi = next.name;
+    saveState(); redraw(); renderRoiList(pg,ps); renderSidebar();
+  };
+  canvas.oncontextmenu = e => {
+    e.preventDefault(); const [x,y]=xy(e);
+    const hit = findAt(x,y,canvas.width,canvas.height,ps.userRois,pg.rois);
+    if (hit) { delete ps.userRois[hit]; selectedRoi=null; saveState(); redraw(); renderRoiList(pg,ps); renderSidebar(); }
+  };
+}
+
+function findAt(x,y,W,H,rois,defs) {
+  for (let i=defs.length-1;i>=0;i--) {
+    const r=rois[defs[i].name]; if(!r) continue;
+    const rx=r.x/100*W,ry=r.y/100*H,rw=r.w/100*W,rh=r.h/100*H;
+    if (x>=rx&&x<=rx+rw&&y>=ry&&y<=ry+rh) return defs[i].name;
+  }
+  return null;
+}
+
+// ═══════════════════════════════════════════════
+//  ROI list
+// ═══════════════════════════════════════════════
+function renderRoiList(pg, ps) {
+  const done = pg.rois.filter(r=>ps.userRois[r.name]).length;
+  document.getElementById('roiPanelHead').textContent = `待框選 ${done}/${pg.rois.length}`;
+  document.getElementById('roiList').innerHTML = pg.rois.map((r,i) => {
+    const has=!!ps.userRois[r.name], act=selectedRoi===r.name, c=ROI_COLORS[i%ROI_COLORS.length];
+    return `<div class="roi-item ${act?'active':''}" onclick="selRoi('${esc(r.name)}')">
+      <span class="dot" style="background:${c}"></span><span class="name">${r.name}</span>
+      <span class="type-tag ${r.type}">${r.type}</span>
+      ${has?`<span class="check">✓</span><span class="del-btn" onclick="event.stopPropagation();delRoi('${esc(r.name)}')">×</span>`:`<span class="miss">—</span>`}
+    </div><div class="roi-desc">${r.desc}</div>`;
+  }).join('');
+}
+function esc(s) { return s.replace(/'/g,"\\'").replace(/</g,'&lt;'); }
+function selRoi(n) { selectedRoi=n; renderRoiList(PAGES[currentPage],getPS(PAGES[currentPage].id)); redraw(); }
+function delRoi(n) { const pg=PAGES[currentPage],ps=getPS(pg.id); delete ps.userRois[n]; if(selectedRoi===n)selectedRoi=null; saveState(); redraw(); renderRoiList(pg,ps); renderSidebar(); }
+
+// ═══════════════════════════════════════════════
+//  File I/O
+// ═══════════════════════════════════════════════
+function uploadFile(cb) {
+  const inp = document.getElementById('fileInput');
+  inp.onchange = () => { const f=inp.files[0]; if(!f) return; const r=new FileReader(); r.onload=e=>cb(e.target.result); r.readAsDataURL(f); inp.value=''; };
+  inp.click();
+}
+function uploadRef() { uploadFile(d => { getPS(PAGES[currentPage].id).refImage=d; saveState(); render(); }); }
+function uploadUser() { uploadFile(d => { getPS(PAGES[currentPage].id).userImage=d; saveState(); render(); }); }
+
+function setupDrop(el, target) {
+  el.addEventListener('dragover', e => { e.preventDefault(); el.querySelector('.drop-zone')?.classList.add('drag-over'); });
+  el.addEventListener('dragleave', e => { el.querySelector('.drop-zone')?.classList.remove('drag-over'); });
+  el.addEventListener('drop', e => {
+    e.preventDefault(); el.querySelector('.drop-zone')?.classList.remove('drag-over');
+    const f = e.dataTransfer.files[0];
+    if (f&&f.type.startsWith('image/')) {
+      const r = new FileReader();
+      r.onload = ev => { const ps=getPS(PAGES[currentPage].id); ps[target==='ref'?'refImage':'userImage']=ev.target.result; saveState(); render(); };
+      r.readAsDataURL(f);
+    }
+  });
+}
+
+function setAsRef() {
+  const pg=PAGES[currentPage],ps=getPS(pg.id);
+  if (!ps.userImage) { toast('右邊還沒有截圖','error'); return; }
+  ps.refImage=ps.userImage; ps.refRois=JSON.parse(JSON.stringify(ps.userRois));
+  saveState(); render(); toast(`已設為「${pg.label}」的參考`,'success');
+}
+
+// ═══════════════════════════════════════════════
+//  Navigation
+// ═══════════════════════════════════════════════
+function goToPage(i) { currentPage=i; selectedRoi=null; drawState=null; render(); }
+function navigate(d) {
+  if (d===1&&currentPage===PAGES.length-1) { exportRoiJson(); return; }
+  currentPage = Math.max(0,Math.min(PAGES.length-1,currentPage+d));
+  selectedRoi=null; drawState=null; render();
+}
+
+// ═══════════════════════════════════════════════
+//  Export / Import
+// ═══════════════════════════════════════════════
+function exportRoiJson() {
+  const res = { _version:3, _exportedAt:new Date().toISOString(),
+    reel:null, win:null, balance:null, bet:null, orderId:null, multiplier:null, spinButton:null,
+    clickTargets:{},
+    roiGroups:[ {id:'game',label:'遊戲'},{id:'card',label:'遊戲介面'},{id:'history',label:'遊戲歷程'},{id:'admin',label:'後台塞卡'},{id:'platform',label:'後台簽核'} ],
+    fixedRoiGroups:{ reel:'game',win:'game',balance:'game',bet:'game',orderId:'game',multiplier:'game',spinButton:'game' },
+    visibleGroups:['game'],
+  };
+  let set=0, tot=0;
+  PAGES.forEach(pg => { const ps=getPS(pg.id); pg.rois.forEach(d => {
+    tot++; const r=ps.userRois[d.name]; if(!r) return; set++;
+    if (d.cat==='fixed') res[d.name]={x:r.x,y:r.y,w:r.w,h:r.h};
+    else res.clickTargets[d.name]={x:r.x,y:r.y,w:r.w,h:r.h,category:d.type,group:d.group};
+  });});
+  dl(JSON.stringify(res,null,2), `roi_config_${new Date().toISOString().slice(0,10)}.json`);
+  toast(`匯出 ${set}/${tot} ROI`, set===tot?'success':'error');
+}
+
+function importRoiJson() { importRoiInto('userRois'); }
+function importRoiAsRef() { importRoiInto('refRois'); }
+function importRoiInto(field) {
+  const inp=document.createElement('input'); inp.type='file'; inp.accept='.json';
+  inp.onchange=()=>{const f=inp.files[0]; if(!f)return; const r=new FileReader();
+    r.onload=e=>{try{const d=JSON.parse(e.target.result); let n=0;
+      PAGES.forEach(pg=>{const ps=getPS(pg.id); pg.rois.forEach(def=>{
+        let roi=def.cat==='fixed'?d[def.name]:d.clickTargets?.[def.name];
+        if(roi&&roi.x!==undefined){ps[field][def.name]={x:roi.x,y:roi.y,w:roi.w,h:roi.h};n++;}
+      });});
+      saveState();render();toast(`匯入 ${n} 個 ROI`+(field==='refRois'?' 為參考':''),'success');
+    }catch(err){toast('匯入失敗: '+err.message,'error');}};
+    r.readAsText(f);
+  }; inp.click();
+}
+
+function exportRefPack() {
+  const pack={}; PAGES.forEach(pg=>{const ps=getPS(pg.id); if(ps.refImage||ps.userImage||Object.keys(ps.refRois).length||Object.keys(ps.userRois).length) pack[pg.id]=ps;});
+  dl(JSON.stringify(pack), `roi_refpack_${new Date().toISOString().slice(0,10)}.json`);
+  toast('參考包匯出完成','success');
+}
+function importRefPack() {
+  const inp=document.createElement('input'); inp.type='file'; inp.accept='.json';
+  inp.onchange=()=>{const f=inp.files[0]; if(!f)return; const r=new FileReader();
+    r.onload=e=>{try{const pack=JSON.parse(e.target.result); let n=0;
+      Object.entries(pack).forEach(([pid,data])=>{const ps=getPS(pid);
+        if(data.refImage)ps.refImage=data.refImage; if(data.refRois)ps.refRois=data.refRois;
+        if(data.userImage&&!ps.refImage)ps.refImage=data.userImage;
+        if(data.userRois&&!Object.keys(ps.refRois).length)ps.refRois=data.userRois; n++;
+      }); saveState();render();toast(`匯入 ${n} 頁參考`,'success');
+    }catch(err){toast('匯入失敗','error');}};
+    r.readAsText(f);
+  }; inp.click();
+}
+
+function dl(content, filename) {
+  const b=new Blob([content],{type:'application/json'}), u=URL.createObjectURL(b), a=document.createElement('a');
+  a.href=u; a.download=filename; a.click(); URL.revokeObjectURL(u);
+}
+
+// ═══════════════════════════════════════════════
+//  Auto-load ref images
+// ═══════════════════════════════════════════════
+async function loadRefImages() {
+  let n=0;
+  for (const pg of PAGES) {
+    const ps=getPS(pg.id); if(ps.refImage) continue;
+    try {
+      const r=await fetch(`roi-ref/${pg.id}.jpg`); if(!r.ok) continue;
+      const b=await r.blob(); if(!b.type.startsWith('image/')) continue;
+      ps.refImage = await new Promise(res=>{const fr=new FileReader();fr.onload=()=>res(fr.result);fr.readAsDataURL(b);}); n++;
+    } catch(e){}
+  }
+  if(n>0){saveState();render();toast(`自動載入 ${n} 張參考圖`,'success');}
+}
+
+// ═══════════════════════════════════════════════
+//  Keyboard
+// ═══════════════════════════════════════════════
+document.addEventListener('keydown', e => {
+  if ((e.key==='Delete'||e.key==='Backspace')&&selectedRoi) delRoi(selectedRoi);
+  if (e.key==='ArrowRight'&&e.altKey) navigate(1);
+  if (e.key==='ArrowLeft'&&e.altKey) navigate(-1);
+});
+
+// ═══════════════════════════════════════════════
+//  Toast & Init
+// ═══════════════════════════════════════════════
+function toast(msg,type='success') {
+  const el=document.createElement('div'); el.className=`toast ${type}`; el.textContent=msg;
+  document.body.appendChild(el); setTimeout(()=>el.remove(),3000);
+}
+
+render();
+loadRefImages();
+</script>
+</body>
+</html>

@@ -59,7 +59,6 @@ function autoTightCrop(cropCanvas, brightnessThreshold = 60, paddingRatio = 0.15
     for (let y = 0; y < h; y++) {
         for (let x = 0; x < w; x++) {
             const i = (y * w + x) * 4;
-            // 計算亮度（灰階）
             const brightness = d[i] * 0.299 + d[i+1] * 0.587 + d[i+2] * 0.114;
             if (brightness > brightnessThreshold) {
                 if (x < minX) minX = x;
