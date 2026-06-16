@@ -118,7 +118,7 @@ export default function PaytableConfig({
                                                     <th className="p-2 border-b font-medium w-16 text-center">縮圖集</th>
                                                     {hasDoubleSymbol && <th className="p-2 border-b font-medium w-16 text-center text-indigo-600">2X縮圖</th>}
                                                     {hasTripleSymbol && <th className="p-2 border-b font-medium w-16 text-center text-purple-600">3X縮圖</th>}
-                                                    <th className="p-2 border-b font-medium text-center w-16">名稱</th>
+                                                    <th className="p-2 border-b font-medium text-center w-28">名稱</th>
                                                     {[...Array(gridCols - 1 + (hasDoubleSymbol ? gridCols : 0) + (hasTripleSymbol ? gridCols : 0))].map((_, i) => (
                                                         <th key={i} className="p-2 border-b font-medium text-center whitespace-nowrap">{i + 2}連</th>
                                                     ))}
@@ -165,7 +165,7 @@ export default function PaytableConfig({
                                                                 </div>
                                                             </td>
                                                         )}
-                                                        <td className="p-1"><input type="text" value={item.name} onChange={(e) => handlePtTableChange(idx, 'name', e.target.value)} className="w-full font-bold text-slate-700 bg-transparent border border-transparent hover:border-slate-300 focus:border-indigo-500 focus:bg-white rounded px-1.5 py-1 outline-none transition-all" /></td>
+                                                        <td className="p-1"><input type="text" value={item.name} onChange={(e) => handlePtTableChange(idx, 'name', e.target.value)} className="w-28 font-bold text-slate-700 bg-transparent border border-transparent hover:border-slate-300 focus:border-indigo-500 focus:bg-white rounded px-1.5 py-1 outline-none transition-all" /></td>
                                                         {[...Array(gridCols - 1 + (hasDoubleSymbol ? gridCols : 0) + (hasTripleSymbol ? gridCols : 0))].map((_, i) => {
                                                             const matchKey = `match${i + 2}`;
                                                             return (
