@@ -14,6 +14,7 @@ export function usePaytableProcessor({
     customApiKey,
     apiKey,
     hasDoubleSymbol,
+    hasTripleSymbol,
     gridCols = 5,
     setTemplateMessage,
     setTemplateError,
@@ -57,27 +58,19 @@ export function usePaytableProcessor({
                     if (prevItems[index].thumbUrls && prevItems[index].thumbUrls.length > 0) thumbUrls = prevItems[index].thumbUrls;
                     if (prevItems[index].doubleThumbUrls && prevItems[index].doubleThumbUrls.length > 0) doubleThumbUrls = prevItems[index].doubleThumbUrls;
                 }
-                return { name, match1: m1, match2: m2, match3: m3, match4: m4, match5: m5, match6: m6, match7: m7, match8: m8, match9: m9, match10: m10, thumbUrls, doubleThumbUrls };
+                return { name, match1: m1, match2: m2, match3: m3, match4: m4, match5: m5, match6: m6, match7: m7, match8: m8, match9: m9, match10: m10, thumbUrls, doubleThumbUrls, tripleThumbUrls: [] };
             });
         });
     };
 
     const formatPtLine = (item) => {
-        // 文字格式需要 gridCols 個數值：match1(1連) 到 match{gridCols}(N連)
-        // match1 = 1連 (永遠為 0，不顯示在 UI 表格中)
-        // match2 = 2連, match3 = 3連, ... match{gridCols} = N連
-        const totalBaseCols = Math.max(gridCols, 5); // 至少 5 欄 (1~5連)
+        const totalBaseCols = Math.max(gridCols, 5);
+        const doubleCols = hasDoubleSymbol ? gridCols : 0;
+        const tripleCols = hasTripleSymbol ? gridCols : 0;
         const parts = [item.name];
-        for (let i = 1; i <= totalBaseCols; i++) {
-            parts.push(item[`match${i}`] || 0);
-        }
-        // 雙倍符號額外欄位
-        if (hasDoubleSymbol) {
-            const doubleCols = gridCols - 1;
-            for (let i = totalBaseCols + 1; i <= totalBaseCols + doubleCols; i++) {
-                parts.push(item[`match${i}`] || 0);
-            }
-        }
+        for (let i = 1; i <= totalBaseCols; i++) parts.push(item[`match${i}`] || 0);
+        for (let i = totalBaseCols + 1; i <= totalBaseCols + doubleCols; i++) parts.push(item[`match${i}`] || 0);
+        for (let i = totalBaseCols + doubleCols + 1; i <= totalBaseCols + doubleCols + tripleCols; i++) parts.push(item[`match${i}`] || 0);
         return parts.join(' ');
     };
 
@@ -100,16 +93,16 @@ export function usePaytableProcessor({
 
     const handleAddPtRow = (setPaytableInput) => {
         setPtResultItems(prev => {
-            const newItems = [...prev, { name: '新符號', match1: 0, match2: 0, match3: 0, match4: 0, match5: 0, match6: 0, match7: 0, match8: 0, match9: 0, match10: 0, thumbUrls: [], doubleThumbUrls: [] }];
+            const newItems = [...prev, { name: '新符號', match1: 0, match2: 0, match3: 0, match4: 0, match5: 0, match6: 0, match7: 0, match8: 0, match9: 0, match10: 0, thumbUrls: [], doubleThumbUrls: [], tripleThumbUrls: [] }];
             setPaytableInput(newItems.map(formatPtLine).join('\n'));
             return newItems;
         });
     };
 
-    const handleRemoveThumb = (itemIndex, thumbIndex, isDouble = false) => {
+    const handleRemoveThumb = (itemIndex, thumbIndex, isDouble = false, isTriple = false) => {
         setPtResultItems(prev => {
             const newItems = [...prev];
-            const targetField = isDouble ? 'doubleThumbUrls' : 'thumbUrls';
+            const targetField = isTriple ? 'tripleThumbUrls' : isDouble ? 'doubleThumbUrls' : 'thumbUrls';
             if (newItems[itemIndex][targetField]) {
                 newItems[itemIndex][targetField].splice(thumbIndex, 1);
             }
@@ -230,7 +223,7 @@ export function usePaytableProcessor({
 
 
 
-            setPtResultItems(parsedData.map(item => ({ ...item, thumbUrls: [], doubleThumbUrls: [] })));
+            setPtResultItems(parsedData.map(item => ({ ...item, thumbUrls: [], doubleThumbUrls: [], tripleThumbUrls: [] })));
 
             const formattedLines = parsedData.map(item => formatPtLine(item));
             if (setPaytableInput) setPaytableInput(formattedLines.join('\n'));

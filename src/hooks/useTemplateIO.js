@@ -15,7 +15,7 @@ export function useTemplateIO({
     setGridRows, setGridCols, setLineMode, setExtractResults,
     setPaytableInput, setPtResultItems, setPaytableMode,
     setJpConfig, setHasJackpot, setHasMultiplierReel,
-    setRequiresCollectToWin, setHasCashCollectFeature, setHasDoubleSymbol, setHasRollingWin,
+    setRequiresCollectToWin, setHasCashCollectFeature, setHasDoubleSymbol, setHasTripleSymbol, setHasRollingWin,
     setHasDynamicMultiplier, setMultiplierCalcType,
     setHasBidirectionalPaylines,
     setHasAdjustableLines,
@@ -32,7 +32,7 @@ export function useTemplateIO({
     gridRows, gridCols, lineMode, extractResults,
     paytableInput, ptResultItems, jpConfig,
     hasJackpot, hasMultiplierReel, requiresCollectToWin, hasCashCollectFeature,
-    hasDoubleSymbol, hasRollingWin, hasDynamicMultiplier, multiplierCalcType,
+    hasDoubleSymbol, hasTripleSymbol, hasRollingWin, hasDynamicMultiplier, multiplierCalcType,
     hasBidirectionalPaylines,
     hasAdjustableLines,
     hasExBet, exBetOptions,
@@ -96,6 +96,7 @@ export function useTemplateIO({
         setRequiresCollectToWin(parseBool(d.requiresCollectToWin));
         setHasCashCollectFeature(parseBool(d.hasCashCollectFeature));
         setHasDoubleSymbol(parseBool(d.hasDoubleSymbol));
+        setHasTripleSymbol(parseBool(d.hasTripleSymbol));
         setHasDynamicMultiplier(parseBool(d.hasDynamicMultiplier));
         setMultiplierCalcType(d.multiplierCalcType);
         setHasBidirectionalPaylines(parseBool(d.hasBidirectionalPaylines));
@@ -113,7 +114,8 @@ export function useTemplateIO({
                 const newItem = {
                     ...item,
                     thumbUrls: item.thumbUrls || (item.thumbUrl ? [item.thumbUrl] : []),
-                    doubleThumbUrls: item.doubleThumbUrls || []
+                    doubleThumbUrls: item.doubleThumbUrls || [],
+                    tripleThumbUrls: item.tripleThumbUrls || []
                 };
                 for (let i = 6; i <= 10; i++) {
                     if (newItem[`match${i}`] === undefined) newItem[`match${i}`] = 0;
@@ -204,7 +206,7 @@ export function useTemplateIO({
             gridRows, gridCols, lineMode, extractResults,
             paytableInput, ptResultItems, jpConfig,
             hasJackpot, hasMultiplierReel, requiresCollectToWin, hasCashCollectFeature,
-            hasDoubleSymbol, hasRollingWin, hasDynamicMultiplier, multiplierCalcType,
+            hasDoubleSymbol, hasTripleSymbol, hasRollingWin, hasDynamicMultiplier, multiplierCalcType,
             hasBidirectionalPaylines, hasAdjustableLines,
             hasExBet, exBetOptions,
             hasLineBetDivisor, lineBetDivisor,
@@ -225,7 +227,7 @@ export function useTemplateIO({
         setActiveSaveAction(null);
     }, [platformNameState, gameNameState, templateName, gridRows, gridCols, lineMode, extractResults,
         paytableInput, ptResultItems, jpConfig, hasJackpot, hasMultiplierReel, requiresCollectToWin, hasCashCollectFeature,
-        hasDoubleSymbol, hasRollingWin, hasDynamicMultiplier, multiplierCalcType, hasBidirectionalPaylines, hasAdjustableLines, hasExBet, exBetOptions, hasLineBetDivisor, lineBetDivisor, reelHeights, localUserId,
+        hasDoubleSymbol, hasTripleSymbol, hasRollingWin, hasDynamicMultiplier, multiplierCalcType, hasBidirectionalPaylines, hasAdjustableLines, hasExBet, exBetOptions, hasLineBetDivisor, lineBetDivisor, reelHeights, localUserId,
         motionCoverageMin, vLineThreshold, ocrDecimalPlaces, balDecimalPlaces, enableWinTracker, enableEmptyBoardFilter,
         useCloudInstance, setTemplateError, showOverwriteConfirm]);
 

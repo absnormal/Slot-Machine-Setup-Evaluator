@@ -18,7 +18,9 @@ export const isJpSymbol = (sym, jpConfig = {}) => sym && typeof sym === 'string'
 
 export const isDoubleSymbol = (sym) => sym && typeof sym === 'string' && sym.toLowerCase().endsWith('_double');
 
-export const getSymbolCount = (sym) => isDoubleSymbol(sym) ? 2 : 1;
+export const isTripleSymbol = (sym) => sym && typeof sym === 'string' && sym.toLowerCase().endsWith('_triple');
+
+export const getSymbolCount = (sym) => isTripleSymbol(sym) ? 3 : isDoubleSymbol(sym) ? 2 : 1;
 
 export const getSymbolMultiplier = (sym) => {
     if (!sym || typeof sym !== 'string') return 1;
@@ -85,8 +87,8 @@ export const getBaseSymbol = (sym, jpConfig = {}) => {
     if (/^x\d+(?:\.\d+)?$/i.test(sym)) return 'xN';
     
     let base = sym;
-    if (isDoubleSymbol(base)) {
-        base = base.slice(0, -7); // strip '_double'
+    if (isDoubleSymbol(base) || isTripleSymbol(base)) {
+        base = base.slice(0, -7); // strip '_double' or '_triple' (both 7 chars)
     }
     // Handle xN multiplier: e.g. "Grape_x5" -> "Grape", "H1_xN" -> "H1"
     const multMatch = base.match(/_x(\d+(?:\.\d+)?|N)$/i);

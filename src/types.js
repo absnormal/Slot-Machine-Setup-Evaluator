@@ -201,7 +201,8 @@
  * @property {JpConfig} jpConfig               - Jackpot 設定
  * @property {boolean} hasMultiplierReel        - 是否有乘數轉軸
  * @property {boolean} requiresCollectToWin     - 是否需要 COLLECT 符號才能兌現
- * @property {boolean} hasDoubleSymbol          - 是否啟用 Double Symbol
+ * @property {boolean} hasDoubleSymbol          - 是否啟用 Double Symbol（1格算2連）
+ * @property {boolean} hasTripleSymbol          - 是否啟用 Triple Symbol（1格算3連）
  * @property {boolean} hasRollingWin            - WIN 結算是否為滾動上升模式 (Rolling Win)
  * @property {boolean} hasDynamicMultiplier     - 是否有動態乘數
  * @property {string} multiplierCalcType        - 乘數計算方式 ('sum'|'product')

@@ -41,6 +41,7 @@ export function useTemplateBuilder({
     const [requiresCollectToWin, setRequiresCollectToWin] = useState(D.requiresCollectToWin);
     const [hasCashCollectFeature, setHasCashCollectFeature] = useState(D.hasCashCollectFeature);
     const [hasDoubleSymbol, setHasDoubleSymbol] = useState(D.hasDoubleSymbol);
+    const [hasTripleSymbol, setHasTripleSymbol] = useState(D.hasTripleSymbol);
     const [hasRollingWin, setHasRollingWin] = useState(D.hasRollingWin);
     const [hasDynamicMultiplier, setHasDynamicMultiplier] = useState(D.hasDynamicMultiplier);
     const [multiplierCalcType, setMultiplierCalcType] = useState(D.multiplierCalcType);
@@ -52,6 +53,7 @@ export function useTemplateBuilder({
     const [lineBetDivisor, setLineBetDivisor] = useState(D.lineBetDivisor);
     const [reelHeights, setReelHeights] = useState(D.reelHeights);
     const prevHasDoubleSymbol = useRef(hasDoubleSymbol);
+    const prevHasTripleSymbol = useRef(hasTripleSymbol);
 
     // Grid dimensions
     const [patternRows, setPatternRows] = useState(6);
@@ -72,34 +74,33 @@ export function useTemplateBuilder({
 
     // === Sub-Hook: Paytable Processor ===
     const paytableProcessor = usePaytableProcessor({
-        customApiKey, apiKey, hasDoubleSymbol, gridCols,
+        customApiKey, apiKey, hasDoubleSymbol, hasTripleSymbol, gridCols,
         setTemplateMessage, setTemplateError,
     });
 
-    // Auto-reformat paytable input when doubling is toggled
+    // Auto-reformat paytable input when double/triple is toggled
     useEffect(() => {
-        if (prevHasDoubleSymbol.current !== hasDoubleSymbol) {
+        const doubleChanged = prevHasDoubleSymbol.current !== hasDoubleSymbol;
+        const tripleChanged = prevHasTripleSymbol.current !== hasTripleSymbol;
+        if (doubleChanged || tripleChanged) {
             paytableProcessor.setPtResultItems(prev => {
                 const totalBaseCols = Math.max(gridCols, 5);
+                const doubleCols = hasDoubleSymbol ? gridCols : 0;
+                const tripleCols = hasTripleSymbol ? gridCols : 0;
                 const formattedLines = prev.map(item => {
                     const parts = [item.name];
-                    for (let i = 1; i <= totalBaseCols; i++) {
-                        parts.push(item[`match${i}`] || 0);
-                    }
-                    if (hasDoubleSymbol) {
-                        const doubleCols = gridCols - 1;
-                        for (let i = totalBaseCols + 1; i <= totalBaseCols + doubleCols; i++) {
-                            parts.push(item[`match${i}`] || 0);
-                        }
-                    }
+                    for (let i = 1; i <= totalBaseCols; i++) parts.push(item[`match${i}`] || 0);
+                    for (let i = totalBaseCols + 1; i <= totalBaseCols + doubleCols; i++) parts.push(item[`match${i}`] || 0);
+                    for (let i = totalBaseCols + doubleCols + 1; i <= totalBaseCols + doubleCols + tripleCols; i++) parts.push(item[`match${i}`] || 0);
                     return parts.join(' ');
                 });
                 setPaytableInput(formattedLines.join('\n'));
                 return prev;
             });
             prevHasDoubleSymbol.current = hasDoubleSymbol;
+            prevHasTripleSymbol.current = hasTripleSymbol;
         }
-    }, [hasDoubleSymbol, gridCols, paytableProcessor]);
+    }, [hasDoubleSymbol, hasTripleSymbol, gridCols, paytableProcessor]);
 
     // Auto-sync JP config to paytable items so they can bind images
     useEffect(() => {
@@ -170,7 +171,7 @@ export function useTemplateBuilder({
             jpConfig: jp, hasJackpot: hasJP,
             hasMultiplierReel: hasMR, requiresCollectToWin: reqCollect,
             hasCashCollectFeature: hasCC,
-            hasDoubleSymbol: hasDS, hasRollingWin: hasRW, hasDynamicMultiplier: hasDM,
+            hasDoubleSymbol: hasDS, hasTripleSymbol: hasTS, hasRollingWin: hasRW, hasDynamicMultiplier: hasDM,
             multiplierCalcType: mCalcType,
             hasBidirectionalPaylines: hasBDP, hasAdjustableLines: hasAL,
             hasExBet: hasEB, exBetOptions: ebOpts,
@@ -221,21 +222,33 @@ export function useTemplateBuilder({
             }
         });
 
-        // ── 2b. 雙重符號 paytable 條目注入 ──
-        // 當 hasDS 時，文字格式把雙重賠率附在同一行末尾（gridCols-1 個額外欄）。
-        // 我們把它們另立為 SYMBOL_double 條目，讓 availableSymbols 能識別並在畫筆列顯示。
-        // 原始 SYMBOL 條目保持完整（包含額外欄），結算引擎繼續透過 getSymbolCount 計算雙重命中。
-        if (hasDS) {
+        // ── 2b. 多計數符號 paytable 條目注入 ──
+        // hasDS/hasTS 時，文字格式把 double/triple 賠率附在同一行末尾。
+        // 另立 SYMBOL_double / SYMBOL_triple 條目，讓 availableSymbols 顯示對應畫筆。
+        // 原始 SYMBOL 條目保持完整（含額外欄），結算引擎透過 getSymbolCount 計算命中數。
+        if (hasDS || hasTS) {
             const totalBaseCols = Math.max(cols, 5);
-            Object.keys(paytable)
-                .filter(sym => !sym.endsWith('_double') && !sym.endsWith('_xN') && !/_x\d+(?:\.\d+)?$/.test(sym))
-                .forEach(sym => {
-                    const allPays = paytable[sym];
+            const doubleCols = hasDS ? cols : 0;
+            const baseSymKeys = Object.keys(paytable).filter(sym =>
+                !sym.endsWith('_double') && !sym.endsWith('_triple') &&
+                !sym.endsWith('_xN') && !/_x\d+(?:\.\d+)?$/.test(sym)
+            );
+            baseSymKeys.forEach(sym => {
+                const allPays = paytable[sym];
+                if (hasDS) {
                     const doubleName = `${sym}_double`;
                     if (allPays.length > totalBaseCols && !paytable[doubleName]) {
-                        paytable[doubleName] = allPays.slice(totalBaseCols);
+                        paytable[doubleName] = allPays.slice(totalBaseCols, totalBaseCols + doubleCols);
                     }
-                });
+                }
+                if (hasTS) {
+                    const tripleName = `${sym}_triple`;
+                    const tripleStart = totalBaseCols + doubleCols;
+                    if (allPays.length > tripleStart && !paytable[tripleName]) {
+                        paytable[tripleName] = allPays.slice(tripleStart);
+                    }
+                }
+            });
         }
 
         // ── 3. 特殊符號注入（xN / JP / WILD）──
@@ -300,6 +313,13 @@ export function useTemplateBuilder({
                     symbolImagesAll[doubleName] = item.doubleThumbUrls;
                 }
             }
+            if (hasTS) {
+                const tripleName = `${item.name}_triple`;
+                if (item.tripleThumbUrls && item.tripleThumbUrls.length > 0) {
+                    symbolImages[tripleName] = item.tripleThumbUrls[0];
+                    symbolImagesAll[tripleName] = item.tripleThumbUrls;
+                }
+            }
         });
 
         // ── 5. tpl 物件組裝 ──
@@ -323,6 +343,7 @@ export function useTemplateBuilder({
             requiresCollectToWin: reqCollect,
             hasCashCollectFeature: hasCC,
             hasDoubleSymbol: hasDS,
+            hasTripleSymbol: hasTS,
             hasRollingWin: hasRW,
             hasDynamicMultiplier: hasDM,
             multiplierCalcType: mCalcType,
@@ -346,6 +367,7 @@ export function useTemplateBuilder({
                 requiresCollectToWin: d.requiresCollectToWin,
                 hasCashCollectFeature: d.hasCashCollectFeature,
                 hasDoubleSymbol: d.hasDoubleSymbol,
+                hasTripleSymbol: d.hasTripleSymbol,
                 hasRollingWin: d.hasRollingWin,
                 hasDynamicMultiplier: d.hasDynamicMultiplier,
                 multiplierCalcType: d.multiplierCalcType,
@@ -374,6 +396,7 @@ export function useTemplateBuilder({
             setRequiresCollectToWin(parseBool(d.requiresCollectToWin));
             setHasCashCollectFeature(parseBool(d.hasCashCollectFeature));
             setHasDoubleSymbol(parseBool(d.hasDoubleSymbol));
+            setHasTripleSymbol(parseBool(d.hasTripleSymbol));
             setHasRollingWin(parseBool(d.hasRollingWin));
             setHasDynamicMultiplier(parseBool(d.hasDynamicMultiplier));
             setMultiplierCalcType(d.multiplierCalcType);
@@ -422,6 +445,7 @@ export function useTemplateBuilder({
                 requiresCollectToWin,
                 hasCashCollectFeature,
                 hasDoubleSymbol,
+                hasTripleSymbol,
                 hasRollingWin,
                 hasDynamicMultiplier,
                 multiplierCalcType,
@@ -484,6 +508,7 @@ export function useTemplateBuilder({
         setRequiresCollectToWin(D.requiresCollectToWin);
         setHasCashCollectFeature(D.hasCashCollectFeature);
         setHasDoubleSymbol(D.hasDoubleSymbol);
+        setHasTripleSymbol(D.hasTripleSymbol);
         setHasRollingWin(D.hasRollingWin);
         setHasDynamicMultiplier(D.hasDynamicMultiplier);
         setMultiplierCalcType(D.multiplierCalcType);
@@ -543,6 +568,7 @@ export function useTemplateBuilder({
         requiresCollectToWin, setRequiresCollectToWin,
         hasCashCollectFeature, setHasCashCollectFeature,
         hasDoubleSymbol, setHasDoubleSymbol,
+        hasTripleSymbol, setHasTripleSymbol,
         hasRollingWin, setHasRollingWin,
         hasDynamicMultiplier, setHasDynamicMultiplier,
         hasBidirectionalPaylines, setHasBidirectionalPaylines,

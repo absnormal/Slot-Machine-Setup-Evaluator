@@ -98,7 +98,7 @@ export function useCloud() {
         templateName, generatedName,
         platformName, gameName, gridRows, gridCols, lineMode, extractResults,
         paytableInput, ptResultItems, jpConfig, hasJackpot, hasMultiplierReel,
-        requiresCollectToWin, hasCashCollectFeature, hasDoubleSymbol, hasRollingWin, hasDynamicMultiplier, multiplierCalcType,
+        requiresCollectToWin, hasCashCollectFeature, hasDoubleSymbol, hasTripleSymbol, hasRollingWin, hasDynamicMultiplier, multiplierCalcType,
         hasBidirectionalPaylines, hasAdjustableLines,
         hasExBet, exBetOptions,
         hasLineBetDivisor, lineBetDivisor,
@@ -165,6 +165,17 @@ export function useCloud() {
                     }));
                 }
 
+                // 壓縮三重縮圖
+                if (item.tripleThumbUrls && item.tripleThumbUrls.length > 0) {
+                    updatedItem.tripleThumbUrls = await Promise.all(item.tripleThumbUrls.slice(0, 3).map(async (url) => {
+                        try {
+                            if (url.length < 2000) return url;
+                            const res = await resizeImageBase64(url, 48, 0.4, 'image/jpeg');
+                            return `data:image/jpeg;base64,${res.base64}`;
+                        } catch { return url.substring(0, 100); }
+                    }));
+                }
+
                 return updatedItem;
             }));
 
@@ -184,6 +195,7 @@ export function useCloud() {
                 requiresCollectToWin,
                 hasCashCollectFeature,
                 hasDoubleSymbol,
+                hasTripleSymbol,
                 hasRollingWin,
                 hasDynamicMultiplier,
                 multiplierCalcType,

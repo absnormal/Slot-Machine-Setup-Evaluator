@@ -117,6 +117,7 @@ function App() {
         requiresCollectToWin, setRequiresCollectToWin,
         hasCashCollectFeature, setHasCashCollectFeature,
         hasDoubleSymbol, setHasDoubleSymbol,
+        hasTripleSymbol, setHasTripleSymbol,
         hasRollingWin, setHasRollingWin,
         hasDynamicMultiplier, setHasDynamicMultiplier,
         multiplierCalcType, setMultiplierCalcType,
@@ -167,7 +168,7 @@ function App() {
         setGridRows, setGridCols, setLineMode, setExtractResults,
         setPaytableInput, setPtResultItems, setPaytableMode,
         setJpConfig, setHasJackpot, setHasMultiplierReel,
-        setRequiresCollectToWin, setHasCashCollectFeature, setHasDoubleSymbol,
+        setRequiresCollectToWin, setHasCashCollectFeature, setHasDoubleSymbol, setHasTripleSymbol,
         setHasDynamicMultiplier, setMultiplierCalcType,
         setHasBidirectionalPaylines,
         setHasAdjustableLines,
@@ -182,7 +183,7 @@ function App() {
         gridRows, gridCols, lineMode, extractResults,
         paytableInput, ptResultItems, jpConfig,
         hasJackpot, hasMultiplierReel, requiresCollectToWin, hasCashCollectFeature,
-        hasDoubleSymbol, hasRollingWin, hasDynamicMultiplier, multiplierCalcType,
+        hasDoubleSymbol, hasTripleSymbol, hasRollingWin, hasDynamicMultiplier, multiplierCalcType,
         hasBidirectionalPaylines, hasAdjustableLines,
         hasExBet, exBetOptions,
         hasLineBetDivisor, lineBetDivisor,
@@ -420,6 +421,7 @@ function App() {
                         requiresCollectToWin={requiresCollectToWin} setRequiresCollectToWin={setRequiresCollectToWin}
                         hasCashCollectFeature={hasCashCollectFeature} setHasCashCollectFeature={setHasCashCollectFeature}
                         hasDoubleSymbol={hasDoubleSymbol} setHasDoubleSymbol={setHasDoubleSymbol}
+                        hasTripleSymbol={hasTripleSymbol} setHasTripleSymbol={setHasTripleSymbol}
                         hasRollingWin={hasRollingWin} setHasRollingWin={setHasRollingWin}
                         hasDynamicMultiplier={hasDynamicMultiplier} setHasDynamicMultiplier={setHasDynamicMultiplier}
                         multiplierCalcType={multiplierCalcType} setMultiplierCalcType={setMultiplierCalcType}

@@ -73,7 +73,7 @@ export default function PtCropModal({
 
                         setPtResultItems(prev => {
                             const arr = [...prev];
-                            const targetField = ptCropState.isDouble ? 'doubleThumbUrls' : 'thumbUrls';
+                            const targetField = ptCropState.isTriple ? 'tripleThumbUrls' : ptCropState.isDouble ? 'doubleThumbUrls' : 'thumbUrls';
                             if (!arr[ptCropState.itemIndex][targetField]) {
                                 arr[ptCropState.itemIndex][targetField] = [];
                             }
@@ -136,7 +136,7 @@ export default function PtCropModal({
 
         setPtResultItems(prev => {
             const arr = [...prev];
-            const targetField = ptCropState.isDouble ? 'doubleThumbUrls' : 'thumbUrls';
+            const targetField = ptCropState.isTriple ? 'tripleThumbUrls' : ptCropState.isDouble ? 'doubleThumbUrls' : 'thumbUrls';
             if (!arr[ptCropState.itemIndex][targetField]) {
                 arr[ptCropState.itemIndex][targetField] = [];
             }

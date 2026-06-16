@@ -1,6 +1,6 @@
 import React from 'react';
 import { Paintbrush, Keyboard, RefreshCw, Trash2 } from 'lucide-react';
-import { isCashSymbol, isJpSymbol, getCashValue, getBaseSymbol, isDoubleSymbol, getSymbolMultiplier, getSymbolDisplayImage, isDynamicMultiplierSymbol, formatShorthandValue } from '../../utils/symbolUtils';
+import { isCashSymbol, isJpSymbol, getCashValue, getBaseSymbol, isDoubleSymbol, isTripleSymbol, getSymbolMultiplier, getSymbolDisplayImage, isDynamicMultiplierSymbol, formatShorthandValue } from '../../utils/symbolUtils';
 
 /**
  * 畫筆工具列 (Paint Mode)
@@ -49,17 +49,23 @@ const BrushPalette = ({ template, panelInputMode, activeBrush, setActiveBrush, a
             <span className="block text-[10px] font-bold text-slate-400 mb-2 uppercase tracking-wider">選擇畫筆 (點擊或拖曳下方網格填色)</span>
             <div className="flex flex-wrap gap-2">
                 {availableSymbols.filter(sym => {
-                    const baseMatch = getBaseSymbol(sym, template?.jpConfig);
-                    const hasImage = template?.symbolImages?.[baseMatch];
-                    const isBase = !sym.includes('_x') && !sym.includes('_double');
+                    const isDoubleV = isDoubleSymbol(sym);
+                    const isTripleV = isTripleSymbol(sym);
                     const isDynamicVariant = sym.endsWith('_xN');
+                    const isBase = !sym.includes('_x') && !isDoubleV && !isTripleV;
+                    // double/triple: must have their OWN thumbnail; base: check base image
+                    const hasImage = isDoubleV || isTripleV
+                        ? !!template?.symbolImages?.[sym]
+                        : !!template?.symbolImages?.[getBaseSymbol(sym, template?.jpConfig)];
                     return hasImage || isBase || isDynamicVariant;
                 }).map(sym => {
                     const isCash = isCashSymbol(sym, template?.jpConfig);
                     const baseSym = getBaseSymbol(sym, template?.jpConfig);
                     const isXnBrush = sym.endsWith('_xN') || sym === 'xN';
                     const isFixedMultBrush = !isXnBrush && isDynamicMultiplierSymbol(sym);
-                    
+                    const isDoubleBrush = isDoubleSymbol(sym);
+                    const isTripleBrush = isTripleSymbol(sym);
+
                     let isActive = false;
                     if (isXnBrush) {
                         const actBase = getBaseSymbol(activeBrush, template?.jpConfig);
@@ -76,7 +82,8 @@ const BrushPalette = ({ template, panelInputMode, activeBrush, setActiveBrush, a
                         isActive = activeBrush === sym;
                     } else {
                         isActive = activeBrush === sym || (getBaseSymbol(activeBrush, template?.jpConfig) === baseSym &&
-                            isDoubleSymbol(activeBrush) === isDoubleSymbol(sym) &&
+                            isDoubleSymbol(activeBrush) === isDoubleBrush &&
+                            isTripleSymbol(activeBrush) === isTripleBrush &&
                             !isDynamicMultiplierSymbol(activeBrush) && !isCashSymbol(activeBrush, template?.jpConfig));
                     }
                     const brushDisplayImg = getSymbolDisplayImage(sym, template?.symbolImages, template?.jpConfig);
@@ -112,9 +119,14 @@ const BrushPalette = ({ template, panelInputMode, activeBrush, setActiveBrush, a
                                             x{getSymbolMultiplier(sym)}
                                         </div>
                                     )}
-                                    {sym.toLowerCase().endsWith('_double') && (
+                                    {isDoubleBrush && (
                                         <div className="absolute -top-1 -right-1 bg-indigo-600 text-white text-[8px] font-black px-1 rounded-sm shadow-sm border border-indigo-400 z-30">
                                             2X
+                                        </div>
+                                    )}
+                                    {isTripleBrush && (
+                                        <div className="absolute -top-1 -right-1 bg-purple-600 text-white text-[8px] font-black px-1 rounded-sm shadow-sm border border-purple-400 z-30">
+                                            3X
                                         </div>
                                     )}
                                 </React.Fragment>

@@ -8,6 +8,7 @@
 export const TEMPLATE_FIELD_DEFAULTS = {
     // ── Q&A 設定 ──
     hasDoubleSymbol:          false,
+    hasTripleSymbol:          false,
     hasRollingWin:            false,
     hasMultiplierReel:        false,
     hasDynamicMultiplier:     false,

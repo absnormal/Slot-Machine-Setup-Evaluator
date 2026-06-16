@@ -52,13 +52,16 @@ export function useSlotEngine({ template, enableBidirectional = false }) {
                 } else if (sym.endsWith('_double')) {
                     baseName = sym.replace(/_double$/, '');
                     isVariant = true;
+                } else if (sym.endsWith('_triple')) {
+                    baseName = sym.replace(/_triple$/, '');
+                    isVariant = true;
                 } else if (/_x\d+(?:\.\d+)?$/.test(sym)) {
                     baseName = sym.replace(/_x\d+(?:\.\d+)?$/, '');
                     isVariant = true;
                 }
                 
                 if (!baseMap.has(baseName)) {
-                    baseMap.set(baseName, { base: null, double: null, fixedMults: [], xN: null, others: [] });
+                    baseMap.set(baseName, { base: null, double: null, triple: null, fixedMults: [], xN: null, others: [] });
                 }
                 
                 const group = baseMap.get(baseName);
@@ -66,6 +69,8 @@ export function useSlotEngine({ template, enableBidirectional = false }) {
                     group.xN = sym;
                 } else if (sym.endsWith('_double')) {
                     group.double = sym;
+                } else if (sym.endsWith('_triple')) {
+                    group.triple = sym;
                 } else if (/_x\d+(?:\.\d+)?$/.test(sym)) {
                     group.fixedMults.push(sym);
                 } else if (!isVariant) {
@@ -83,6 +88,7 @@ export function useSlotEngine({ template, enableBidirectional = false }) {
                 }
                 
                 if (group.double) addSymbol(group.double);
+                if (group.triple) addSymbol(group.triple);
                 
                 if (group.fixedMults.length > 0) {
                     group.fixedMults.sort((a, b) => {
@@ -109,6 +115,9 @@ export function useSlotEngine({ template, enableBidirectional = false }) {
                     addSymbol(jpSym);
                     if (template.hasDoubleSymbol && template.symbolImages?.[`${jpSym}_double`]) {
                         addSymbol(`${jpSym}_double`);
+                    }
+                    if (template.hasTripleSymbol && template.symbolImages?.[`${jpSym}_triple`]) {
+                        addSymbol(`${jpSym}_triple`);
                     }
                 }
             });

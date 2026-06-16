@@ -133,6 +133,7 @@ function JpConfigPanel({ jpConfig, setJpConfig }) {
 export default function SpecialSymbolQA({
     lineMode,
     hasDoubleSymbol, setHasDoubleSymbol,
+    hasTripleSymbol, setHasTripleSymbol,
     hasMultiplierReel, setHasMultiplierReel,
     multiplierCalcType, setMultiplierCalcType,
     hasDynamicMultiplier, setHasDynamicMultiplier,
@@ -153,18 +154,33 @@ export default function SpecialSymbolQA({
             </div>
 
             <div className="space-y-6">
-                {/* Q1: Double Symbol */}
+                {/* Q1: Double Symbol (+ nested Triple) */}
                 <div className="card p-4 rounded-lg transition-all hover:border-indigo-300">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                         <div>
                             <p className="text-sm font-bold text-slate-800">1. 此遊戲有無雙重符號?</p>
                             <p className="text-xs text-slate-500 mt-1">雙重符號：1格符號作為2連線計算　<span className="text-amber-600 font-semibold">※ 此選項與 xN 乘倍符號為不同設定</span></p>
+                            <p className="text-xs text-slate-400 mt-1">💡 Phase 2 畫筆顯示規則：符號的 2X/3X 版本需在下方賠率表上傳<span className="font-semibold text-slate-500">「雙重縮圖」/「三重縮圖」</span>才會出現對應畫筆。有縮圖才顯示，沒有則不顯示。</p>
                         </div>
                         <div className="flex bg-slate-100 p-1 rounded-lg shrink-0">
                             <button onClick={() => setHasDoubleSymbol(true)} className={`px-4 py-1.5 text-sm font-bold rounded-md transition-all ${hasDoubleSymbol ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>有</button>
-                            <button onClick={() => setHasDoubleSymbol(false)} className={`px-4 py-1.5 text-sm font-bold rounded-md transition-all ${!hasDoubleSymbol ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>無</button>
+                            <button onClick={() => { setHasDoubleSymbol(false); setHasTripleSymbol(false); }} className={`px-4 py-1.5 text-sm font-bold rounded-md transition-all ${!hasDoubleSymbol ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>無</button>
                         </div>
                     </div>
+
+                    {/* Triple sub-option — only visible when double is ON */}
+                    {hasDoubleSymbol && (
+                        <div className="mt-3 ml-4 pl-4 border-l-2 border-indigo-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div>
+                                <p className="text-sm font-semibold text-slate-700">同時存在三重符號?</p>
+                                <p className="text-xs text-slate-400 mt-0.5">三重符號：1格符號作為3連線計算（不同符號各自獨立）　有上傳「三重縮圖」的符號才會出現 3X 畫筆</p>
+                            </div>
+                            <div className="flex bg-slate-100 p-1 rounded-lg shrink-0">
+                                <button onClick={() => setHasTripleSymbol(true)} className={`px-4 py-1.5 text-sm font-bold rounded-md transition-all ${hasTripleSymbol ? 'bg-purple-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>有</button>
+                                <button onClick={() => setHasTripleSymbol(false)} className={`px-4 py-1.5 text-sm font-bold rounded-md transition-all ${!hasTripleSymbol ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>無</button>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 {/* Q2: Full-Grid Multiplier */}

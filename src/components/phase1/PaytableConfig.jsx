@@ -11,7 +11,7 @@ export default function PaytableConfig({
     ptResultItems, setPtResultItems, ptCropState, setPtCropState,
     ptEnlargedImg, setPtEnlargedImg,
     handlePtTableChange, handlePtTableDelete, handleAddPtRow, handleRemoveThumb,
-    hasDoubleSymbol, gridCols
+    hasDoubleSymbol, hasTripleSymbol, gridCols
 }) {
     const [showNamingGuide, setShowNamingGuide] = React.useState(false);
 
@@ -72,7 +72,7 @@ export default function PaytableConfig({
                 {paytableMode === 'image' && (
                     <div className="flex flex-col lg:flex-row gap-4 h-auto min-h-[400px]">
                         {/* Left: Upload */}
-                        <div className="w-full lg:w-1/3 flex flex-col bg-white border border-slate-300 rounded-lg overflow-hidden shadow-sm relative">
+                        <div className="w-full lg:w-1/4 flex flex-col bg-white border border-slate-300 rounded-lg overflow-hidden shadow-sm relative">
                             <label onDragOver={(e) => e.preventDefault()} onDrop={handlePtDrop} className="flex-1 border-2 border-dashed border-slate-300 m-2 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:bg-slate-50 transition-colors py-4">
                                 <input type="file" className="hidden" multiple accept="image/*" onChange={handlePtFileChange} />
                                 <Upload className="text-slate-400 mb-1" size={24} />
@@ -108,18 +108,19 @@ export default function PaytableConfig({
                         </div>
 
                         {/* Right: Result Table */}
-                        <div className="w-full lg:w-2/3 bg-white border border-slate-300 rounded-lg overflow-auto shadow-sm relative">
+                        <div className="w-full lg:w-3/4 bg-white border border-slate-300 rounded-lg overflow-auto shadow-sm relative">
                             {ptResultItems.length > 0 ? (
                                 <div className="flex flex-col h-full">
                                     <div className="flex-1 overflow-auto">
-                                        <table className="w-full text-left border-collapse text-xs">
+                                        <table className="text-left border-collapse text-xs">
                                             <thead>
                                                 <tr className="bg-slate-100 text-slate-600 sticky top-0 shadow-sm z-10">
                                                     <th className="p-2 border-b font-medium w-16 text-center">縮圖集</th>
-                                                    {hasDoubleSymbol && <th className="p-2 border-b font-medium w-16 text-center text-indigo-600">雙重縮圖</th>}
-                                                    <th className="p-2 border-b font-medium text-center w-12">名稱</th>
-                                                    {[...Array(hasDoubleSymbol ? gridCols * 2 - 1 : gridCols - 1)].map((_, i) => (
-                                                        <th key={i} className="p-2 border-b font-medium text-center w-12">{i + 2}連</th>
+                                                    {hasDoubleSymbol && <th className="p-2 border-b font-medium w-16 text-center text-indigo-600">2X縮圖</th>}
+                                                    {hasTripleSymbol && <th className="p-2 border-b font-medium w-16 text-center text-purple-600">3X縮圖</th>}
+                                                    <th className="p-2 border-b font-medium text-center w-16">名稱</th>
+                                                    {[...Array(gridCols - 1 + (hasDoubleSymbol ? gridCols : 0) + (hasTripleSymbol ? gridCols : 0))].map((_, i) => (
+                                                        <th key={i} className="p-2 border-b font-medium text-center whitespace-nowrap">{i + 2}連</th>
                                                     ))}
                                                     <th className="p-2 border-b font-medium text-center w-8"></th>
                                                 </tr>
@@ -135,7 +136,7 @@ export default function PaytableConfig({
                                                                         <button onClick={() => handleRemoveThumb(idx, tIdx)} className="thumb-remove group-hover/thumb:opacity-100"><X size={8} /></button>
                                                                     </div>
                                                                 ))}
-                                                                <button onClick={() => setPtCropState({ active: true, itemIndex: idx, selectedImageId: ptImages[0]?.id, startX: 0, startY: 0, endX: 0, endY: 0, isDragging: false, isDouble: false })} className="w-7 h-7 bg-slate-100 hover:bg-indigo-50 hover:border-indigo-300 rounded flex items-center justify-center border border-slate-200 border-dashed text-slate-400 hover:text-indigo-500 transition-colors" title="新增此符號的另一張特徵圖"><Plus size={12} /></button>
+                                                                <button onClick={() => setPtCropState({ active: true, itemIndex: idx, selectedImageId: ptImages[0]?.id, startX: 0, startY: 0, endX: 0, endY: 0, isDragging: false, isDouble: false })} className="w-7 h-7 bg-slate-100 hover:bg-indigo-50 hover:border-indigo-300 rounded flex items-center justify-center border border-slate-200 border-dashed text-slate-400 hover:text-indigo-500 transition-colors shrink-0" title="新增此符號的另一張特徵圖"><Plus size={12} /></button>
                                                             </div>
                                                         </td>
                                                         {hasDoubleSymbol && (
@@ -147,16 +148,29 @@ export default function PaytableConfig({
                                                                             <button onClick={() => handleRemoveThumb(idx, tIdx, true)} className="thumb-remove group-hover/thumb-double:opacity-100"><X size={8} /></button>
                                                                         </div>
                                                                     ))}
-                                                                    <button onClick={() => setPtCropState({ active: true, itemIndex: idx, selectedImageId: ptImages[0]?.id, startX: 0, startY: 0, endX: 0, endY: 0, isDragging: false, isDouble: true })} className="w-7 h-7 bg-indigo-100 hover:bg-indigo-200 hover:border-indigo-400 rounded flex items-center justify-center border border-indigo-300 border-dashed text-indigo-500 hover:text-indigo-700 transition-colors shadow-inner" title="擷取此符號的雙重特徵圖"><ImagePlus size={12} /></button>
+                                                                    <button onClick={() => setPtCropState({ active: true, itemIndex: idx, selectedImageId: ptImages[0]?.id, startX: 0, startY: 0, endX: 0, endY: 0, isDragging: false, isDouble: true })} className="w-7 h-7 bg-indigo-100 hover:bg-indigo-200 hover:border-indigo-400 rounded flex items-center justify-center border border-indigo-300 border-dashed text-indigo-500 hover:text-indigo-700 transition-colors shadow-inner shrink-0" title="擷取此符號的雙重特徵圖"><ImagePlus size={12} /></button>
+                                                                </div>
+                                                            </td>
+                                                        )}
+                                                        {hasTripleSymbol && (
+                                                            <td className="p-1.5 bg-purple-50/30">
+                                                                <div className="flex flex-row flex-nowrap gap-1 items-center overflow-x-auto max-w-[120px]">
+                                                                    {item.tripleThumbUrls && item.tripleThumbUrls.map((url, tIdx) => (
+                                                                        <div key={tIdx} className="relative w-7 h-7 bg-purple-900 rounded border border-purple-300 shadow-sm group/thumb-triple">
+                                                                            <img src={url} className="w-full h-full object-contain" />
+                                                                            <button onClick={() => handleRemoveThumb(idx, tIdx, false, true)} className="thumb-remove group-hover/thumb-triple:opacity-100"><X size={8} /></button>
+                                                                        </div>
+                                                                    ))}
+                                                                    <button onClick={() => setPtCropState({ active: true, itemIndex: idx, selectedImageId: ptImages[0]?.id, startX: 0, startY: 0, endX: 0, endY: 0, isDragging: false, isTriple: true })} className="w-7 h-7 bg-purple-100 hover:bg-purple-200 hover:border-purple-400 rounded flex items-center justify-center border border-purple-300 border-dashed text-purple-500 hover:text-purple-700 transition-colors shadow-inner shrink-0" title="擷取此符號的三重特徵圖"><ImagePlus size={12} /></button>
                                                                 </div>
                                                             </td>
                                                         )}
                                                         <td className="p-1"><input type="text" value={item.name} onChange={(e) => handlePtTableChange(idx, 'name', e.target.value)} className="w-full font-bold text-slate-700 bg-transparent border border-transparent hover:border-slate-300 focus:border-indigo-500 focus:bg-white rounded px-1.5 py-1 outline-none transition-all" /></td>
-                                                        {[...Array(hasDoubleSymbol ? gridCols * 2 - 1 : gridCols - 1)].map((_, i) => {
+                                                        {[...Array(gridCols - 1 + (hasDoubleSymbol ? gridCols : 0) + (hasTripleSymbol ? gridCols : 0))].map((_, i) => {
                                                             const matchKey = `match${i + 2}`;
                                                             return (
                                                                 <td key={i} className="p-1">
-                                                                    <input type="text" value={item[matchKey] || 0} onChange={(e) => handlePtTableChange(idx, matchKey, e.target.value)} className="w-full text-center text-slate-600 bg-transparent border border-transparent hover:border-slate-300 focus:border-indigo-500 focus:bg-white rounded px-1 py-1 outline-none transition-all" />
+                                                                    <input type="text" value={item[matchKey] || 0} onChange={(e) => handlePtTableChange(idx, matchKey, e.target.value)} className="w-14 text-center text-slate-600 bg-transparent border border-transparent hover:border-slate-300 focus:border-indigo-500 focus:bg-white rounded px-1 py-1 outline-none transition-all" />
                                                                 </td>
                                                             );
                                                         })}

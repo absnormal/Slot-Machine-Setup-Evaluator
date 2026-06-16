@@ -43,6 +43,7 @@ export default function Phase1Setup(props) {
         hasJackpot, setHasJackpot, jpConfig, setJpConfig, buildErrorMsg, handleBuildTemplate,
         showPtModal, setShowPtModal,
         hasDoubleSymbol, setHasDoubleSymbol,
+        hasTripleSymbol, setHasTripleSymbol,
         hasCashCollectFeature, setHasCashCollectFeature,
         hasDynamicMultiplier, setHasDynamicMultiplier,
         multiplierCalcType, setMultiplierCalcType,
@@ -140,6 +141,7 @@ export default function Phase1Setup(props) {
                         <SpecialSymbolQA
                             lineMode={lineMode}
                             hasDoubleSymbol={hasDoubleSymbol} setHasDoubleSymbol={setHasDoubleSymbol}
+                            hasTripleSymbol={hasTripleSymbol} setHasTripleSymbol={setHasTripleSymbol}
                             hasMultiplierReel={hasMultiplierReel} setHasMultiplierReel={setHasMultiplierReel}
                             multiplierCalcType={multiplierCalcType} setMultiplierCalcType={setMultiplierCalcType}
                             hasDynamicMultiplier={hasDynamicMultiplier} setHasDynamicMultiplier={setHasDynamicMultiplier}
@@ -168,7 +170,7 @@ export default function Phase1Setup(props) {
                             ptEnlargedImg={ptEnlargedImg} setPtEnlargedImg={setPtEnlargedImg}
                             handlePtTableChange={handlePtTableChange} handlePtTableDelete={handlePtTableDelete}
                             handleAddPtRow={handleAddPtRow} handleRemoveThumb={handleRemoveThumb}
-                            hasDoubleSymbol={hasDoubleSymbol} gridCols={gridCols}
+                            hasDoubleSymbol={hasDoubleSymbol} hasTripleSymbol={hasTripleSymbol} gridCols={gridCols}
                         />
 
                         {/* Build Button */}
