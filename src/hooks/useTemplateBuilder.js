@@ -221,6 +221,23 @@ export function useTemplateBuilder({
             }
         });
 
+        // ── 2b. 雙重符號 paytable 條目注入 ──
+        // 當 hasDS 時，文字格式把雙重賠率附在同一行末尾（gridCols-1 個額外欄）。
+        // 我們把它們另立為 SYMBOL_double 條目，讓 availableSymbols 能識別並在畫筆列顯示。
+        // 原始 SYMBOL 條目保持完整（包含額外欄），結算引擎繼續透過 getSymbolCount 計算雙重命中。
+        if (hasDS) {
+            const totalBaseCols = Math.max(cols, 5);
+            Object.keys(paytable)
+                .filter(sym => !sym.endsWith('_double') && !sym.endsWith('_xN') && !/_x\d+(?:\.\d+)?$/.test(sym))
+                .forEach(sym => {
+                    const allPays = paytable[sym];
+                    const doubleName = `${sym}_double`;
+                    if (allPays.length > totalBaseCols && !paytable[doubleName]) {
+                        paytable[doubleName] = allPays.slice(totalBaseCols);
+                    }
+                });
+        }
+
         // ── 3. 特殊符號注入（xN / JP / WILD）──
         const maxCols = Math.max(...Object.values(paytable).map(p2 => p2.length), 5);
         const zeroPays = Array(maxCols).fill(0);

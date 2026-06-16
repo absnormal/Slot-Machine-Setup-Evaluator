@@ -530,10 +530,30 @@ function redraw() {
   ctx.drawImage(c._img,0,0);
   drawBoxes(ctx,c.width,c.height,ps.userRois,pg.rois,selectedRoi);
   if (drawState&&drawState.ex!==undefined) {
+    const x0=Math.min(drawState.sx,drawState.ex), y0=Math.min(drawState.sy,drawState.ey);
+    const bw=Math.abs(drawState.ex-drawState.sx), bh=Math.abs(drawState.ey-drawState.sy);
+
+    // 虛線框
     ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.setLineDash([4,4]);
-    ctx.strokeRect(Math.min(drawState.sx,drawState.ex),Math.min(drawState.sy,drawState.ey),
-      Math.abs(drawState.ex-drawState.sx),Math.abs(drawState.ey-drawState.sy));
+    ctx.strokeRect(x0,y0,bw,bh);
     ctx.setLineDash([]);
+
+    // 即時尺寸標籤（至少拖了一點才顯示，避免點擊瞬間跳出）
+    if (bw > 8 && bh > 8) {
+      const pctW=(bw/c.width*100).toFixed(1), pctH=(bh/c.height*100).toFixed(1);
+      const next = pg.rois.find(r=>!ps.userRois[r.name]);
+      const label = `${pctW}% × ${pctH}%` + (next ? `  → ${next.name}` : '');
+      const fs=12, pad=6;
+      ctx.font=`bold ${fs}px monospace`;
+      const tw=ctx.measureText(label).width+pad*2;
+      const th=fs+pad*2;
+      let lx=drawState.ex+8, ly=drawState.ey-th-4;
+      if(lx+tw>c.width) lx=drawState.ex-tw-8;
+      if(ly<0) ly=drawState.ey+8;
+      ctx.fillStyle='rgba(0,0,0,0.75)'; ctx.beginPath();
+      ctx.roundRect(lx,ly,tw,th,4); ctx.fill();
+      ctx.fillStyle='#f1f5f9'; ctx.fillText(label,lx+pad,ly+fs+pad/2);
+    }
   }
 }
 

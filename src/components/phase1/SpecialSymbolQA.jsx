@@ -158,7 +158,7 @@ export default function SpecialSymbolQA({
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                         <div>
                             <p className="text-sm font-bold text-slate-800">1. 此遊戲有無雙重符號?</p>
-                            <p className="text-xs text-slate-500 mt-1">雙重符號：1格符號作為2連線計算</p>
+                            <p className="text-xs text-slate-500 mt-1">雙重符號：1格符號作為2連線計算　<span className="text-amber-600 font-semibold">※ 此選項與 xN 乘倍符號為不同設定</span></p>
                         </div>
                         <div className="flex bg-slate-100 p-1 rounded-lg shrink-0">
                             <button onClick={() => setHasDoubleSymbol(true)} className={`px-4 py-1.5 text-sm font-bold rounded-md transition-all ${hasDoubleSymbol ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>有</button>
