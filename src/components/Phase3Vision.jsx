@@ -182,7 +182,7 @@ export default function Phase3Vision({
                                                     className="w-full py-3 rounded-lg text-lg font-bold flex items-center justify-center gap-2 transition-all shadow-md bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-500/20"
                                                 >
                                                     <Monitor size={20} />
-                                                    本地辨識盤面 (零延遲)
+                                                    快速辨識（免金鑰）
                                                 </button>
 
                                                 <button
