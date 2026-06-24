@@ -14,9 +14,10 @@ description: 老虎機辨識工具的完整架構文件，涵蓋 Phase 1-5 流�
 | **名稱** | Slot Machine Setup Evaluator (老虎機模板辨識工具) |
 | **框架** | React (Vite) + Tailwind CSS |
 | **狀態管理** | Zustand (2 stores) |
-| **AI** | Google Gemini Vision API |
-| **OCR** | Tesseract.js (Web Worker) |
-| **影像辨識** | HOG (Histogram of Oriented Gradients) + 本地模板匹配 |
+| **AI** | Google Gemini Vision API 或地端 OpenAI 相容視覺模型 |
+| **OCR** | PaddleOCR PP-OCRv4 via @gutenye/ocr-browser + onnxruntime-web (Web Worker) |
+| **影像辨識** | HOG + 中心HOG + Hue 直方圖 + SSIM 仲裁（localBoardRecognizer.js）|
+| **雲端** | Google Apps Script (Google Sheets) |
 | **入口** | `src/main.jsx` → `src/App.jsx` |
 
 ## 2. 五階段流程 (Phase Pipeline)
@@ -34,7 +35,7 @@ Phase 1 (模板設定) → Phase 2 (手動驗證) → Phase 3 (AI辨識) → Pha
 - **核心 Hook**：`useTemplateBuilder` — 建構 `SlotTemplate` 物件
 - **輸出**：`template` 物件，供所有後續 Phase 使用
 - **元件**：`Phase1Setup.jsx` → `LineModeConfig.jsx`, `PaytableConfig.jsx`, `SpecialSymbolQA.jsx`
-- **模板 I/O**：`useTemplateIO` — JSON 匯入/匯出、`useCloud` — 雲端 Firebase 同步
+- **模板 I/O**：`useTemplateIO` — JSON 匯入/匯出、`useCloud` — 雲端 Google Apps Script 同步
 
 ### Phase 2 — 手動結算
 - **目的**：手動輸入盤面驗證結算引擎
@@ -212,7 +213,7 @@ record_spin:
 | `useFlowRunner.js` | 積木排程引擎 Hook | `runFlow`, `pause`, `resume`, `stop`, `variables` |
 | `useFlowStorage.js` | 流程存取（local + cloud） | `saveToLocal`, `saveToCloud`, `allFlows` |
 | `useListDrag.js` | 積木拖曳排序 | `handleDragStart`, `handleDrop` |
-| `useCloud.js` | Firebase 雲端同步 | `uploadTemplate`, `fetchTemplates` |
+| `useCloud.js` | Google Apps Script 雲端同步 | `saveTemplateToCloud`, `fetchCloudTemplates` |
 | `useSlotEngine.js` | Phase 2 結算包裝 | `computeResults` |
 
 ### Engine
@@ -223,7 +224,7 @@ record_spin:
 | `ocrPipeline.js` | `captureFullFrame`, `generateThumbUrl`, `cropAndOCR` |
 | `vlineScanner.js` | V-Line 切片式停輪偵測 |
 | `winPollAgent.js` | WIN 特工：高頻輪詢 WIN ROI 像素變化 |
-| `ocrWorkerBridge.js` | Tesseract OCR Worker 橋接 |
+| `ocrWorkerBridge.js` | PaddleOCR Web Worker 橋接（@gutenye/ocr-browser）|
 | `flowRunner.js` | FlowRunner class：積木解析、迴圈、條件分支、變數空間 |
 | `roiResolver.js` | ROI 名稱解析：標準名稱 + 自訂 clickTargets → 百分比座標 |
 | `actions/ocrAction.js` | OCR 積木動作：批次讀取、單次讀取 |
