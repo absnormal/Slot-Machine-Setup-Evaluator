@@ -263,13 +263,13 @@ export default function SpecialSymbolQA({
                     </div>
                 )}
 
-                {/* Q5: Bi-directional Paylines (only for paylines mode) */}
-                {lineMode === 'paylines' && (
+                {/* Q5: Bi-directional (paylines 取最高 / allways 兩端相加) */}
+                {(lineMode === 'paylines' || lineMode === 'allways') && (
                     <div className="card p-4 rounded-lg transition-all hover:border-indigo-300">
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                             <div>
                                 <p className="text-sm font-bold text-slate-800">5. 此遊戲是否支援雙向連線機制?</p>
-                                <p className="text-xs text-slate-500 mt-1">雙向連線：同一條賠付線左至右與右至左皆可連線，並取最高獎金做為該線結果</p>
+                                <p className="text-xs text-slate-500 mt-1">雙向連線：固定線獎＝同一條線左至右與右至左皆可連線、取最高；All Ways＝兩端(左起／右起)各自計算 Ways 並相加</p>
                             </div>
                             <div className="flex bg-slate-100 p-1 rounded-lg shrink-0">
                                 <button onClick={() => setHasBidirectionalPaylines(true)} className={`px-4 py-1.5 text-sm font-bold rounded-md transition-all ${hasBidirectionalPaylines ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>有</button>

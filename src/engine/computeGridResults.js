@@ -54,7 +54,14 @@ export function computeGridResults(template, targetGrid, betAmount, options = {}
 
         if (evalTemplate.lineMode === 'allways') {
             // === All Ways 計算（每條路線獨立計算 xN 乘倍，按乘倍值分組顯示）===
+            // 雙邊連線：左起(LTR)一律計算；options.enableBidirectional 時再從右端(RTL)起算，兩側各自相加
+            const _ltrOrder = Array.from({ length: evalTemplate.cols }, (_, i) => i);
+            const _waysDirections = [{ order: _ltrOrder, suffix: '', label: '' }];
+            if (options.enableBidirectional) {
+                _waysDirections.push({ order: [..._ltrOrder].reverse(), suffix: '_RTL', label: '(右至左) ' });
+            }
 
+            for (const _dir of _waysDirections) {
             for (const targetSymbol of allPaySymbols) {
                 if (isScatterSymbol(targetSymbol)) continue;
                 if (isCashSymbol(targetSymbol, evalTemplate.jpConfig)) continue;
@@ -67,7 +74,7 @@ export function computeGridResults(template, targetGrid, betAmount, options = {}
                 let totalUnits = 0;
                 let reelsReached = 0;
 
-                for (let col = 0; col < evalTemplate.cols; col++) {
+                for (const col of _dir.order) {
                     const allMults = [];
                     const wildOnlyMults = [];
                     const colCoords = [];
@@ -142,7 +149,7 @@ export function computeGridResults(template, targetGrid, betAmount, options = {}
                     if (ways <= 0) continue;
                     const payout = safeMul(payoutMult, lineBet, ways);
                     calculatedResults.push({
-                        lineId: `WAYS_${targetSymbol}`,
+                        lineId: `WAYS_${targetSymbol}${_dir.suffix}`,
                         symbol: targetSymbol,
                         count: reelsReached,
                         ways,
@@ -150,7 +157,7 @@ export function computeGridResults(template, targetGrid, betAmount, options = {}
                         winAmount: payout,
                         multiplier: null,
                         symbolsOnLine: [],
-                        positions: [`${reelsReached} 連 × ${ways} Ways`],
+                        positions: [`${_dir.label}${reelsReached} 連 × ${ways} Ways`],
                         winCoords: finalWinCoords
                     });
                     totalWin = safeAdd(totalWin, payout);
@@ -197,7 +204,7 @@ export function computeGridResults(template, targetGrid, betAmount, options = {}
                         const groupCoords = [...group.coordSet].map(s => { const [r, c] = s.split(','); return { row: +r, col: +c }; });
                         const multLabel = group.routeMult > 1 ? ` ×${group.routeMult}` : '';
                         calculatedResults.push({
-                            lineId: `WAYS_${targetSymbol}${group.routeMult > 1 ? `_x${group.routeMult}` : ''}`,
+                            lineId: `WAYS_${targetSymbol}${_dir.suffix}${group.routeMult > 1 ? `_x${group.routeMult}` : ''}`,
                             symbol: targetSymbol,
                             count: reelsReached,
                             ways: group.ways,
@@ -205,12 +212,13 @@ export function computeGridResults(template, targetGrid, betAmount, options = {}
                             winAmount: groupPayout,
                             multiplier: group.routeMult > 1 ? group.routeMult : null,
                             symbolsOnLine: [],
-                            positions: [`${reelsReached} 連 × ${group.ways} Ways${multLabel}`],
+                            positions: [`${_dir.label}${reelsReached} 連 × ${group.ways} Ways${multLabel}`],
                             winCoords: groupCoords
                         });
                         totalWin = safeAdd(totalWin, groupPayout);
                     }
                 }
+            }
             }
         } else if (evalTemplate.lineMode === 'symbolcount') {
             // === Symbol Count (Pay Anywhere / 消除模式) 計算 ===

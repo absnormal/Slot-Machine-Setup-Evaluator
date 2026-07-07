@@ -325,6 +325,72 @@ describe('All Ways 結算', () => {
 });
 
 // ============================================================
+// 4b. All Ways 雙邊連線 (Both Ways, enableBidirectional)
+// ============================================================
+describe('All Ways 雙邊連線 (Both Ways)', () => {
+    const paytable = {
+        A: [0, 0, 5, 20, 50],
+        B: [0, 0, 3, 10, 30],
+        WILD: [0, 0, 10, 40, 100],
+    };
+    const BOTH = { enableBidirectional: true };
+
+    it('僅右端有連線：關閉雙向不中，開啟雙向由右起算', () => {
+        const t = makeAllWaysTemplate(paytable, { rows: 3, cols: 5 });
+        const grid = [
+            ['C', 'C', 'A', 'A', 'A'],
+            ['C', 'C', 'A', 'A', 'A'],
+            ['C', 'C', 'A', 'A', 'A'],
+        ];
+        // 關閉：左起 col0 無 A → 不中
+        const off = computeGridResults(t, grid, 100).results;
+        expect(off.details.find(r => r.symbol === 'A' && r.winAmount > 0)).toBeFalsy();
+        // 開啟：右起 3 連 A，ways = 3^3 = 27
+        const on = computeGridResults(t, grid, 100, BOTH).results;
+        const a = on.details.find(r => r.lineId === 'WAYS_A_RTL');
+        expect(a).toBeTruthy();
+        expect(a.ways).toBe(27);
+        expect(a.winAmount).toBe(5 * 100 * 27);
+        expect(a.positions[0]).toContain('右至左');
+        expect(on.totalWin).toBe(5 * 100 * 27);
+    });
+
+    it('兩端各自連線：左 + 右 相加', () => {
+        const pt = { A: [0, 2, 5, 20, 50] }; // 2 連 = 2
+        const t = makeAllWaysTemplate(pt, { rows: 3, cols: 5 });
+        const grid = [
+            ['A', 'A', 'C', 'A', 'A'],
+            ['A', 'A', 'C', 'A', 'A'],
+            ['A', 'A', 'C', 'A', 'A'],
+        ];
+        const on = computeGridResults(t, grid, 100, BOTH).results;
+        const ltr = on.details.find(r => r.lineId === 'WAYS_A');
+        const rtl = on.details.find(r => r.lineId === 'WAYS_A_RTL');
+        expect(ltr.ways).toBe(9);   // 3*3
+        expect(rtl.ways).toBe(9);
+        expect(ltr.winAmount).toBe(2 * 100 * 9);
+        expect(rtl.winAmount).toBe(2 * 100 * 9);
+        expect(on.totalWin).toBe(2 * (2 * 100 * 9)); // 兩端相加
+        // 關閉時只有左端
+        const off = computeGridResults(t, grid, 100).results;
+        expect(off.totalWin).toBe(2 * 100 * 9);
+    });
+
+    it('符號跨滿所有輪：左右各算一次 = 2 倍', () => {
+        const t = makeAllWaysTemplate(paytable, { rows: 3, cols: 5 });
+        const grid = [
+            ['A', 'A', 'A', 'A', 'A'],
+            ['A', 'A', 'A', 'A', 'A'],
+            ['A', 'A', 'A', 'A', 'A'],
+        ];
+        const oneWay = computeGridResults(t, grid, 100).results.totalWin;   // 左起 5 連
+        const both = computeGridResults(t, grid, 100, BOTH).results.totalWin;
+        expect(oneWay).toBe(50 * 100 * 243); // 3^5 = 243
+        expect(both).toBe(2 * oneWay);
+    });
+});
+
+// ============================================================
 // 5. Pure WILD 扣除 (All Ways 專用)
 // ============================================================
 describe('Pure WILD 扣除 (All Ways)', () => {
