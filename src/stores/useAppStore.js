@@ -98,6 +98,8 @@ const useAppStore = create((set, get) => ({
 
     // === AI 模型來源 ===
     apiProvider: typeof window !== 'undefined' ? (localStorage.getItem('slot_api_provider') || 'gemini') : 'gemini', // 'gemini' | 'local'
+    geminiModel: typeof window !== 'undefined' ? (localStorage.getItem('slot_gemini_model') || '') : '',               // 使用者指定（空＝自動偵測）
+    geminiModelResolved: typeof window !== 'undefined' ? (localStorage.getItem('slot_gemini_model_resolved') || '') : '', // 自動偵測快取
     localEndpoint: typeof window !== 'undefined' ? (localStorage.getItem('slot_local_endpoint') || '') : '',
     localModel: typeof window !== 'undefined' ? (localStorage.getItem('slot_local_model') || '') : '',
     localApiKey: typeof window !== 'undefined' ? (localStorage.getItem('slot_local_api_key') || '') : '',
@@ -111,6 +113,16 @@ const useAppStore = create((set, get) => ({
     setApiProvider: (v) => {
         set({ apiProvider: v });
         if (typeof window !== 'undefined') localStorage.setItem('slot_api_provider', v);
+    },
+    setGeminiModel: (v) => {
+        set({ geminiModel: v });
+        if (typeof window !== 'undefined') localStorage.setItem('slot_gemini_model', v || '');
+    },
+    setGeminiModelResolved: (v) => {
+        // 只在值有變化時寫入，避免每次呼叫都觸發 store 更新
+        if (get().geminiModelResolved === v) return;
+        set({ geminiModelResolved: v });
+        if (typeof window !== 'undefined') localStorage.setItem('slot_gemini_model_resolved', v || '');
     },
     setLocalEndpoint: (v) => {
         set({ localEndpoint: v });

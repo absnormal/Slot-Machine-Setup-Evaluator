@@ -39,7 +39,7 @@ export function useVisionBatchProcessor({
     setTemplateMessage,
     setTemplateError
 }) {
-    const { apiProvider, localEndpoint, localModel, localApiKey: localApiKeyStore } = useAppStore();
+    const { apiProvider, localEndpoint, localModel, localApiKey: localApiKeyStore, geminiModel, geminiModelResolved, setGeminiModelResolved } = useAppStore();
     const [isVisionProcessing, setIsVisionProcessing] = useState(false);
     const isVisionCanceled = useRef(false);
     const [isVisionStopping, setIsVisionStopping] = useState(false);
@@ -87,7 +87,7 @@ export function useVisionBatchProcessor({
         }
 
         const effectiveApiKey = customApiKey.trim() || apiKey;
-        const modelName = "gemini-3.1-flash-lite";
+        const modelName = geminiModel || geminiModelResolved; // 空＝自動偵測（見 geminiApi.js）
 
         let toProcess = visionImagesRef.current.filter(img => !img.grid);
         if (toProcess.length === 0) {
@@ -213,6 +213,7 @@ export function useVisionBatchProcessor({
                     localEndpoint,
                     localModel,
                     localApiKey: localApiKeyStore,
+                    onModelResolved: setGeminiModelResolved,
                 });
 
                 const responseData = JSON.parse(jsonText);

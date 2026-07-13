@@ -19,7 +19,7 @@ export function usePaytableProcessor({
     setTemplateMessage,
     setTemplateError,
 }) {
-    const { apiProvider, localEndpoint, localModel, localApiKey: localApiKeyStore } = useAppStore();
+    const { apiProvider, localEndpoint, localModel, localApiKey: localApiKeyStore, geminiModel, geminiModelResolved, setGeminiModelResolved } = useAppStore();
     // --- Paytable State ---
     const [ptImages, setPtImages] = useState([]);
     const [isPtProcessing, setIsPtProcessing] = useState(false);
@@ -167,7 +167,7 @@ export function usePaytableProcessor({
         }
 
         const effectiveApiKey = customApiKey.trim() || apiKey;
-        const modelName = "gemini-2.5-flash";
+        const modelName = geminiModel || geminiModelResolved; // 空＝自動偵測（見 geminiApi.js）
 
         setIsPtProcessing(true);
         setTemplateError("");
@@ -189,6 +189,7 @@ export function usePaytableProcessor({
                 localEndpoint,
                 localModel,
                 localApiKey: localApiKeyStore,
+                onModelResolved: setGeminiModelResolved,
             });
 
             let parsedData = JSON.parse(jsonText);

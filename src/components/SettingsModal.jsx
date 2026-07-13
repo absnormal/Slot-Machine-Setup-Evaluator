@@ -1,5 +1,6 @@
-import React from 'react';
-import { Settings, X, Key, Moon, Github, Cpu } from 'lucide-react';
+import React, { useState } from 'react';
+import { Settings, X, Key, Moon, Github, Cpu, Search, RefreshCw } from 'lucide-react';
+import { listGeminiModels, pickVisionModel } from '../utils/geminiApi';
 
 export default function SettingsModal({
     show,
@@ -10,7 +11,37 @@ export default function SettingsModal({
     localEndpoint, setLocalEndpoint,
     localModel, setLocalModel,
     localApiKey, setLocalApiKey,
+    geminiModel, setGeminiModel,
+    geminiModelResolved,
 }) {
+    const [detecting, setDetecting] = useState(false);
+    const [detectedModels, setDetectedModels] = useState([]);
+    const [detectError, setDetectError] = useState('');
+
+    const handleDetectModels = async () => {
+        const key = (customApiKey || '').trim();
+        if (!key) {
+            setDetectError('請先輸入 Gemini API Key 再偵測');
+            return;
+        }
+        setDetecting(true);
+        setDetectError('');
+        try {
+            const models = await listGeminiModels(key);
+            setDetectedModels(models);
+            if (models.length === 0) setDetectError('這把 Key 沒有可用的視覺模型');
+            // 未指定時，自動填入建議模型
+            if (!geminiModel) {
+                const best = pickVisionModel(models, '');
+                if (best) setGeminiModel(best);
+            }
+        } catch (e) {
+            setDetectError(e.message || '偵測失敗');
+        } finally {
+            setDetecting(false);
+        }
+    };
+
     if (!show) return null;
 
     const isGitHubPages =
@@ -90,6 +121,46 @@ export default function SettingsModal({
                                         <img src="https://www.gstatic.com/lamda/images/favicon_v2_16x16.png" alt="Google" className="w-3.5 h-3.5" />
                                         獲取 Gemini API Key (Google AI Studio)
                                     </a>
+                                </div>
+
+                                {/* 模型設定（留空＝自動偵測，免費層停用模型時自動換） */}
+                                <div className="pt-3 border-t border-slate-100">
+                                    <label className="block text-xs font-bold text-slate-600 mb-1 flex items-center gap-1">
+                                        <Cpu size={13} className="text-indigo-500" /> 模型（留空＝自動選擇，建議）
+                                    </label>
+                                    <div className="flex gap-2">
+                                        <input
+                                            type="text"
+                                            placeholder="留空＝自動偵測可用模型"
+                                            value={geminiModel}
+                                            onChange={(e) => setGeminiModel(e.target.value)}
+                                            list="gemini-model-list"
+                                            className="input font-mono text-xs flex-1"
+                                        />
+                                        <button
+                                            onClick={handleDetectModels}
+                                            disabled={detecting}
+                                            className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold rounded-lg border border-indigo-200 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                            title={(customApiKey || '').trim() ? '列出這把 Key 支援的視覺模型' : '請先輸入 Gemini API Key'}
+                                        >
+                                            {detecting ? <RefreshCw size={13} className="animate-spin" /> : <Search size={13} />}
+                                            偵測可用模型
+                                        </button>
+                                    </div>
+                                    <datalist id="gemini-model-list">
+                                        {detectedModels.map((m) => <option key={m} value={m} />)}
+                                    </datalist>
+                                    {!(customApiKey || '').trim() && !detectError && (
+                                        <p className="text-[11px] text-amber-600 mt-1">💡 請先在上方輸入 Gemini API Key，才能偵測可用模型</p>
+                                    )}
+                                    {detectError && <p className="text-[11px] text-red-500 mt-1">⚠️ {detectError}</p>}
+                                    {!detectError && detectedModels.length > 0 && (
+                                        <p className="text-[11px] text-emerald-600 mt-1">✅ 偵測到 {detectedModels.length} 個可用模型（點欄位可選）</p>
+                                    )}
+                                    {!geminiModel && geminiModelResolved && (
+                                        <p className="text-[11px] text-slate-500 mt-1">目前自動使用：<span className="font-mono text-slate-700">{geminiModelResolved}</span></p>
+                                    )}
+                                    <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">留空時，工具會自動挑一個可用視覺模型；若之後被停用會自動換，不需手動改。</p>
                                 </div>
                             </div>
                         )}

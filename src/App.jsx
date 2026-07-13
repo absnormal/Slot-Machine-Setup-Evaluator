@@ -73,6 +73,9 @@ function App() {
 
     const apiProvider = useAppStore(s => s.apiProvider);
     const setApiProvider = useAppStore(s => s.setApiProvider);
+    const geminiModel = useAppStore(s => s.geminiModel);
+    const setGeminiModel = useAppStore(s => s.setGeminiModel);
+    const geminiModelResolved = useAppStore(s => s.geminiModelResolved);
     const localEndpoint = useAppStore(s => s.localEndpoint);
     const setLocalEndpoint = useAppStore(s => s.setLocalEndpoint);
     const localModel = useAppStore(s => s.localModel);
@@ -628,6 +631,9 @@ function App() {
                 }}
                 apiProvider={apiProvider}
                 setApiProvider={setApiProvider}
+                geminiModel={geminiModel}
+                setGeminiModel={setGeminiModel}
+                geminiModelResolved={geminiModelResolved}
                 localEndpoint={localEndpoint}
                 setLocalEndpoint={setLocalEndpoint}
                 localModel={localModel}
