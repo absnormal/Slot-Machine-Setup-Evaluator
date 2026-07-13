@@ -140,10 +140,10 @@ function App() {
         ptImages, setPtImages, isPtProcessing, setIsPtProcessing,
         ptResultItems, setPtResultItems, ptCropState, setPtCropState,
         ptEnlargedImg, setPtEnlargedImg, ptCropImageRef,
-        handleLineImageUpload, removeLineImage, analyzeImage,
+        handleLineImageUpload, pasteLineImageFromClipboard, removeLineImage, analyzeImage,
         handleMouseDown, handleMouseMove, handleMouseUp, draw,
         handlePaytableTextChange, handlePtTableChange, handlePtTableDelete, handleAddPtRow, handleRemoveThumb,
-        handlePtFileChange, handlePtDrop, processPtFiles, removePtImage, clearPtAll, handlePtExtract,
+        handlePtFileChange, handlePtDrop, processPtFiles, pastePtImageFromClipboard, removePtImage, clearPtAll, handlePtExtract,
         performAutoBuild, handleBuildTemplate, resetTemplateBuilder
     } = templateBuilder;
 
@@ -435,8 +435,8 @@ function App() {
                         hasLineBetDivisor={hasLineBetDivisor} setHasLineBetDivisor={setHasLineBetDivisor}
                         lineBetDivisor={lineBetDivisor} setLineBetDivisor={setLineBetDivisor}
                         reelHeights={reelHeights} setReelHeights={setReelHeights}
-                        lineImages={lineImages} removeLineImage={removeLineImage} activeLineImageId={activeLineImageId} setActiveLineImageId={setActiveLineImageId} handleLineImageUpload={handleLineImageUpload}
-                        isPtProcessing={isPtProcessing} handlePtExtract={handlePtExtract} ptImages={ptImages} removePtImage={removePtImage} clearPtAll={clearPtAll} handlePtFileChange={handlePtFileChange} handlePtDrop={handlePtDrop}
+                        lineImages={lineImages} removeLineImage={removeLineImage} activeLineImageId={activeLineImageId} setActiveLineImageId={setActiveLineImageId} handleLineImageUpload={handleLineImageUpload} pasteLineImageFromClipboard={pasteLineImageFromClipboard}
+                        isPtProcessing={isPtProcessing} handlePtExtract={handlePtExtract} ptImages={ptImages} removePtImage={removePtImage} clearPtAll={clearPtAll} handlePtFileChange={handlePtFileChange} handlePtDrop={handlePtDrop} pastePtImageFromClipboard={pastePtImageFromClipboard}
                         dragState={dragState} setDragState={setDragState} containerRef={containerRef} layoutStyle={layoutStyle} handleMouseDown={handleMouseDown} handleMouseMove={handleMouseMove} handleMouseUp={handleMouseUp}
                         canvasRef={canvasRef} draw={draw} canvasSize={canvasSize} p1={p1} pEnd={pEnd} analyzeImage={analyzeImage} startIndex={startIndex} setStartIndex={setStartIndex} threshold={threshold} setThreshold={setThreshold}
                         patternRows={patternRows} setPatternRows={setPatternRows} patternCols={patternCols} setPatternCols={setPatternCols} linesTabMode={linesTabMode} setLinesTabMode={setLinesTabMode}

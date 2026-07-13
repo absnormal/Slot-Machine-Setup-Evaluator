@@ -1,12 +1,12 @@
 import React from 'react';
-import { AlertCircle, Upload, X, Plus, ImagePlus, Loader2, LayoutList, Trash2 } from 'lucide-react';
+import { AlertCircle, Upload, X, Plus, ImagePlus, Loader2, LayoutList, Trash2, ClipboardPaste } from 'lucide-react';
 
 /**
  * 賠率表設定：文字/圖片模式、AI 分析、結果表格編輯
  */
 export default function PaytableConfig({
     paytableMode, setPaytableMode, paytableInput, handlePaytableTextChange,
-    ptImages, removePtImage, clearPtAll, handlePtFileChange, handlePtDrop,
+    ptImages, removePtImage, clearPtAll, handlePtFileChange, handlePtDrop, pastePtImageFromClipboard,
     isPtProcessing, hasApiKey, setShowPtModal,
     ptResultItems, setPtResultItems, ptCropState, setPtCropState,
     ptEnlargedImg, setPtEnlargedImg,
@@ -78,6 +78,15 @@ export default function PaytableConfig({
                                 <Upload className="text-slate-400 mb-1" size={24} />
                                 <p className="text-xs text-slate-500 font-medium">點擊或拖曳上傳賠率圖 (可多選)</p>
                             </label>
+
+                            <button
+                                type="button"
+                                onClick={pastePtImageFromClipboard}
+                                className="mx-2 mb-2 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 transition-colors active:scale-95"
+                                title="先用 Win+Shift+S 框好賠率表，再按此貼上"
+                            >
+                                <ClipboardPaste size={13} /> 貼上截圖
+                            </button>
 
                             {ptImages.length > 0 && (
                                 <div className="px-3 pb-2">

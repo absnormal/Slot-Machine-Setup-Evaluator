@@ -131,6 +131,27 @@ export function usePaytableProcessor({
         setPtImages(prev => [...prev, ...newImages]);
     };
 
+    // 從剪貼簿貼上賠率表截圖（走與上傳/拖曳相同的處理流程）
+    const pastePtImageFromClipboard = async () => {
+        try {
+            const clipboardItems = await navigator.clipboard.read();
+            for (const item of clipboardItems) {
+                const imageType = item.types.find(t => t.startsWith('image/'));
+                if (imageType) {
+                    const blob = await item.getType(imageType);
+                    const file = new File([blob], `剪貼簿賠率表-${Date.now()}.png`, { type: blob.type });
+                    await processPtFiles([file]);
+                    if (setTemplateMessage) setTemplateMessage('📋 已貼上賠率表截圖');
+                    return;
+                }
+            }
+            setTemplateError('剪貼簿中沒有找到圖片！');
+        } catch (err) {
+            console.error('讀取剪貼簿失敗:', err);
+            setTemplateError('無法讀取剪貼簿，請確認瀏覽器權限（需 HTTPS 或 localhost）。');
+        }
+    };
+
     const handlePtFileChange = (e) => {
         const files = Array.from(e.target.files);
         processPtFiles(files);
@@ -248,7 +269,7 @@ export function usePaytableProcessor({
         ptCropImageRef,
         handlePaytableTextChange,
         handlePtTableChange, handlePtTableDelete, handleAddPtRow, handleRemoveThumb,
-        handlePtFileChange, handlePtDrop, processPtFiles, removePtImage, clearPtAll,
+        handlePtFileChange, handlePtDrop, processPtFiles, pastePtImageFromClipboard, removePtImage, clearPtAll,
         handlePtExtract,
     };
 }

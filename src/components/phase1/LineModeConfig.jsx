@@ -1,5 +1,5 @@
 import React from 'react';
-import { ListChecks, LayoutGrid, FileText, ImagePlus, Upload, X, Trash2, Grid3X3 } from 'lucide-react';
+import { ListChecks, LayoutGrid, FileText, ImagePlus, Upload, X, Trash2, Grid3X3, ClipboardPaste } from 'lucide-react';
 import { isIrregularGrid, getGridMask } from '../../utils/gridShapeUtils';
 import step1Img from '../../assets/guide/step1.jpg';
 import step2Img from '../../assets/guide/step2.jpg';
@@ -16,7 +16,7 @@ export default function LineModeConfig({
     linesMode, setLinesMode,
     linesTextInput, setLinesTextInput,
     extractResults, setExtractResults,
-    lineImages, removeLineImage, activeLineImageId, setActiveLineImageId, handleLineImageUpload,
+    lineImages, removeLineImage, activeLineImageId, setActiveLineImageId, handleLineImageUpload, pasteLineImageFromClipboard,
     dragState, setDragState, containerRef, layoutStyle, handleMouseDown, handleMouseMove, handleMouseUp,
     canvasRef, draw, canvasSize, p1, pEnd, analyzeImage, startIndex, setStartIndex,
     patternRows, setPatternRows, patternCols, setPatternCols, linesTabMode, setLinesTabMode,
@@ -288,6 +288,9 @@ export default function LineModeConfig({
                                             <Upload size={20} className="mb-1" /><span className="text-[10px]">新增</span>
                                             <input type="file" multiple accept="image/*" className="hidden" onChange={handleLineImageUpload} />
                                         </label>
+                                        <button type="button" onClick={pasteLineImageFromClipboard} title="貼上截圖" className="w-16 h-16 shrink-0 rounded-lg border-2 border-dashed border-slate-700 flex flex-col items-center justify-center cursor-pointer hover:bg-slate-800 hover:border-slate-500 text-slate-400 transition-colors">
+                                            <ClipboardPaste size={20} className="mb-1" /><span className="text-[10px]">貼上</span>
+                                        </button>
                                     </div>
                                 )}
                                 <div className="flex-1 relative flex flex-col p-4 overflow-y-auto custom-scrollbar">
@@ -298,7 +301,10 @@ export default function LineModeConfig({
                                                     <Upload size={18} /><span>上傳老虎機連線圖 (可多選)</span>
                                                     <input id="slot-image-upload" type="file" className="hidden" multiple accept="image/*" onChange={handleLineImageUpload} />
                                                 </label>
-                                                <p className="mt-4 text-slate-400 text-sm leading-relaxed mb-8">支援一次上傳多張連線圖進行分批提取 (JFIF/JPG/PNG)<br />或在上方點擊「瀏覽雲端模板庫」直接套用</p>
+                                                <button type="button" onClick={pasteLineImageFromClipboard} title="先用 Win+Shift+S 框好連線圖，再按此貼上" className="mt-3 cursor-pointer bg-slate-700 hover:bg-slate-600 text-white px-6 py-2.5 rounded-lg font-semibold transition inline-flex items-center gap-2 w-full justify-center border border-slate-500">
+                                                    <ClipboardPaste size={16} /> 貼上截圖
+                                                </button>
+                                                <p className="mt-4 text-slate-400 text-sm leading-relaxed mb-8">支援上傳或直接貼上截圖進行分批提取 (JFIF/JPG/PNG)<br />或在上方點擊「瀏覽雲端模板庫」直接套用</p>
                                             </div>
                                             <div className="w-full max-w-5xl border border-slate-700/50 rounded-xl p-6 bg-slate-900/50 shadow-inner text-left">
                                                 <span className="text-sm text-slate-400 font-bold mb-4 flex items-center justify-center gap-1.5">操作步驟說明</span>

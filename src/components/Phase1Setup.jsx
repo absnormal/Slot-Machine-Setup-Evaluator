@@ -31,8 +31,8 @@ export default function Phase1Setup(props) {
         gridCols, setGridCols,
         hasMultiplierReel, setHasMultiplierReel,
         requiresCollectToWin, setRequiresCollectToWin,
-        lineImages, removeLineImage, activeLineImageId, setActiveLineImageId, handleLineImageUpload,
-        isPtProcessing, handlePtExtract, ptImages, removePtImage, clearPtAll, handlePtFileChange, handlePtDrop,
+        lineImages, removeLineImage, activeLineImageId, setActiveLineImageId, handleLineImageUpload, pasteLineImageFromClipboard,
+        isPtProcessing, handlePtExtract, ptImages, removePtImage, clearPtAll, handlePtFileChange, handlePtDrop, pastePtImageFromClipboard,
         dragState, setDragState, containerRef, layoutStyle, handleMouseDown, handleMouseMove, handleMouseUp,
         canvasRef, draw, canvasSize, p1, pEnd, analyzeImage, startIndex, setStartIndex, threshold, setThreshold,
         patternRows, setPatternRows, patternCols, setPatternCols, linesTabMode, setLinesTabMode,
@@ -125,6 +125,7 @@ export default function Phase1Setup(props) {
                             lineImages={lineImages} removeLineImage={removeLineImage}
                             activeLineImageId={activeLineImageId} setActiveLineImageId={setActiveLineImageId}
                             handleLineImageUpload={handleLineImageUpload}
+                            pasteLineImageFromClipboard={pasteLineImageFromClipboard}
                             dragState={dragState} setDragState={setDragState}
                             containerRef={containerRef} layoutStyle={layoutStyle}
                             handleMouseDown={handleMouseDown} handleMouseMove={handleMouseMove} handleMouseUp={handleMouseUp}
@@ -163,6 +164,7 @@ export default function Phase1Setup(props) {
                             paytableInput={paytableInput} handlePaytableTextChange={handlePaytableTextChange}
                             ptImages={ptImages} removePtImage={removePtImage} clearPtAll={clearPtAll}
                             handlePtFileChange={handlePtFileChange} handlePtDrop={handlePtDrop}
+                            pastePtImageFromClipboard={pastePtImageFromClipboard}
                             isPtProcessing={isPtProcessing} hasApiKey={hasApiKey}
                             setShowPtModal={setShowPtModal}
                             ptResultItems={ptResultItems} setPtResultItems={setPtResultItems}
