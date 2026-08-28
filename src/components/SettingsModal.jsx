@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Settings, X, Key, Moon, Github, Cpu, Search, RefreshCw } from 'lucide-react';
+import { Settings, X, Key, Moon, Github, Cpu, Search, RefreshCw, Video } from 'lucide-react';
 import { listGeminiModels, pickVisionModel } from '../utils/geminiApi';
+import useAppStore from '../stores/useAppStore';
 
 export default function SettingsModal({
     show,
@@ -14,6 +15,8 @@ export default function SettingsModal({
     geminiModel, setGeminiModel,
     geminiModelResolved,
 }) {
+    const showPhase4 = useAppStore(s => s.showPhase4);
+    const setShowPhase4 = useAppStore(s => s.setShowPhase4);
     const [detecting, setDetecting] = useState(false);
     const [detectedModels, setDetectedModels] = useState([]);
     const [detectError, setDetectError] = useState('');
@@ -228,6 +231,22 @@ export default function SettingsModal({
                             className={`relative w-12 h-6 rounded-full transition-colors duration-300 ${isDarkMode ? 'bg-indigo-600' : 'bg-slate-300'}`}
                         >
                             <span className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform duration-300 ${isDarkMode ? 'translate-x-6' : 'translate-x-0'}`} />
+                        </button>
+                    </div>
+
+                    {/* ── 2.5 Phase 4/5 顯示開關 ── */}
+                    <div className="card p-4 flex items-center justify-between">
+                        <div>
+                            <label className="text-sm font-bold text-slate-800 flex items-center gap-1.5 mb-1">
+                                <Video size={16} className="text-indigo-500" /> 顯示 Phase 4/5（影片分析與自動化）
+                            </label>
+                            <p className="text-xs text-slate-500">日常驗算用不到可保持關閉；開啟後完整模式才會出現 Phase 4 與底部自動化列。</p>
+                        </div>
+                        <button
+                            onClick={() => setShowPhase4(!showPhase4)}
+                            className={`relative w-12 h-6 rounded-full transition-colors duration-300 ${showPhase4 ? 'bg-indigo-600' : 'bg-slate-300'}`}
+                        >
+                            <span className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform duration-300 ${showPhase4 ? 'translate-x-6' : 'translate-x-0'}`} />
                         </button>
                     </div>
 

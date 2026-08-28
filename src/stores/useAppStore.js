@@ -95,6 +95,8 @@ const useAppStore = create((set, get) => ({
     customApiKey: typeof window !== 'undefined' ? (localStorage.getItem('gemini_api_key') || '') : '',
     showSettingsModal: false,
     isDarkMode: typeof window !== 'undefined' ? (localStorage.getItem('slot_dark_mode') === 'true') : false,
+    // P4/P5 預設隱藏(日常只用 P1~P3);設定面板可開啟
+    showPhase4: typeof window !== 'undefined' ? (localStorage.getItem('slot_show_phase4') === 'true') : false,
 
     // === AI 模型來源 ===
     apiProvider: typeof window !== 'undefined' ? (localStorage.getItem('slot_api_provider') || 'gemini') : 'gemini', // 'gemini' | 'local'
@@ -109,6 +111,10 @@ const useAppStore = create((set, get) => ({
     setIsDarkMode: (v) => {
         set({ isDarkMode: v });
         if (typeof window !== 'undefined') localStorage.setItem('slot_dark_mode', v.toString());
+    },
+    setShowPhase4: (v) => {
+        set({ showPhase4: v });
+        if (typeof window !== 'undefined') localStorage.setItem('slot_show_phase4', v.toString());
     },
     setApiProvider: (v) => {
         set({ apiProvider: v });

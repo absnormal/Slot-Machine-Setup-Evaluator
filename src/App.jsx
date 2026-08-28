@@ -69,6 +69,7 @@ function App() {
     const setShowCloudModal = useAppStore(s => s.setShowCloudModal);
 
     const isDarkMode = useAppStore(s => s.isDarkMode);
+    const showPhase4 = useAppStore(s => s.showPhase4);
     const setIsDarkMode = useAppStore(s => s.setIsDarkMode);
 
     const apiProvider = useAppStore(s => s.apiProvider);
@@ -333,7 +334,7 @@ function App() {
     // --- 快捷鍵 (方向鍵切換 Phase) ---
     useEffect(() => {
         const phases = isFullMode
-            ? ['phase1', 'phase2', 'phase3', 'phase4']
+            ? (showPhase4 ? ['phase1', 'phase2', 'phase3', 'phase4'] : ['phase1', 'phase2', 'phase3'])
             : ['phase2', 'phase3'];
         const handleKeyDown = (e) => {
             if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return;
@@ -358,7 +359,7 @@ function App() {
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [isFullMode, isTemplateMinimized, isPhase2Minimized, isPhase3Minimized, isPhase4Minimized, handlePhaseToggle, handleTransferVisionToManual, handleReturnToVision]);
+    }, [isFullMode, showPhase4, isTemplateMinimized, isPhase2Minimized, isPhase3Minimized, isPhase4Minimized, handlePhaseToggle, handleTransferVisionToManual, handleReturnToVision]);
 
     // --- 啟動即背景載入雲端模板清單(P1 平台下拉、QuickBar 都靠它;有 sessionStorage 快取會先秒回) ---
     useEffect(() => {
@@ -512,7 +513,7 @@ function App() {
                     />
                 </ErrorBoundary>
 
-                {isFullMode && (
+                {isFullMode && showPhase4 && (
                 <Suspense fallback={<div className="p-8 text-center text-slate-400 bg-white rounded-xl border border-slate-200">⏳ 載入 Phase 4...</div>}>
                 <ErrorBoundary label="Phase 4: 影片智慧分析">
                     <Phase4Video
@@ -661,7 +662,7 @@ function App() {
             <SessionProgressModal progress={sessionProgress} />
 
             {/* === Phase 5: 固定底部列 (不參與手風琴，透過 Portal 渲染在 body) === */}
-            {isFullMode && (
+            {isFullMode && showPhase4 && (
             <Suspense fallback={null}>
             <ErrorBoundary label="Phase 5: 自動化控制">
                 <Phase5Automation
