@@ -360,6 +360,11 @@ function App() {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [isFullMode, isTemplateMinimized, isPhase2Minimized, isPhase3Minimized, isPhase4Minimized, handlePhaseToggle, handleTransferVisionToManual, handleReturnToVision]);
 
+    // --- 啟動即背景載入雲端模板清單(P1 平台下拉、QuickBar 都靠它;有 sessionStorage 快取會先秒回) ---
+    useEffect(() => {
+        fetchCloudTemplates();
+    }, [fetchCloudTemplates]);
+
     // --- 雲端 Modal 開啟自動載入 ---
     useEffect(() => {
         if (showCloudModal) fetchCloudTemplates();
@@ -404,6 +409,7 @@ function App() {
                 <ErrorBoundary label="Phase 1: 模板設定">
                     <Phase1Setup
                         cloudTemplates={cloudTemplates}
+                        isLoadingCloud={isLoadingCloud}
                         handleClearTemplate={handleClearTemplate}
                         templateMessage={templateMessage}
                         isTemplateMinimized={isTemplateMinimized} setIsTemplateMinimized={setIsTemplateMinimized}

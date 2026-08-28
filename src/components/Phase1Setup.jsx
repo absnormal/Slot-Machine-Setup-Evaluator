@@ -23,7 +23,7 @@ export default function Phase1Setup(props) {
         handleClearTemplate,
         templateName, setTemplateName, defaultSaveName,
         handleSaveToCloud, isSaving, activeSaveAction,
-        cloudTemplates,
+        cloudTemplates, isLoadingCloud,
         platformName, setPlatformName,
         gameName, setGameName,
         lineMode, setLineMode,
@@ -130,7 +130,7 @@ export default function Phase1Setup(props) {
                                         }}
                                         className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white"
                                     >
-                                        <option value="" disabled>選擇平台…</option>
+                                        <option value="" disabled>{platformOptions.length === 0 && isLoadingCloud ? '⏳ 平台清單載入中…' : '選擇平台…'}</option>
                                         {platformOptions.map(p => <option key={p} value={p}>{p}</option>)}
                                         <option value={CUSTOM_PLATFORM}>➕ 自訂平台名稱…</option>
                                     </select>
