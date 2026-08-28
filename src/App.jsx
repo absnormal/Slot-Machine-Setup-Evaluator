@@ -403,6 +403,7 @@ function App() {
                 {isFullMode && (
                 <ErrorBoundary label="Phase 1: 模板設定">
                     <Phase1Setup
+                        cloudTemplates={cloudTemplates}
                         handleClearTemplate={handleClearTemplate}
                         templateMessage={templateMessage}
                         isTemplateMinimized={isTemplateMinimized} setIsTemplateMinimized={setIsTemplateMinimized}

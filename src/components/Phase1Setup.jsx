@@ -10,6 +10,8 @@ import PaytableConfig from './phase1/PaytableConfig';
  * Phase 1: 模板設定 — 容器元件
  * 組合 4 個子元件：TemplateToolbar, LineModeConfig, SpecialSymbolQA, PaytableConfig
  */
+const CUSTOM_PLATFORM = '__custom__';
+
 export default function Phase1Setup(props) {
     const {
         templateMessage,
@@ -21,6 +23,7 @@ export default function Phase1Setup(props) {
         handleClearTemplate,
         templateName, setTemplateName, defaultSaveName,
         handleSaveToCloud, isSaving, activeSaveAction,
+        cloudTemplates,
         platformName, setPlatformName,
         gameName, setGameName,
         lineMode, setLineMode,
@@ -54,6 +57,19 @@ export default function Phase1Setup(props) {
         reelHeights, setReelHeights,
         hasApiKey
     } = props;
+
+    // ── 平台名下拉:從雲端模板聚合現有平台;選「自訂」才開放自由輸入 ──
+    const platformOptions = React.useMemo(() => {
+        const set = new Set();
+        for (const t of (cloudTemplates || [])) {
+            const p = (t.platformName || '').trim();
+            if (p) set.add(p);
+        }
+        return [...set].sort((a, b) => a.localeCompare(b, 'zh-Hant'));
+    }, [cloudTemplates]);
+    const [platformCustomMode, setPlatformCustomMode] = React.useState(false);
+    // 目前值不在清單(如匯入舊模板/清單未載入完成前已有值)→ 自動視為自訂模式,不弄丟資料
+    const isPlatformCustom = platformCustomMode || (!!platformName && !platformOptions.includes(platformName));
 
     return (
         <>
@@ -101,7 +117,32 @@ export default function Phase1Setup(props) {
                             <div className="flex flex-col sm:flex-row gap-4">
                                 <div className="flex-1">
                                     <label className="block text-sm font-bold text-slate-700 mb-1">平台名稱</label>
-                                    <input type="text" value={platformName} onChange={(e) => setPlatformName(e.target.value)} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm" placeholder="例如: 金銀島, VF, 滿貫大亨..." />
+                                    <select
+                                        value={isPlatformCustom ? CUSTOM_PLATFORM : (platformName || '')}
+                                        onChange={(e) => {
+                                            const v = e.target.value;
+                                            if (v === CUSTOM_PLATFORM) {
+                                                setPlatformCustomMode(true);
+                                            } else {
+                                                setPlatformCustomMode(false);
+                                                setPlatformName(v);
+                                            }
+                                        }}
+                                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white"
+                                    >
+                                        <option value="" disabled>選擇平台…</option>
+                                        {platformOptions.map(p => <option key={p} value={p}>{p}</option>)}
+                                        <option value={CUSTOM_PLATFORM}>➕ 自訂平台名稱…</option>
+                                    </select>
+                                    {isPlatformCustom && (
+                                        <input
+                                            type="text" autoFocus
+                                            value={platformName}
+                                            onChange={(e) => setPlatformName(e.target.value)}
+                                            className="mt-2 w-full px-3 py-2 border border-amber-300 bg-amber-50 rounded-lg focus:ring-2 focus:ring-amber-400 outline-none text-sm"
+                                            placeholder="輸入新平台名稱(請先確認清單裡真的沒有)"
+                                        />
+                                    )}
                                 </div>
                                 <div className="flex-1">
                                     <label className="block text-sm font-bold text-slate-700 mb-1">
