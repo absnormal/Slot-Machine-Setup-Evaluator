@@ -483,6 +483,16 @@ export function useGeminiVision({
         return () => window.removeEventListener('paste', handleGlobalPaste);
     }, [addVisionImageFromFile, performLocalVisionBatchMatching, setTemplateMessage, isPhase3Minimized, setVisionP1]);
 
+    // 上傳後自動觸發快速辨識（與貼上截圖行為一致）；不改動 ROI 框
+    const handleVisionImageUploadAuto = useCallback(async (e) => {
+        const files = Array.from(e.target.files || []).filter(f => f.type.startsWith('image/'));
+        e.target.value = '';
+        if (files.length === 0) return;
+        for (const f of files) await addVisionImageFromFile(f);
+        setTemplateMessage?.(`📥 已加入 ${files.length} 張截圖，自動辨識中...`);
+        setTimeout(() => { performLocalVisionBatchMatching(); }, 50);
+    }, [addVisionImageFromFile, performLocalVisionBatchMatching, setTemplateMessage]);
+
     return {
         visionImages,
         activeVisionId,
@@ -505,7 +515,7 @@ export function useGeminiVision({
         handleVisionMouseDown,
         handleVisionMouseMove,
         handleVisionMouseUp,
-        handleVisionImageUpload,
+        handleVisionImageUpload: handleVisionImageUploadAuto,
         removeVisionImage,
         resetVisionImage,
         performAIVisionBatchMatching,

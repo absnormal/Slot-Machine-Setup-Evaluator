@@ -153,7 +153,7 @@ const Phase2Manual = ({
                                     <label className="flex items-center gap-2 mt-2 mb-1 cursor-pointer bg-amber-500/10 border border-amber-500/30 px-3 py-2 rounded-lg">
                                         <input type="checkbox" checked={enableBidirectional} onChange={e => setEnableBidirectional(e.target.checked)} className="w-4 h-4 text-amber-500 border-amber-400 rounded focus:ring-amber-400" />
                                         <span className="text-xs font-bold text-amber-300">啟用雙向連線算分</span>
-                                        <span className="text-[10px] text-amber-400/70 ml-1">(左至右 + 右至左取最高)</span>
+                                        <span className="text-[10px] text-amber-400/70 ml-1">{template?.lineMode === 'allways' ? '(左右兩端各自計算 Ways 相加)' : '(左至右 + 右至左取最高)'}</span>
                                     </label>
                                 )}
 

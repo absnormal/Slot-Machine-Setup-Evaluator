@@ -3,6 +3,7 @@ import { BrainCircuit, ChevronDown, ChevronUp, X, Upload, ImageIcon, Trash2, Che
 import ResultView from './ResultView';
 import { getBaseSymbol, getCashValue, isCashSymbol, formatShorthandValue, isJpSymbol, getCollectValue, getSymbolDisplayImage, isDynamicMultiplierSymbol, getSymbolMultiplier } from '../utils/symbolUtils';
 import { getGridMask, isIrregularGrid } from '../utils/gridShapeUtils';
+import useAppStore from '../stores/useAppStore';
 
 export default function Phase3Vision({
     template,
@@ -29,6 +30,7 @@ export default function Phase3Vision({
     // 獨立管理 Phase 3 專屬的 ResultView 懸停與線條顯示狀態
     const [visionHoveredLineId, setVisionHoveredLineId] = useState(null);
     const [visionShowAllLines, setVisionShowAllLines] = useState(false);
+    const showPhase4 = useAppStore(s => s.showPhase4);
     const gridMask = useMemo(() => template ? getGridMask(template) : [], [template]);
 
     return (
@@ -83,6 +85,10 @@ export default function Phase3Vision({
                                         <span className="text-[10px]">新增</span>
                                         <input type="file" multiple accept="image/*" className="hidden" onChange={handleVisionImageUpload} />
                                     </label>
+                                    <button type="button" onClick={pasteFromClipboard} title="貼上截圖（貼上即自動辨識）" className="w-16 h-16 shrink-0 rounded-lg border-2 border-dashed border-slate-700 flex flex-col items-center justify-center cursor-pointer hover:bg-slate-800 hover:border-slate-500 text-slate-400 transition-colors">
+                                        <ClipboardPaste size={20} className="mb-1" />
+                                        <span className="text-[10px]">貼上</span>
+                                    </button>
                                 </div>
                             )}
 
@@ -91,10 +97,20 @@ export default function Phase3Vision({
                                     <div className="w-20 h-20 bg-slate-800 rounded-full flex items-center justify-center mb-6 border border-slate-700 shadow-inner">
                                         <ImageIcon size={32} className="text-indigo-400" />
                                     </div>
-                                    <label className="cursor-pointer btn-primary px-6 py-3 flex items-center gap-2 shadow-lg">
-                                        <Upload size={20} /> 從檔案上傳
-                                        <input type="file" multiple accept="image/*" className="hidden" onChange={handleVisionImageUpload} />
-                                    </label>
+                                    <div className="flex items-center gap-3">
+                                        <label className="cursor-pointer btn-primary px-6 py-3 flex items-center gap-2 shadow-lg">
+                                            <Upload size={20} /> 從檔案上傳
+                                            <input type="file" multiple accept="image/*" className="hidden" onChange={handleVisionImageUpload} />
+                                        </label>
+                                        <button
+                                            type="button"
+                                            onClick={pasteFromClipboard}
+                                            className="px-6 py-3 flex items-center gap-2 rounded-lg font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600 transition-colors shadow-lg active:scale-95"
+                                            title="先用 Win+Shift+S 框好盤面，再按此貼上（貼上即自動辨識）"
+                                        >
+                                            <ClipboardPaste size={20} /> 貼上截圖
+                                        </button>
+                                    </div>
                                     <p className="mt-4 text-sm text-slate-400 max-w-md leading-relaxed">
                                         利用系統內建截圖 (如 Windows 的 <kbd className="bg-slate-800 px-1.5 py-0.5 rounded text-xs mx-1">Win+Shift+S</kbd>) 框選遊戲盤面，然後在畫面上直接按 <kbd className="bg-slate-800 px-1.5 py-0.5 rounded text-xs mx-1">Ctrl+V</kbd> 貼上，系統會立即自動為您辨識並結算！
                                     </p>
@@ -246,13 +262,15 @@ export default function Phase3Vision({
                                                     )}
                                                 </div>
                                                 <div className="flex items-center gap-2">
-                                                    <button
-                                                        onClick={onSaveToPhase4}
-                                                        className="btn-primary flex items-center gap-2 text-sm shadow-lg shadow-indigo-900/20"
-                                                        title="將此盤面與贏分回傳至 Phase 4 的截圖清單中"
-                                                    >
-                                                        💾 儲存盤面回 Phase 4 (↓)
-                                                    </button>
+                                                    {showPhase4 && (
+                                                        <button
+                                                            onClick={onSaveToPhase4}
+                                                            className="btn-primary flex items-center gap-2 text-sm shadow-lg shadow-indigo-900/20"
+                                                            title="將此盤面與贏分回傳至 Phase 4 的截圖清單中"
+                                                        >
+                                                            💾 儲存盤面回 Phase 4 (↓)
+                                                        </button>
+                                                    )}
                                                     <button
                                                         onClick={onTransfer}
                                                         className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-bold transition-all shadow-lg shadow-emerald-900/20 active:scale-95 group"

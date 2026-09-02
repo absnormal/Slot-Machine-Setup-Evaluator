@@ -22,8 +22,8 @@ export default function TemplateQuickBar({
         if (template.rows && template.cols) summaryParts.push(`${template.rows}×${template.cols} 盤面`);
         if (template.lineMode === 'allways') {
             summaryParts.push('AllWays');
-        } else if (template.lines?.length) {
-            summaryParts.push(`${template.lines.length} 條連線`);
+        } else if (template.lines && Object.keys(template.lines).length > 0) {
+            summaryParts.push(`${Object.keys(template.lines).length} 條連線`);
         }
         if (template.hasMultiplierReel) summaryParts.push('乘倍輪');
         if (template.hasJackpot) summaryParts.push('JP');
